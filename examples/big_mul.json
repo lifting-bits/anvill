@@ -1,0 +1,93 @@
+{
+  "arch": "x86",
+  "os": "linux",
+
+  "functions": [
+    {
+      "name": "BigMul(double, long double)",
+      "address": 0,
+      "parameters": [
+        {
+          "name": "x",
+          "type": "d",
+          "memory": {
+            "register": "ESP",
+            "offset": 4
+          }
+        },
+        {
+          "name": "y",
+          "type": "D",
+          "memory": {
+            "register": "ESP",
+            "offset": 12
+          }
+        }
+      ],
+      "return_address": {
+        "memory": {
+          "register": "ESP"
+        },
+        "type": "I"
+      },
+      "return_values": [
+        {
+          "register": "EAX",
+          "type": "i"
+        },
+        {
+          "register": "EDX",
+          "type": "i"
+        }
+      ],
+      "return_stack_pointer": {
+        "register": "ESP",
+        "offset": 4
+      }
+    },
+
+    {
+      "name": "round",
+      "address": 70,
+      "parameters": [
+        {
+          "name": "x",
+          "type": "d",
+          "memory": {
+            "register": "ESP",
+            "offset": 4
+          }
+        }
+      ],
+      "return_address": {
+        "memory": {
+          "register": "ESP"
+        },
+        "type": "I"
+      },
+      "return_values": [
+        {
+          "register": "ST0",
+          "type": "d"
+        }
+      ],
+      "return_stack_pointer": {
+        "register": "ESP",
+        "offset": 4
+      }
+    }
+  ],
+  "memory": [
+    {
+      "address": 0,
+      "data": "83EC1CDB6C2428DC4C2420DD1C24E833000000DD5C2410DD442410D97C240C0FB744240C0D000C0000668944240ED96C240EDF7C2410D96C240C8B4424108B54241483C41CC3",
+      "is_readable": true,
+      "is_executable": true
+    }
+  ],
+  "stack": {
+    "address": 12288,
+    "size": 24576,
+    "start_offset": 4096
+  }
+}
