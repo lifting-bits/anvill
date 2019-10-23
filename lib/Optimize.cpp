@@ -27,6 +27,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IRBuilder.h>
@@ -252,6 +253,75 @@ static void ReplaceConstMemoryReads(
   }
 }
 
+// Look for compiler barriers (empty inline asm statements marked
+// with side-effects) and try to remove them. If we see some barriers
+// bracketed by extern
+static void RemoveUnneededInlineAsm(
+    const Program &program, llvm::Module &module) {
+  std::vector<llvm::CallInst *> to_remove;
+
+  program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
+    const auto func = decl->DeclareInModule(module);
+    if (func->isDeclaration()) {
+      return true;
+    }
+
+    to_remove.clear();
+
+    for (auto &block : *func) {
+      auto prev_is_compiler_barrier = false;
+      llvm::CallInst *prev_barrier = nullptr;
+      for (auto &inst : block) {
+        if (llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+          const auto inline_asm = llvm::dyn_cast<llvm::InlineAsm>(
+              call_inst->getCalledValue());
+          if (inline_asm) {
+            if (inline_asm->hasSideEffects() &&
+                call_inst->getType()->isVoidTy() &&
+                inline_asm->getAsmString().empty()) {
+
+              if (prev_is_compiler_barrier) {
+                to_remove.push_back(call_inst);
+              } else {
+                prev_barrier = call_inst;
+              }
+              prev_is_compiler_barrier = true;
+            } else {
+              prev_is_compiler_barrier = false;
+              prev_barrier = nullptr;
+            }
+
+          } else if (auto target_func = call_inst->getCalledFunction()) {
+            if (target_func->hasExternalLinkage()) {
+              if (prev_is_compiler_barrier && prev_barrier) {
+                to_remove.push_back(prev_barrier);
+              }
+              prev_is_compiler_barrier = true;
+            } else {
+              prev_is_compiler_barrier = false;
+            }
+
+            prev_barrier = nullptr;
+
+          } else {
+            prev_is_compiler_barrier = false;
+            prev_barrier = nullptr;
+          }
+        } else {
+          prev_is_compiler_barrier = false;
+          prev_barrier = nullptr;
+        }
+      }
+    }
+
+    for (auto call_inst : to_remove) {
+      call_inst->eraseFromParent();
+    }
+
+    return true;
+  });
+}
+
 }  // namespace
 
 // Optimize a module. This can be a module with semantics code, lifted
@@ -327,6 +397,8 @@ void OptimizeModule(const Program &program, llvm::Module &module) {
         fp80_type);
 
   } while (!changed_funcs.empty());
+
+  RemoveUnneededInlineAsm(program, module);
 }
 
 }  // namespace anvill

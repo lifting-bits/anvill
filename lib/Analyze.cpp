@@ -174,7 +174,7 @@ static llvm::Type *GetUpstreamTypeFromPointer(llvm::Value *val) {
 static void FindMemoryReferences(
     const Program &program, llvm::Function &func,
     std::unordered_map<llvm::Function *, std::vector<Cell>> &stack_cells,
-    std::vector<Cell> &global_cells,
+    std::unordered_map<llvm::Function *, std::vector<Cell>> &global_cells,
     std::vector<Cell> &unknown_cells) {
 
   llvm::DataLayout dl(func.getParent());
@@ -285,7 +285,7 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells.push_back(cell);
+          global_cells[&func].push_back(cell);
         }
       }
     }
@@ -318,13 +318,16 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells.push_back(cell);
+          global_cells[&func].push_back(cell);
         }
       }
     }
   }
 }
 
+// Replace a memory barrier intrinsic.
+//
+// TODO(pag): Consider calling something real.
 static void ReplaceBarrier(
     llvm::Module &module, const char *name) {
   auto func = module.getFunction(name);
@@ -333,7 +336,7 @@ static void ReplaceBarrier(
   }
 
   CHECK(func->isDeclaration())
-          << "Cannot lower already implemented memory intrinsic " << name;
+      << "Cannot lower already implemented memory intrinsic " << name;
 
   auto callers = remill::CallersOf(func);
   for (auto call_inst : callers) {
@@ -352,7 +355,7 @@ static void ReplaceMemReadOp(
   }
 
   CHECK(func->isDeclaration())
-          << "Cannot lower already implemented memory intrinsic " << name;
+      << "Cannot lower already implemented memory intrinsic " << name;
 
   auto callers = remill::CallersOf(func);
   for (auto call_inst : callers) {
@@ -468,17 +471,12 @@ static void LowerMemOps(llvm::LLVMContext &context, llvm::Module &module) {
 void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
 
   llvm::DataLayout dl(&module);
+  std::map<uint64_t, llvm::GlobalValue *> nearby;
 
   // Go collect type information for all memory accesses.
   std::unordered_map<llvm::Function *, std::vector<Cell>> stack_cells;
-  std::vector<Cell> global_cells;
+  std::unordered_map<llvm::Function *, std::vector<Cell>> global_cells;
   std::vector<Cell> unknown_cells;
-  std::map<uint64_t, llvm::GlobalValue *> nearby;
-
-  program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
-    nearby[decl->address] = decl->DeclareInModule(module);
-    return true;
-  });
 
   program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
     const auto func = decl->DeclareInModule(module);
@@ -491,16 +489,19 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
     return true;
   });
 
+  // Global cells are a bit different. Really, they are about being
+  // "close" enough to the real thing
+  program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
+    nearby[decl->address] = decl->DeclareInModule(module);
+    return true;
+  });
+
   std::unordered_map<uint64_t, std::unordered_map<llvm::Type *, int>> popularity;
   for (auto &func_stack_cells : stack_cells) {
     auto &cells = func_stack_cells.second;
     for (auto &cell : cells) {
       popularity[cell.address_const][cell.type] += 1;
     }
-  }
-
-  for (auto &cell : global_cells) {
-    popularity[cell.address_const][cell.type] += 1;
   }
 
   auto order_cells = [&dl, &popularity] (const Cell &a, const Cell &b) -> bool {
@@ -526,8 +527,6 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
     }
   };
 
-  std::sort(global_cells.begin(), global_cells.end(), order_cells);
-
   auto &context = module.getContext();
   auto i8_type = llvm::Type::getInt8Ty(context);
   auto i8_ptr_type = llvm::PointerType::get(i8_type, 0);
@@ -542,10 +541,6 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
     uint64_t max_stack_address = min_stack_address;
 
     for (const auto &cell : cells) {
-      LOG(ERROR)
-          << std::hex << " " << cell.address_const << std::dec
-          << " " << remill::LLVMThingToString(cell.type);
-
       min_stack_address = std::min(min_stack_address, cell.address_const);
       max_stack_address = std::max(max_stack_address, cell.address_const + cell.size);
     }
@@ -603,6 +598,40 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
       }
     }
   }
+
+  popularity.clear();
+  for (auto &func_global_cells : global_cells) {
+    auto &cells = func_global_cells.second;
+    for (auto &cell : cells) {
+      popularity[cell.address_const][cell.type] += 1;
+    }
+  }
+
+//  for (auto &func_global_cells : global_cells) {
+//    auto func = func_global_cells.first;
+//    auto &cells = func_global_cells.second;
+//    std::sort(cells.begin(), cells.end(), order_cells);
+//
+//    llvm::IRBuilder<> ir(&(func->getEntryBlock().front()));
+//
+//    for (const auto &cell : cells) {
+//      for (auto &use : cell.address_val->uses()) {
+//        if (use.getUser() != cell.user) {
+//          continue;
+//        }
+//
+//
+//        llvm::Value *indexes[] = {
+//            llvm::ConstantInt::get(
+//                i32_type, cell.address_const)
+//        };
+//        auto gep = ir.CreateInBoundsGEP(i8_type, i8_frame, indexes);
+//
+//        use.set(ir.CreatePtrToInt(gep, cell.address_val->getType()));
+//      }
+//    }
+//  }
+
 
   LowerMemOps(context, module);
 }

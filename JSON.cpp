@@ -526,6 +526,11 @@ static bool ParseSpec(
         return false;
       }
     }
+  } else if (spec->find("functions") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'functions' in spec file '"
+        << FLAGS_spec << "'";
+    return false;
   }
 
   if (auto vars = spec->getArray("variables")) {
@@ -541,6 +546,11 @@ static bool ParseSpec(
         return false;
       }
     }
+  } else if (spec->find("variables") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'variables' in spec file '"
+        << FLAGS_spec << "'";
+    return false;
   }
 
   if (auto ranges = spec->getArray("memory")) {
@@ -556,6 +566,11 @@ static bool ParseSpec(
         return false;
       }
     }
+  } else if (spec->find("memory") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'memory' in spec file '"
+        << FLAGS_spec << "'";
+    return false;
   }
 
   if (auto stack = spec->getObject("stack")) {
@@ -577,7 +592,7 @@ static bool ParseSpec(
 int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
-
+  
   if (FLAGS_spec.empty()) {
     LOG(ERROR)
         << "Please specify a path to a JSON specification file in --spec.";
@@ -679,7 +694,7 @@ int main(int argc, char *argv[]) {
   arch->PrepareModuleDataLayout(&dest_module);
 
   program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
-    auto func = decl->DeclareInModule(*semantics);
+    const auto func = decl->DeclareInModule(*semantics);
     remill::MoveFunctionIntoModule(func, &dest_module);
     return true;
   });
