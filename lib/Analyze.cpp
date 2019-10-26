@@ -141,7 +141,7 @@ static llvm::Type *GetUpstreamType(llvm::Value *val) {
     return GetUpstreamType(bc_inst->getOperand(0));
 
   } else if (auto ptr_inst = llvm::dyn_cast<llvm::PtrToIntInst>(val)) {
-    return bc_inst->getOperand(0)->getType();
+    return ptr_inst->getOperand(0)->getType();
 
   } else {
     return val->getType();
