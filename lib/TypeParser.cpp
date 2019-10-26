@@ -377,22 +377,30 @@ static llvm::Expected<llvm::Type *> ParseType(
         return ids[type_id];
       }
 
-      case 'b':  // char.
-      case 'B':  // unsigned char.
+      case '?':  // bool, _Bool.
+      case 'b':  // int8_t.
+      case 'B':  // uint8_t.
         i += 1;
         return llvm::IntegerType::getInt8Ty(context);
-      case 'h':  // short.
-      case 'H':  // unsigned short.
+      case 'h':  // int16_t.
+      case 'H':  // uint16_t.
         i += 1;
         return llvm::IntegerType::getInt16Ty(context);
-      case 'i':  // int.
-      case 'I':  // unsigned int.
+      case 'i':  // int32_t.
+      case 'I':  // uint32_t.
         i += 1;
         return llvm::IntegerType::getInt32Ty(context);
-      case 'l':  // long.
-      case 'L':  // unsigned long.
+      case 'l':  // int64_t.
+      case 'L':  // uint64_t.
         i += 1;
         return llvm::IntegerType::getInt64Ty(context);
+      case 'o':  // int128_t.
+      case 'O':  // uint128_t.
+        i += 1;
+        return llvm::IntegerType::getInt128Ty(context);
+      case 'e':  // float16_t`.
+        i += 1;
+        return llvm::Type::getHalfTy(context);
       case 'f':  // float.
         i += 1;
         return llvm::Type::getFloatTy(context);

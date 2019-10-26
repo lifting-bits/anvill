@@ -592,7 +592,7 @@ static bool ParseSpec(
 int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
-  
+
   if (FLAGS_spec.empty()) {
     LOG(ERROR)
         << "Please specify a path to a JSON specification file in --spec.";
