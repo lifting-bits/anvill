@@ -288,6 +288,9 @@ class FunctionType(Type):
     assert isinstance(param_type, Type)
     self._param_types.append(param_type)
 
+  def parameter_type(self, index):
+    return self._param_types[index]
+
   def set_is_vararg(self, is_var_arg=True):
     self._is_var_arg = is_var_arg
 

@@ -309,14 +309,37 @@ def get_function(arch, address):
   # Reset to the start of the function, and get the type of the function.
   address = ida_func.start_ea
   
+  tif = ida_typeinf.tinfo_t()
+  if not ida_nalt.get_tinfo(tif, ty):
+    ida_typeinf.guess_tinfo(tif, ty)
+
+  if not tif.is_func():
+    raise InvalidFunction(
+        "Type information at address {:x} is not a function: {}".format(
+            address, tif.dstr()))
+
+  tdata = idaapi.func_type_data_t()
+  if not tif.get_func_details(tdata):
+    raise InvalidFunction(
+        "Could not get function details for function at address {:x}".format(address))
+
+  # Make sure we can handle the basic signature of the function. This might
+  # not be the final signature that we go with, but it's a good way to make
+  # sure we can handle the relevant types.
   try:
-    func_type = get_type(address)
+    func_type = get_type(tif)
   except UnhandledTypeException as e:
     raise InvalidFunction(
         "Could not assign type to function at address {:x}: {}".format(
             address, str(e)))
 
-  print(func_type.serialize(arch, {}))
+  # Go look into each of the parameters and their types.
+  i = 0
+  max_i = func_type_data.size()
+  while i < max_i:
+    pdata = tdata[i]
+    i += 1
+    create_param_prototype(proto, param_type_data)
 
   if address in _FUNCTIONS:
     return _FUNCTIONS[address]
