@@ -21,6 +21,9 @@ class Type(object):
   def size(self, arch):
     raise NotImplementedError()
 
+  def proto(self, arch):
+    return self.serialize(arch, {})
+
   def serialize(self, arch, ids):
     raise NotImplementedError()
 

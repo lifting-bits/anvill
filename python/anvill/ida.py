@@ -421,7 +421,7 @@ def get_function(arch, address):
     param_type_str = param_type.serialize(arch, {})
 
     print("Param {} param_type:{} arg_type:{} argloc:{}".format(
-        i, param_type_str, arg_type_str, str(funcarg.argloc))
+        i, param_type_str, arg_type_str, str(funcarg.argloc)))
 
     i += 1
     _expand_locations(arch, param_type, funcarg.argloc, param_list)

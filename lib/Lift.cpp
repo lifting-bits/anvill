@@ -335,12 +335,23 @@ void TraceManagerImpl::SetLiftedTraceDefinition(
   ir.CreateStore(sp, sp_reg_ptr);
 
   // Put the function's return address wherever it needs to go.
-  const auto ret_addr = ir.CreateBitCast(
-      ir.CreateCall(
-          llvm::Intrinsic::getDeclaration(
-              module, llvm::Intrinsic::returnaddress),
-          ir.getInt32(0)),
-      decl->return_address.type);
+  llvm::Value *ret_addr = ir.CreateCall(
+      llvm::Intrinsic::getDeclaration(
+          module, llvm::Intrinsic::returnaddress),
+  ir.getInt32(0));
+
+  if (ret_addr->getType() != decl->return_address.type) {
+    if (decl->return_address.type->isIntegerTy()) {
+      ret_addr = ir.CreatePtrToInt(ret_addr, decl->return_address.type);
+    } else if (decl->return_address.type->isPointerTy()) {
+      ret_addr = ir.CreateBitCast(ret_addr, decl->return_address.type);
+    } else {
+      LOG(FATAL)
+          << "Unexpected type for return address: "
+          << remill::LLVMThingToString(decl->return_address.type);
+    }
+  }
+
   mem_ptr = StoreNativeValue(
       ret_addr, decl->return_address, intrinsics,
       block, state_ptr, mem_ptr);
