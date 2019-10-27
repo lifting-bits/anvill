@@ -14,6 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import itertools
 import weakref
 
 
@@ -311,7 +312,8 @@ def _expand_locations(arch, ty, argloc, out_locs):
   # Distributed across two or more locations.
   elif where == ida_typeinf.ALOC_DIST:
     for part in argloc.scattered():
-      part_type = ty.extract(arch, part.off, part.size)
+      part_ty = ty.extract(arch, part.off, part.size)
+      _expand_locations(arch, part_ty, part, out_locs)
 
   # Located in a single register, possibly in a small part
   # off the register itself.
@@ -338,10 +340,7 @@ def _expand_locations(arch, ty, argloc, out_locs):
         raise Exception()
 
     except:
-      reg_name = ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name
-
-    print("ALOC_REG1: reg:{} offset:{} type:{} size={}".format(
-        reg_name, off, ty.serialize(arch, {}), ty_size))
+      reg_name = (ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name).upper()
 
     loc = Location()
     loc.set_register(reg_name)
@@ -351,21 +350,49 @@ def _expand_locations(arch, ty, argloc, out_locs):
   # Located in a pair of registers.
   elif where == ida_typeinf.ALOC_REG2:
     ty_size = ty.size(arch)
-    print("ALOC_REG2: reg1:{} reg2:{} type:{} size:{} info:{} ".format(
-        reg_names[argloc.reg1()],
-        reg_names[argloc.reg2()],
-        ty.serialize(arch, {}),
-        ty_size,
-        argloc.get_reginfo()))
+    reg_name1 = reg_names[argloc.reg1()].upper()
+    reg_name2 = reg_names[argloc.reg2()].upper()
+    ty1 = ty.extract(arch, 0, ty_size / 2)
+    ty2 = ty.extract(arch, ty_size / 2, ty_size / 2)
+
+    try:
+      found = False
+      family1 = arch.register_family(reg_name1)
+      family2 = arch.register_family(reg_name2)
+
+      for r1_info, r2_info in itertools.product(family1, family2):
+        f_reg_name1, f_reg_offset1, f_reg_size1 = r1_info
+        f_reg_name2, f_reg_offset2, f_reg_size2 = r2_info
+
+        print("{} {} {} {}".format(f_reg_name1, f_reg_name2, ty_size, f_reg_size1 + f_reg_size2))
+
+        if f_reg_offset1 or f_reg_offset2:
+          continue
+
+        if ty_size == (f_reg_size1 + f_reg_size2):
+          found = True
+          reg_name1 = f_reg_name1
+          reg_name2 = f_reg_name2
+
+          ty1 = ty.extract(arch, 0, f_reg_size1)
+          ty2 = ty.extract(arch, f_reg_size1, f_reg_size2)
+          break
+
+      if not found:
+        raise Exception()
+
+    except Exception as e:
+      reg_name1 = (ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name1).upper()
+      reg_name2 = (ida_idp.get_reg_name(argloc.reg2(), ty_size) or reg_name2).upper()
 
     loc1 = Location()
-    loc1.set_register(reg_names[argloc.reg1()].upper())
-    loc1.set_type(ty)
+    loc1.set_register(reg_name1)
+    loc1.set_type(ty1)
     out_locs.append(loc1)
 
     loc2 = Location()
-    loc2.set_register(reg_names[argloc.reg2()].upper())
-    loc2.set_type(ty)
+    loc2.set_register(reg_name2)
+    loc2.set_type(ty2)
     out_locs.append(loc2)
 
   # Memory location computed as value in a register, plus an offset.
@@ -398,8 +425,8 @@ def _expand_locations(arch, ty, argloc, out_locs):
 
 
 class IDAFunction(Function):
-  def __init__(self, arch, address, func_type, ida_func):
-    super(IDAFunction, self).__init__(arch, address, func_type)
+  def __init__(self, arch, address, param_list, ret_list, ida_func):
+    super(IDAFunction, self).__init__(arch, address, param_list, ret_list)
     self._ida_func = ida_func
 
   def name(self):
@@ -464,13 +491,10 @@ def get_function(arch, address):
   param_list = []
   while i < max_i:
     funcarg = ftd[i]
+    i += 1
 
     arg_type = get_type(funcarg.type)
     arg_type_str = arg_type.serialize(arch, {})
-
-    print("Param {} arg_type:{}".format(i, arg_type_str))
-
-    i += 1
 
     j = len(param_list)
     _expand_locations(arch, arg_type, funcarg.argloc, param_list)
@@ -486,11 +510,12 @@ def get_function(arch, address):
           param_list[-1].set_name("{}_{}".format(funcarg.name, k - j))
           k += 1
 
+  # Build up the list of return values.
   ret_list = []
   ret_type = get_type(ftd.rettype)
   if not isinstance(ret_type, VoidType):
     _expand_locations(arch, ret_type, ftd.retloc, ret_list)
 
-  func = IDAFunction(arch, address, func_type, ida_func)
+  func = IDAFunction(arch, address, param_list, ret_list, ida_func)
   _FUNCTIONS[address] = func
   return func

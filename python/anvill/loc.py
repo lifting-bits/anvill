@@ -45,6 +45,10 @@ class Location(object):
 
   def set_type(self, type_):
     assert isinstance(type_, Type)
+    self._type = type_
+
+  def type(self):
+    return self._type
 
   def proto(self, arch):
     if self._register:

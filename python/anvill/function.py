@@ -14,15 +14,42 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from .type import Type, FunctionType, StructureType
+from .loc import Location
+
+
 class Function(object):
   """Represents a generic function."""
 
-  def __init__(self, arch, address, func_type):
+  def __init__(self, arch, address, parameters, return_values):
     self._arch = arch
     self._address = address
     self._type = func_type
-    self._parameters = []
-    self._return_values = []
+    self._parameters = parameters
+    self._return_values = return_values
+    self._type = FunctionType()
+
+    for param in self._parameters:
+      assert isinstance(param, Location)
+      param_type = param.type()
+      assert isinstance(param_type, Type)
+      self._type.add_parameter_type(param_type)
+
+    if len(self._return_values) == 1:
+      ret_val = self._return_values[0]
+      assert isinstance(ret_val, Location)
+      ret_type = ret_val.type()
+      assert isinstance(ret_type, Type)
+      self._type.set_return_type(ret_type)
+
+    elif len(self._return_values):
+      str_type = StructureType()
+      for ret_val in self._return_values:
+        assert isinstance(ret_val, Location)
+        ret_type = ret_val.type()
+        assert isinstance(ret_type, Type)
+        str_type.add_element_type(ret_type)
+      self._type.set_return_type(str_type)
 
   def name(self):
     return NotImplementedError()
@@ -46,6 +73,6 @@ class Function(object):
     proto["return_address"] = arch.return_address_proto()
     proto["return_stack_pointer"] = arch.return_stack_pointer_proto(
         type().num_bytes_popped_off_stack())
-    proto["parameters"] = []
-    proto["return_values"] = []
+    proto["parameters"] = [loc.proto(arch) for loc in self._parameters]
+    proto["return_values"] = [loc.proto(arch) for loc in self._return_values]
     return proto
