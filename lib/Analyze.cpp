@@ -110,6 +110,7 @@ static void FindConstantBases(
         for (const auto &operand : node->incoming_values()) {
           FindConstantBases(node, operand.get(), bases, seen);
         }
+        break;
       }
       case llvm::Instruction::GetElementPtr:
       case llvm::Instruction::BitCast:
@@ -128,7 +129,8 @@ static void FindConstantBases(
         FindConstantBases(inst, inst->getOperand(0), bases, seen);
         FindConstantBases(inst, inst->getOperand(1), bases, seen);
         break;
-      default:break;
+      default:
+        break;
     }
   }
 }

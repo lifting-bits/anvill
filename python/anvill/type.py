@@ -24,6 +24,37 @@ class Type(object):
   def serialize(self, arch, ids):
     raise NotImplementedError()
 
+  def flatten(self, arch, out_list):
+    raise NotImplementedError()
+
+  def extract(self, arch, offset, size):
+    elem_types = []
+    self.flatten(arch, elem_types)
+
+    curr_offset = 0
+    i = 0
+    while curr_offset < offset:
+      elem_type = elem_types[i]
+      elem_size = elem_type.size(arch)
+
+      if (curr_offset + elem_size) <= offset:
+        i += 1
+        curr_offset += elem_size
+        continue
+
+      # Need to break the type into two.
+      elif isinstance(elem_type, IntegerType):
+        print("Breaking integer!!!")
+        break
+
+      else:
+        raise UnhandledTypeException(
+            "Unable to create extracted type from unbreakable {} type".format(
+                elem_type.__class__.__name__))
+
+
+
+
 
 class VoidType(Type):
   _INSTANCE = None
@@ -39,6 +70,9 @@ class VoidType(Type):
   def size(self, arch):
     raise UnhandledTypeException(
         "Void type has no size", self)
+
+  def flatten(self, arch, out_list):
+    raise NotImplementedError("Cannot flatten a void type")
 
 
 class PointerType(Type):
@@ -56,11 +90,14 @@ class PointerType(Type):
     else:
       return "*{}".format(self._elem_type.serialize(arch, ids))
 
+  def flatten(self, arch, out_list):
+    out_list.append(self)
+
 
 class SequentialType(Type):
   def __init__(self):
     super(SequentialType, self).__init__()
-    self._elem_type = None
+    self._elem_type = IntegerType(1, False)
     self._num_elems = 1
 
   def set_element_type(self, elem_type):
@@ -72,10 +109,13 @@ class SequentialType(Type):
     self._num_elems = num
 
   def size(self, arch):
-    elem_size = 1
-    if self._elem_type:
-      elem_size = self._elem_type.size(arch)
-    return elem_size * self._num_elems
+    return self._elem_type.size(arch) * self._num_elems
+
+  def flatten(self, arch, out_list):
+    i = 0
+    while i < self._num_elems:
+      self._elem_type.flatten(arch, out_list)
+      i += 1
 
 
 class ArrayType(SequentialType):
@@ -142,6 +182,10 @@ class StructureType(Type):
     
     return ret
 
+  def flatten(self, arch, out_list):
+    for elem_type in self._elem_types:
+      elem_type.flatten(arch, out_list)
+
 
 class UnionType(Type):
   def __init__(self):
@@ -165,7 +209,7 @@ class UnionType(Type):
 
     for elem_type in self._elem_types:
       elem_size = elem_type.size(arch)
-      if elem_size > max_size:
+      if elem_size >= max_size:
         max_type = elem_type
 
     if max_type:
@@ -177,10 +221,21 @@ class UnionType(Type):
     max_size = 1  # To be addressable.
     for elem_type in self._elem_types:
       elem_size = elem_type.size(arch)
-      if elem_size > max_size:
+      if elem_size >= max_size:
         max_size = elem_size
 
     return max_size
+
+  def flatten(self, arch, out_list):
+    max_size = 1
+    max_type = IntegerType(1, False)
+
+    for elem_type in self._elem_types:
+      elem_size = elem_type.size(arch)
+      if elem_size >= max_size:
+        max_type = elem_type
+
+    max_type.flatten(arch, out_list)
 
 
 class IntegerType(Type):
@@ -232,6 +287,9 @@ class IntegerType(Type):
   def is_signed(self):
     return self.is_signed
 
+  def flatten(self, arch, out_list):
+    out_list.append(self)
+
 
 class FloatingPointType(Type):
 
@@ -268,6 +326,9 @@ class FloatingPointType(Type):
 
   def size(self, arch):
     return self._size
+
+  def flatten(self, arch, out_list):
+    out_list.append(self)
 
 
 class FunctionType(Type):
@@ -318,6 +379,9 @@ class FunctionType(Type):
     parts.append(")")
     return "".join(parts)
 
+  def flatten(self, arch, out_list):
+    raise NotImplementedError("Cannot flatten a function type")
+
 
 class AliasType(Type):
   def __init__(self):
@@ -333,6 +397,9 @@ class AliasType(Type):
 
   def size(self, arch):
     return self._underlying_type.size(arch)
+
+  def flatten(self, arch, out_list):
+    self._underlying_type.flatten(arch, out_list)
 
 
 class EnumType(AliasType):

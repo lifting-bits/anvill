@@ -22,12 +22,6 @@ class UnhandledArchitectureType(AnvillException):
   pass
 
 
-class UnhandledLocationException(AnvillException):
-  def __init__(self, msg, loc):
-    super(UnhandledLocationException, self).__init__(msg)
-    self.loc = loc
-
-
 class UnhandledTypeException(AnvillException):
   def __init__(self, msg, ty):
     super(UnhandledTypeException, self).__init__(msg)
@@ -38,5 +32,10 @@ class UnhandledOSException(AnvillException):
   pass
 
 
-class InvalidFunction(AnvillException):
+class InvalidFunctionException(AnvillException):
   pass
+
+
+class InvalidLocationException(AnvillException):
+  pass
+
