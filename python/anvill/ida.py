@@ -280,8 +280,23 @@ def get_type(ty):
   raise UnhandledTypeException("Unrecognized type passed to `Type`.", ty)
 
 
+def _get_address_sized_reg(arch, reg_name):
+  """Given the regiseter name `reg_name`, find the name of the register in the
+  same family whose size is the pointer size of this architecture."""
+
+  try:
+    family = arch.register_family(reg_name)
+    addr_size = arch.pointer_size()
+    for f_reg_name, f_reg_offset, f_reg_size in family:
+      if 0 == f_reg_offset and addr_size == f_reg_size:
+        return f_reg_name
+  except:
+    pass
+  return reg_name
+
+
 def _expand_locations(arch, ty, argloc, out_locs):
-  """Expand the locations referred to by `argloc` into `(Type, Location)` pairs
+  """Expand the locations referred to by `argloc` into a list of `Location`s
   in `out_locs`."""
 
   reg_names = ida_idp.ph_get_regnames()
@@ -290,7 +305,8 @@ def _expand_locations(arch, ty, argloc, out_locs):
   if where == ida_typeinf.ALOC_STACK:
     loc = Location()
     loc.set_memory(arch.stack_pointer_name(), argloc.stkoff())
-    out_locs.append((ty, loc))
+    loc.set_type(ty)
+    out_locs.append(loc)
 
   # Distributed across two or more locations.
   elif where == ida_typeinf.ALOC_DIST:
@@ -300,27 +316,57 @@ def _expand_locations(arch, ty, argloc, out_locs):
   # Located in a single register, possibly in a small part
   # off the register itself.
   elif where == ida_typeinf.ALOC_REG1:
-    off = loc.regoff()
-    if off:
-      print("Have offset?? reg:{} offset:{} type:{}".format(
-          reg_names[loc.reg1()], off, ty.serialize(arch, {})))
+    ty_size = ty.size(arch)
+    reg_name = reg_names[argloc.reg1()].upper()
+    try:
+      reg_offset = argloc.regoff()
+      family = arch.register_family(reg_name)
 
-    #  ty = ty.extract(arch, off)
+      # NOTE: The registers in the family tuple are sorted in descending
+      #       order of size.
+      found = False
+      for f_reg_name, f_reg_offset, f_reg_size in family:
+        if f_reg_offset != reg_offset:
+          continue
+
+        if ty_size == f_reg_size:
+          found = True
+          reg_name = f_reg_name
+          break
+
+      if not found:
+        raise Exception()
+
+    except:
+      reg_name = ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name
+
+    print("ALOC_REG1: reg:{} offset:{} type:{} size={}".format(
+        reg_name, off, ty.serialize(arch, {}), ty_size))
+
     loc = Location()
-    loc.set_register(reg_names[argloc.reg1()].upper())
-    out_locs.append((ty, loc))
+    loc.set_register(reg_name)
+    loc.set_type(ty)
+    out_locs.append(loc)
 
   # Located in a pair of registers.
   elif where == ida_typeinf.ALOC_REG2:
-    print("reg1:{} reg2:{} type:{}".format(
-        reg_names[loc.reg1()], reg_names[loc.reg2()], ty.serialize(arch, {})))  
+    ty_size = ty.size(arch)
+    print("ALOC_REG2: reg1:{} reg2:{} type:{} size:{} info:{} ".format(
+        reg_names[argloc.reg1()],
+        reg_names[argloc.reg2()],
+        ty.serialize(arch, {}),
+        ty_size,
+        argloc.get_reginfo()))
+
     loc1 = Location()
     loc1.set_register(reg_names[argloc.reg1()].upper())
-    out_locs.append((ty, loc1))
+    loc1.set_type(ty)
+    out_locs.append(loc1)
 
     loc2 = Location()
     loc2.set_register(reg_names[argloc.reg2()].upper())
-    out_locs.append((ty, loc2))
+    loc2.set_type(ty)
+    out_locs.append(loc2)
 
   # Memory location computed as value in a register, plus an offset.
   #
@@ -329,8 +375,11 @@ def _expand_locations(arch, ty, argloc, out_locs):
   elif where == ida_typeinf.ALOC_RREL:
     rrel = argloc.get_rrel()
     loc = Location()
-    loc.set_memory(reg_names[rrel.reg].upper(), rrel.off)
-    out_locs.append((ty, loc))
+    loc.set_memory(
+        _get_address_sized_reg(arch, reg_names[rrel.reg].upper()),
+        rrel.off)
+    loc.set_type(ty)
+    out_locs.append(loc)
 
   # Global variable with a fixed address. We can represent this
   # as computing a PC-relative memory address.
@@ -338,7 +387,8 @@ def _expand_locations(arch, ty, argloc, out_locs):
     loc = Location()
     loc.set_memory(arch.program_counter_name(),
                    argloc.get_ea() - ea)
-    out_locs.append((ty, loc))
+    loc.set_type(ty)
+    out_locs.append(loc)
 
   # Unsupported.
   else:
@@ -414,19 +464,33 @@ def get_function(arch, address):
   param_list = []
   while i < max_i:
     funcarg = ftd[i]
+
     arg_type = get_type(funcarg.type)
-    param_type = func_type.parameter_type(i)
-
     arg_type_str = arg_type.serialize(arch, {})
-    param_type_str = param_type.serialize(arch, {})
 
-    print("Param {} param_type:{} arg_type:{} argloc:{}".format(
-        i, param_type_str, arg_type_str, str(funcarg.argloc)))
+    print("Param {} arg_type:{}".format(i, arg_type_str))
 
     i += 1
-    _expand_locations(arch, param_type, funcarg.argloc, param_list)
 
-  
+    j = len(param_list)
+    _expand_locations(arch, arg_type, funcarg.argloc, param_list)
+    
+    # If we have a parameter name, then give a name to each of the expanded
+    # locations associated with this parameter.
+    if funcarg.name:
+      if (j + 1) == len(param_list):
+        param_list[-1].set_name(funcarg.name)
+      else:
+        k = j
+        while k < len(param_list):
+          param_list[-1].set_name("{}_{}".format(funcarg.name, k - j))
+          k += 1
+
+  ret_list = []
+  ret_type = get_type(ftd.rettype)
+  if not isinstance(ret_type, VoidType):
+    _expand_locations(arch, ret_type, ftd.retloc, ret_list)
+
   func = IDAFunction(arch, address, func_type, ida_func)
   _FUNCTIONS[address] = func
   return func

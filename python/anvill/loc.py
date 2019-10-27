@@ -15,6 +15,7 @@
 
 
 from .exc import *
+from .type import Type
 
 
 class Location(object):
@@ -38,6 +39,13 @@ class Location(object):
     self._mem_base_register = base_reg_name
     self._mem_offset = offset
 
+  def set_name(self, name):
+    if len(name):
+      self._name = name
+
+  def set_type(self, type_):
+    assert isinstance(type_, Type)
+
   def proto(self, arch):
     if self._register:
       ret = {
@@ -57,5 +65,7 @@ class Location(object):
       ret["name"] = name
 
     if self._type is not None:
-      ret["type"] = 
+      ret["type"] = self._type.proto(arch)
+
+    return ret
 
