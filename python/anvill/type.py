@@ -32,6 +32,7 @@ class Type(object):
 
   def extract(self, arch, offset, size):
     elem_types = []
+    out_types = []
     self.flatten(arch, elem_types)
 
     curr_offset = 0
@@ -47,7 +48,8 @@ class Type(object):
 
       # Need to break the type into two.
       elif isinstance(elem_type, IntegerType):
-        print("Breaking integer!!!")
+        out_types.append(IntegerType(offset - curr_offset, elem_type.is_signed()))
+        curr_offset += elem_size
         break
 
       else:
@@ -55,7 +57,14 @@ class Type(object):
             "Unable to create extracted type from unbreakable {} type".format(
                 elem_type.__class__.__name__))
 
+    if len(elem_types) == 1:
+      return elem_types[0]
 
+    str_type = StructureType()
+    for elem_type in elem_types:
+      str_type.add_element_type(elem_type)
+
+    return str_type
 
 
 
