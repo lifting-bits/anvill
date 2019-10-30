@@ -19,11 +19,13 @@ import weakref
 
 
 import ida_bytes
+import ida_frame
 import ida_funcs
 import ida_ida
 import ida_idaapi
-import ida_nalt
 import ida_idp
+import ida_nalt
+import ida_segment
 import ida_typeinf
 
 
@@ -31,6 +33,7 @@ from .arch import *
 from .exc import *
 from .function import *
 from .loc import *
+from .mem import *
 from .os import *
 from .type import *
 
@@ -43,7 +46,7 @@ def _guess_os():
 
   inf = ida_idaapi.get_inf_structure()
   file_type = inf.filetype
-  if file_type in (ida_ida.f_ELF, ida_ida.g_AOUT, ida_ida.f_COFF):
+  if file_type in (ida_ida.f_ELF, ida_ida.f_AOUT, ida_ida.f_COFF):
     return "linux"
   elif file_type == ida_ida.g_MACHO:
     return "macos"
@@ -173,29 +176,7 @@ def _convert_ida_type(tinfo, cache):
   
   # Integer type.
   elif tinfo.is_integral():
-    if tinfo.is_uint128():
-      return IntegerType(16, False)
-    elif tinfo.is_int128():
-      return IntegerType(16, True)
-    elif tinfo.is_uint64():
-      return IntegerType(8, False)
-    elif tinfo.is_int64():
-      return IntegerType(8, True)
-    elif tinfo.is_uint32():
-      return IntegerType(4, False)
-    elif tinfo.is_int32():
-      return IntegerType(4, True)
-    elif tinfo.is_uint16():
-      return IntegerType(2, False)
-    elif tinfo.is_int16():
-      return IntegerType(2, True)
-    elif tinfo.is_uchar():
-      return IntegerType(1, False)
-    elif tinfo.is_char():
-      return IntegerType(1, True)
-    else:
-      raise UnhandledTypeException(
-          "Unhandled integral type: {}".format(tinfo.dstr()), tinfo)
+    return IntegerType(tinfo.get_unpadded_size(), tinfo.is_signed())
 
   # Floating point.
   elif tinfo.is_floating():
@@ -262,6 +243,9 @@ def get_type(ty):
   elif isinstance(ty, Function):
     return ty.type()
 
+  elif isinstance(ty, Location):
+    return ty.type()
+
   elif isinstance(ty, ida_typeinf.tinfo_t):
     return _convert_ida_type(ty, {})
 
@@ -296,7 +280,7 @@ def _get_address_sized_reg(arch, reg_name):
   return reg_name
 
 
-def _expand_locations(arch, ty, argloc, out_locs):
+def _expand_locations(arch, pfn, ty, argloc, out_locs):
   """Expand the locations referred to by `argloc` into a list of `Location`s
   in `out_locs`."""
 
@@ -304,8 +288,11 @@ def _expand_locations(arch, ty, argloc, out_locs):
   where = argloc.atype()
 
   if where == ida_typeinf.ALOC_STACK:
+    sp_adjust_retaddr = int(ida_frame.frame_off_args(pfn) - \
+                            ida_frame.frame_off_retaddr(pfn))
     loc = Location()
-    loc.set_memory(arch.stack_pointer_name(), argloc.stkoff())
+    loc.set_memory(arch.stack_pointer_name(),
+                   argloc.stkoff() + sp_adjust_retaddr)
     loc.set_type(ty)
     out_locs.append(loc)
 
@@ -313,10 +300,10 @@ def _expand_locations(arch, ty, argloc, out_locs):
   elif where == ida_typeinf.ALOC_DIST:
     for part in argloc.scattered():
       part_ty = ty.extract(arch, part.off, part.size)
-      _expand_locations(arch, part_ty, part, out_locs)
+      _expand_locations(arch, pfn, part_ty, part, out_locs)
 
-  # Located in a single register, possibly in a small part
-  # off the register itself.
+  # Located in a single register, possibly in a small part of the register
+  # itself.
   elif where == ida_typeinf.ALOC_REG1:
     ty_size = ty.size(arch)
     reg_name = reg_names[argloc.reg1()].upper()
@@ -324,6 +311,10 @@ def _expand_locations(arch, ty, argloc, out_locs):
       reg_offset = argloc.regoff()
       family = arch.register_family(reg_name)
 
+      # Try to guess the right name for the register based on the size of the
+      # type that it will contain. For example, IDA will tell us register `ax`
+      # is used, not specify if it's `al`, `ah`, `eax`, or `rax`.
+      #
       # NOTE: The registers in the family tuple are sorted in descending
       #       order of size.
       found = False
@@ -360,11 +351,14 @@ def _expand_locations(arch, ty, argloc, out_locs):
       family1 = arch.register_family(reg_name1)
       family2 = arch.register_family(reg_name2)
 
+      # Try to guess which registers IDA actually meant. For example, for
+      # an `EDX:EAX` return value, our `ty_size` will be 8 bytes, but IDA will
+      # report the registers as `ax` and `dx` (due to those being the names in
+      # `ph_get_regnames`). So, we have to scan through the associated family
+      # and try to see if we can guess the right version of those registers.
       for r1_info, r2_info in itertools.product(family1, family2):
         f_reg_name1, f_reg_offset1, f_reg_size1 = r1_info
         f_reg_name2, f_reg_offset2, f_reg_size2 = r2_info
-
-        print("{} {} {} {}".format(f_reg_name1, f_reg_name2, ty_size, f_reg_size1 + f_reg_size2))
 
         if f_reg_offset1 or f_reg_offset2:
           continue
@@ -424,17 +418,59 @@ def _expand_locations(arch, ty, argloc, out_locs):
             str(argloc), ty.serialize(arch, {})))
 
 
+def _find_segment_containing_ea(ea, seg):
+  """Find and return a `segment_t` containing `ea`, or `None`."""
+  if seg and seg.contains(ea):
+    return seg
+
+  seg = ida_segment.first_segment()
+  while seg:
+    if seg.contains(ea):
+      return seg
+    seg = ida_segment.get_next_seg(seg.start_ea)
+
+  return None
+
+
 class IDAFunction(Function):
   def __init__(self, arch, address, param_list, ret_list, ida_func):
     super(IDAFunction, self).__init__(arch, address, param_list, ret_list)
-    self._ida_func = ida_func
+    self._pfn = ida_func
 
   def name(self):
     ea = self.address()
-    if ida_bytes.f_has_name(ea):
-      return ida_funcs.get_func_name(ea)
-    else:
-      return ""
+    try:
+      flags = ida_bytes.get_full_flags(ea)
+      if ida_bytes.has_name(flags):
+        return ida_funcs.get_func_name(ea)
+    except:
+      pass
+    return ""
+
+  def fill_bytes(self, memory):
+    fti = ida_funcs.func_tail_iterator_t(self._pfn)
+    ok = fti.first()
+    seg = None
+    while ok:
+      chunk = fti.chunk()
+      ea = chunk.start_ea
+      max_ea = chunk.end_ea
+      while ea < max_ea:
+        seg_type = ida_segment.segtype(ea)
+        if seg_type == ida_segment.SEG_UNDF:
+          break
+        seg = _find_segment_containing_ea(ea, seg)
+        if not seg:
+          break
+
+        can_read = seg.perm & ida_segment.SEGPERM_READ
+        can_write = seg.perm & ida_segment.SEGPERM_WRITE
+        can_exec = seg.perm & ida_segment.SEGPERM_EXEC
+
+        flags = ida_bytes.get_full_flags(ea)
+        memory.map_byte(ea, 0, )
+        ea += 1
+      ok = fti.next()
 
 
 _FUNCTIONS = weakref.WeakValueDictionary()
@@ -445,17 +481,25 @@ def get_function(arch, address):
   raise an `InvalidFunctionException` exception."""
   global _FUNCTIONS
 
-  ida_func = ida_funcs.get_func(address)
-  if not ida_func:
-    ida_func = ida_funcs.get_prev_func(address)
+  pfn = ida_funcs.get_func(address)
+  if not pfn:
+    pfn = ida_funcs.get_prev_func(address)
+
+  print("function {:x}".format(pfn.start_ea))
+  print("  get_sp_delta = {}".format(ida_frame.get_sp_delta(pfn, pfn.start_ea)))
+  print("  get_spd = {}".format(ida_frame.get_spd(pfn, pfn.start_ea)))
+  print("  get_effective_spd = {}".format(ida_frame.get_effective_spd(pfn, pfn.start_ea)))
+  print("  get_min_spd_ea = {}".format(ida_frame.get_min_spd_ea(pfn)))
+  print("  frame_off_args = {}".format(ida_frame.frame_off_args(pfn)))
+  print("  frame_off_retaddr = {}".format(ida_frame.frame_off_retaddr(pfn)))
 
   # Check this function.
-  if not ida_func or not ida_funcs.func_contains(ida_func, address):
+  if not pfn or not ida_funcs.func_contains(pfn, address):
     raise InvalidFunctionException(
         "No function defined at or containing address {:x}".format(address))
 
   # Reset to the start of the function, and get the type of the function.
-  address = ida_func.start_ea
+  address = pfn.start_ea
   if address in _FUNCTIONS:
     return _FUNCTIONS[address]
   
@@ -497,7 +541,7 @@ def get_function(arch, address):
     arg_type_str = arg_type.serialize(arch, {})
 
     j = len(param_list)
-    _expand_locations(arch, arg_type, funcarg.argloc, param_list)
+    _expand_locations(arch, pfn, arg_type, funcarg.argloc, param_list)
     
     # If we have a parameter name, then give a name to each of the expanded
     # locations associated with this parameter.
@@ -514,8 +558,8 @@ def get_function(arch, address):
   ret_list = []
   ret_type = get_type(ftd.rettype)
   if not isinstance(ret_type, VoidType):
-    _expand_locations(arch, ret_type, ftd.retloc, ret_list)
+    _expand_locations(arch, pfn, ret_type, ftd.retloc, ret_list)
 
-  func = IDAFunction(arch, address, param_list, ret_list, ida_func)
+  func = IDAFunction(arch, address, param_list, ret_list, pfn)
   _FUNCTIONS[address] = func
   return func

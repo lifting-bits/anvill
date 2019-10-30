@@ -585,7 +585,7 @@ class X86Arch(Arch):
       },
       "type": "I"
     }
-
+  
   def return_stack_pointer_proto(self, num_bytes_popped):
     return {
       "register": "ESP",

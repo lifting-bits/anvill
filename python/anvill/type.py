@@ -31,40 +31,105 @@ class Type(object):
     raise NotImplementedError()
 
   def extract(self, arch, offset, size):
+    goal_size = size
+    goal_offset = offset
     elem_types = []
     out_types = []
+    max_size = self.size(arch)
     self.flatten(arch, elem_types)
 
     curr_offset = 0
     i = 0
+    accumulate = False
     while curr_offset < offset:
       elem_type = elem_types[i]
+      i += 1
       elem_size = elem_type.size(arch)
+      elem_offset = curr_offset
+      curr_offset += elem_size
 
-      if (curr_offset + elem_size) <= offset:
-        i += 1
-        curr_offset += elem_size
+      # We're not at our limit yet.
+      if curr_offset < offset:
+        if accumulate:
+          elem_types.append(elem_type)
         continue
+
+      # We're at our limit, either start including stuff, or stop.
+      elif curr_offset == offset:
+        if accumulate:
+          elem_types.append(elem_type)
+          break
+        else:
+          accumulate = True
+          offset = offset + size
+          size = -max_size
 
       # Need to break the type into two.
       elif isinstance(elem_type, IntegerType):
-        out_types.append(IntegerType(offset - curr_offset, elem_type.is_signed()))
-        curr_offset += elem_size
-        break
+        if accumulate:
+          out_types.append(IntegerType(
+              offset - elem_offset,
+              elem_type.is_signed()))
+          break
+        else:
+          out_types.append(IntegerType(
+              curr_offset - offset,
+              elem_type.is_signed()))
+          accumulate = True
+          offset = offset + size
+          size = -max_size
 
+      # Unbreakable type, represent it as an array of bytes.
       else:
-        raise UnhandledTypeException(
-            "Unable to create extracted type from unbreakable {} type".format(
-                elem_type.__class__.__name__))
+        arr_type = ArrayType()
+        out_types.append(arr_type)
+        arr_type.set_element_type(IntegerType(1, False))
+        if accumulate:
+          arr_type.set_num_elements(offset - elem_offset)
+          break
+        else:
+          arr_type.set_num_elements(curr_offset - offset)
+          accumulate = True
+          offset = offset + size
+          size = -max_size
 
-    if len(elem_types) == 1:
-      return elem_types[0]
+    if not len(elem_types):
+      raise UnhandledTypeException(
+          "Unable to create extracted type of size {} from offset {} in type {} of size {}".format(
+              goal_size, goal_offset, self.serialize(arch, {}), max_size))
 
-    str_type = StructureType()
-    for elem_type in elem_types:
-      str_type.add_element_type(elem_type)
+    elif len(elem_types) == 1:
+      ret_type = elem_types[0]
 
-    return str_type
+    else:
+      ret_type = StructureType()
+      for elem_type in elem_types:
+        ret_type.add_element_type(elem_type)
+
+    # If we had an error, then give up and just return an array type of the
+    # right size.
+    ret_size = ret_type.size(arch)
+
+    if ret_size > goal_size:
+      raise UnhandledTypeException(
+          "Unable to create extracted type of size {} from offset {} in type {} of size {}".format(
+              goal_size, goal_offset, self.serialize(arch, {}), max_size))
+
+    # Pad the return type to be the correct size.
+    if ret_size < goal_size:
+      pad_type = PaddingType()
+      pad_type.set_num_elements(goal_size - ret_size)
+
+      # Pad it.
+      if isinstance(ret_type, StructureType):
+        ret_type.add_element_type(pad_type)
+      else:
+        str_type = StructureType()
+        str_type.add_element_type(ret_type)
+        str_type.add_element_type(pad_type)
+        ret_type = str_type
+
+    return ret_type
 
 
 
@@ -279,7 +344,7 @@ class IntegerType(Type):
     if key not in cls._FORM:
       raise UnhandledTypeException(
         "Cannot handle {}-byte {} integer type".format(
-            size, ["unsigned", "signed"][is_signed]), None)
+            size, ["unsigned", "signed"][int(is_signed)]), None)
 
     inst = super(IntegerType, cls).__new__(cls, size, is_signed)
     cls._CACHE[key] = inst
@@ -297,7 +362,7 @@ class IntegerType(Type):
     return self._size
 
   def is_signed(self):
-    return self.is_signed
+    return self._is_signed
 
   def flatten(self, arch, out_list):
     out_list.append(self)

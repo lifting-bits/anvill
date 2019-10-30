@@ -24,7 +24,6 @@ class Function(object):
   def __init__(self, arch, address, parameters, return_values):
     self._arch = arch
     self._address = address
-    self._type = func_type
     self._parameters = parameters
     self._return_values = return_values
     self._type = FunctionType()
@@ -60,19 +59,21 @@ class Function(object):
   def type(self):
     return self._type
 
-  def fill_bytes(self, dict_of_bytes):
+  def fill_bytes(self, memory):
     raise NotImplementedError()
 
   def is_declaration(self):
     raise NotImplementedError()
 
-  def proto(self, arch):
+  def proto(self):
     proto = {}
-    proto["name"] = self.name()
+    name = self.name()
+    if len(name):
+      proto["name"] = name
     proto["address"] = self.address()
-    proto["return_address"] = arch.return_address_proto()
-    proto["return_stack_pointer"] = arch.return_stack_pointer_proto(
-        type().num_bytes_popped_off_stack())
-    proto["parameters"] = [loc.proto(arch) for loc in self._parameters]
-    proto["return_values"] = [loc.proto(arch) for loc in self._return_values]
+    proto["return_address"] = self._arch.return_address_proto()
+    proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(
+        self.type().num_bytes_popped_off_stack())
+    proto["parameters"] = [loc.proto(self._arch) for loc in self._parameters]
+    proto["return_values"] = [loc.proto(self._arch) for loc in self._return_values]
     return proto

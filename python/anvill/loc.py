@@ -66,7 +66,7 @@ class Location(object):
       raise InvalidLocationException("Can't get prototype of empty location")
 
     if self._name is not None:
-      ret["name"] = name
+      ret["name"] = self._name
 
     if self._type is not None:
       ret["type"] = self._type.proto(arch)
