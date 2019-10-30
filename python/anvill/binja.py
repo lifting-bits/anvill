@@ -191,12 +191,28 @@ class CallingConvention(object):
 
 
 class BNFunction(Function):
-  def __init__(self, arch, address, func_type, bn_func):
-    super(BNFunction, self).__init__(arch, address, func_type)
+  def __init__(self, bv, arch, address, param_list, ret_list, bn_func):
+    super(BNFunction, self).__init__(arch, address, param_list, ret_list)
+    self._bv = bv
     self._bn_func = bn_func
 
   def name(self):
     return self._bn_func.name
+
+  def fill_bytes(self, memory):
+    br = binja.BinaryReader(bv)
+    for bb in self._bn_func.basic_blocks:
+      ea = bb.start
+      while ea < bb.end:
+        seg = self._bv.get_segment_at(ea)
+        can_read = seg.readable
+        can_exec = seg.executable
+        can_write = seg.writable
+
+        br.seek(ea)
+        byte = '{:2x}'.format(br.read8())
+        memory.nap(ea, byte, can_write, can_exec)
+        ea += 1
 
 _FUNCTIONS = weakref.WeakValueDictionary()
 
@@ -240,11 +256,13 @@ def get_function(bv, arch, address):
 
       loc = Location()
       loc.set_register(reg_name)
+      loc.set_type(arg_type)
       param_list.append(loc)
 
     elif source_type == bn.VariableSourceType.StackVariableSourceType:
       loc = Location()
       loc.set_memory(bv.arch.stack_pointer, var.storage)
+      loc.set_type(arg_type)
       param_list.append(loc)
 
     index += 1
@@ -258,10 +276,7 @@ def get_function(bv, arch, address):
       loc.set_type(retTy)
       ret_list.append(loc)
 
-  func = BNFunction(arch, address, func_type, binja_func)
-  func.set_parameters(param_list)
-  func.set_return_values(ret_list)
-
+  func = BNFunction(bv, arch, address, param_list, ret_list, binja_func)
   _FUNCTIONS[address] = func
   return func
 
