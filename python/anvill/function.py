@@ -59,7 +59,7 @@ class Function(object):
   def type(self):
     return self._type
 
-  def fill_bytes(self, memory):
+  def visit(self, program, is_definition):
     raise NotImplementedError()
 
   def is_declaration(self):

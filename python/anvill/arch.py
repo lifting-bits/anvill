@@ -585,7 +585,7 @@ class X86Arch(Arch):
       },
       "type": "I"
     }
-  
+
   def return_stack_pointer_proto(self, num_bytes_popped):
     return {
       "register": "ESP",
@@ -594,7 +594,7 @@ class X86Arch(Arch):
     }
 
   def pointer_size(self):
-    raise 4
+    return 4
 
   def register_family(self, reg_name):
     return self._REG_FAMILY[reg_name]

@@ -246,11 +246,11 @@ class TraceManagerImpl final : public TraceManager {
 };
 
 // Try to read an executable byte of memory. Returns `true` of the byte
-// at address `addr` is executable and readable, and updates the byte
-// pointed to by `byte` with the read value.
+// at address `addr` is executable, and updates the byte pointed to by
+// `byte` with the read value.
 bool TraceManagerImpl::TryReadExecutableByte(uint64_t addr, uint8_t *byte) {
   if (auto addr_byte = program.FindByte(addr)) {
-    if (addr_byte.IsExecutable() && !addr_byte.IsWriteable()) {
+    if (addr_byte.IsExecutable()) {
       *byte = *addr_byte.Value();
       return true;
     }

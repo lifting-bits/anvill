@@ -680,7 +680,7 @@ int main(int argc, char *argv[]) {
 
   program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
     auto byte = program.FindByte(decl->address);
-    if (byte.IsExecutable() && !byte.IsWriteable()) {
+    if (byte.IsExecutable()) {
       trace_lifter.Lift(byte.Address());
     }
     return true;

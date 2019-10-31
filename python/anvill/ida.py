@@ -27,6 +27,7 @@ import ida_idp
 import ida_nalt
 import ida_segment
 import ida_typeinf
+import ida_xref
 
 
 from .arch import *
@@ -35,6 +36,7 @@ from .function import *
 from .loc import *
 from .mem import *
 from .os import *
+from .program import *
 from .type import *
 
 
@@ -206,7 +208,7 @@ def _convert_ida_type(tinfo, cache):
         "Unhandled type: {}".format(tinfo.dstr()), tinfo)
 
 
-def get_arch():
+def _get_arch():
   """Arch class that gives access to architecture-specific functionality."""
   name = _guess_architecture()
   if name == "amd64":
@@ -220,7 +222,7 @@ def get_arch():
         "Missing architecture object type for architecture '{}'".format(name))
 
 
-def get_os():
+def _get_os():
   """OS class that gives access to OS-specific functionality."""
   name = _guess_os()
   if name == "linux":
@@ -418,18 +420,125 @@ def _expand_locations(arch, pfn, ty, argloc, out_locs):
             str(argloc), ty.serialize(arch, {})))
 
 
-def _find_segment_containing_ea(ea, seg):
+def _find_segment_containing_ea(ea, seg_ref):
   """Find and return a `segment_t` containing `ea`, or `None`."""
+  seg = seg_ref[0]
   if seg and seg.contains(ea):
     return seg
 
-  seg = ida_segment.first_segment()
+  seg = ida_segment.get_first_seg()
   while seg:
+    seg_ref[0] = seg
     if seg.contains(ea):
       return seg
     seg = ida_segment.get_next_seg(seg.start_ea)
 
   return None
+
+
+def _is_executable_seg(seg):
+  """Returns `True` a segment's data is executable."""
+  return 0 != (seg.perm & ida_segment.SEGPERM_EXEC)
+
+
+def _try_map_byte(memory, ea, seg_ref):
+  """Try to map a byte into memory."""
+  seg = _find_segment_containing_ea(ea, seg_ref)
+  if not seg:
+    return False
+
+  can_read = 0 != (seg.perm & ida_segment.SEGPERM_READ)
+  if not can_read:
+    return False
+
+  can_write = 0 != (seg.perm & ida_segment.SEGPERM_WRITE)
+  can_exec = 0 != (seg.perm & ida_segment.SEGPERM_EXEC)
+
+  val = 0
+  if ida_bytes.has_value(ida_bytes.get_full_flags(ea)):
+    val = ida_bytes.get_wide_byte(ea) & 0xFF
+
+  flags = ida_bytes.get_full_flags(ea)
+  memory.map_byte(ea, val, can_write, can_exec)
+  return True
+
+
+def _get_function_bounds(func, seg_ref):
+  """Get the bounds of the function containing `ea`. We want to discover jump
+  table targets that are missed by IDA, and it's possible that they aren't
+  marked as being part of the current function, and perhaps are after the
+  assumed range of the current function. Ideally they will fall before the
+  beginning of the next function, though.
+
+  We need to be pretty careful with the case that one function tail-calls
+  another. IDA will sometimes treat the end of the tail-called function
+  (e.g. a thunk) as if it is the end of the caller. For this reason, we start
+  with loose bounds using the prev/next functions, then try to narrow with
+  the bounds of the function containing `ea`.
+
+  NOTE(pag): This does not handle function chunks.
+  """
+  ea = func.start_ea
+  seg = _find_segment_containing_ea(ea, seg_ref)
+  if not seg:
+    return ea, ea
+
+  seg_start, seg_end = seg.start_ea, seg.end_ea
+  min_ea = seg_start
+  max_ea = seg_end
+
+  if not _is_executable_seg(seg):
+    return ea, ea
+
+  # Get an upper bound using the next function.
+  has_upper = False
+  next_func = ida_funcs.get_next_func(ea)
+  if next_func:
+    next_func_seg = _find_segment_containing_ea(next_func.start_ea, seg_ref)
+    if next_func_seg and _is_executable_seg(next_func_seg):
+      max_ea = min(next_func.start_ea, max_ea)
+      has_upper = True
+
+  # Get a lower bound using the previous function.
+  has_lower = False
+  prev_func = ida_funcs.get_prev_func(ea)
+  if prev_func:
+    prev_func_seg = _find_segment_containing_ea(prev_func.start_ea, seg_ref)
+    if prev_func_seg and _is_executable_seg(prev_func_seg):
+      min_ea = max(prev_func.end_ea, min_ea)
+      has_lower = True
+
+  # Try to tighten the bounds using the function containing `ea`.
+  if not has_lower:
+    min_ea = max(min_ea, func.start_ea)
+
+  if not has_upper:
+    max_ea = min(max_ea, func.end_ea)
+
+  return min_ea, max_ea
+
+
+def _xref_generator(ea, get_first, get_next):
+  """Generate the cross-references addresses using functors `get_first` and
+  `get_next`."""
+  target_ea = get_first(ea)
+  while target_ea != ida_idaapi.BADADDR:
+    yield target_ea
+    target_ea = get_next(ea, target_ea)
+
+
+def _collect_xrefs_from_func(pfn, ea, out_ref_eas):
+  """Collect cross-references at `ea` in `pfn` that target code/data
+  outside of `pfn`. Save them into `out_ref_eas`."""
+  for ref_ea in _xref_generator(ea, ida_xref.get_first_cref_from, \
+                                ida_xref.get_next_cref_from):
+    if not ida_funcs.func_contains(pfn, ref_ea):
+      out_ref_eas.add(ref_ea)
+
+  for ref_ea in _xref_generator(ea, ida_xref.get_first_dref_from, \
+                                ida_xref.get_next_dref_from):
+    if not ida_funcs.func_contains(pfn, ref_ea):
+      out_ref_eas.add(ref_ea)
 
 
 class IDAFunction(Function):
@@ -447,119 +556,144 @@ class IDAFunction(Function):
       pass
     return ""
 
-  def fill_bytes(self, memory):
+  def visit(self, program, is_definition):
+    if not is_definition:
+      return
+
+    memory = program.memory()
+
+    seg = [None]
+
+    ref_eas = set()
+    
+    # Map the continuous range of bytes associated with the main body of the
+    # function. We might get a bit beyond that, as our function bounds stuff
+    # looks for previous and next function locations.
+    ea, max_ea = _get_function_bounds(self._pfn, seg)
+    while ea < max_ea:
+      if not _try_map_byte(memory, ea, seg):
+        break
+      _collect_xrefs_from_func(self._pfn, ea, ref_eas)
+      ea += 1
+
+    # Map the bytes of function chunks. These are discontinuous parts of a
+    # function, e.g. cold code put off the critical path to reduce icache
+    # pressure.
     fti = ida_funcs.func_tail_iterator_t(self._pfn)
     ok = fti.first()
-    seg = None
     while ok:
       chunk = fti.chunk()
       ea = chunk.start_ea
       max_ea = chunk.end_ea
       while ea < max_ea:
-        seg_type = ida_segment.segtype(ea)
-        if seg_type == ida_segment.SEG_UNDF:
+        if not _try_map_byte(memory, ea, seg):
           break
-        seg = _find_segment_containing_ea(ea, seg)
-        if not seg:
-          break
-
-        can_read = seg.perm & ida_segment.SEGPERM_READ
-        can_write = seg.perm & ida_segment.SEGPERM_WRITE
-        can_exec = seg.perm & ida_segment.SEGPERM_EXEC
-
-        flags = ida_bytes.get_full_flags(ea)
-        memory.map_byte(ea, 0, )
+        _collect_xrefs_from_func(self._pfn, ea, ref_eas)
         ea += 1
+
       ok = fti.next()
 
+    # Now go and inspect cross-referenced date/code, and add it to the program.
+    for ref_ea in ref_eas:
+      program.add_function_declaration(ref_ea)
 
-_FUNCTIONS = weakref.WeakValueDictionary()
+      # TODO(pag): Global variables.
+      # TODO(pag): Other memory, e.g. read-only, non-global vars.
 
 
-def get_function(arch, address):
-  """Given an architecture and an address, return a `Function` instance or
-  raise an `InvalidFunctionException` exception."""
-  global _FUNCTIONS
+class IDAProgram(Program):
+  def __init__(self, *args):
+    super(IDAProgram, self).__init__(_get_arch(), _get_os())
+    self._functions = weakref.WeakValueDictionary()
 
-  pfn = ida_funcs.get_func(address)
-  if not pfn:
-    pfn = ida_funcs.get_prev_func(address)
+  def get_function(self, address):
+    """Given an architecture and an address, return a `Function` instance or
+    raise an `InvalidFunctionException` exception."""
+    arch = self._arch
 
-  print("function {:x}".format(pfn.start_ea))
-  print("  get_sp_delta = {}".format(ida_frame.get_sp_delta(pfn, pfn.start_ea)))
-  print("  get_spd = {}".format(ida_frame.get_spd(pfn, pfn.start_ea)))
-  print("  get_effective_spd = {}".format(ida_frame.get_effective_spd(pfn, pfn.start_ea)))
-  print("  get_min_spd_ea = {}".format(ida_frame.get_min_spd_ea(pfn)))
-  print("  frame_off_args = {}".format(ida_frame.frame_off_args(pfn)))
-  print("  frame_off_retaddr = {}".format(ida_frame.frame_off_retaddr(pfn)))
+    pfn = ida_funcs.get_func(address)
+    if not pfn:
+      pfn = ida_funcs.get_prev_func(address)
 
-  # Check this function.
-  if not pfn or not ida_funcs.func_contains(pfn, address):
-    raise InvalidFunctionException(
-        "No function defined at or containing address {:x}".format(address))
+    # Check this function.
+    if not pfn or not ida_funcs.func_contains(pfn, address):
+      raise InvalidFunctionException(
+          "No function defined at or containing address {:x}".format(address))
 
-  # Reset to the start of the function, and get the type of the function.
-  address = pfn.start_ea
-  if address in _FUNCTIONS:
-    return _FUNCTIONS[address]
-  
-  tif = ida_typeinf.tinfo_t()
-  if not ida_nalt.get_tinfo(tif, address):
-    ida_typeinf.guess_tinfo(tif, address)
-
-  if not tif.is_func():
-    raise InvalidFunctionException(
-        "Type information at address {:x} is not a function: {}".format(
-            address, tif.dstr()))
-
-  ftd = ida_typeinf.func_type_data_t()
-  if not tif.get_func_details(ftd):
-    raise InvalidFunctionException(
-        "Could not get function details for function at address {:x}".format(address))
-
-  # Make sure we can handle the basic signature of the function. This might
-  # not be the final signature that we go with, but it's a good way to make
-  # sure we can handle the relevant types.
-  try:
-    func_type = get_type(tif)
-  except UnhandledTypeException as e:
-    raise InvalidFunctionException(
-        "Could not assign type to function at address {:x}: {}".format(
-            address, str(e)))
-
-  # Go look into each of the parameters and their types. Each parameter may
-  # refer to multiple locations, so we want to split each of those locations
-  # into unique 
-  i = 0
-  max_i = ftd.size()
-  param_list = []
-  while i < max_i:
-    funcarg = ftd[i]
-    i += 1
-
-    arg_type = get_type(funcarg.type)
-    arg_type_str = arg_type.serialize(arch, {})
-
-    j = len(param_list)
-    _expand_locations(arch, pfn, arg_type, funcarg.argloc, param_list)
+    # Reset to the start of the function, and get the type of the function.
+    address = pfn.start_ea
+    if address in self._functions:
+      return self._functions[address]
     
-    # If we have a parameter name, then give a name to each of the expanded
-    # locations associated with this parameter.
-    if funcarg.name:
-      if (j + 1) == len(param_list):
-        param_list[-1].set_name(funcarg.name)
-      else:
-        k = j
-        while k < len(param_list):
-          param_list[-1].set_name("{}_{}".format(funcarg.name, k - j))
-          k += 1
+    tif = ida_typeinf.tinfo_t()
+    if not ida_nalt.get_tinfo(tif, address):
+      ida_typeinf.guess_tinfo(tif, address)
 
-  # Build up the list of return values.
-  ret_list = []
-  ret_type = get_type(ftd.rettype)
-  if not isinstance(ret_type, VoidType):
-    _expand_locations(arch, pfn, ret_type, ftd.retloc, ret_list)
+    if not tif.is_func():
+      raise InvalidFunctionException(
+          "Type information at address {:x} is not a function: {}".format(
+              address, tif.dstr()))
 
-  func = IDAFunction(arch, address, param_list, ret_list, pfn)
-  _FUNCTIONS[address] = func
-  return func
+    ftd = ida_typeinf.func_type_data_t()
+    if not tif.get_func_details(ftd):
+      raise InvalidFunctionException(
+          "Could not get function details for function at address {:x}".format(address))
+
+    # Make sure we can handle the basic signature of the function. This might
+    # not be the final signature that we go with, but it's a good way to make
+    # sure we can handle the relevant types.
+    try:
+      func_type = get_type(tif)
+    except UnhandledTypeException as e:
+      raise InvalidFunctionException(
+          "Could not assign type to function at address {:x}: {}".format(
+              address, str(e)))
+
+    # Go look into each of the parameters and their types. Each parameter may
+    # refer to multiple locations, so we want to split each of those locations
+    # into unique 
+    i = 0
+    max_i = ftd.size()
+    param_list = []
+    while i < max_i:
+      funcarg = ftd[i]
+      i += 1
+
+      arg_type = get_type(funcarg.type)
+      arg_type_str = arg_type.serialize(arch, {})
+
+      j = len(param_list)
+      _expand_locations(arch, pfn, arg_type, funcarg.argloc, param_list)
+      
+      # If we have a parameter name, then give a name to each of the expanded
+      # locations associated with this parameter.
+      if funcarg.name:
+        if (j + 1) == len(param_list):
+          param_list[-1].set_name(funcarg.name)
+        else:
+          k = j
+          while k < len(param_list):
+            param_list[-1].set_name("{}_{}".format(funcarg.name, k - j))
+            k += 1
+
+    # Build up the list of return values.
+    ret_list = []
+    ret_type = get_type(ftd.rettype)
+    if not isinstance(ret_type, VoidType):
+      _expand_locations(arch, pfn, ret_type, ftd.retloc, ret_list)
+
+    func = IDAFunction(arch, address, param_list, ret_list, pfn)
+    self._functions[address] = func
+    return func
+
+
+_PROGRAM = None
+
+def get_program(*args, **kargs):
+  global _PROGRAM
+  if _PROGRAM:
+    return _PROGRAM
+
+  _PROGRAM = IDAProgram()
+  return _PROGRAM
+
