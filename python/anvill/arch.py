@@ -343,7 +343,7 @@ class AMD64Arch(Arch):
     }
 
   def pointer_size(self):
-    raise 8
+    return 8
 
   def register_family(self, reg_name):
     return self._REG_FAMILY[reg_name]
