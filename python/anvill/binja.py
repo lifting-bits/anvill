@@ -23,6 +23,107 @@ from .function import *
 from .loc import *
 from .os import *
 from .type import *
+from .program import *
+
+def is_valid_addr(bv, addr):
+  return bv.get_segment_at(addr) is not None
+
+def is_constant(bv, insn):
+  return insn.operation in (bn.LowLevelILOperation.LLIL_CONST,
+                            bn.LowLevelILOperation.LLIL_CONST_PTR)
+
+def is_constant_pointer(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
+
+def is_function_call(bv, insn):
+  return insn.operation in (bn.LowLevelILOperation.LLIL_CALL,
+                            bn.LowLevelILOperation.LLIL_TAILCALL,
+                            bn.LowLevelILOperation.LLIL_CALL_STACK_ADJUST)
+
+def is_tailcall(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_TAILCALL
+
+def is_return(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_RET
+
+def is_jump(bv, insn):
+  return insn.operation in (bn.LowLevelILOperation.LLIL_JUMP,
+                            bn.LowLevelILOperation.LLIL_JUMP_TO)
+
+def is_branch(bv, insn):
+  return insn.operation in (bn.LowLevelILOperation.LLIL_JUMP,
+                            bn.LowLevelILOperation.LLIL_JUMP_TO,
+                            bn.LowLevelILOperation.LLIL_GOTO)
+
+def is_load_insn(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_LOAD
+
+def is_store_insn(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_STORE
+
+def is_memory_insn(bv, insn):
+  return is_load_insn(bv, insn) or is_store_insn(bv, insn)
+
+def is_unimplemented(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_UNIMPL
+
+def is_unimplemented_mem(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
+
+def is_undef(bv, insn):
+  return insn.operation == bn.LowLevelILOperation.LLIL_UNDEF
+
+def is_code(bv, addr):
+  sec_list = bv.get_sections_at(addr)
+  for sec in sec_list:
+    if sec.start <= addr < sec.end:
+      return sec.semantics == bn.SectionSemantics.ReadOnlyCodeSectionSemantics
+  return False
+
+class XrefType:
+  XREF_NONE = 0
+  XREF_IMMEDIATE = 1
+  XREF_DISPLACEMENT = 2
+  XREF_MEMORY = 3
+  XREF_CONTROL_FLOW = 4
+
+  @staticmethod
+  def is_memory(bv, reftype):
+    return reftype in (XrefType.XREF_DISPLACEMENT, XrefType.XREF_MEMORY)
+
+
+def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE):
+  """Recursively collect xrefs in a IL instructions
+  """
+  if not isinstance(insn, bn.LowLevelILInstruction):
+    return
+
+  if is_unimplemented(bv, insn) or is_undef(bv, insn):
+    return
+
+  if is_function_call(bv, insn) or is_jump(bv, insn):
+    reftype = XrefType.XREF_CONTROL_FLOW
+
+  elif is_memory_insn(bv, insn) or is_unimplemented_mem(bv, insn):
+    mem_il = insn.dest if is_store_insn(bv, insn) else insn.src
+    if is_constant(bv, mem_il):
+      reftype = XrefType.XREF_MEMORY
+    else:
+      reftype = XrefType.XREF_DISPLACEMENT
+    _collect_code_xrefs_from_insn(bv, mem_il, ref_eas, reftype)
+
+    for opnd in insn.operands:
+      _collect_code_xrefs_from_insn(bv, opnd, ref_eas)
+
+  elif is_constant_pointer(bv, insn):
+    const_ea = insn.constant
+    if is_code(bv, const_ea) and not XrefType.is_memory(bv, reftype):
+      ref_eas.add(const_ea)
+
+  # Recursively look for the xrefs in operands
+  for opnd in insn.operands:
+    _collect_code_xrefs_from_insn(bv, opnd, ref_eas, reftype)
+
 
 def _convert_binja_type(tinfo, cache):
   """Convert an Binja `Type` instance into a `Type` instance."""
@@ -102,13 +203,6 @@ def _convert_binja_type(tinfo, cache):
     raise UnhandledTypeException(
         "Unhandled type: {}".format(str(tinfo)), tinfo)
 
-def _get_calling_convention(bv, binja_func):
-  cc = binja_func.calling_convention
-  if cc.name == 'cdecl':
-    return cc, bn.CallingConventionName.CdeclCallingConvention
-  elif cc.name == '':
-    pass
-  pass
 
 def get_type(ty):
   """Type class that gives access to type sizes, printings, etc."""
@@ -199,8 +293,24 @@ class BNFunction(Function):
   def name(self):
     return self._bn_func.name
 
-  def fill_bytes(self, memory):
-    br = binja.BinaryReader(bv)
+  def visit(self, program, is_definition):
+    if not is_definition:
+      return
+
+    memory = program.memory()
+
+    seg = [None]
+    ref_eas = set()
+    ea = self._bn_func.start
+    max_ea = max([x.end for x in self._bn_func.basic_blocks])
+    self._fill_bytes(memory, ea, max_ea, ref_eas)
+
+    for ref_ea in ref_eas:
+      print hex(ref_ea)
+      program.add_function_declaration(ref_ea)
+
+  def _fill_bytes(self, memory, start, end, ref_eas):
+    br = bn.BinaryReader(self._bv)
     for bb in self._bn_func.basic_blocks:
       ea = bb.start
       while ea < bb.end:
@@ -210,75 +320,12 @@ class BNFunction(Function):
         can_write = seg.writable
 
         br.seek(ea)
-        byte = '{:2x}'.format(br.read8())
-        memory.nap(ea, byte, can_write, can_exec)
+        byte = br.read8()
+        memory.map_byte(ea, byte, can_write, can_exec)
+        insn = self._bn_func.get_lifted_il_at(ea)
+        if insn:
+          _collect_code_xrefs_from_insn(self._bv, insn, ref_eas)
         ea += 1
-
-_FUNCTIONS = weakref.WeakValueDictionary()
-
-def get_function(bv, arch, address):
-  """Given an architecture and an address, return a `Function` instance or
-  raise an `InvalidFunctionException` exception."""
-  global _FUNCTIONS
-
-  binja_func = bv.get_function_at(address)
-  if not binja_func:
-    func_contains = bv.get_functions_containing(address)
-    if len(func_contains):
-      binja_func = func_contains[0]
-
-  if not binja_func:
-    raise InvalidFunctionException(
-      "No function defined at or containing address {:x}".format(address))
-
-  print binja_func.name, binja_func.function_type
-  func_type =  get_type(binja_func.function_type)
-  calling_conv = CallingConvention(arch, binja_func)
-
-  index = 0
-  param_list = []
-  for var in binja_func.parameter_vars:
-    source_type = var.source_type
-    var_type = var.type
-    arg_type = get_type(var_type)
-
-    if source_type == bn.VariableSourceType.RegisterVariableSourceType:
-      if bn.TypeClass.IntegerTypeClass == var_type.type_class or \
-        bn.TypeClass.PointerTypeClass == var_type.type_class:
-        reg_name = calling_conv.next_int_arg_reg
-      elif bn.TypeClass.FloatTypeClass == var_type.type_class:
-        reg_name = calling_conv.next_float_arg_reg
-      elif bn.TypeClass.VoidTypeClass == var_type.type_class:
-        reg_name = 'invalid void'
-      else:
-        reg_name = None
-        raise AnvillException("No variable type defined for function parameters")
-
-      loc = Location()
-      loc.set_register(reg_name)
-      loc.set_type(arg_type)
-      param_list.append(loc)
-
-    elif source_type == bn.VariableSourceType.StackVariableSourceType:
-      loc = Location()
-      loc.set_memory(bv.arch.stack_pointer, var.storage)
-      loc.set_type(arg_type)
-      param_list.append(loc)
-
-    index += 1
-
-  ret_list = []
-  retTy = get_type(binja_func.return_type)
-  if not isinstance(retTy, VoidType):
-    for reg in calling_conv.return_regs:
-      loc = Location()
-      loc.set_register(reg.upper())
-      loc.set_type(retTy)
-      ret_list.append(loc)
-
-  func = BNFunction(bv, arch, address, param_list, ret_list, binja_func)
-  _FUNCTIONS[address] = func
-  return func
 
 def load_binary(path):
   file_type = magic.from_file(path)
@@ -296,3 +343,88 @@ def load_binary(path):
   bv.add_analysis_option("linearsweep")
   bv.update_analysis_and_wait()
   return bv
+
+class BNProgram(Program):
+  def __init__(self, path):
+    self._functions = weakref.WeakValueDictionary()
+    self._path = path
+    self._bv = load_binary(self._path)
+    super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
+
+  def get_function(self, address):
+    """Given an architecture and an address, return a `Function` instance or
+    raise an `InvalidFunctionException` exception."""
+    arch = self._arch
+
+    binja_func = self._bv.get_function_at(address)
+    if not binja_func:
+      func_contains = self._bv.get_functions_containing(address)
+      if len(func_contains):
+        binja_func = func_contains[0]
+
+    if not binja_func:
+      raise InvalidFunctionException(
+        "No function defined at or containing address {:x}".format(address))
+
+    print binja_func.name, binja_func.function_type
+    func_type =  get_type(binja_func.function_type)
+    calling_conv = CallingConvention(arch, binja_func)
+
+    index = 0
+    param_list = []
+    for var in binja_func.parameter_vars:
+      source_type = var.source_type
+      var_type = var.type
+      arg_type = get_type(var_type)
+
+      if source_type == bn.VariableSourceType.RegisterVariableSourceType:
+        if bn.TypeClass.IntegerTypeClass == var_type.type_class or \
+          bn.TypeClass.PointerTypeClass == var_type.type_class:
+          reg_name = calling_conv.next_int_arg_reg
+        elif bn.TypeClass.FloatTypeClass == var_type.type_class:
+          reg_name = calling_conv.next_float_arg_reg
+        elif bn.TypeClass.VoidTypeClass == var_type.type_class:
+          reg_name = 'invalid void'
+        else:
+          reg_name = None
+          raise AnvillException("No variable type defined for function parameters")
+
+        loc = Location()
+        loc.set_register(reg_name.upper())
+        loc.set_type(arg_type)
+        param_list.append(loc)
+
+      elif source_type == bn.VariableSourceType.StackVariableSourceType:
+        loc = Location()
+        loc.set_memory(self._bv.arch.stack_pointer, var.storage)
+        loc.set_type(arg_type)
+        param_list.append(loc)
+
+      index += 1
+
+    ret_list = []
+    retTy = get_type(binja_func.return_type)
+    if not isinstance(retTy, VoidType):
+      for reg in calling_conv.return_regs:
+        loc = Location()
+        loc.set_register(reg.upper())
+        loc.set_type(retTy)
+        ret_list.append(loc)
+
+    func = BNFunction(self._bv, arch, address, param_list, ret_list, binja_func)
+    self._functions[address] = func
+    return func
+
+
+_PROGRAM = None
+
+def get_program(*args, **kargs):
+  global _PROGRAM
+  if _PROGRAM:
+    return _PROGRAM
+  assert len(args) == 1
+
+  for arg in args:
+    _PROGRAM = BNProgram(arg)
+
+  return _PROGRAM
