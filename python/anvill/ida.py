@@ -70,7 +70,7 @@ def _guess_architecture():
     else:
       return "x86"
 
-  elif "ARM" in info.procName:
+  elif "ARM" in inf.procName:
     if inf.is_64bit():
       return "aarch64"
     else:
