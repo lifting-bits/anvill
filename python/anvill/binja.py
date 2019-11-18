@@ -24,6 +24,7 @@ from .loc import *
 from .os import *
 from .type import *
 from .program import *
+from .dwarf import *
 
 def is_valid_addr(bv, addr):
   return bv.get_segment_at(addr) is not None
@@ -349,6 +350,7 @@ class BNProgram(Program):
     self._functions = weakref.WeakValueDictionary()
     self._path = path
     self._bv = load_binary(self._path)
+    self._dwarf = Dwarf(path)
     super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 
   def get_function(self, address):
@@ -396,7 +398,7 @@ class BNProgram(Program):
 
       elif source_type == bn.VariableSourceType.StackVariableSourceType:
         loc = Location()
-        loc.set_memory(self._bv.arch.stack_pointer, var.storage)
+        loc.set_memory(self._bv.arch.stack_pointer.upper(), var.storage)
         loc.set_type(arg_type)
         param_list.append(loc)
 
