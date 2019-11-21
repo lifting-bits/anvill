@@ -154,14 +154,22 @@ static void FindConstantBases(
         FindConstantBases(inst, inst->getOperand(0), bases, seen);
         break;
       case llvm::Instruction::Sub:
-        FindConstantBases(inst, inst->getOperand(0), bases, seen);
-        break;
       case llvm::Instruction::Add:
-      case llvm::Instruction::And:
-      case llvm::Instruction::Or:
         FindConstantBases(inst, inst->getOperand(0), bases, seen);
-        FindConstantBases(inst, inst->getOperand(1), bases, seen);
         break;
+
+      // TODO(pag): Think through `Add`, `And`, and `Or` more.
+
+//      case llvm::Instruction::Add:
+//      case llvm::Instruction::And:
+//      case llvm::Instruction::Or: {
+//        auto lhs = inst->getOperand(0);
+//        auto rhs = inst->getOperand(1);
+//      }
+//
+//        FindConstantBases(inst, inst->getOperand(0), bases, seen);
+//        FindConstantBases(inst, , bases, seen);
+//        break;
       default:
         break;
     }
@@ -500,6 +508,61 @@ static void LowerMemOps(llvm::LLVMContext &context, llvm::Module &module) {
   ReplaceBarrier(module, "__remill_barrier_atomic_end");
 }
 
+// Build up a list of indexes into `type` to get as near as possible to
+// `remainder`, which should always be less than the size of `type`. Returns
+// the difference between what we indexed to and `remainder`.
+static uint64_t GetIndexesInto(
+    const llvm::DataLayout &dl, llvm::Type *type,
+    std::vector<llvm::Value *> indexes, uint64_t remainder) {
+  uint64_t offset = 0;
+  auto index_type = indexes[0]->getType();
+
+  if (auto arr_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
+    const auto elem_type = arr_type->getArrayElementType();
+    const auto num_elems = arr_type->getArrayNumElements();
+    const auto elem_size = dl.getTypeAllocSize(elem_type);
+    auto i = 0U;
+    for (; i < num_elems && (offset + elem_size) <= remainder; ++i) {
+      offset += elem_size;
+    }
+
+    indexes.push_back(llvm::ConstantInt::get(index_type, i));
+    return GetIndexesInto(dl, elem_type, indexes, remainder - offset);
+
+  } else if (auto vec_type = llvm::dyn_cast<llvm::VectorType>(type)) {
+    const auto elem_type = vec_type->getVectorElementType();
+    const auto num_elems = vec_type->getVectorNumElements();
+    const auto elem_size = dl.getTypeAllocSize(elem_type);
+    auto i = 0U;
+    for (; i < num_elems && (offset + elem_size) <= remainder; ++i) {
+      offset += elem_size;
+    }
+
+    indexes.push_back(llvm::ConstantInt::get(index_type, i));
+    return GetIndexesInto(dl, elem_type, indexes, remainder - offset);
+
+  } else if (auto rec_type = llvm::dyn_cast<llvm::StructType>(type)) {
+    auto i = 0U;
+    for (auto elem_type : rec_type->elements()) {
+      auto elem_size = dl.getTypeAllocSize(elem_type);
+      if ((offset + elem_size) <= remainder) {
+        ++i;
+        offset += elem_size;
+      } else {
+        indexes.push_back(llvm::ConstantInt::get(index_type, i));
+        return GetIndexesInto(dl, elem_type, indexes,
+                              remainder - offset);
+      }
+    }
+
+    LOG(FATAL)
+        << "Fell off the end of " << remill::LLVMThingToString(rec_type);
+
+  } else {
+    return remainder;
+  }
+}
+
 }  // namespace
 
 // Recover higher-level memory accesses in the lifted functions declared
@@ -745,6 +808,10 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   }
 
   for (auto &cell : global_cells) {
+    if (!max_var_size) {
+      break;  // No global variables.
+    }
+
     llvm::IRBuilder<> ir(&(cell.containing_func->getEntryBlock().front()));
 
     for (auto &use : cell.address_val->uses()) {
@@ -757,8 +824,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
         use.set(ir.CreatePtrToInt(
             nearby[cell.address_const], cell.address_val->getType()));
 
-      // We have global vars, go try to find the one containing this cell.
-      } else if (max_var_size) {
+      // Go try to find the one containing this cell.
+      } else {
         uint64_t min_scan = 0;
         if (cell.address_const > max_var_size) {
           min_scan = cell.address_const - max_var_size + 1;
@@ -794,10 +861,111 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
                   addr_type, cell.address_const - a, false)));
           break;
         }
+      }
+    }
+  }
 
-      // No global variables :-/
-      } else {
+  // Go find all pointers, so that we can handle displacements from those
+  // uniformly. We introduce pointers in terms of parameters, return values,
+  // and globals.
+  std::vector<llvm::Value *> pointers;
+  for (auto &global_or_func : nearby) {
+    auto global = llvm::dyn_cast<llvm::GlobalVariable>(global_or_func.second);
+    if (global) {
+      pointers.push_back(global);
+    } else {
+      auto func = llvm::dyn_cast<llvm::Function>(global_or_func.second);
+      for (auto &arg : func->args()) {
+        if (arg.getType()->isPointerTy()) {
+          pointers.push_back(&arg);
+        }
+      }
+
+      if (!func->getReturnType()->isPointerTy()) {
         continue;
+      }
+
+      for (auto maybe_caller : func->users()) {
+        if (auto ci = llvm::dyn_cast<llvm::CallInst>(maybe_caller)) {
+          pointers.push_back(ci);
+        }
+      }
+    }
+  }
+
+  // Go through and replace things like `ptrtoint+add` with `gep`s.
+  for (auto ptr : pointers) {
+    auto type = ptr->getType()->getPointerElementType();
+    auto size = dl.getTypeAllocSize(type);
+    std::vector<llvm::Value *> indexes;
+
+    for (auto &use : ptr->uses()) {
+      const auto ptr_to_int = llvm::dyn_cast<llvm::PtrToIntOperator>(use.getUser());
+      if (!ptr_to_int) {
+        continue;
+      }
+
+      auto addr_type = ptr_to_int->getType();
+
+      for (auto &pti_use : ptr_to_int->uses()) {
+        const auto add = llvm::dyn_cast<llvm::AddOperator>(pti_use.getUser());
+        if (!add) {
+          continue;
+        }
+
+        llvm::Value *disp = nullptr;
+        if (add->getOperand(0) == ptr_to_int) {
+          disp = add->getOperand(1);
+        } else {
+          disp = add->getOperand(0);
+        }
+
+        auto ci = llvm::dyn_cast<llvm::ConstantInt>(disp);
+        if (!ci) {
+          // TODO(pag): Some kind of pattern matching, e.g. look for things like
+          //            a * ci_size for array indexing, perhaps.
+          continue;
+        }
+
+        uint64_t disp_val = ci->getZExtValue();
+        uint64_t base_index = disp_val / size;
+        uint64_t remainder = disp_val % size;
+
+        indexes.clear();
+        indexes.push_back(llvm::ConstantInt::get(addr_type, base_index));
+        remainder = GetIndexesInto(dl, type, indexes, remainder);
+
+        llvm::Value *gep = nullptr;
+        if (auto global = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
+          auto gep0 = llvm::ConstantExpr::getGetElementPtr(
+              nullptr, global, indexes);
+          auto gep1 = llvm::ConstantExpr::getPtrToInt(gep0, addr_type);
+          if (remainder) {
+            gep = llvm::ConstantExpr::getAdd(
+                gep1, llvm::ConstantInt::get(addr_type, remainder));
+          } else {
+            gep = gep1;
+          }
+        } else if (llvm::isa<llvm::Argument>(ptr) ||
+                   llvm::isa<llvm::Instruction>(ptr)) {
+          auto insert_loc = llvm::dyn_cast<llvm::Instruction>(add);
+          gep = llvm::GetElementPtrInst::Create(
+              nullptr, ptr, indexes, "", insert_loc);
+          gep = new llvm::PtrToIntInst(gep, addr_type, "", insert_loc);
+          if (remainder) {
+            gep = llvm::BinaryOperator::Create(
+                llvm::Instruction::Add, gep,
+                llvm::ConstantInt::get(addr_type, remainder), "", insert_loc);
+          }
+        }
+
+        if (!gep) {
+          LOG(ERROR)
+              << "Could not GEP into " << remill::LLVMThingToString(ptr);
+          continue;
+        }
+
+        add->replaceAllUsesWith(gep);
       }
     }
   }
