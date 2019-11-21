@@ -41,10 +41,28 @@ class Program(object):
     raise NotImplementedError()
 
   def add_variable_declaration(self, ea):
-    raise NotImplementedError()
+    var = self.get_variable(ea)
+    if isinstance(var, Function):
+      ea = var.address()
+      if ea not in self._var_defs and ea not in self._var_decls:
+        self._var_decls[ea] = func
+        func.visit(self, False)
+      return True
+    else:
+      return False
 
   def add_variable_definition(self, ea):
-    raise NotImplementedError()
+    var = self.get_variable(ea)
+    if isinstance(var, Variable):
+      ea = var.address()
+      if ea not in self._var_defs:
+        if ea in self._var_decls:
+          del self._var_decls[ea]
+        self._var_defs[ea] = var
+        var.visit(self, True)
+      return True
+    else:
+      return False
 
   def add_function_definition(self, ea):
     func = self.get_function(ea)

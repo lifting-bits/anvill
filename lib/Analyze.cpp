@@ -19,6 +19,8 @@
 
 #include <glog/logging.h>
 
+#include <map>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -46,6 +48,7 @@ namespace anvill {
 namespace {
 
 struct Cell {
+  llvm::Function *containing_func{nullptr};
   llvm::Type *type{nullptr};
   llvm::User *user{nullptr};
   llvm::ConstantInt *address_val{nullptr};
@@ -85,6 +88,36 @@ void UnfoldConstantExpressions(llvm::Instruction *inst) {
     }
   }
 }
+
+// Expand a type into `out_types`, so that we can iterate over the elements
+// more easily.
+static void FlattenTypeInto(llvm::Type *type,
+                            std::vector<llvm::Type *> &out_types) {
+
+  if (auto arr_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
+    const auto elem_type = arr_type->getArrayElementType();
+    const auto num_elems = arr_type->getArrayNumElements();
+    for (auto i = 0U; i < num_elems; ++i) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else if (auto rec_type = llvm::dyn_cast<llvm::StructType>(type)) {
+    for (auto elem_type : rec_type->elements()) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else if (auto vec_type = llvm::dyn_cast<llvm::VectorType>(type)) {
+    const auto elem_type = vec_type->getVectorElementType();
+    const auto num_elems = vec_type->getVectorNumElements();
+    for (auto i = 0U; i < num_elems; ++i) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else {
+    out_types.push_back(type);
+  }
+}
+
 
 // Recursively scans through llvm Values and tries to find uses of
 // constant integers. The use case of this is to find uses of
@@ -176,8 +209,7 @@ static llvm::Type *GetUpstreamTypeFromPointer(llvm::Value *val) {
 static void FindMemoryReferences(
     const Program &program, llvm::Function &func,
     std::unordered_map<llvm::Function *, std::vector<Cell>> &stack_cells,
-    std::unordered_map<llvm::Function *, std::vector<Cell>> &global_cells,
-    std::vector<Cell> &unknown_cells) {
+    std::vector<Cell> &global_cells) {
 
   llvm::DataLayout dl(func.getParent());
 
@@ -189,6 +221,7 @@ static void FindMemoryReferences(
     for (auto &inst : block) {
 
       Cell cell;
+      cell.containing_func = &func;
 
       llvm::Value *address_val = nullptr;
 
@@ -233,7 +266,8 @@ static void FindMemoryReferences(
           cell.is_load = true;
           cell.is_store = true;
           cell.is_atomic = true;
-          cell.type = GetUpstreamTypeFromPointer(call_inst->getArgOperand(2));
+          cell.type = GetUpstreamTypeFromPointer(
+              call_inst->getArgOperand(2));
 
         // Loads from memory mapped I/O.
         } else if (name.startswith("__remill_read_io_port_")) {
@@ -287,7 +321,7 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells[&func].push_back(cell);
+          global_cells.push_back(cell);
         }
       }
     }
@@ -320,7 +354,7 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells[&func].push_back(cell);
+          global_cells.push_back(cell);
         }
       }
     }
@@ -477,16 +511,14 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
 
   // Go collect type information for all memory accesses.
   std::unordered_map<llvm::Function *, std::vector<Cell>> stack_cells;
-  std::unordered_map<llvm::Function *, std::vector<Cell>> global_cells;
-  std::vector<Cell> unknown_cells;
+  std::vector<Cell> global_cells;
 
   program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
     const auto func = decl->DeclareInModule(module);
     nearby[decl->address] = func;
 
     if (func && !func->isDeclaration()) {
-      FindMemoryReferences(
-          program, *func, stack_cells, global_cells, unknown_cells);
+      FindMemoryReferences(program, *func, stack_cells, global_cells);
     }
     return true;
   });
@@ -499,6 +531,7 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   });
 
   std::unordered_map<uint64_t, std::unordered_map<llvm::Type *, int>> popularity;
+
   for (auto &func_stack_cells : stack_cells) {
     auto &cells = func_stack_cells.second;
     for (auto &cell : cells) {
@@ -506,6 +539,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
     }
   }
 
+  // Order cells to prefer wider types over smaller types, or wider aligned
+  // types over lesser aligned types.
   auto order_cells = [&dl, &popularity] (const Cell &a, const Cell &b) -> bool {
     if (a.address_const < b.address_const) {
       return true;
@@ -534,6 +569,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   auto i8_ptr_type = llvm::PointerType::get(i8_type, 0);
   auto i32_type = llvm::Type::getInt32Ty(context);
 
+  // Scan through the stack cells and try to compute bounds on the stack frame
+  // so that we can create a structure representing the stack frame.
   for (auto &func_stack_cells : stack_cells) {
     auto func = func_stack_cells.first;
     auto &cells = func_stack_cells.second;
@@ -544,7 +581,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
 
     for (const auto &cell : cells) {
       min_stack_address = std::min(min_stack_address, cell.address_const);
-      max_stack_address = std::max(max_stack_address, cell.address_const + cell.size);
+      max_stack_address = std::max(max_stack_address,
+                                   cell.address_const + cell.size);
     }
 
     // NOTE(pag): This is based off of the amd64 ABI redzone, and
@@ -565,7 +603,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
       } else if (running_addr > cell.address_const) {
         LOG(ERROR)
             << "SKIPPING " << std::hex << " " << cell.address_const << std::dec
-            << " " << remill::LLVMThingToString(cell.type) << " size " << cell.size;
+            << " " << remill::LLVMThingToString(cell.type) << " size "
+            << cell.size;
         continue;
       }
 
@@ -602,38 +641,166 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   }
 
   popularity.clear();
-  for (auto &func_global_cells : global_cells) {
-    auto &cells = func_global_cells.second;
-    for (auto &cell : cells) {
-      popularity[cell.address_const][cell.type] += 1;
+
+  // Go collect basic type popularity info across all functions but for
+  // things that look like global variables.
+  auto max_popularity = 0;
+  for (auto &cell : global_cells) {
+    popularity[cell.address_const][cell.type] += 1;
+    max_popularity += 1;
+  }
+
+  size_t max_var_size = 0;
+
+  // Go through the actual declared types in the global variables and add to
+  // the popularity. This forces them to be the ideal types for what we have
+  // specified.
+  program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
+    auto var = llvm::dyn_cast<llvm::GlobalVariable>(nearby[decl->address]);
+    std::vector<llvm::Type *> types;
+    FlattenTypeInto(var->getValueType(), types);
+    size_t offset = 0;
+    for (auto type : types) {
+      auto size = dl.getTypeAllocSize(type);
+      popularity[decl->address + offset][type] += max_popularity;
+      offset += size;
+    }
+
+    // Keep track of the maximum declared size of a global variable. We'll use
+    // it to decide how far to look forward/backwared given an arbitrary
+    // address.
+    if (offset > max_var_size) {
+      max_var_size = offset;
+    }
+
+    return true;
+  });
+
+  std::sort(global_cells.begin(), global_cells.end(), order_cells);
+
+  // Try to partition what we know about memory into global variables, and then
+  // add them to `nearby` as new globals.
+  auto cell_it = global_cells.begin();
+  while (cell_it != global_cells.end()) {
+
+    std::vector<llvm::Type *> types;
+    types.push_back(cell_it->type);
+
+    const auto addr = cell_it->address_const;
+    auto next_addr = addr + cell_it->size;
+    auto is_packed = false;
+    ++cell_it;
+
+    while (cell_it != global_cells.end()) {
+
+      // Next cell is covered in this cell.
+      if (cell_it->address_const < next_addr) {
+        auto maybe_next_addr = cell_it->address_const + cell_it->size;
+
+        // Ugh, it actually straddles this cell, add in some padding.
+        for (; next_addr < maybe_next_addr; ++next_addr) {
+          types.push_back(llvm::Type::getInt8Ty(context));
+          is_packed = true;
+        }
+
+        ++cell_it;
+        continue;
+
+      // Next cell is adjacent to this cell, extend us.
+      } else if (cell_it->address_const == next_addr) {
+        next_addr += next_addr + cell_it->size;
+        types.push_back(cell_it->type);
+        ++cell_it;
+        continue;
+
+      // There is a gap, we have the end of a global variable.
+      } else {
+        break;
+      }
+    }
+
+    std::stringstream ss;
+    ss << "data_" << std::hex << addr;
+
+    auto global_type = llvm::StructType::get(context, types, is_packed);
+    auto global_size = dl.getTypeAllocSize(global_type);
+    auto &global = nearby[addr];
+
+    if (auto existing_global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(global)) {
+      if (dl.getTypeAllocSize(existing_global->getValueType()) < global_size) {
+        auto name = existing_global->getName();
+        LOG(WARNING)
+            << "Found overlapping global variables '" << ss.str()
+            << "' and '" << name.str() << "'";
+
+        // TODO(pag): Make `existing_global` and alias of `global`.
+        existing_global->eraseFromParent();
+        global->setName(name);
+      }
+    } else {
+      global = new llvm::GlobalVariable(
+          module, global_type, false, llvm::GlobalValue::ExternalLinkage,
+          nullptr, ss.str());
     }
   }
 
-//  for (auto &func_global_cells : global_cells) {
-//    auto func = func_global_cells.first;
-//    auto &cells = func_global_cells.second;
-//    std::sort(cells.begin(), cells.end(), order_cells);
-//
-//    llvm::IRBuilder<> ir(&(func->getEntryBlock().front()));
-//
-//    for (const auto &cell : cells) {
-//      for (auto &use : cell.address_val->uses()) {
-//        if (use.getUser() != cell.user) {
-//          continue;
-//        }
-//
-//
-//        llvm::Value *indexes[] = {
-//            llvm::ConstantInt::get(
-//                i32_type, cell.address_const)
-//        };
-//        auto gep = ir.CreateInBoundsGEP(i8_type, i8_frame, indexes);
-//
-//        use.set(ir.CreatePtrToInt(gep, cell.address_val->getType()));
-//      }
-//    }
-//  }
+  for (auto &cell : global_cells) {
+    llvm::IRBuilder<> ir(&(cell.containing_func->getEntryBlock().front()));
 
+    for (auto &use : cell.address_val->uses()) {
+      if (use.getUser() != cell.user) {
+        continue;
+      }
+
+      // Best case, perfect match against something we have.
+      if (nearby.count(cell.address_const)) {
+        use.set(ir.CreatePtrToInt(
+            nearby[cell.address_const], cell.address_val->getType()));
+
+      // We have global vars, go try to find the one containing this cell.
+      } else if (max_var_size) {
+        uint64_t min_scan = 0;
+        if (cell.address_const > max_var_size) {
+          min_scan = cell.address_const - max_var_size + 1;
+        }
+
+        // Search around for the closest global variable.
+        for (auto a = min_scan; a < cell.address_const; ++a) {
+          auto near_a_it = nearby.find(a);
+          if (near_a_it == nearby.end()) {
+            continue;
+          }
+
+          // Don't let us find nearby functions, displacing a bitcode function
+          // doesn't make sense.
+          auto near_a = llvm::dyn_cast<llvm::GlobalVariable>(
+              near_a_it->second);
+          if (!near_a) {
+            continue;
+          }
+
+          auto near_a_type = near_a->getValueType();
+          auto near_a_size = dl.getTypeAllocSize(near_a_type);
+
+          // The global doesn't include our cell.
+          if ((a + near_a_size) < cell.address_const) {
+            continue;
+          }
+
+          const auto addr_type = cell.address_val->getType();
+          use.set(ir.CreateAdd(
+              ir.CreatePtrToInt(near_a, addr_type),
+              llvm::ConstantInt::get(
+                  addr_type, cell.address_const - a, false)));
+          break;
+        }
+
+      // No global variables :-/
+      } else {
+        continue;
+      }
+    }
+  }
 
   LowerMemOps(context, module);
 }

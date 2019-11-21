@@ -15,4 +15,33 @@
 
 
 class Variable(object):
-  pass
+  """Represents a generic global variable."""
+
+  def __init__(self, arch, address, type_):
+    self._arch = arch
+    self._address = address
+    self._type = type_
+
+  def name(self):
+    return NotImplementedError()
+
+  def address(self):
+    return self._address
+
+  def type(self):
+    return self._type
+
+  def visit(self, program, is_definition):
+    raise NotImplementedError()
+
+  def is_declaration(self):
+    raise NotImplementedError()
+
+  def proto(self):
+    proto = {}
+    name = self.name()
+    if len(name):
+      proto["name"] = name
+    proto["address"] = self.address()
+    proto["type"] = self.type().proto(self._arch)
+    return proto
