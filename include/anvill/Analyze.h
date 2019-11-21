@@ -26,6 +26,6 @@ class Program;
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoveryMemoryAccesses(const Program &program, llvm::Module &module);
+void RecoverMemoryAccesses(const Program &program, llvm::Module &module);
 
 }  // namespace anvill

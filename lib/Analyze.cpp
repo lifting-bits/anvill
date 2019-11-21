@@ -567,7 +567,7 @@ static uint64_t GetIndexesInto(
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
+void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   llvm::DataLayout dl(&module);
   std::map<uint64_t, llvm::GlobalValue *> nearby;

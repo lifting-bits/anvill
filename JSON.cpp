@@ -587,6 +587,18 @@ static bool ParseSpec(
   return true;
 }
 
+// Clear out LLVM variable names. They're usually not helpful.
+static void ClearVariableNames(llvm::Function *func) {
+  for (auto &block : *func) {
+    block.setName("");
+    for (auto &inst : block) {
+      if (inst.hasName()) {
+        inst.setName("");
+      }
+    }
+  }
+}
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -696,11 +708,12 @@ int main(int argc, char *argv[]) {
   program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
     const auto func = decl->DeclareInModule(*semantics);
     remill::MoveFunctionIntoModule(func, &dest_module);
+    ClearVariableNames(func);
     return true;
   });
 
   anvill::OptimizeModule(program, dest_module);
-  anvill::RecoveryMemoryAccesses(program, dest_module);
+  anvill::RecoverMemoryAccesses(program, dest_module);
   anvill::OptimizeModule(program, dest_module);
 
   int ret = EXIT_SUCCESS;
