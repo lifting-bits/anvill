@@ -39,3 +39,5 @@ class InvalidFunctionException(AnvillException):
 class InvalidLocationException(AnvillException):
   pass
 
+class ParseException(AnvillException):
+  pass

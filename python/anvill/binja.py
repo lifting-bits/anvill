@@ -350,7 +350,7 @@ class BNProgram(Program):
     self._functions = weakref.WeakValueDictionary()
     self._path = path
     self._bv = load_binary(self._path)
-    self._dwarf = Dwarf(path)
+    self._dwarf = DWARFCore(path)
     super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 
   def get_function(self, address):
