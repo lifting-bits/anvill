@@ -17,7 +17,7 @@
 import itertools
 import weakref
 
-
+import idc
 import ida_bytes
 import ida_frame
 import ida_funcs
@@ -38,6 +38,7 @@ from .mem import *
 from .os import *
 from .program import *
 from .type import *
+from .dwarf import *
 
 
 def _guess_os():
@@ -605,6 +606,7 @@ class IDAProgram(Program):
   def __init__(self, *args):
     super(IDAProgram, self).__init__(_get_arch(), _get_os())
     self._functions = weakref.WeakValueDictionary()
+    self._dwarf = DWARFCore(idc.GetInputFilePath())
 
   def get_function(self, address):
     """Given an architecture and an address, return a `Function` instance or

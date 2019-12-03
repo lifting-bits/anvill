@@ -361,7 +361,7 @@ class BNProgram(Program):
     binja_func = self._bv.get_function_at(address)
     if not binja_func:
       func_contains = self._bv.get_functions_containing(address)
-      if len(func_contains):
+      if func_contains and len(func_contains):
         binja_func = func_contains[0]
 
     if not binja_func:
