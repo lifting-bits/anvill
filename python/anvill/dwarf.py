@@ -78,6 +78,13 @@ def get_upper_bound(die):
   else:
     return 0
 
+def get_const_value(die):
+  if 'DW_AT_const_value' in die.attributes:
+    return die.attributes['DW_AT_const_value'].value
+  else:
+    return -1
+
+
 def is_subprogram(die):
   return 'DW_TAG_subprogram' == die.tag
   
@@ -138,7 +145,7 @@ class DwarfArrayType(DwarfType):
     for child in die.iter_children():
       assert child.tag == 'DW_TAG_subrange_type'
       self._size = get_upper_bound(child) + 1
-      #elf._elem_type = DWARFCore._get_type_die(child)
+      self._elem_type = DWARFCore._get_type_die(child)
   
   @property   
   def size(self):
@@ -148,11 +155,17 @@ class DwarfEnumType(DwarfType):
   def __init__(self, die):
     super(DwarfEnumType, self).__init__(die)
     self._type = Types.DW_ENUM
+    self._size = get_size(die)
+    self._members = []
+    for child in die.iter_children():
+      assert child.tag == 'DW_TAG_enumerator'
+      self._members.append({get_name(child), get_const_value(child)})
     
 class DwarfStructType(DwarfType):
   def __init__(self, die):
     super(DwarfStructType, self).__init__(die)
     self._type = Types.DW_STRUCTURE
+    self._size = get_size(die)
 
 class DwarfUnionType(DwarfStructType):
   def __init__(self, die):
@@ -405,10 +418,14 @@ class DWARFCore(object):
     try:
       # compute the global offset in the TYPES_CACHE
       offset = attr_value + die.cu.cu_offset
-      return DWARFCore._dw_types_cache[offset]
+      if offset not in cls._dw_types_cache:
+        type_die = cls.__offset_to_die[offset]
+        cls._process_types(type_die)
+
+      return cls._dw_types_cache[offset]
 
     except KeyError:
-       raise ParseException("_get_type_die: DIE is not available in the typemap\n {}".format(die.offset))
+      raise ParseException("_get_type_die: DIE is not available in the typemap\n {}".format(die.offset))
   
   def _load_die(self):
     """Build die map with the offset"""
