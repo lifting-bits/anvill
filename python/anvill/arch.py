@@ -640,7 +640,12 @@ class AArch64Arch(Arch):
   _REG_FAMILY_X27 = _REG_FAMILY_Xn(27)
   _REG_FAMILY_X28 = _REG_FAMILY_Xn(28)
   _REG_FAMILY_X29 = _REG_FAMILY_Xn(29)
-  _REG_FAMILY_X30 = _REG_FAMILY_Xn(30)
+  _REG_FAMILY_X30 = (
+    ("LP", 0, 8),
+    ("X30", 0, 8),
+    ("WLP", 0, 4),
+    ("W30", 0, 4)
+  )
 
   _REG_FAMILY_SP = {
     ("SP", 0, 8),
@@ -726,6 +731,7 @@ class AArch64Arch(Arch):
     "X28": _REG_FAMILY_X28,
     "X29": _REG_FAMILY_X29,
     "X30": _REG_FAMILY_X30,
+    "LP": _REG_FAMILY_X30,
     "SP": _REG_FAMILY_SP,
     "XZR": _REG_FAMILY_ZR,
 
@@ -760,6 +766,7 @@ class AArch64Arch(Arch):
     "W28": _REG_FAMILY_X28,
     "W29": _REG_FAMILY_X29,
     "W30": _REG_FAMILY_X30,
+    "WLP": _REG_FAMILY_X30,
     "WSP": _REG_FAMILY_SP,
     "WZR": _REG_FAMILY_ZR,
     "PC": (("PC", 0, 8),),
@@ -977,7 +984,7 @@ class AArch64Arch(Arch):
 
   def return_address_proto(self):
     return {
-      "register": "X0",
+      "register": "LP",
       "type": "L"
     }
 
