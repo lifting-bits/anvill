@@ -638,8 +638,11 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
     auto func = func_stack_cells.first;
     auto &cells = func_stack_cells.second;
     std::sort(cells.begin(), cells.end(), order_cells);
-
-    uint64_t min_stack_address = *program.InitialStackPointer();
+    auto sp = program.InitialStackPointer();
+    if (!sp) {
+      LOG(FATAL) << "Found invalid initial stack pointer";
+    }
+    uint64_t min_stack_address = *sp;
     uint64_t max_stack_address = min_stack_address;
 
     for (const auto &cell : cells) {
