@@ -258,7 +258,7 @@ bool TraceManagerImpl::TryReadExecutableByte(uint64_t addr, uint8_t *byte) {
     if (addr_byte.IsExecutable()) {
       auto val = addr_byte.Value();
       if (!val) {
-        LOG(FATAL) << "Found invalid address of executable byte";
+        return false;
       }
       *byte = *val;
       return true;
