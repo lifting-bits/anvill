@@ -51,7 +51,7 @@ def _guess_os():
   file_type = inf.filetype
   if file_type in (ida_ida.f_ELF, ida_ida.f_AOUT, ida_ida.f_COFF):
     return "linux"
-  elif file_type == ida_ida.g_MACHO:
+  elif file_type == ida_ida.f_MACHO:
     return "macos"
   elif file_type in (ida_ida.g_PE, ida_ida.f_EXE, ida_ida.f_EXE_old, ida_ida.f_COM, ida_ida.f_COM_old):
     return "windows"
