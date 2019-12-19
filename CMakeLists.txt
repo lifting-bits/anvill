@@ -78,6 +78,12 @@ set(DECOMPILE_JSON anvill-decompile-json-${REMILL_LLVM_VERSION})
 add_executable(${DECOMPILE_JSON} JSON.cpp)
 target_link_libraries(${DECOMPILE_JSON} PRIVATE ${ANVILL})
 
+
+set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
+
+add_executable(${SPECIFY_BITCODE} BITCODE.cpp json.hpp)
+target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
+
 #
 # install settings
 #
