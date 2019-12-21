@@ -10,8 +10,15 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/IntrinsicInst.h>
+#include <llvm/IR/DebugInfoMetadata.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Metadata.h>
 
 #include <remill/BC/Util.h>
+#include <remill/Arch/Arch.h>
+
+#include <anvill/Decl.h>
 
 #include "json.hpp"
 
@@ -19,7 +26,7 @@ struct AllocationBinding;
 struct RegisterConstraint;
 
 // forward declarations for now TODO: change this
-std::unique_ptr<AllocationBinding> tryRegisterAllocate(const llvm::Argument& argument, std::vector<bool>& reserved, const std::vector<RegisterConstraint>& register_constraints);
+remill::Register* tryRegisterAllocate(const llvm::Argument& argument, std::vector<bool>& reserved, const std::vector<RegisterConstraint>& register_constraints);
 std::string translateType(const llvm::Type& type);
 
 // for convenience
@@ -27,8 +34,13 @@ using json = nlohmann::json;
 
 DECLARE_string(arch);
 DECLARE_string(os);
-
 DEFINE_string(bc_file, "", "Path to BITcode file containing data to be specified");
+
+namespace remill {
+	class Arch;
+	class IntrinsicTable;
+	struct Register;
+}
 
 enum SizeConstraint {
 	BIT8 = (1 << 0),
@@ -81,7 +93,7 @@ public:
 	CallingConvention(llvm::CallingConv::ID _identity) : identity(_identity){}
 	virtual ~CallingConvention() {}
 
-	virtual std::vector<AllocationBinding> bindParameters(const llvm::Function& function) = 0;
+	virtual std::vector<anvill::ParameterDecl> bindParameters(const llvm::Function& function) = 0;
 	virtual void bindReturnValue() = 0;
 
 	llvm::CallingConv::ID getIdentity() { return identity; }
@@ -96,19 +108,68 @@ public:
 	X86_64_SysV() :CallingConvention(llvm::CallingConv::X86_64_SysV) {}
 	~X86_64_SysV() {}
 	
-	std::vector<AllocationBinding> bindParameters(const llvm::Function& function) {
-		std::vector<AllocationBinding> bindings;
-		std::vector<bool> reserved(register_constraints.size(), false);
+	std::vector<anvill::ParameterDecl> bindParameters(const llvm::Function& function) {
+		std::vector<anvill::ParameterDecl> parameter_declarations;
 
-		for (auto& argument : function.args()) {
-			const llvm::Type& type = *argument.getType();
-			if (auto bindptr = tryRegisterAllocate(argument, reserved, register_constraints)) {
-				bindptr->variable_type = translateType(type);
-				std::cout << bindptr->register_name << " " << bindptr->variable_type << std::endl;
-				bindings.push_back(*bindptr);
+		// Create a map of names to parameters
+		std::map<unsigned int, std::string> param_names;
+		for (auto& block : function) {
+			for (auto& inst : block) {
+				if (auto debug_inst = llvm::dyn_cast<llvm::DbgInfoIntrinsic>(&inst)) {
+					if (auto value_intrin = llvm::dyn_cast<llvm::DbgDeclareInst>(&inst)) {
+						const llvm::MDNode* mdn = value_intrin->getVariable();
+						const llvm::DILocalVariable* div = llvm::cast<llvm::DILocalVariable>(mdn);
+
+						// Make sure it is actually an argument
+						if (div->getArg() != 0) {
+							std::cout << div->getArg() << " : " << div->getName().data() << std::endl;
+							param_names[div->getArg()] = div->getName().data();
+						}
+					}
+
+					// TODO: do we need this part?
+					// Do we need this part? will they ever be called as an llvm.dbg.value
+					// else if (auto value_intrin = llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
+					// 	const llvm::MDNode* mdn = value_intrin->getVariable();
+					// 	const llvm::DILocalVariable* div = llvm::cast<llvm::DILocalVariable>(mdn);
+
+					// 	std::cout << div->getArg() << " : " << div->getName().data() << std::endl;
+					// 	param_names[div->getArg()] = div->getName().data();
+					// }
+				}
 			}
 		}
-		return bindings;
+
+		unsigned int num_args = (unsigned int) (function.args().end() - function.args().begin());
+		for (unsigned int i = 1; i <= num_args; i++) {
+			if (!param_names.count(i)) {
+				param_names[i] = "param" + std::to_string(i);
+			}
+		}
+		
+		// Used to keep track of which registers have been allocated
+		std::vector<bool> allocated(register_constraints.size(), false);
+
+		for (auto& argument : function.args()) {
+			anvill::ParameterDecl declaration = {};
+
+			// Try to allocate from a register
+			if (remill::Register* reg = tryRegisterAllocate(argument, allocated, register_constraints)) {
+				declaration.reg = reg;
+				declaration.mem_offset = 0;
+			} else {
+				// Try to allocate from the stack
+				// TODO: IMPORTANT
+			}
+
+			// Try to get a name for the IR parameter
+			// Need to add 1 because param_names uses logical numbering, but argumetn.getArgNo() uses index numbering
+			declaration.name = param_names[argument.getArgNo() + 1];
+
+			parameter_declarations.push_back(declaration);
+		}
+
+		return parameter_declarations;
 	}
 
 	void bindReturnValue() {
@@ -193,10 +254,10 @@ std::string translateType(const llvm::Type& type) {
 
 // Try to allocate a register for the argument based on the register constraints and what has already been reserved
 // Return nullptr if there is not possible register allocation
-std::unique_ptr<AllocationBinding> tryRegisterAllocate(const llvm::Argument& argument, std::vector<bool>& reserved, const std::vector<RegisterConstraint>& register_constraints) {
-	const llvm::Type& type = *argument.getType();
-
-	std::unique_ptr<AllocationBinding> allocation_binding(new AllocationBinding);
+// I hate returning a naked pointer but thats what remill::Register needs.
+// TODO: memory leak?
+remill::Register* tryRegisterAllocate(const llvm::Argument& argument, std::vector<bool>& reserved, const std::vector<RegisterConstraint>& register_constraints) {
+	llvm::Type& type = *argument.getType();
 
 	SizeConstraint size_constraint;
 	TypeConstraint type_constraint;
@@ -221,8 +282,8 @@ std::unique_ptr<AllocationBinding> tryRegisterAllocate(const llvm::Argument& arg
 		
 		if (size_constraint & constraint.size_constraint && type_constraint & constraint.type_constraint) {
 			reserved[i] = true;
-			allocation_binding->register_name = constraint.register_name;
-			return allocation_binding;
+			remill::Register* reg = new remill::Register(constraint.register_name, 0, 8, 0, &type);
+			return reg;
 		}
 	}
 
@@ -256,7 +317,7 @@ getPlatformInformation(llvm::Module* module) {
 
 
 // Processes a function
-json outputFunction(llvm::Function& func, std::vector<AllocationBinding> bindings) {
+json outputFunction(llvm::Function& func, std::vector<anvill::ParameterDecl> parameter_declarations) {
 	json j;
 	j["name"] = func.getName().data();
 
@@ -275,13 +336,12 @@ json outputFunction(llvm::Function& func, std::vector<AllocationBinding> binding
 
 	j["parameters"] = json::array();
 
-	size_t i = 0;
-	for (auto& arg : func.args()) {
+	for (auto& declaration : parameter_declarations) {
 		json jfunc = json::object();
 
-		jfunc["register"] = bindings[i].register_name;
-		jfunc["type"] = translateType(*arg.getType());
-		jfunc["name"] = bindings[i].variable_name;
+		jfunc["register"] = declaration.reg->name;
+		jfunc["type"] = translateType(*declaration.reg->type);
+		jfunc["name"] = declaration.name;
 		// TODO: make the bindings actually iterate.
 
 		j["parameters"].push_back(jfunc);
@@ -330,10 +390,14 @@ int main(int argc, char *argv[]) {
 
 	j["functions"] = json::array();
 	for (auto& function : *module) {
-		if (function.getName() == "dummy_function") {
-			auto bindings = cc->bindParameters(function);
-			std::cout << outputFunction(function, bindings).dump(4) << std::endl;
-		}
+		// Skip llvm dbg functions for now
+		// TODO: find a way to deal with this
+		std::string function_name = function.getName().data();
+		if (function_name.find("llvm.") == 0) continue;
+
+		std::cout << "Processing function: " << function.getName().data() << std::endl;
+		auto bindings = cc->bindParameters(function);
+		j["functions"].push_back(outputFunction(function, bindings));
 	}
 
 	std::cout << j.dump(4) << std::endl;
