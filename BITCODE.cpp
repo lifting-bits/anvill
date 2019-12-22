@@ -122,24 +122,24 @@ public:
 
 						// Make sure it is actually an argument
 						if (div->getArg() != 0) {
-							std::cout << div->getArg() << " : " << div->getName().data() << std::endl;
+							LOG(INFO) << div->getArg() << " : " << div->getName().data();
 							param_names[div->getArg()] = div->getName().data();
 						}
 					}
+					else if (auto value_intrin = llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
+						const llvm::MDNode* mdn = value_intrin->getVariable();
+						const llvm::DILocalVariable* div = llvm::cast<llvm::DILocalVariable>(mdn);
 
-					// TODO: do we need this part?
-					// Do we need this part? will they ever be called as an llvm.dbg.value
-					// else if (auto value_intrin = llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
-					// 	const llvm::MDNode* mdn = value_intrin->getVariable();
-					// 	const llvm::DILocalVariable* div = llvm::cast<llvm::DILocalVariable>(mdn);
-
-					// 	std::cout << div->getArg() << " : " << div->getName().data() << std::endl;
-					// 	param_names[div->getArg()] = div->getName().data();
-					// }
+						if (div->getArg() != 0) {
+							LOG(INFO) << div->getArg() << " : " << div->getName().data();
+							param_names[div->getArg()] = div->getName().data();
+						}
+					}
 				}
 			}
 		}
 
+		// If we don't have names for some parameters then automatically name them
 		unsigned int num_args = (unsigned int) (function.args().end() - function.args().begin());
 		for (unsigned int i = 1; i <= num_args; i++) {
 			if (!param_names.count(i)) {
@@ -150,16 +150,20 @@ public:
 		// Used to keep track of which registers have been allocated
 		std::vector<bool> allocated(register_constraints.size(), false);
 
+		// Stack position of the first argument
+		unsigned int stack_offset = 16;
+
 		for (auto& argument : function.args()) {
 			anvill::ParameterDecl declaration = {};
 
 			// Try to allocate from a register
 			if (remill::Register* reg = tryRegisterAllocate(argument, allocated, register_constraints)) {
 				declaration.reg = reg;
-				declaration.mem_offset = 0;
 			} else {
-				// Try to allocate from the stack
-				// TODO: IMPORTANT
+				// This might be butchering the intended semantics of a register, bu
+				remill::Register* mem_reg = new remill::Register("RSP", stack_offset, 8, 0, argument.getType());
+				stack_offset += 8;
+				declaration.mem_reg = mem_reg;
 			}
 
 			// Try to get a name for the IR parameter
@@ -173,7 +177,7 @@ public:
 	}
 
 	void bindReturnValue() {
-		std::cout << "Yay" << std::endl;
+		LOG(ERROR) << "Called bindReturnValue but bindReturnValue is UNIMPLEMENTED";
 	}
 
 private:
@@ -272,6 +276,14 @@ remill::Register* tryRegisterAllocate(const llvm::Argument& argument, std::vecto
 			// TODO: I know that this is wrong but for now its fine
 			size_constraint = MAXBIT32;
 		}
+	} else if (type.isFloatTy()) {
+		type_constraint = TYPEFLOAT;
+		// We automatically know it is 32-bit IEEE floating point type
+		size_constraint = BIT32;
+	} else if (type.isDoubleTy()) {
+		type_constraint = TYPEFLOAT;
+		// We automatically know it is 64-bit IEEE floating point type
+		size_constraint = BIT64;
 	}
 
 	for (size_t i = 0; i < register_constraints.size(); i++) {
@@ -337,14 +349,26 @@ json outputFunction(llvm::Function& func, std::vector<anvill::ParameterDecl> par
 	j["parameters"] = json::array();
 
 	for (auto& declaration : parameter_declarations) {
-		json jfunc = json::object();
+		json jdecl = json::object();
 
-		jfunc["register"] = declaration.reg->name;
-		jfunc["type"] = translateType(*declaration.reg->type);
-		jfunc["name"] = declaration.name;
+		if (declaration.reg) {
+			LOG(INFO) << "Register Declaration";
+			jdecl["register"] = declaration.reg->name;
+			jdecl["type"] = translateType(*declaration.reg->type);
+		} else if (declaration.mem_reg) {
+			LOG(INFO) << "Stack Declaration";
+			jdecl["memory"]["register"] = "RSP";
+			jdecl["memory"]["offset"] = declaration.mem_reg->offset;
+			jdecl["type"] = translateType(*declaration.mem_reg->type);
+		} else {
+			LOG(ERROR) << "Declaration does not deduce an allocation for the variable";
+			exit(1);
+		}
+
+		jdecl["name"] = declaration.name;
 		// TODO: make the bindings actually iterate.
 
-		j["parameters"].push_back(jfunc);
+		j["parameters"].push_back(jdecl);
 	}
 
 	return j;
@@ -395,7 +419,10 @@ int main(int argc, char *argv[]) {
 		std::string function_name = function.getName().data();
 		if (function_name.find("llvm.") == 0) continue;
 
-		std::cout << "Processing function: " << function.getName().data() << std::endl;
+		// TODO: remove, only for debugging
+		// if (function_name != "void_function") continue;
+
+		LOG(INFO) << "Processing function: " << function.getName().data();
 		auto bindings = cc->bindParameters(function);
 		j["functions"].push_back(outputFunction(function, bindings));
 	}
