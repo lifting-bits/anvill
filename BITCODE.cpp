@@ -22,7 +22,6 @@
 
 #include "json.hpp"
 
-struct AllocationBinding;
 struct RegisterConstraint;
 
 // forward declarations for now TODO: change this
@@ -74,17 +73,6 @@ struct RegisterConstraint {
 	SizeConstraint size_constraint;
 };
 
-// TODO: support the stack later
-struct AllocationBinding {
-	AllocationBinding() {}
-	AllocationBinding(std::string _register_name, std::string _variable_name, std::string _variable_type)
-		: register_name(_register_name), variable_name(_variable_name), variable_type(_variable_type) {}
-
-	std::string register_name;
-	std::string variable_name;
-	std::string variable_type; // TODO change this from a std::string later
-};
-
 struct ParameterPasses {};
 struct ReturnPasses {};
 
@@ -94,7 +82,7 @@ public:
 	virtual ~CallingConvention() {}
 
 	virtual std::vector<anvill::ParameterDecl> bindParameters(const llvm::Function& function) = 0;
-	virtual void bindReturnValue() = 0;
+	virtual std::vector<anvill::ValueDecl> bindReturnValues(const llvm::Function& function) = 0;
 
 	llvm::CallingConv::ID getIdentity() { return identity; }
 
@@ -176,8 +164,28 @@ public:
 		return parameter_declarations;
 	}
 
-	void bindReturnValue() {
-		LOG(ERROR) << "Called bindReturnValue but bindReturnValue is UNIMPLEMENTED";
+	std::vector<anvill::ValueDecl> bindReturnValues(const llvm::Function& function) {
+		std::vector<anvill::ValueDecl> return_value_declarations;
+
+		for (auto& block : function) {
+			for (auto& inst : block) {
+				if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
+					anvill::ValueDecl value_declaration = {};
+
+					const llvm::Value* value = return_inst->getReturnValue();
+					value_declaration.type = value->getType();
+
+					// Allocate EAX for now.
+					// TODO: what happens if we have more than one return value?
+					remill::Register* reg = new remill::Register("RAX", 0, 8, 0, value->getType());
+					value_declaration.reg = reg;
+
+					return_value_declarations.push_back(value_declaration);
+				}
+			}
+		}
+		
+		return return_value_declarations;
 	}
 
 private:
@@ -329,22 +337,35 @@ getPlatformInformation(llvm::Module* module) {
 
 
 // Processes a function
-json outputFunction(llvm::Function& func, std::vector<anvill::ParameterDecl> parameter_declarations) {
+json outputFunction(llvm::Function& func, std::vector<anvill::ParameterDecl> parameter_declarations, std::vector<anvill::ValueDecl> return_value_declarations) {
 	json j;
 	j["name"] = func.getName().data();
 
-	// TODO: change this because it is specific to x86_64 normal
-	// (unoptimized) stack frames.
+	// This is specific to x86_64 unoptimized (normal) stack frames
+	// TODO: I might need to change this later
 	j["return_stack_pointer"] = json::object();
 	j["return_stack_pointer"]["register"] = "RSP";
 	j["return_stack_pointer"]["type"] = "L";
 	j["return_stack_pointer"]["offset"] = "8";
 
 	// return_values
-	j["return_value"] = json::object();
-	j["return_value"]["register"] = "UNIMPLEMENTED";
-	j["return_value"]["type"] = translateType(*func.getReturnType());
-	j["return_value"]["name"] = "UNIMPLEMENTED";
+	j["return_value"] = json::array();
+
+	for (auto& declaration : return_value_declarations) {
+		json jdecl = json::object();
+
+		if (declaration.reg) {
+			jdecl["register"] = declaration.reg->name;
+			jdecl["type"] = translateType(*declaration.reg->type);
+		} else if (declaration.mem_reg) {
+			LOG(ERROR) << "Return value is on the stack. Cannot handle this yet...";
+			exit(1);
+		} else {
+			LOG(ERROR) << "Declaration does not deduce an allocation for the return value";
+			exit(1);
+		}
+		j["return_value"].push_back(jdecl);
+	}
 
 	j["parameters"] = json::array();
 
@@ -380,7 +401,6 @@ int main(int argc, char *argv[]) {
     google::InitGoogleLogging(argv[0]);
 
 	std::unique_ptr<CallingConvention> cc(new X86_64_SysV());
-	cc->bindReturnValue();
 
 	// Allow all log messages for debugging
 	// FLAGS_stderrthreshold = 0;
@@ -423,8 +443,9 @@ int main(int argc, char *argv[]) {
 		// if (function_name != "void_function") continue;
 
 		LOG(INFO) << "Processing function: " << function.getName().data();
-		auto bindings = cc->bindParameters(function);
-		j["functions"].push_back(outputFunction(function, bindings));
+		auto parameter_bindings = cc->bindParameters(function);
+		auto return_value_bindings = cc->bindReturnValues(function);
+		j["functions"].push_back(outputFunction(function, parameter_bindings, return_value_bindings));
 	}
 
 	std::cout << j.dump(4) << std::endl;
