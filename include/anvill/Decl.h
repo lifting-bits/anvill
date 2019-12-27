@@ -23,6 +23,7 @@
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/Support/JSON.h>
 
 namespace llvm {
 class BasicBlock;
@@ -63,10 +64,14 @@ struct ValueDecl {
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  llvm::json::Object SerializeToJSON();
 };
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
+
+  llvm::json::Object SerializeToJSON();
 };
 
 struct GlobalVarDecl {
@@ -158,6 +163,9 @@ struct FunctionDecl {
       llvm::BasicBlock *block,
       llvm::Value *state_ptr,
       llvm::Value *mem_ptr) const;
+
+  llvm::json::Object SerializeToJSON();
+  static FunctionDecl Create(const llvm::Function &func);
 
  private:
   friend class Program;

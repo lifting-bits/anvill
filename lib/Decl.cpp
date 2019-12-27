@@ -28,6 +28,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/JSON.h>
+#include <llvm/Demangle/Demangle.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
@@ -35,6 +37,7 @@
 #include <remill/BC/Util.h>
 
 #include "Lift.h"
+#include "anvill/Arch.h"
 
 namespace anvill {
 
@@ -186,6 +189,117 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   } else {
     return mem_ptr;
   }
+}
+
+// Serialize a FunctionDecl to JSON
+llvm::json::Object FunctionDecl::SerializeToJSON() {
+  llvm::json::Object json;
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+
+  llvm::json::Array params_json;
+  for (auto pdecl : this->params) {
+    llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON());
+    params_json.push_back(v);
+  }
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("parameters"),
+                             llvm::json::Value(std::move(params_json))});
+
+  llvm::json::Array returns_json;
+  for (auto rdecl : this->returns) {
+    returns_json.push_back(llvm::json::Value(rdecl.SerializeToJSON()));
+  }
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("return values"),
+                             llvm::json::Value(std::move(returns_json))});
+
+  return json;
+}
+
+// Serialize a ParameterDecl to JSON
+llvm::json::Object ParameterDecl::SerializeToJSON() {
+  // Get the serialization for the ValueDecl
+  ValueDecl *val_decl_ptr = dynamic_cast<ValueDecl *>(this);
+  llvm::json::Object param_json = val_decl_ptr->SerializeToJSON();
+
+  // Insert "name"
+  param_json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+
+  return param_json;
+}
+
+// Serialize a ValueDecl to JSON
+llvm::json::Object ValueDecl::SerializeToJSON() {
+  llvm::json::Object value_json;
+
+  if (this->reg) {
+    // The value is in a register
+    value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
+                                             this->reg->name});
+  } else if (this->mem_reg) {
+    // The value is in memory
+    llvm::json::Object memory_json;
+    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
+                                              this->mem_reg->name});
+    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("offset"),
+                                              this->mem_reg->offset});
+
+    // Wrap the memory_json structure in a memory block
+    value_json.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
+                               llvm::json::Value(std::move(memory_json))});
+  } else {
+    LOG(ERROR) << "Trying to serialize a value that has not been allocated";
+    exit(1);
+  }
+
+  value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
+                                           TranslateType(*this->type)});
+
+  // Note:: Ignore mem_offset for now becuare remill::Register has that
+  // information.
+
+  return value_json;
+}
+
+// Create a Function Declaration from llvm::Function
+FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
+  FunctionDecl decl;
+  decl.type = func.getFunctionType();
+  
+  // Try to demangle the function name if we can
+  decl.name = llvm::demangle(func.getName().data());
+
+  // Try to guess the parameter and return value register allocation by looking
+  // at the calling convention of the function
+  llvm::CallingConv::ID cc_id = func.getCallingConv();
+  std::unique_ptr<CallingConvention> cc = nullptr;
+
+  switch (cc_id) {
+    case llvm::CallingConv::X86_64_SysV:
+      cc = std::make_unique<anvill::X86_64_SysV>();
+    default:
+      // TODO: find a better way to do this since the calling conventions given
+      // by llvm::function cannot be trusted
+      cc = std::make_unique<anvill::X86_64_SysV>();
+  }
+
+  decl.params = cc->BindParameters(func);
+  decl.returns = cc->BindReturnValues(func);
+
+  // TODO: for a better and more comprehensive serialization
+  // decl->address =
+  // decl->return_address =
+  // decl->return_stack_pointer =
+  // decl->return_stack_pointer_offset =
+  // decl->is_noreturn =
+  // decl->is_variadic =
+  // decl->num_bytes_in_redzone =
+
+  return decl;
 }
 
 }  // namespace anvill
