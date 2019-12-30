@@ -215,6 +215,20 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
       llvm::json::Object::KV{llvm::json::ObjectKey("return values"),
                              llvm::json::Value(std::move(returns_json))});
 
+  if (this->return_stack_pointer) {
+    llvm::json::Object return_stack_pointer_json;
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("register"), this->return_stack_pointer->name});
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("offset"), this->return_stack_pointer->offset});
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("type"),
+        TranslateType(*this->return_stack_pointer->type)});
+
+    json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("return stack pointer"),
+        llvm::json::Value(std::move(return_stack_pointer_json))});
+  }
   return json;
 }
 
@@ -289,6 +303,7 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
 
   decl.params = cc->BindParameters(func);
   decl.returns = cc->BindReturnValues(func);
+  decl.return_stack_pointer = cc->BindReturnStackPointer(func);
 
   // TODO: for a better and more comprehensive serialization
   // decl->address =

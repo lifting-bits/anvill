@@ -75,6 +75,8 @@ class CallingConvention {
       const llvm::Function &function) = 0;
   virtual std::vector<ValueDecl> BindReturnValues(
       const llvm::Function &function) = 0;
+  virtual remill::Register *BindReturnStackPointer(
+      const llvm::Function &function) = 0;
 
   llvm::CallingConv::ID getIdentity() { return identity; }
 
@@ -88,6 +90,7 @@ class X86_64_SysV : public CallingConvention {
   ~X86_64_SysV(){};
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
+  remill::Register *BindReturnStackPointer(const llvm::Function &function);
 
  private:
   // TODO: add the rest of the Registers here, not just the 32-bit and 64-bit

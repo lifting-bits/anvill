@@ -180,6 +180,19 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   return parameter_declarations;
 }
 
+remill::Register *X86_64_SysV::BindReturnStackPointer(const llvm::Function &function) {
+  // For the X86_64_SysV ABI, it is always:
+  //
+  // "return_stack_pointer": {
+  //     "offset": "8",
+  //     "register": "RSP",
+  //     "type": "L"
+  // }
+
+  auto int64_ptr_ty = llvm::IntegerType::get(function.getContext(), 64);
+  return new remill::Register("RSP", 8, 8, 0, int64_ptr_ty);
+}
+
 // TODO: This doesn't really fit here so I will need to find a better place for
 // this. It also needs to be rewritten to conform to spec so its okay to leave
 // it here for now.
@@ -216,7 +229,21 @@ std::string TranslateType(const llvm::Type &type) {
       break;
     }
     case llvm::Type::StructTyID: {
+      LOG(INFO) << "struct";
       ret = "struct";
+      auto struct_ptr = llvm::cast<llvm::StructType>(&type);
+      std::string struct_list = "";
+      LOG(INFO) << struct_ptr->getNumElements();
+      for (unsigned i = 0; i < struct_ptr->getNumElements(); i++) {
+        if (struct_ptr->getElementType(i)->isPtrOrPtrVectorTy()) {
+          struct_list += "ptr_unknown";
+          continue;
+        }
+        struct_list +=
+            "(" + TranslateType(*struct_ptr->getElementType(i)) + ")";
+      }
+      ret += " [" + struct_list + "]";
+
       break;
     }
     case llvm::Type::ArrayTyID: {

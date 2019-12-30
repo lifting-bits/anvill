@@ -15,6 +15,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Demangle/Demangle.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
 
   // Allow all log messages for debugging
-  // FLAGS_stderrthreshold = 0;
+  FLAGS_stderrthreshold = 0;
 
   if (FLAGS_bc_file.empty()) {
     LOG(ERROR) << "Please specify a path to a BITcode input file in --bc_file";
@@ -89,8 +90,10 @@ int main(int argc, char *argv[]) {
   for (auto &function : *module) {
     // Skip llvm dbg functions for now
     // TODO: find a way to deal with this
-    std::string function_name = function.getName().data();
+    std::string function_name = llvm::demangle(function.getName().data());
     if (function_name.find("llvm.") == 0) continue;
+
+    // if (function_name.find("dummy") != 0) continue;
 
     funcs_json.push_back(
         anvill::FunctionDecl::Create(function).SerializeToJSON());
