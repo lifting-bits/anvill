@@ -17,20 +17,16 @@ import pprint
 import enum
 import sys
 
-from collections import defaultdict, OrderedDict
-from collections import namedtuple
-
-try:
-  from elftools.dwarf.descriptions import (describe_DWARF_expr, set_global_machine_arch, describe_form_class)
-  from elftools.elf.elffile import ELFFile
-
-except ImportError:
-  print("pyelftools not installed (pip install pyelftools)!")
-
 from .exc import *
 from .os import *
 from .type import *
-from .dwarf_type import *  
+
+try:
+  from elftools.dwarf.descriptions import (describe_DWARF_expr, set_global_machine_arch, describe_form_class)
+  from .dwarf_type import *
+
+except ImportError:
+  print("pyelftools not installed (pip install pyelftools)!")
 
 
 class DWVariable(object):
@@ -129,21 +125,28 @@ class DWCompileUnit(object):
 class DWARFCore(object):
   """ DWARF core handler class"""
   def __init__(self, in_file):
-    f = open(in_file, 'rb')
-    self._felf = ELFFile(f)
-    self._arch = self._felf.get_machine_arch()
-    self._dwarf_info = self._felf.get_dwarf_info()
-    
-    # Load die to the die cache
-    for cu in self._dwarf_info.iter_CUs():
-      top_die = cu.get_top_DIE()
-      DWARFCache._dw_cu_cache[cu.cu_offset] = DWCompileUnit(top_die)
-      for die in cu.iter_DIEs():
-        DWARFCache._offset_to_die[die.offset] = die
+    try:
+      from elftools.elf.elffile import ELFFile
 
-    self._load_types()    
-    self._load_subprograms()
-    self._load_globalvars()
+      f = open(in_file, 'rb')
+      self._felf = ELFFile(f)
+      self._arch = self._felf.get_machine_arch()
+      self._dwarf_info = self._felf.get_dwarf_info()
+      if self._dwarf_info is None:
+        return
+    
+      # Load die to the die cache
+      for cu in self._dwarf_info.iter_CUs():
+        top_die = cu.get_top_DIE()
+        DWARFCache._dw_cu_cache[cu.cu_offset] = DWCompileUnit(top_die)
+        for die in cu.iter_DIEs():
+          DWARFCache._offset_to_die[die.offset] = die
+
+      self._load_types()    
+      self._load_subprograms()
+      self._load_globalvars()
+    except ImportError:
+      pass
 
   def _process_dies(self, die, fn):
     fn(die)
