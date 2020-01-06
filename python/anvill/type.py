@@ -157,6 +157,9 @@ class PointerType(Type):
     super(PointerType, self).__init__()
     self._elem_type = None
 
+  def size(self, arch):
+    return arch.pointer_size()
+
   def set_element_type(self, elem_type):
     assert isinstance(elem_type, Type)
     self._elem_type = elem_type

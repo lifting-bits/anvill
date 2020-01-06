@@ -25,6 +25,7 @@ import ida_ida
 import ida_idaapi
 import ida_idp
 import ida_nalt
+import ida_name
 import ida_segment
 import ida_typeinf
 import ida_xref
@@ -51,7 +52,7 @@ def _guess_os():
   file_type = inf.filetype
   if file_type in (ida_ida.f_ELF, ida_ida.f_AOUT, ida_ida.f_COFF):
     return "linux"
-  elif file_type == ida_ida.g_MACHO:
+  elif file_type == ida_ida.f_MACHO:
     return "macos"
   elif file_type in (ida_ida.g_PE, ida_ida.f_EXE, ida_ida.f_EXE_old, ida_ida.f_COM, ida_ida.f_COM_old):
     return "windows"
@@ -71,7 +72,7 @@ def _guess_architecture():
     else:
       return "x86"
 
-  elif "ARM" in info.procName:
+  elif "ARM" in inf.procName:
     if inf.is_64bit():
       return "aarch64"
     else:
@@ -596,20 +597,78 @@ class IDAFunction(Function):
 
     # Now go and inspect cross-referenced date/code, and add it to the program.
     for ref_ea in ref_eas:
-      program.add_function_declaration(ref_ea)
+      try:
+        program.add_function_declaration(ref_ea)
+      except InvalidFunctionException:
+        program.add_variable_declaration(ref_ea)
 
       # TODO(pag): Global variables.
       # TODO(pag): Other memory, e.g. read-only, non-global vars.
 
+
+class IDAVariable(Variable):
+  def __init__(self, arch, address, type_, ida_seg):
+    super(IDAVariable, self).__init__(arch, address, type_)
+    self._ida_seg = ida_seg
+
+  def name(self):
+    ea = self.address()
+    try:
+      flags = ida_bytes.get_full_flags(ea)
+      if ida_bytes.has_name(flags):
+        return ida_name.get_ea_name(ea)
+    except:
+      pass
+    return ""
+
+  def visit(self, program, is_definition):
+    if not is_definition:
+      return
+
+    memory = program.memory()
+    # TODO
 
 class IDAProgram(Program):
   def __init__(self, *args):
     super(IDAProgram, self).__init__(_get_arch(), _get_os())
     self._functions = weakref.WeakValueDictionary()
     self._dwarf = DWARFCore(idc.GetInputFilePath())
+    self._variables = weakref.WeakValueDictionary()
+
+  def get_variable(self, address):
+    """Given an address, return a `Variable` instance, or
+    raise an `InvalidVariableException` exception."""
+    if address in self._variables:
+      return self._variables[address]
+
+    arch = self._arch
+
+    seg_ref = [None]
+    if not _find_segment_containing_ea(address, seg_ref):
+      raise InvalidVariableException(
+          "No variable defined at or containing address {:x}".format(address))
+
+    seg = seg_ref[0]
+
+    tif = ida_typeinf.tinfo_t()
+    if not ida_nalt.get_tinfo(tif, address):
+      ida_typeinf.guess_tinfo(tif, address)
+
+    # Try to handle a variable type, otherwise make it big and empty.
+    try:
+      var_type = get_type(tif)
+    except UnhandledTypeException as e:
+      # TODO(pag): Make it a big empty array type? (especially if it's in .bss)
+      raise InvalidVariableException(
+          "Could not assign type to function at address {:x}: {}".format(
+              address, str(e)))
+
+    var = IDAVariable(arch, address, var_type, seg)
+    self._variables[address] = var
+    return var
 
   def get_function(self, address):
-    """Given an architecture and an address, return a `Function` instance or
+    """Given an address, return a `Function` instance or
     raise an `InvalidFunctionException` exception."""
     arch = self._arch
 

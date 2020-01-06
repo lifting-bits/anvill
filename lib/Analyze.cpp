@@ -19,6 +19,8 @@
 
 #include <glog/logging.h>
 
+#include <map>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -46,6 +48,7 @@ namespace anvill {
 namespace {
 
 struct Cell {
+  llvm::Function *containing_func{nullptr};
   llvm::Type *type{nullptr};
   llvm::User *user{nullptr};
   llvm::ConstantInt *address_val{nullptr};
@@ -86,6 +89,36 @@ void UnfoldConstantExpressions(llvm::Instruction *inst) {
   }
 }
 
+// Expand a type into `out_types`, so that we can iterate over the elements
+// more easily.
+static void FlattenTypeInto(llvm::Type *type,
+                            std::vector<llvm::Type *> &out_types) {
+
+  if (auto arr_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
+    const auto elem_type = arr_type->getArrayElementType();
+    const auto num_elems = arr_type->getArrayNumElements();
+    for (auto i = 0U; i < num_elems; ++i) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else if (auto rec_type = llvm::dyn_cast<llvm::StructType>(type)) {
+    for (auto elem_type : rec_type->elements()) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else if (auto vec_type = llvm::dyn_cast<llvm::VectorType>(type)) {
+    const auto elem_type = vec_type->getVectorElementType();
+    const auto num_elems = vec_type->getVectorNumElements();
+    for (auto i = 0U; i < num_elems; ++i) {
+      FlattenTypeInto(elem_type, out_types);
+    }
+
+  } else {
+    out_types.push_back(type);
+  }
+}
+
+
 // Recursively scans through llvm Values and tries to find uses of
 // constant integers. The use case of this is to find uses of
 // stack variables and global variables.
@@ -121,14 +154,22 @@ static void FindConstantBases(
         FindConstantBases(inst, inst->getOperand(0), bases, seen);
         break;
       case llvm::Instruction::Sub:
-        FindConstantBases(inst, inst->getOperand(0), bases, seen);
-        break;
       case llvm::Instruction::Add:
-      case llvm::Instruction::And:
-      case llvm::Instruction::Or:
         FindConstantBases(inst, inst->getOperand(0), bases, seen);
-        FindConstantBases(inst, inst->getOperand(1), bases, seen);
         break;
+
+      // TODO(pag): Think through `Add`, `And`, and `Or` more.
+
+//      case llvm::Instruction::Add:
+//      case llvm::Instruction::And:
+//      case llvm::Instruction::Or: {
+//        auto lhs = inst->getOperand(0);
+//        auto rhs = inst->getOperand(1);
+//      }
+//
+//        FindConstantBases(inst, inst->getOperand(0), bases, seen);
+//        FindConstantBases(inst, , bases, seen);
+//        break;
       default:
         break;
     }
@@ -176,8 +217,7 @@ static llvm::Type *GetUpstreamTypeFromPointer(llvm::Value *val) {
 static void FindMemoryReferences(
     const Program &program, llvm::Function &func,
     std::unordered_map<llvm::Function *, std::vector<Cell>> &stack_cells,
-    std::unordered_map<llvm::Function *, std::vector<Cell>> &global_cells,
-    std::vector<Cell> &unknown_cells) {
+    std::vector<Cell> &global_cells) {
 
   llvm::DataLayout dl(func.getParent());
 
@@ -189,6 +229,7 @@ static void FindMemoryReferences(
     for (auto &inst : block) {
 
       Cell cell;
+      cell.containing_func = &func;
 
       llvm::Value *address_val = nullptr;
 
@@ -233,7 +274,8 @@ static void FindMemoryReferences(
           cell.is_load = true;
           cell.is_store = true;
           cell.is_atomic = true;
-          cell.type = GetUpstreamTypeFromPointer(call_inst->getArgOperand(2));
+          cell.type = GetUpstreamTypeFromPointer(
+              call_inst->getArgOperand(2));
 
         // Loads from memory mapped I/O.
         } else if (name.startswith("__remill_read_io_port_")) {
@@ -287,7 +329,7 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells[&func].push_back(cell);
+          global_cells.push_back(cell);
         }
       }
     }
@@ -320,7 +362,7 @@ static void FindMemoryReferences(
         if (byte.IsStack()) {
           stack_cells[&func].push_back(cell);
         } else {
-          global_cells[&func].push_back(cell);
+          global_cells.push_back(cell);
         }
       }
     }
@@ -466,27 +508,80 @@ static void LowerMemOps(llvm::LLVMContext &context, llvm::Module &module) {
   ReplaceBarrier(module, "__remill_barrier_atomic_end");
 }
 
+// Build up a list of indexes into `type` to get as near as possible to
+// `remainder`, which should always be less than the size of `type`. Returns
+// the difference between what we indexed to and `remainder`.
+static uint64_t GetIndexesInto(
+    const llvm::DataLayout &dl, llvm::Type *type,
+    std::vector<llvm::Value *> indexes, uint64_t remainder) {
+  uint64_t offset = 0;
+  auto index_type = indexes[0]->getType();
+
+  if (auto arr_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
+    const auto elem_type = arr_type->getArrayElementType();
+    const auto num_elems = arr_type->getArrayNumElements();
+    const auto elem_size = dl.getTypeAllocSize(elem_type);
+    auto i = 0U;
+    for (; i < num_elems && (offset + elem_size) <= remainder; ++i) {
+      offset += elem_size;
+    }
+
+    indexes.push_back(llvm::ConstantInt::get(index_type, i));
+    return GetIndexesInto(dl, elem_type, indexes, remainder - offset);
+
+  } else if (auto vec_type = llvm::dyn_cast<llvm::VectorType>(type)) {
+    const auto elem_type = vec_type->getVectorElementType();
+    const auto num_elems = vec_type->getVectorNumElements();
+    const auto elem_size = dl.getTypeAllocSize(elem_type);
+    auto i = 0U;
+    for (; i < num_elems && (offset + elem_size) <= remainder; ++i) {
+      offset += elem_size;
+    }
+
+    indexes.push_back(llvm::ConstantInt::get(index_type, i));
+    return GetIndexesInto(dl, elem_type, indexes, remainder - offset);
+
+  } else if (auto rec_type = llvm::dyn_cast<llvm::StructType>(type)) {
+    auto i = 0U;
+    for (auto elem_type : rec_type->elements()) {
+      auto elem_size = dl.getTypeAllocSize(elem_type);
+      if ((offset + elem_size) <= remainder) {
+        ++i;
+        offset += elem_size;
+      } else {
+        indexes.push_back(llvm::ConstantInt::get(index_type, i));
+        return GetIndexesInto(dl, elem_type, indexes,
+                              remainder - offset);
+      }
+    }
+
+    LOG(FATAL)
+        << "Fell off the end of " << remill::LLVMThingToString(rec_type);
+
+  } else {
+    return remainder;
+  }
+}
+
 }  // namespace
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
+void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   llvm::DataLayout dl(&module);
   std::map<uint64_t, llvm::GlobalValue *> nearby;
 
   // Go collect type information for all memory accesses.
   std::unordered_map<llvm::Function *, std::vector<Cell>> stack_cells;
-  std::unordered_map<llvm::Function *, std::vector<Cell>> global_cells;
-  std::vector<Cell> unknown_cells;
+  std::vector<Cell> global_cells;
 
   program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
     const auto func = decl->DeclareInModule(module);
     nearby[decl->address] = func;
 
     if (func && !func->isDeclaration()) {
-      FindMemoryReferences(
-          program, *func, stack_cells, global_cells, unknown_cells);
+      FindMemoryReferences(program, *func, stack_cells, global_cells);
     }
     return true;
   });
@@ -499,6 +594,7 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   });
 
   std::unordered_map<uint64_t, std::unordered_map<llvm::Type *, int>> popularity;
+
   for (auto &func_stack_cells : stack_cells) {
     auto &cells = func_stack_cells.second;
     for (auto &cell : cells) {
@@ -506,6 +602,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
     }
   }
 
+  // Order cells to prefer wider types over smaller types, or wider aligned
+  // types over lesser aligned types.
   auto order_cells = [&dl, &popularity] (const Cell &a, const Cell &b) -> bool {
     if (a.address_const < b.address_const) {
       return true;
@@ -534,17 +632,23 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   auto i8_ptr_type = llvm::PointerType::get(i8_type, 0);
   auto i32_type = llvm::Type::getInt32Ty(context);
 
+  // Scan through the stack cells and try to compute bounds on the stack frame
+  // so that we can create a structure representing the stack frame.
   for (auto &func_stack_cells : stack_cells) {
     auto func = func_stack_cells.first;
     auto &cells = func_stack_cells.second;
     std::sort(cells.begin(), cells.end(), order_cells);
-
-    uint64_t min_stack_address = *program.InitialStackPointer();
+    auto sp = program.InitialStackPointer();
+    if (!sp) {
+      LOG(FATAL) << "Found invalid initial stack pointer";
+    }
+    uint64_t min_stack_address = *sp;
     uint64_t max_stack_address = min_stack_address;
 
     for (const auto &cell : cells) {
       min_stack_address = std::min(min_stack_address, cell.address_const);
-      max_stack_address = std::max(max_stack_address, cell.address_const + cell.size);
+      max_stack_address = std::max(max_stack_address,
+                                   cell.address_const + cell.size);
     }
 
     // NOTE(pag): This is based off of the amd64 ABI redzone, and
@@ -565,7 +669,8 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
       } else if (running_addr > cell.address_const) {
         LOG(ERROR)
             << "SKIPPING " << std::hex << " " << cell.address_const << std::dec
-            << " " << remill::LLVMThingToString(cell.type) << " size " << cell.size;
+            << " " << remill::LLVMThingToString(cell.type) << " size "
+            << cell.size;
         continue;
       }
 
@@ -602,38 +707,271 @@ void RecoveryMemoryAccesses(const Program &program, llvm::Module &module) {
   }
 
   popularity.clear();
-  for (auto &func_global_cells : global_cells) {
-    auto &cells = func_global_cells.second;
-    for (auto &cell : cells) {
-      popularity[cell.address_const][cell.type] += 1;
+
+  // Go collect basic type popularity info across all functions but for
+  // things that look like global variables.
+  auto max_popularity = 0;
+  for (auto &cell : global_cells) {
+    popularity[cell.address_const][cell.type] += 1;
+    max_popularity += 1;
+  }
+
+  size_t max_var_size = 0;
+
+  // Go through the actual declared types in the global variables and add to
+  // the popularity. This forces them to be the ideal types for what we have
+  // specified.
+  program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
+    auto var = llvm::dyn_cast<llvm::GlobalVariable>(nearby[decl->address]);
+    std::vector<llvm::Type *> types;
+    FlattenTypeInto(var->getValueType(), types);
+    size_t offset = 0;
+    for (auto type : types) {
+      auto size = dl.getTypeAllocSize(type);
+      popularity[decl->address + offset][type] += max_popularity;
+      offset += size;
+    }
+
+    // Keep track of the maximum declared size of a global variable. We'll use
+    // it to decide how far to look forward/backwared given an arbitrary
+    // address.
+    if (offset > max_var_size) {
+      max_var_size = offset;
+    }
+
+    return true;
+  });
+
+  std::sort(global_cells.begin(), global_cells.end(), order_cells);
+
+  // Try to partition what we know about memory into global variables, and then
+  // add them to `nearby` as new globals.
+  auto cell_it = global_cells.begin();
+  while (cell_it != global_cells.end()) {
+
+    std::vector<llvm::Type *> types;
+    types.push_back(cell_it->type);
+
+    const auto addr = cell_it->address_const;
+    auto next_addr = addr + cell_it->size;
+    auto is_packed = false;
+    ++cell_it;
+
+    while (cell_it != global_cells.end()) {
+
+      // Next cell is covered in this cell.
+      if (cell_it->address_const < next_addr) {
+        auto maybe_next_addr = cell_it->address_const + cell_it->size;
+
+        // Ugh, it actually straddles this cell, add in some padding.
+        for (; next_addr < maybe_next_addr; ++next_addr) {
+          types.push_back(llvm::Type::getInt8Ty(context));
+          is_packed = true;
+        }
+
+        ++cell_it;
+        continue;
+
+      // Next cell is adjacent to this cell, extend us.
+      } else if (cell_it->address_const == next_addr) {
+        next_addr += next_addr + cell_it->size;
+        types.push_back(cell_it->type);
+        ++cell_it;
+        continue;
+
+      // There is a gap, we have the end of a global variable.
+      } else {
+        break;
+      }
+    }
+
+    std::stringstream ss;
+    ss << "data_" << std::hex << addr;
+
+    auto global_type = llvm::StructType::get(context, types, is_packed);
+    auto global_size = dl.getTypeAllocSize(global_type);
+    auto &global = nearby[addr];
+
+    if (auto existing_global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(global)) {
+      if (dl.getTypeAllocSize(existing_global->getValueType()) < global_size) {
+        auto name = existing_global->getName();
+        LOG(WARNING)
+            << "Found overlapping global variables '" << ss.str()
+            << "' and '" << name.str() << "'";
+
+        // TODO(pag): Make `existing_global` and alias of `global`.
+        existing_global->eraseFromParent();
+        global->setName(name);
+      }
+    } else {
+      global = new llvm::GlobalVariable(
+          module, global_type, false, llvm::GlobalValue::ExternalLinkage,
+          nullptr, ss.str());
     }
   }
 
-//  for (auto &func_global_cells : global_cells) {
-//    auto func = func_global_cells.first;
-//    auto &cells = func_global_cells.second;
-//    std::sort(cells.begin(), cells.end(), order_cells);
-//
-//    llvm::IRBuilder<> ir(&(func->getEntryBlock().front()));
-//
-//    for (const auto &cell : cells) {
-//      for (auto &use : cell.address_val->uses()) {
-//        if (use.getUser() != cell.user) {
-//          continue;
-//        }
-//
-//
-//        llvm::Value *indexes[] = {
-//            llvm::ConstantInt::get(
-//                i32_type, cell.address_const)
-//        };
-//        auto gep = ir.CreateInBoundsGEP(i8_type, i8_frame, indexes);
-//
-//        use.set(ir.CreatePtrToInt(gep, cell.address_val->getType()));
-//      }
-//    }
-//  }
+  for (auto &cell : global_cells) {
+    if (!max_var_size) {
+      break;  // No global variables.
+    }
 
+    llvm::IRBuilder<> ir(&(cell.containing_func->getEntryBlock().front()));
+
+    for (auto &use : cell.address_val->uses()) {
+      if (use.getUser() != cell.user) {
+        continue;
+      }
+
+      // Best case, perfect match against something we have.
+      if (nearby.count(cell.address_const)) {
+        use.set(ir.CreatePtrToInt(
+            nearby[cell.address_const], cell.address_val->getType()));
+
+      // Go try to find the one containing this cell.
+      } else {
+        uint64_t min_scan = 0;
+        if (cell.address_const > max_var_size) {
+          min_scan = cell.address_const - max_var_size + 1;
+        }
+
+        // Search around for the closest global variable.
+        for (auto a = min_scan; a < cell.address_const; ++a) {
+          auto near_a_it = nearby.find(a);
+          if (near_a_it == nearby.end()) {
+            continue;
+          }
+
+          // Don't let us find nearby functions, displacing a bitcode function
+          // doesn't make sense.
+          auto near_a = llvm::dyn_cast<llvm::GlobalVariable>(
+              near_a_it->second);
+          if (!near_a) {
+            continue;
+          }
+
+          auto near_a_type = near_a->getValueType();
+          auto near_a_size = dl.getTypeAllocSize(near_a_type);
+
+          // The global doesn't include our cell.
+          if ((a + near_a_size) < cell.address_const) {
+            continue;
+          }
+
+          const auto addr_type = cell.address_val->getType();
+          use.set(ir.CreateAdd(
+              ir.CreatePtrToInt(near_a, addr_type),
+              llvm::ConstantInt::get(
+                  addr_type, cell.address_const - a, false)));
+          break;
+        }
+      }
+    }
+  }
+
+  // Go find all pointers, so that we can handle displacements from those
+  // uniformly. We introduce pointers in terms of parameters, return values,
+  // and globals.
+  std::vector<llvm::Value *> pointers;
+  for (auto &global_or_func : nearby) {
+    auto global = llvm::dyn_cast<llvm::GlobalVariable>(global_or_func.second);
+    if (global) {
+      pointers.push_back(global);
+    } else {
+      auto func = llvm::dyn_cast<llvm::Function>(global_or_func.second);
+      for (auto &arg : func->args()) {
+        if (arg.getType()->isPointerTy()) {
+          pointers.push_back(&arg);
+        }
+      }
+
+      if (!func->getReturnType()->isPointerTy()) {
+        continue;
+      }
+
+      for (auto maybe_caller : func->users()) {
+        if (auto ci = llvm::dyn_cast<llvm::CallInst>(maybe_caller)) {
+          pointers.push_back(ci);
+        }
+      }
+    }
+  }
+
+  // Go through and replace things like `ptrtoint+add` with `gep`s.
+  for (auto ptr : pointers) {
+    auto type = ptr->getType()->getPointerElementType();
+    auto size = dl.getTypeAllocSize(type);
+    std::vector<llvm::Value *> indexes;
+
+    for (auto &use : ptr->uses()) {
+      const auto ptr_to_int = llvm::dyn_cast<llvm::PtrToIntOperator>(use.getUser());
+      if (!ptr_to_int) {
+        continue;
+      }
+
+      auto addr_type = ptr_to_int->getType();
+
+      for (auto &pti_use : ptr_to_int->uses()) {
+        const auto add = llvm::dyn_cast<llvm::AddOperator>(pti_use.getUser());
+        if (!add) {
+          continue;
+        }
+
+        llvm::Value *disp = nullptr;
+        if (add->getOperand(0) == ptr_to_int) {
+          disp = add->getOperand(1);
+        } else {
+          disp = add->getOperand(0);
+        }
+
+        auto ci = llvm::dyn_cast<llvm::ConstantInt>(disp);
+        if (!ci) {
+          // TODO(pag): Some kind of pattern matching, e.g. look for things like
+          //            a * ci_size for array indexing, perhaps.
+          continue;
+        }
+
+        uint64_t disp_val = ci->getZExtValue();
+        uint64_t base_index = disp_val / size;
+        uint64_t remainder = disp_val % size;
+
+        indexes.clear();
+        indexes.push_back(llvm::ConstantInt::get(addr_type, base_index));
+        remainder = GetIndexesInto(dl, type, indexes, remainder);
+
+        llvm::Value *gep = nullptr;
+        if (auto global = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
+          auto gep0 = llvm::ConstantExpr::getGetElementPtr(
+              nullptr, global, indexes);
+          auto gep1 = llvm::ConstantExpr::getPtrToInt(gep0, addr_type);
+          if (remainder) {
+            gep = llvm::ConstantExpr::getAdd(
+                gep1, llvm::ConstantInt::get(addr_type, remainder));
+          } else {
+            gep = gep1;
+          }
+        } else if (llvm::isa<llvm::Argument>(ptr) ||
+                   llvm::isa<llvm::Instruction>(ptr)) {
+          auto insert_loc = llvm::dyn_cast<llvm::Instruction>(add);
+          gep = llvm::GetElementPtrInst::Create(
+              nullptr, ptr, indexes, "", insert_loc);
+          gep = new llvm::PtrToIntInst(gep, addr_type, "", insert_loc);
+          if (remainder) {
+            gep = llvm::BinaryOperator::Create(
+                llvm::Instruction::Add, gep,
+                llvm::ConstantInt::get(addr_type, remainder), "", insert_loc);
+          }
+        }
+
+        if (!gep) {
+          LOG(ERROR)
+              << "Could not GEP into " << remill::LLVMThingToString(ptr);
+          continue;
+        }
+
+        add->replaceAllUsesWith(gep);
+      }
+    }
+  }
 
   LowerMemOps(context, module);
 }
