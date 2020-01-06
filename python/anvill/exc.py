@@ -43,3 +43,5 @@ class InvalidVariableException(AnvillException):
 class InvalidLocationException(AnvillException):
   pass
 
+class ParseException(AnvillException):
+  pass
