@@ -632,7 +632,7 @@ class IDAProgram(Program):
   def __init__(self, *args):
     super(IDAProgram, self).__init__(_get_arch(), _get_os())
     self._functions = weakref.WeakValueDictionary()
-    self._dwarf = DWARFCore(idc.GetInputFilePath())
+    self._dwarf = DWARFCore(ida_nalt.get_input_file_path())
     self._variables = weakref.WeakValueDictionary()
 
   def get_variable(self, address):
