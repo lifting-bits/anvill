@@ -20,6 +20,7 @@
 #include <glog/logging.h>
 
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -118,23 +119,23 @@ static void FlattenTypeInto(llvm::Type *type,
   }
 }
 
-
 // Recursively scans through llvm Values and tries to find uses of
 // constant integers. The use case of this is to find uses of
 // stack variables and global variables.
 static void FindConstantBases(
     llvm::User *user,
     llvm::Value *val,
-    std::unordered_map<llvm::User *, llvm::ConstantInt *> &bases,
-    std::unordered_set<llvm::Value *> &seen) {
-  if (seen.count(val)) {
+    std::unordered_map<llvm::User *, std::vector<llvm::ConstantInt *>> &bases,
+    std::set<std::pair<llvm::User *, llvm::Value *>> &seen) {
+
+  auto seen_size = seen.size();
+  seen.emplace(user, val);
+  if (seen_size == seen.size()) {
     return;
   }
 
-  seen.insert(val);
-
   if (auto const_val = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-    bases[user] = const_val;
+    bases[user].push_back(const_val);
 
   } else if (auto inst = llvm::dyn_cast<llvm::Instruction>(val)) {
     switch (inst->getOpcode()) {
@@ -222,8 +223,8 @@ static void FindMemoryReferences(
   llvm::DataLayout dl(func.getParent());
 
   std::vector<llvm::CallInst *> calls;
-  std::unordered_map<llvm::User *, llvm::ConstantInt *> bases;
-  std::unordered_set<llvm::Value *> seen;
+  std::unordered_map<llvm::User *, std::vector<llvm::ConstantInt *>> user_bases;
+  std::set<std::pair<llvm::User *, llvm::Value *>> seen;
 
   for (auto &block : func) {
     for (auto &inst : block) {
@@ -317,19 +318,21 @@ static void FindMemoryReferences(
 
       cell.size = static_cast<uint16_t>(dl.getTypeAllocSize(cell.type));
 
-      bases.clear();
+      user_bases.clear();
       seen.clear();
-      FindConstantBases(&inst, address_val, bases, seen);
+      FindConstantBases(&inst, address_val, user_bases, seen);
 
-      for (auto &base : bases) {
-        cell.user = base.first;
-        cell.address_val = base.second;
-        cell.address_const = base.second->getZExtValue();
-        auto byte = program.FindByte(cell.address_const);
-        if (byte.IsStack()) {
-          stack_cells[&func].push_back(cell);
-        } else {
-          global_cells.push_back(cell);
+      for (auto &user_base_list : user_bases) {
+        cell.user = user_base_list.first;
+        for (auto base : user_base_list.second) {
+          cell.address_val = base;
+          cell.address_const = base->getZExtValue();
+          auto byte = program.FindByte(cell.address_const);
+          if (byte.IsStack()) {
+            stack_cells[&func].push_back(cell);
+          } else {
+            global_cells.push_back(cell);
+          }
         }
       }
     }
@@ -350,20 +353,22 @@ static void FindMemoryReferences(
       cell.type = val->getType()->getPointerElementType();
       cell.size = static_cast<uint16_t>(dl.getTypeAllocSize(cell.type));
 
-      bases.clear();
+      user_bases.clear();
       seen.clear();
 
-      FindConstantBases(call_inst, val, bases, seen);
-      for (auto &base : bases) {
-        cell.user = base.first;
-        cell.address_val = base.second;
-        cell.address_const = base.second->getZExtValue();
+      FindConstantBases(call_inst, val, user_bases, seen);
+      for (auto &user_base_list : user_bases) {
+        cell.user = user_base_list.first;
+        for (auto base : user_base_list.second) {
+          cell.address_val = base;
+          cell.address_const = base->getZExtValue();
 
-        auto byte = program.FindByte(cell.address_const);
-        if (byte.IsStack()) {
-          stack_cells[&func].push_back(cell);
-        } else {
-          global_cells.push_back(cell);
+          auto byte = program.FindByte(cell.address_const);
+          if (byte.IsStack()) {
+            stack_cells[&func].push_back(cell);
+          } else {
+            global_cells.push_back(cell);
+          }
         }
       }
     }
@@ -681,7 +686,9 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
 
     llvm::IRBuilder<> ir(&(func->getEntryBlock().front()));
-    const auto frame_type = llvm::StructType::get(context, types);
+    std::stringstream frame_ss;
+    const auto frame_type = llvm::StructType::create(
+        context, types, func->getName().str() + ".frame_type", false);
     const auto frame = ir.CreateAlloca(frame_type);
     const auto i8_frame = ir.CreateBitCast(frame, i8_ptr_type);
 
@@ -789,7 +796,8 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
     std::stringstream ss;
     ss << "data_" << std::hex << addr;
 
-    auto global_type = llvm::StructType::get(context, types, is_packed);
+    auto global_type = llvm::StructType::create(
+        context, types, ss.str() + ".type", is_packed);
     auto global_size = dl.getTypeAllocSize(global_type);
     auto &global = nearby[addr];
 
