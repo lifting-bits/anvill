@@ -348,7 +348,7 @@ void OptimizeModule(const Program &program, llvm::Module &module) {
 
   std::unordered_set<llvm::Function *> changed_funcs;
 
-  // These improve optimzability.
+  // These improve optimizability.
   MuteStateEscape(module, "__remill_function_return", changed_funcs);
   MuteStateEscape(module, "__remill_function_error", changed_funcs);
   MuteStateEscape(module, "__remill_missing_block", changed_funcs);
