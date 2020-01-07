@@ -417,6 +417,10 @@ class BNProgram(Program):
     self._functions[address] = func
     return func
 
+  @property
+  def functions(self):
+    for func in self._bv.functions:
+      yield (func.start, func.name)
 
 _PROGRAM = None
 
