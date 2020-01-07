@@ -132,6 +132,7 @@ class DWARFCore(object):
       file_type = magic.from_file(in_file)
       if 'ELF' not in file_type:
         print("{} is not an ELF-format binary".format(in_file))
+        self._dwarf_info = None
         return
 
       f = open(in_file, 'rb')
