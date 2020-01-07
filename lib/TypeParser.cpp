@@ -208,7 +208,11 @@ static llvm::Expected<llvm::Type *> ParseType(
               spec.str().c_str());
         }
 
-        return llvm::PointerType::get(elem_type, 0);
+        if (elem_type->isVoidTy()) {
+          return llvm::IntegerType::getInt8PtrTy(context, 0);
+        } else {
+          return llvm::PointerType::get(elem_type, 0);
+        }
       }
 
       // Parse a function type.
