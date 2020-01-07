@@ -513,7 +513,7 @@ static void LowerMemOps(llvm::LLVMContext &context, llvm::Module &module) {
 // the difference between what we indexed to and `remainder`.
 static uint64_t GetIndexesInto(
     const llvm::DataLayout &dl, llvm::Type *type,
-    std::vector<llvm::Value *> indexes, uint64_t remainder) {
+    std::vector<llvm::Value *> &indexes, uint64_t remainder) {
   uint64_t offset = 0;
   auto index_type = indexes[0]->getType();
 
@@ -935,7 +935,7 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
         uint64_t remainder = disp_val % size;
 
         indexes.clear();
-        indexes.push_back(llvm::ConstantInt::get(addr_type, base_index));
+        indexes.push_back(llvm::ConstantInt::get(i32_type, base_index));
         remainder = GetIndexesInto(dl, type, indexes, remainder);
 
         llvm::Value *gep = nullptr;
