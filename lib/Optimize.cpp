@@ -351,6 +351,7 @@ void OptimizeModule(const Program &program, llvm::Module &module) {
   // These improve optimzability.
   MuteStateEscape(module, "__remill_function_return", changed_funcs);
   MuteStateEscape(module, "__remill_function_error", changed_funcs);
+  MuteStateEscape(module, "__remill_missing_block", changed_funcs);
 
   // We can remove these when they are not used.
   RemoveUnusedCalls(module, "fpclassify", changed_funcs);
