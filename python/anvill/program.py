@@ -42,11 +42,11 @@ class Program(object):
 
   def add_variable_declaration(self, ea):
     var = self.get_variable(ea)
-    if isinstance(var, Function):
+    if isinstance(var, Variable):
       ea = var.address()
       if ea not in self._var_defs and ea not in self._var_decls:
-        self._var_decls[ea] = func
-        func.visit(self, False)
+        self._var_decls[ea] = var
+        var.visit(self, False)
       return True
     else:
       return False
@@ -96,14 +96,19 @@ class Program(object):
     proto["arch"] = self._arch.name()
     proto["os"] = self._os.name()
     proto["functions"] = []
-
-    # TODO(pag): Global variables.
+    proto["variables"] = []
 
     for func in self._func_decls.values():
       proto["functions"].append(func.proto())
 
     for func in self._func_defs.values():
       proto["functions"].append(func.proto())
+
+    for var in self._var_decls.values():
+      proto["variables"].append(var.proto())
+
+    for var in self._var_defs.values():
+      proto["variables"].append(var.proto())
 
     proto["memory"] = self._memory.proto()
 

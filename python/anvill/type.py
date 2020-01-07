@@ -250,7 +250,7 @@ class StructureType(Type):
     if not len(elem_strs):
       elem_strs.append("B")
 
-    return "={}{{{}}}".format(tid, "".join(selem_strs))
+    return "={}{{{}}}".format(tid, "".join(elem_strs))
 
   def size(self, arch):
     ret = 0
