@@ -346,6 +346,7 @@ static void FindMemoryReferences(
       }
 
       Cell cell;
+      cell.containing_func = &func;
       cell.type = val->getType()->getPointerElementType();
       cell.size = static_cast<uint16_t>(dl.getTypeAllocSize(cell.type));
 
