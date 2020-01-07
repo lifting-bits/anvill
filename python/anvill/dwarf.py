@@ -16,6 +16,7 @@
 import pprint
 import enum
 import sys
+import magic
 
 from .exc import *
 from .os import *
@@ -127,6 +128,11 @@ class DWARFCore(object):
   def __init__(self, in_file):
     try:
       from elftools.elf.elffile import ELFFile
+
+      file_type = magic.from_file(in_file)
+      if 'ELF' not in file_type:
+        print("{} is not an ELF binary".format(in_file))
+        return
 
       f = open(in_file, 'rb')
       self._felf = ELFFile(f)
