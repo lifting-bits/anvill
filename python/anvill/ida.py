@@ -53,7 +53,7 @@ def _guess_os():
     return "linux"
   elif file_type == ida_ida.f_MACHO:
     return "macos"
-  elif file_type in (ida_ida.g_PE, ida_ida.f_EXE, ida_ida.f_EXE_old, ida_ida.f_COM, ida_ida.f_COM_old):
+  elif file_type in (ida_ida.f_PE, ida_ida.f_EXE, ida_ida.f_EXE_old, ida_ida.f_COM, ida_ida.f_COM_old):
     return "windows"
   else:
     raise UnhandledOSException("Unrecognized OS type")
