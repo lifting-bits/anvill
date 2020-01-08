@@ -397,7 +397,8 @@ static void ReplaceBarrier(
 
 // Lower a memory read intrinsic into a `load` instruction.
 static void ReplaceMemReadOp(
-    llvm::Module &module, const char *name, llvm::Type *val_type) {
+    llvm::Module &module, const char *name, llvm::Type *val_type,
+    std::vector<llvm::Value *> &pointers) {
   auto func = module.getFunction(name);
   if (!func) {
     return;
@@ -413,6 +414,7 @@ static void ReplaceMemReadOp(
     llvm::IRBuilder<> ir(call_inst);
     llvm::Value *ptr = nullptr;
     if (auto as_int = llvm::dyn_cast<llvm::PtrToIntInst>(addr)) {
+      pointers.push_back(as_int->getPointerOperand());
       ptr = ir.CreateBitCast(
           as_int->getPointerOperand(),
           llvm::PointerType::get(val_type, as_int->getPointerAddressSpace()));
@@ -420,6 +422,8 @@ static void ReplaceMemReadOp(
     } else {
       ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
     }
+
+    pointers.push_back(ptr);
 
     llvm::Value *val = ir.CreateLoad(ptr);
     if (val_type->isX86_FP80Ty()) {
@@ -434,7 +438,8 @@ static void ReplaceMemReadOp(
 
 // Lower a memory write intrinsic into a `store` instruction.
 static void ReplaceMemWriteOp(
-    llvm::Module &module, const char *name, llvm::Type *val_type) {
+    llvm::Module &module, const char *name, llvm::Type *val_type,
+    std::vector<llvm::Value *> &pointers) {
   auto func = module.getFunction(name);
   if (!func) {
     return;
@@ -454,12 +459,15 @@ static void ReplaceMemWriteOp(
 
     llvm::Value *ptr = nullptr;
     if (auto as_int = llvm::dyn_cast<llvm::PtrToIntInst>(addr)) {
+      pointers.push_back(as_int->getPointerOperand());
       ptr = ir.CreateBitCast(
           as_int->getPointerOperand(),
           llvm::PointerType::get(val_type, as_int->getPointerAddressSpace()));
     } else {
       ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
     }
+
+    pointers.push_back(ptr);
 
     if (val_type->isX86_FP80Ty()) {
       val = ir.CreateFPExt(val, val_type);
@@ -473,39 +481,40 @@ static void ReplaceMemWriteOp(
   }
 }
 
-static void LowerMemOps(llvm::Module &module) {
+static void LowerMemOps(llvm::Module &module,
+                        std::vector<llvm::Value *> &pointers) {
   auto &context = module.getContext();
 
   ReplaceMemReadOp(module, "__remill_read_memory_8",
-                   llvm::Type::getInt8Ty(context));
+                   llvm::Type::getInt8Ty(context), pointers);
   ReplaceMemReadOp(module, "__remill_read_memory_16",
-                   llvm::Type::getInt16Ty(context));
+                   llvm::Type::getInt16Ty(context), pointers);
   ReplaceMemReadOp(module, "__remill_read_memory_32",
-                   llvm::Type::getInt32Ty(context));
+                   llvm::Type::getInt32Ty(context), pointers);
   ReplaceMemReadOp(module, "__remill_read_memory_64",
-                   llvm::Type::getInt64Ty(context));
+                   llvm::Type::getInt64Ty(context), pointers);
   ReplaceMemReadOp(module, "__remill_read_memory_f32",
-                   llvm::Type::getFloatTy(context));
+                   llvm::Type::getFloatTy(context), pointers);
   ReplaceMemReadOp(module, "__remill_read_memory_f64",
-                   llvm::Type::getDoubleTy(context));
+                   llvm::Type::getDoubleTy(context), pointers);
 
   ReplaceMemWriteOp(module, "__remill_write_memory_8",
-                    llvm::Type::getInt8Ty(context));
+                    llvm::Type::getInt8Ty(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_16",
-                    llvm::Type::getInt16Ty(context));
+                    llvm::Type::getInt16Ty(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_32",
-                    llvm::Type::getInt32Ty(context));
+                    llvm::Type::getInt32Ty(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_64",
-                    llvm::Type::getInt64Ty(context));
+                    llvm::Type::getInt64Ty(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_f32",
-                    llvm::Type::getFloatTy(context));
+                    llvm::Type::getFloatTy(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_f64",
-                    llvm::Type::getDoubleTy(context));
+                    llvm::Type::getDoubleTy(context), pointers);
 
   ReplaceMemReadOp(module, "__remill_read_memory_f80",
-                   llvm::Type::getX86_FP80Ty(context));
+                   llvm::Type::getX86_FP80Ty(context), pointers);
   ReplaceMemWriteOp(module, "__remill_write_memory_f80",
-                    llvm::Type::getX86_FP80Ty(context));
+                    llvm::Type::getX86_FP80Ty(context), pointers);
 
   ReplaceBarrier(module, "__remill_barrier_load_load");
   ReplaceBarrier(module, "__remill_barrier_load_store");
@@ -816,8 +825,8 @@ static void RecoverGlobalVariableAccesses(
 // Given a pointer `ptr`, look through its uses and see if it is casted to
 // and integer and then used in an addition instruction. We then try to replace
 // that pattern with a mix of GEPs and bitcasts.
-static void TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
-
+static bool TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
+  auto changed = false;
   auto type = ptr->getType()->getPointerElementType();
   auto &context = type->getContext();
   auto i32_type = llvm::Type::getInt32Ty(context);
@@ -836,6 +845,9 @@ static void TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
       const auto add = llvm::dyn_cast<llvm::AddOperator>(pti_use.getUser());
       if (!add) {
         continue;
+      }
+      if (!add->hasNUsesOrMore(1)) {
+        return false;
       }
 
       llvm::Value *disp = nullptr;
@@ -890,9 +902,56 @@ static void TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
         continue;
       }
 
+      // NOTE(pag): We don't erase `add` because a future DCE pass will do it
+      //            for us, and then we don't need to worry about iterator
+      //            invalidation.
       add->replaceAllUsesWith(gep);
+      changed = true;
     }
   }
+
+  return changed;
+}
+
+// Transform a pattern of PHI nodes whose values are all `intoptr` into PHI
+// nodes that operate on pointers and then produce an `inttoptr` value. This
+// is basically trying to sink `inttoptr`s to occur after PHI nodes, rather
+// than before them.
+static bool TransformPattern_IntToPtr_PHI(
+    llvm::PHINode *phi, std::vector<llvm::Value *> &pointers) {
+  llvm::Type *last_pointer_type = nullptr;
+  for (auto &use : phi->incoming_values()) {
+    if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(use.get())) {
+      last_pointer_type = pti->getPointerOperandType();
+      CHECK(last_pointer_type->isPointerTy());
+    } else {
+      return false;
+    }
+  }
+
+  // Try to find the destination type, otherwise use `last_pointer_type`.
+  auto ideal_type = GetDownstreamType(phi);
+  if (!ideal_type->isPointerTy()) {
+    ideal_type = last_pointer_type;
+  }
+
+  llvm::IRBuilder<> ir(phi);
+  auto new_phi = ir.CreatePHI(ideal_type, phi->getNumIncomingValues());
+  pointers.push_back(new_phi);
+
+  for (auto &use : phi->incoming_values()) {
+    auto block = phi->getIncomingBlock(use);
+    auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(use.get());
+    ir.SetInsertPoint(block->getTerminator());
+    auto new_val = ir.CreateBitCast(pti->getPointerOperand(), ideal_type);
+    new_phi->addIncoming(new_val, block);
+  }
+
+  ir.SetInsertPoint(phi);
+  auto new_int_version = ir.CreatePtrToInt(new_phi, phi->getType());
+  phi->replaceAllUsesWith(new_int_version);
+
+  return true;
 }
 
 }  // namespace
@@ -1060,7 +1119,46 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
     TransformPattern_PTI_Add(dl, ptr);
   }
 
-  LowerMemOps(module);
+  pointers.clear();
+  LowerMemOps(module, pointers);
+
+  for (auto ptr : pointers) {
+    TransformPattern_PTI_Add(dl, ptr);
+  }
+
+  auto ptr_size_bits = dl.getPointerSizeInBits(0);
+
+  std::vector<llvm::PHINode *> phi_nodes;
+  for (auto changed = true; changed; ) {
+    changed = false;
+
+    phi_nodes.clear();
+    for (auto &func : module) {
+      for (auto &block : func) {
+        for (auto &inst : block) {
+          if (auto phi = llvm::dyn_cast<llvm::PHINode>(&inst)) {
+            if (phi->getType()->isIntegerTy(ptr_size_bits) &&
+                phi->hasNUsesOrMore(1)) {
+              phi_nodes.push_back(phi);
+            }
+          }
+        }
+      }
+    }
+
+    pointers.clear();
+    for (auto phi : phi_nodes) {
+      if (TransformPattern_IntToPtr_PHI(phi, pointers)) {
+        changed = true;
+      }
+    }
+
+    for (auto ptr : pointers) {
+      if (TransformPattern_PTI_Add(dl, ptr)) {
+        changed = true;
+      }
+    }
+  }
 }
 
 }  // namespace anvill
