@@ -403,19 +403,43 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
         anvill::ValueDecl value_declaration = {};
         value_declaration.type = value->getType();
 
-        if (value_declaration.type->isIntOrPtrTy()) {
-          // Allocate EAX for an integer or pointer
-          value_declaration.reg =
-              new remill::Register("EAX", 0, 8, 0, value->getType());
-        } else if (value_declaration.type->isFloatingPointTy()) {
-          // Allocate ST0 for a floating point value
-          value_declaration.reg =
-              new remill::Register("ST0", 0, 16, 0, value->getType());
-        } else {
-          LOG(ERROR) << "Encountered an unknown return type, could not bind "
-                        "it... quitting";
-          LOG(ERROR) << value->getType()->getTypeID();
-          exit(1);
+        switch (value_declaration.type->getTypeID()) {
+          case llvm::Type::IntegerTyID:
+          case llvm::Type::PointerTyID: {
+            // Allocate EAX for an integer or pointer
+            value_declaration.reg =
+                new remill::Register("EAX", 0, 8, 0, value->getType());
+            break;
+          }
+          case llvm::Type::FloatTyID: {
+            // Allocate ST0 for a floating point value
+            value_declaration.reg =
+                new remill::Register("ST0", 0, 16, 0, value->getType());
+            break;
+          }
+          case llvm::Type::StructTyID: {
+            // Try to split the struct over the registers
+            std::vector<bool> allocated(return_register_constraints.size(),
+                                        false);
+            auto struct_ptr =
+                llvm::cast<llvm::StructType>(value_declaration.type);
+            auto mapping = TryReturnThroughRegisters(
+                *struct_ptr, return_register_constraints);
+            if (mapping) {
+              // There is a valid split over registers, so return the mapping
+              return *mapping;
+            } else {
+              // Struct splitting didn't work so do RVO. Assume that the pointer
+              // to the return value resides in EAX.
+              value_declaration.reg =
+                  new remill::Register("EAX", 0, 8, 0, value_declaration.type);
+            }
+            break;
+          }
+          default: {
+            LOG(ERROR) << "Encountered an unknown return type";
+            exit(1);
+          }
         }
         return_value_declarations.push_back(value_declaration);
       }

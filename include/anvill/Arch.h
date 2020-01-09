@@ -172,7 +172,22 @@ class X86_C : public CallingConvention {
 
  private:
   // Register allocations for parameters are not allowed in vanilla cdecl
-  const std::vector<RegisterConstraint> register_constraints = {};
+  const std::vector<RegisterConstraint> parameter_register_constraints = {};
+
+  // For x86_C (cdecl), structs can be split over EAX, EDX, ECX, ST0, ST1.
+  const std::vector<RegisterConstraint> return_register_constraints = {
+      RegisterConstraint({
+          VariantConstraint("EAX", kTypeIntegral, kMaxBit32),
+      }),
+      RegisterConstraint({
+          VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
+      }),
+      RegisterConstraint({
+          VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
+      }),
+      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit64)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit64)}),
+  };
 };
 
 // Try to allocate a register for the argument based on the register constraints
