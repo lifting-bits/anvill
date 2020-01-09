@@ -95,7 +95,7 @@ class X86_64_SysV : public CallingConvention {
  private:
   // TODO: add the rest of the Registers here, not just the 32-bit and 64-bit
   // variants
-  const std::vector<RegisterConstraint> register_constraints = {
+  const std::vector<RegisterConstraint> parameter_register_constraints = {
       RegisterConstraint({
           VariantConstraint("EDI", kTypeIntegral, kMaxBit32),
           VariantConstraint("RDI", kTypeIntegral, kMaxBit64),
@@ -130,6 +130,48 @@ class X86_64_SysV : public CallingConvention {
       RegisterConstraint({VariantConstraint("XMM6", kTypeFloat, kMaxBit128)}),
       RegisterConstraint({VariantConstraint("XMM7", kTypeFloat, kMaxBit128)}),
   };
+
+  // This a bit undocumented and warrants and explanation. For x86_64, clang has
+  // the option to split a created (not passed by reference) struct over the
+  // following registers: RAX, RDX, RCX, XMM0, XMM1, ST0, ST1. The first 3 are
+  // used for integer or pointer types and the last 4 are used for floating
+  // point values. If there is no valid struct split using these registers then
+  // the compiler will try RVO.
+  const std::vector<RegisterConstraint> return_register_constraints = {
+      RegisterConstraint({
+          VariantConstraint("EAX", kTypeIntegral, kMaxBit32),
+          VariantConstraint("RAX", kTypeIntegral, kMaxBit64),
+      }),
+      RegisterConstraint({
+          VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
+          VariantConstraint("RDX", kTypeIntegral, kMaxBit64),
+      }),
+      RegisterConstraint({
+          VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
+          VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
+      }),
+      RegisterConstraint({VariantConstraint("XMM0", kTypeFloat, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM1", kTypeFloat, kMaxBit128)}),
+
+      // Since the FPU registers are 80 bits wide, they are only able to hold
+      // 64-bit values.
+      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit64)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit64)}),
+  };
+};
+
+// This is the cdecl calling convention referenced by llvm::CallingConv::C
+class X86_C : public CallingConvention {
+ public:
+  X86_C() : CallingConvention(llvm::CallingConv::C) {}
+  ~X86_C() {};
+  std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
+  std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
+  remill::Register *BindReturnStackPointer(const llvm::Function &function);
+
+ private:
+  // Register allocations for parameters are not allowed in vanilla cdecl
+  const std::vector<RegisterConstraint> register_constraints = {};
 };
 
 // Try to allocate a register for the argument based on the register constraints

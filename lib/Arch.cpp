@@ -14,13 +14,159 @@
 
 namespace anvill {
 
+// Try to recover parameter names using debug information. Otherwise, name the
+// parameters with the form "param_x". The mapping of the return value is
+// positional starting at 1.
+std::map<unsigned, std::string> TryRecoverParamNames(
+    const llvm::Function &function) {
+  std::map<unsigned int, std::string> param_names;
+
+  for (auto &block : function) {
+    for (auto &inst : block) {
+      if (auto debug_inst = llvm::dyn_cast<llvm::DbgInfoIntrinsic>(&inst)) {
+        if (auto value_intrin = llvm::dyn_cast<llvm::DbgDeclareInst>(&inst)) {
+          const llvm::MDNode *mdn = value_intrin->getVariable();
+          const llvm::DILocalVariable *div =
+              llvm::cast<llvm::DILocalVariable>(mdn);
+
+          // Make sure it is actually an argument
+          if (div->getArg() != 0) {
+            LOG(INFO) << div->getArg() << " : " << div->getName().data();
+            param_names[div->getArg()] = div->getName().data();
+          }
+        } else if (auto value_intrin =
+                       llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
+          const llvm::MDNode *mdn = value_intrin->getVariable();
+          const llvm::DILocalVariable *div =
+              llvm::cast<llvm::DILocalVariable>(mdn);
+
+          if (div->getArg() != 0) {
+            LOG(INFO) << div->getArg() << " : " << div->getName().data();
+            param_names[div->getArg()] = div->getName().data();
+          }
+        }
+      }
+    }
+  }
+
+  // If we don't have names for some parameters then automatically name them
+  unsigned int num_args =
+      (unsigned int)(function.args().end() - function.args().begin());
+  for (unsigned int i = 1; i <= num_args; i++) {
+    if (!param_names.count(i)) {
+      param_names[i] = "param" + std::to_string(i);
+    }
+  }
+
+  return param_names;
+}
+
+// TODO: This doesn't really fit here so I will need to find a better place for
+// this. Translates an llvm::Type to a type that conforms to the spec in TypeParser.cpp
+std::string TranslateType(const llvm::Type &type) {
+  unsigned int id = type.getTypeID();
+
+  std::string ret;
+
+  // Types should match the type parsing in TypeParser.cpp
+  switch (id) {
+    case llvm::Type::VoidTyID: {
+      ret = "v";
+      break;
+    }
+    case llvm::Type::HalfTyID: {
+      ret = "e";
+      break;
+    }
+    case llvm::Type::FloatTyID: {
+      ret = "f";
+      break;
+    }
+    case llvm::Type::DoubleTyID: {
+      ret = "d";
+      break;
+    }
+    case llvm::Type::X86_FP80TyID: {
+      ret = "D";
+      break;
+    }
+    case llvm::Type::X86_MMXTyID: {
+      ret = "M";
+      break;
+    }
+    case llvm::Type::IntegerTyID: {
+      auto derived = llvm::cast<llvm::IntegerType>(type);
+      // Since there is no way to check for uint vs. int, lower all integer
+      // types to signed integers. Maybe come back when there is a better way to
+      // figure out unsigned vs signed ints
+      auto sign = true;
+      switch(derived.getBitWidth()) {
+        case 8: {
+          ret = sign ? "b" : "B";
+          break;
+        }
+        case 16: {
+          ret = sign ? "h" : "H";
+          break;
+        }
+        case 32: {
+          ret = sign ? "i" : "I";
+          break;
+        }
+        case 64: {
+          ret= sign ? "l" : "L";
+          break;
+        }
+      }
+      break;
+    }
+    case llvm::Type::FunctionTyID: {
+      ret = "func";
+      break;
+    }
+    case llvm::Type::StructTyID: {
+      auto struct_ptr = llvm::cast<llvm::StructType>(&type);
+      std::string element_list = "";
+      for (unsigned i = 0; i < struct_ptr->getNumElements(); i++) {
+        // TODO: BUG: this if statement protects against infinite chained
+        // pointers, which this code has a hard time with. Notably, this
+        // includes some types of C++ ostream functions.
+        if (struct_ptr->getElementType(i)->isPtrOrPtrVectorTy()) {
+          element_list += "?";
+          continue;
+        }
+        element_list +=
+            TranslateType(*struct_ptr->getElementType(i));
+      }
+      ret += " {" + element_list + "}";
+
+      break;
+    }
+    case llvm::Type::ArrayTyID: {
+      ret = "array";
+      break;
+    }
+    case llvm::Type::PointerTyID: {
+      ret = "*";
+      auto derived = llvm::dyn_cast<llvm::PointerType>(&type);
+      // Get the type of the pointee
+      ret += TranslateType(*derived->getElementType());
+      break;
+    }
+
+    default:
+      LOG(ERROR) << "Could not translate TypeID: " << id;
+      break;
+  }
+  return ret;
+}
+
 // Try to allocate a register for the argument based on the register constraints
 // and what has already been reserved. Return nullptr if there is no possible
 // register allocation.
 remill::Register *TryRegisterAllocate(
-    const llvm::Argument &argument, std::vector<bool> &reserved,
+    llvm::Type& type, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints) {
-  llvm::Type &type = *argument.getType();
 
   SizeConstraint size_constraint;
   TypeConstraint type_constraint;
@@ -69,12 +215,40 @@ remill::Register *TryRegisterAllocate(
     return nullptr;
 }
 
+// For each element of the struct, try to allocate it to a register, if all of
+// them can be allocated, then return that allocation. Otherwise return a nullptr.
+std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(const llvm::StructType& st, const std::vector<RegisterConstraint>& constraints) {
+  auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
+  std::vector<bool> reserved(constraints.size(), false);
+  for (unsigned i = 0; i < st.getNumElements(); i++) {
+    anvill::ValueDecl value_decl = {};
+    auto reg = TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
+    if (reg) {
+      value_decl.reg = reg;
+      value_decl.type = st.getElementType(i);
+    } else {
+      // The struct cannot be split over registers
+      return nullptr;
+    }
+    ret->push_back(value_decl);
+  }
+
+  return ret;
+}
+
 std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     const llvm::Function &function) {
   std::vector<anvill::ValueDecl> return_value_declarations;
 
   for (auto &block : function) {
     for (auto &inst : block) {
+      // TODO: There has to be a better way of doing this, right now I am
+      // iterating over every single return instruction in the function and
+      // its type. This will get confused if there are multiple return
+      // instructions. I haven't gotten this to happen from C yet but it is
+      // to construct a trivial example where this breaks in bitcode. I think
+      // its possible that I only need to consider the first return instruction
+      // that I see, because they all should be of the same type but I am not sure.
       if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
         anvill::ValueDecl value_declaration = {};
 
@@ -82,20 +256,39 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
         if (!value) continue;
         value_declaration.type = value->getType();
 
-        if (value_declaration.type->isIntOrPtrTy()) {
-          // Allocate EAX for an integer or pointer
-          value_declaration.reg =
-              new remill::Register("RAX", 0, 8, 0, value->getType());
-        } else if (value_declaration.type->isFloatingPointTy()) {
-          // Allocate XMM0 for a floating point value
-          value_declaration.reg =
-              new remill::Register("XMM0", 0, 16, 0, value->getType());
-        } else {
-          LOG(ERROR) << "Encountered an unknown return type, could not bind "
-                        "it... quitting";
-          LOG(ERROR) << value->getType()->getTypeID();
-          exit(1);
+        switch(value_declaration.type->getTypeID()) {
+          case llvm::Type::IntegerTyID:
+          case llvm::Type::PointerTyID: {
+            // Allocate RAX for an integer or pointer
+            value_declaration.reg = new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+            break;
+          }
+          case llvm::Type::FloatTyID: {
+            // Allocate XMM0 for a floating point value
+            value_declaration.reg = new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
+            break;
+          }
+          case llvm::Type::StructTyID: {
+            // Try to split the struct over the registers
+            std::vector<bool> allocated(return_register_constraints.size(), false);
+            auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
+            auto mapping = TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+            if (mapping) {
+              // There is a valid split over registers, so add the mapping
+              return *mapping;
+            } else {
+              // Struct splitting didn't work so do RVO. Assume that the pointer
+              // to the return value resides in RAX.
+              value_declaration.reg = new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+            }
+            break;
+          }
+          default: {
+            LOG(ERROR) << "Encountered an unknown return type";
+            exit(1);
+          }
         }
+
         return_value_declarations.push_back(value_declaration);
       }
     }
@@ -107,48 +300,11 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
 std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
     const llvm::Function &function) {
   std::vector<anvill::ParameterDecl> parameter_declarations;
-
-  // Create a map of names to parameters
-  std::map<unsigned int, std::string> param_names;
-  for (auto &block : function) {
-    for (auto &inst : block) {
-      if (auto debug_inst = llvm::dyn_cast<llvm::DbgInfoIntrinsic>(&inst)) {
-        if (auto value_intrin = llvm::dyn_cast<llvm::DbgDeclareInst>(&inst)) {
-          const llvm::MDNode *mdn = value_intrin->getVariable();
-          const llvm::DILocalVariable *div =
-              llvm::cast<llvm::DILocalVariable>(mdn);
-
-          // Make sure it is actually an argument
-          if (div->getArg() != 0) {
-            LOG(INFO) << div->getArg() << " : " << div->getName().data();
-            param_names[div->getArg()] = div->getName().data();
-          }
-        } else if (auto value_intrin =
-                       llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
-          const llvm::MDNode *mdn = value_intrin->getVariable();
-          const llvm::DILocalVariable *div =
-              llvm::cast<llvm::DILocalVariable>(mdn);
-
-          if (div->getArg() != 0) {
-            LOG(INFO) << div->getArg() << " : " << div->getName().data();
-            param_names[div->getArg()] = div->getName().data();
-          }
-        }
-      }
-    }
-  }
-
-  // If we don't have names for some parameters then automatically name them
-  unsigned int num_args =
-      (unsigned int)(function.args().end() - function.args().begin());
-  for (unsigned int i = 1; i <= num_args; i++) {
-    if (!param_names.count(i)) {
-      param_names[i] = "param" + std::to_string(i);
-    }
-  }
+  auto param_names = TryRecoverParamNames(function);
+  llvm::DataLayout dl(function.getParent());
 
   // Used to keep track of which registers have been allocated
-  std::vector<bool> allocated(register_constraints.size(), false);
+  std::vector<bool> allocated(parameter_register_constraints.size(), false);
 
   // Stack position of the first argument
   unsigned int stack_offset = 16;
@@ -157,15 +313,16 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
     anvill::ParameterDecl declaration = {};
     declaration.type = argument.getType();
 
-    // Try to allocate from a register
-    if (remill::Register *reg =
-            TryRegisterAllocate(argument, allocated, register_constraints)) {
+    // Try to allocate from a register. If a register is not available then
+    // allocate from the stack.
+    if (remill::Register *reg = TryRegisterAllocate(
+            *argument.getType(), allocated, parameter_register_constraints)) {
       declaration.reg = reg;
     } else {
-      // TODO: do I need to worry about register type?
       remill::Register *mem_reg =
           new remill::Register("RSP", stack_offset, 8, 0, argument.getType());
-      stack_offset += 8;
+
+      stack_offset += dl.getTypeAllocSize(argument.getType());
       declaration.mem_reg = mem_reg;
     }
 
@@ -193,76 +350,80 @@ remill::Register *X86_64_SysV::BindReturnStackPointer(const llvm::Function &func
   return new remill::Register("RSP", 8, 8, 0, int64_ptr_ty);
 }
 
-// TODO: This doesn't really fit here so I will need to find a better place for
-// this. It also needs to be rewritten to conform to spec so its okay to leave
-// it here for now.
-std::string TranslateType(const llvm::Type &type) {
-  unsigned int id = type.getTypeID();
+std::vector<ParameterDecl> X86_C::BindParameters(const llvm::Function &function) {
+  std::vector<anvill::ParameterDecl> parameter_declarations;
+  auto param_names = TryRecoverParamNames(function);
+  llvm::DataLayout dl(function.getParent());
 
-  std::string ret;
-  switch (id) {
-    case llvm::Type::VoidTyID: {
-      ret = "void";
-      break;
-    }
-    case llvm::Type::HalfTyID: {
-      ret = "float16";
-      break;
-    }
-    case llvm::Type::FloatTyID: {
-      ret = "float32";
-      break;
-    }
-    case llvm::Type::DoubleTyID: {
-      ret = "float64";
-      break;
-    }
+  // Stack position of the first argument
+  unsigned int stack_offset = 4;
 
-    case llvm::Type::IntegerTyID: {
-      ret = "int";
-      auto derived = llvm::cast<llvm::IntegerType>(type);
-      ret += std::to_string(derived.getBitWidth());
-      break;
-    }
-    case llvm::Type::FunctionTyID: {
-      ret = "func";
-      break;
-    }
-    case llvm::Type::StructTyID: {
-      LOG(INFO) << "struct";
-      ret = "struct";
-      auto struct_ptr = llvm::cast<llvm::StructType>(&type);
-      std::string struct_list = "";
-      LOG(INFO) << struct_ptr->getNumElements();
-      for (unsigned i = 0; i < struct_ptr->getNumElements(); i++) {
-        if (struct_ptr->getElementType(i)->isPtrOrPtrVectorTy()) {
-          struct_list += "ptr_unknown";
-          continue;
-        }
-        struct_list +=
-            "(" + TranslateType(*struct_ptr->getElementType(i)) + ")";
-      }
-      ret += " [" + struct_list + "]";
+  for (auto &argument : function.args()) {
+    anvill::ParameterDecl declaration = {};
+    declaration.type = argument.getType();
 
-      break;
-    }
-    case llvm::Type::ArrayTyID: {
-      ret = "array";
-      break;
-    }
-    case llvm::Type::PointerTyID: {
-      ret = "ptr";
-      auto derived = llvm::dyn_cast<llvm::PointerType>(&type);
-      // Get the type of the pointee
-      ret += " " + TranslateType(*derived->getElementType());
-      break;
-    }
+    // Since there are no registers, just allocate from the stack
+    remill::Register *mem_reg =
+          new remill::Register("ESP", stack_offset, 4, 0, argument.getType());
 
-    default:
-      LOG(ERROR) << "Could not translate TypeID: " << id;
-      break;
+    stack_offset += dl.getTypeAllocSize(argument.getType());
+    declaration.mem_reg = mem_reg;
+
+    // Get a name for the IR parameter.
+    // Need to add 1 because param_names uses logical numbering, but
+    // argument.getArgNo() uses index numbering.
+    declaration.name = param_names[argument.getArgNo() + 1];
+    parameter_declarations.push_back(declaration);
   }
-  return ret;
+
+  return parameter_declarations;
+}
+
+std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
+    const llvm::Function &function) {
+  std::vector<anvill::ValueDecl> return_value_declarations;
+
+  for (auto &block : function) {
+    for (auto &inst : block) {
+      if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
+        const llvm::Value *value = return_inst->getReturnValue();
+        if (!value) continue;
+
+        anvill::ValueDecl value_declaration = {};
+        value_declaration.type = value->getType();
+
+        if (value_declaration.type->isIntOrPtrTy()) {
+          // Allocate EAX for an integer or pointer
+          value_declaration.reg =
+              new remill::Register("EAX", 0, 8, 0, value->getType());
+        } else if (value_declaration.type->isFloatingPointTy()) {
+          // Allocate ST0 for a floating point value
+          value_declaration.reg =
+              new remill::Register("ST0", 0, 16, 0, value->getType());
+        } else {
+          LOG(ERROR) << "Encountered an unknown return type, could not bind "
+                        "it... quitting";
+          LOG(ERROR) << value->getType()->getTypeID();
+          exit(1);
+        }
+        return_value_declarations.push_back(value_declaration);
+      }
+    }
+  }
+
+  return return_value_declarations;
+}
+
+remill::Register *X86_C::BindReturnStackPointer(const llvm::Function &function) {
+  // For X86_C ABI, it is always:
+  //
+  // "return_stack_pointer": {
+  //   "register": "ESP",
+  //   "offset": 4
+  // }
+
+  auto int32_ptr_ty = llvm::IntegerType::get(function.getContext(), 32);
+  return new remill::Register("ESP", 4, 4, 0, int32_ptr_ty);
 }
 
 }  // namespace anvill

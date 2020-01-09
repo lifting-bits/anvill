@@ -47,6 +47,19 @@ std::tuple<std::string, std::string> getPlatformInformation(
 
   std::string arch = triple[0];
   std::string os = triple[2];
+
+  // Change the architecture into something that the rest of anvill and remill
+  // can understand.
+  if (arch.find("x86_64") != std::string::npos) {
+    arch = "amd64";
+  }
+
+  // Trim the versioning information
+  // TODO: cover the other OSes as well
+  if (os.find("macos") != std::string::npos) {
+    os = "macos";
+  }
+
   return std::make_tuple(arch, os);
 }
 
