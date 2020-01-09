@@ -6,11 +6,11 @@
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 
-// namespace remill {
-// class Arch;
-// class IntrinsicTable;
-// struct Register;
-// }  // namespace remill
+namespace remill {
+class Arch;
+class IntrinsicTable;
+struct Register;
+}  // namespace remill
 
 namespace anvill {
 
@@ -62,7 +62,8 @@ std::map<unsigned, std::string> TryRecoverParamNames(
 }
 
 // TODO: This doesn't really fit here so I will need to find a better place for
-// this. Translates an llvm::Type to a type that conforms to the spec in TypeParser.cpp
+// this. Translates an llvm::Type to a type that conforms to the spec in
+// TypeParser.cpp
 std::string TranslateType(const llvm::Type &type) {
   unsigned int id = type.getTypeID();
 
@@ -100,7 +101,7 @@ std::string TranslateType(const llvm::Type &type) {
       // types to signed integers. Maybe come back when there is a better way to
       // figure out unsigned vs signed ints
       auto sign = true;
-      switch(derived.getBitWidth()) {
+      switch (derived.getBitWidth()) {
         case 8: {
           ret = sign ? "b" : "B";
           break;
@@ -114,7 +115,7 @@ std::string TranslateType(const llvm::Type &type) {
           break;
         }
         case 64: {
-          ret= sign ? "l" : "L";
+          ret = sign ? "l" : "L";
           break;
         }
       }
@@ -135,8 +136,7 @@ std::string TranslateType(const llvm::Type &type) {
           element_list += "?";
           continue;
         }
-        element_list +=
-            TranslateType(*struct_ptr->getElementType(i));
+        element_list += TranslateType(*struct_ptr->getElementType(i));
       }
       ret += " {" + element_list + "}";
 
@@ -165,9 +165,8 @@ std::string TranslateType(const llvm::Type &type) {
 // and what has already been reserved. Return nullptr if there is no possible
 // register allocation.
 remill::Register *TryRegisterAllocate(
-    llvm::Type& type, std::vector<bool> &reserved,
+    llvm::Type &type, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints) {
-
   SizeConstraint size_constraint;
   TypeConstraint type_constraint;
 
@@ -196,33 +195,36 @@ remill::Register *TryRegisterAllocate(
   // TODO: Handle other types
 
   for (size_t i = 0; i < register_constraints.size(); i++) {
-    if (reserved[i]) {
-      continue;
-    }
+    if (reserved[i]) continue;
 
     const RegisterConstraint &constraint = register_constraints[i];
-    // Iterate through the different sizes of a single register to find the smallest possible match
+    // Iterate through the different sizes of a single register to find the
+    // smallest possible match
     for (auto const &variant : constraint.variants) {
-      if (size_constraint & variant.size_constraint && 
+      if (size_constraint & variant.size_constraint &&
           type_constraint & variant.type_constraint) {
         reserved[i] = true;
-        remill::Register *reg = 
+        remill::Register *reg =
             new remill::Register(variant.register_name, 0, 0, 0, &type);
         return reg;
       }
     }
   }
-    return nullptr;
+  return nullptr;
 }
 
 // For each element of the struct, try to allocate it to a register, if all of
-// them can be allocated, then return that allocation. Otherwise return a nullptr.
-std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(const llvm::StructType& st, const std::vector<RegisterConstraint>& constraints) {
+// them can be allocated, then return that allocation. Otherwise return a
+// nullptr.
+std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
+    const llvm::StructType &st,
+    const std::vector<RegisterConstraint> &constraints) {
   auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
   std::vector<bool> reserved(constraints.size(), false);
   for (unsigned i = 0; i < st.getNumElements(); i++) {
     anvill::ValueDecl value_decl = {};
-    auto reg = TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
+    auto reg =
+        TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
     if (reg) {
       value_decl.reg = reg;
       value_decl.type = st.getElementType(i);
@@ -248,7 +250,8 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
       // instructions. I haven't gotten this to happen from C yet but it is
       // to construct a trivial example where this breaks in bitcode. I think
       // its possible that I only need to consider the first return instruction
-      // that I see, because they all should be of the same type but I am not sure.
+      // that I see, because they all should be of the same type but I am not
+      // sure.
       if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
         anvill::ValueDecl value_declaration = {};
 
@@ -256,30 +259,36 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
         if (!value) continue;
         value_declaration.type = value->getType();
 
-        switch(value_declaration.type->getTypeID()) {
+        switch (value_declaration.type->getTypeID()) {
           case llvm::Type::IntegerTyID:
           case llvm::Type::PointerTyID: {
             // Allocate RAX for an integer or pointer
-            value_declaration.reg = new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+            value_declaration.reg =
+                new remill::Register("RAX", 0, 8, 0, value_declaration.type);
             break;
           }
           case llvm::Type::FloatTyID: {
             // Allocate XMM0 for a floating point value
-            value_declaration.reg = new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
+            value_declaration.reg =
+                new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
             break;
           }
           case llvm::Type::StructTyID: {
             // Try to split the struct over the registers
-            std::vector<bool> allocated(return_register_constraints.size(), false);
-            auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
-            auto mapping = TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+            std::vector<bool> allocated(return_register_constraints.size(),
+                                        false);
+            auto struct_ptr =
+                llvm::cast<llvm::StructType>(value_declaration.type);
+            auto mapping = TryReturnThroughRegisters(
+                *struct_ptr, return_register_constraints);
             if (mapping) {
               // There is a valid split over registers, so add the mapping
               return *mapping;
             } else {
               // Struct splitting didn't work so do RVO. Assume that the pointer
               // to the return value resides in RAX.
-              value_declaration.reg = new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+              value_declaration.reg =
+                  new remill::Register("RAX", 0, 8, 0, value_declaration.type);
             }
             break;
           }
@@ -337,7 +346,8 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   return parameter_declarations;
 }
 
-remill::Register *X86_64_SysV::BindReturnStackPointer(const llvm::Function &function) {
+remill::Register *X86_64_SysV::BindReturnStackPointer(
+    const llvm::Function &function) {
   // For the X86_64_SysV ABI, it is always:
   //
   // "return_stack_pointer": {
@@ -350,7 +360,8 @@ remill::Register *X86_64_SysV::BindReturnStackPointer(const llvm::Function &func
   return new remill::Register("RSP", 8, 8, 0, int64_ptr_ty);
 }
 
-std::vector<ParameterDecl> X86_C::BindParameters(const llvm::Function &function) {
+std::vector<ParameterDecl> X86_C::BindParameters(
+    const llvm::Function &function) {
   std::vector<anvill::ParameterDecl> parameter_declarations;
   auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
@@ -364,7 +375,7 @@ std::vector<ParameterDecl> X86_C::BindParameters(const llvm::Function &function)
 
     // Since there are no registers, just allocate from the stack
     remill::Register *mem_reg =
-          new remill::Register("ESP", stack_offset, 4, 0, argument.getType());
+        new remill::Register("ESP", stack_offset, 4, 0, argument.getType());
 
     stack_offset += dl.getTypeAllocSize(argument.getType());
     declaration.mem_reg = mem_reg;
@@ -414,7 +425,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
   return return_value_declarations;
 }
 
-remill::Register *X86_C::BindReturnStackPointer(const llvm::Function &function) {
+remill::Register *X86_C::BindReturnStackPointer(
+    const llvm::Function &function) {
   // For X86_C ABI, it is always:
   //
   // "return_stack_pointer": {

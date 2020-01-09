@@ -67,9 +67,6 @@ int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
 
-  // Allow all log messages for debugging
-  FLAGS_stderrthreshold = 0;
-
   if (FLAGS_bc_file.empty()) {
     LOG(ERROR) << "Please specify a path to a BITcode input file in --bc_file";
     return EXIT_FAILURE;
@@ -78,21 +75,14 @@ int main(int argc, char *argv[]) {
   // Overwrite the inherited architecture and os flags if they are not
   // already empty.
   if (!FLAGS_arch.empty() || !FLAGS_os.empty()) {
-    LOG(INFO) << "Overwriting architecture and os flags";
     FLAGS_arch = "";
     FLAGS_os = "";
   }
 
   auto context = new llvm::LLVMContext;
   auto module = remill::LoadModuleFromFile(context, FLAGS_bc_file);
-
-  LOG(INFO) << "Module name: " << module->getName().data();
-
   std::string arch, os;
   std::tie(arch, os) = getPlatformInformation(module);
-  LOG(INFO) << arch << " " << os;
-
-  std::cout << "\n\n\n\n\n" << std::endl;
 
   llvm::json::Object json;
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch});
@@ -101,12 +91,10 @@ int main(int argc, char *argv[]) {
   llvm::json::Array funcs_json;
 
   for (auto &function : *module) {
-    // Skip llvm dbg functions for now
-    // TODO: find a way to deal with this
     std::string function_name = llvm::demangle(function.getName().data());
-    if (function_name.find("llvm.") == 0) continue;
 
-    // if (function_name.find("dummy") != 0) continue;
+    // Skip llvm dbg intrinsics
+    if (function_name.find("llvm.") == 0) continue;
 
     funcs_json.push_back(
         anvill::FunctionDecl::Create(function).SerializeToJSON());

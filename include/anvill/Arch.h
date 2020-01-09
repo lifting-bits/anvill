@@ -46,6 +46,7 @@ enum TypeConstraint : unsigned {
   kTypeIntegral = kTypeInt | kTypePtr,
 };
 
+// Captures the constraints of different register sizes
 struct VariantConstraint {
   VariantConstraint(std::string _register_name, TypeConstraint _type_constraint,
                     SizeConstraint _size_constraint)
