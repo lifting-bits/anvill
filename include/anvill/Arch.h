@@ -31,6 +31,8 @@ enum SizeConstraint : unsigned {
   kMaxBit128 = kBit128 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit64 = kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit32 = kBit32 | kBit16 | kBit8,
+  kMaxBit16 = kBit16 | kBit8,
+  kMaxBit8 = kBit8,
 
   kMinBit128 = kBit128,
   kMinBit64 = kBit128 | kBit64,
@@ -70,7 +72,7 @@ struct RegisterConstraint {
 class CallingConvention {
  public:
   CallingConvention(llvm::CallingConv::ID _identity) : identity(_identity) {}
-  virtual ~CallingConvention(){};
+  virtual ~CallingConvention() = default;
 
   virtual std::vector<ParameterDecl> BindParameters(
       const llvm::Function &function) = 0;
@@ -88,36 +90,46 @@ class CallingConvention {
 class X86_64_SysV : public CallingConvention {
  public:
   X86_64_SysV() : CallingConvention(llvm::CallingConv::X86_64_SysV) {}
-  ~X86_64_SysV(){};
+  ~X86_64_SysV() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
   remill::Register *BindReturnStackPointer(const llvm::Function &function);
 
  private:
-  // TODO: add the rest of the Registers here, not just the 32-bit and 64-bit
-  // variants
   const std::vector<RegisterConstraint> parameter_register_constraints = {
       RegisterConstraint({
+          VariantConstraint("DIL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("DI", kTypeIntegral, kMaxBit16),
           VariantConstraint("EDI", kTypeIntegral, kMaxBit32),
           VariantConstraint("RDI", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("SIL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("SI", kTypeIntegral, kMaxBit16),
           VariantConstraint("ESI", kTypeIntegral, kMaxBit32),
           VariantConstraint("RSI", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("DL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("DX", kTypeIntegral, kMaxBit16),
           VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RDX", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("CL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("CX", kTypeIntegral, kMaxBit16),
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("R8L", kTypeIntegral, kMaxBit8),
+          VariantConstraint("R8W", kTypeIntegral, kMaxBit16),
           VariantConstraint("R8D", kTypeIntegral, kMaxBit32),
           VariantConstraint("R8", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("R9L", kTypeIntegral, kMaxBit8),
+          VariantConstraint("R9W", kTypeIntegral, kMaxBit16),
           VariantConstraint("R9D", kTypeIntegral, kMaxBit32),
           VariantConstraint("R9", kTypeIntegral, kMaxBit64),
       }),
@@ -140,14 +152,20 @@ class X86_64_SysV : public CallingConvention {
   // the compiler will try RVO.
   const std::vector<RegisterConstraint> return_register_constraints = {
       RegisterConstraint({
+          VariantConstraint("AL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("AX", kTypeIntegral, kMaxBit16),
           VariantConstraint("EAX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RAX", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("DL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("DX", kTypeIntegral, kMaxBit16),
           VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RDX", kTypeIntegral, kMaxBit64),
       }),
       RegisterConstraint({
+          VariantConstraint("CL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("CX", kTypeIntegral, kMaxBit16),
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
       }),
@@ -165,7 +183,7 @@ class X86_64_SysV : public CallingConvention {
 class X86_C : public CallingConvention {
  public:
   X86_C() : CallingConvention(llvm::CallingConv::C) {}
-  ~X86_C() {};
+  ~X86_C() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
   remill::Register *BindReturnStackPointer(const llvm::Function &function);
@@ -177,12 +195,18 @@ class X86_C : public CallingConvention {
   // For x86_C (cdecl), structs can be split over EAX, EDX, ECX, ST0, ST1.
   const std::vector<RegisterConstraint> return_register_constraints = {
       RegisterConstraint({
+          VariantConstraint("AL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("AX", kTypeIntegral, kMaxBit16),
           VariantConstraint("EAX", kTypeIntegral, kMaxBit32),
       }),
       RegisterConstraint({
+          VariantConstraint("DL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("DX", kTypeIntegral, kMaxBit16),
           VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
       }),
       RegisterConstraint({
+          VariantConstraint("CL", kTypeIntegral, kMaxBit8),
+          VariantConstraint("CX", kTypeIntegral, kMaxBit16),
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
       }),
       RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit64)}),
