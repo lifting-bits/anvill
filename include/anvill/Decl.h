@@ -111,6 +111,7 @@ struct FunctionDecl {
   uint64_t address{0};
 
   std::string name;
+  std::string demangled_name;
   llvm::FunctionType *type{nullptr};
 
   // Specifies where the return address is located on entry to the function.

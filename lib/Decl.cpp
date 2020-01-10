@@ -17,6 +17,7 @@
 
 #include "anvill/Decl.h"
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include <llvm/IR/DataLayout.h>
@@ -38,6 +39,8 @@
 
 #include "Lift.h"
 #include "anvill/Arch.h"
+
+DEFINE_bool(demangle_names, false, "Demangle function and variable names");
 
 namespace anvill {
 
@@ -195,8 +198,14 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 llvm::json::Object FunctionDecl::SerializeToJSON() {
   llvm::json::Object json;
 
+  std::string output_name;
+  if (FLAGS_demangle_names) {
+    output_name = this->demangled_name;
+  } else {
+    output_name = this->name;
+  }
   json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), output_name});
 
   llvm::json::Array params_json;
   for (auto pdecl : this->params) {
@@ -284,8 +293,8 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
   FunctionDecl decl;
   decl.type = func.getFunctionType();
   
-  // Try to demangle the function name if we can
-  decl.name = llvm::demangle(func.getName().data());
+  decl.name = func.getName().data();
+  decl.demangled_name = llvm::demangle(func.getName().data());
 
   // Try to guess the parameter and return value register allocation by looking
   // at the calling convention of the function

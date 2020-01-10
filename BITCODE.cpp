@@ -15,7 +15,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/Demangle/Demangle.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
@@ -58,10 +57,11 @@ int main(int argc, char *argv[]) {
   llvm::json::Array funcs_json;
 
   for (auto &function : *module) {
-    std::string function_name = llvm::demangle(function.getName().data());
-
-    // Skip llvm dbg intrinsics
-    if (function_name.find("llvm.") == 0) continue;
+    // Skip llvm debug intrinsics
+    const llvm::StringRef func_name = function.getName();
+    if (func_name.startswith("llvm.")) {
+      continue;
+    }
 
     funcs_json.push_back(
         anvill::FunctionDecl::Create(function).SerializeToJSON());
