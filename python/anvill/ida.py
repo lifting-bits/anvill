@@ -598,6 +598,14 @@ def _add_real_xref(ea, ref_ea, out_ref_eas):
 def _collect_xrefs_from_func(pfn, ea, out_ref_eas):
   """Collect cross-references at `ea` in `pfn` that target code/data
   outside of `pfn`. Save them into `out_ref_eas`."""
+  global _OPERANDS_NUMS
+
+  # TODO(pag): Decode instruction at `ea`, iterate over operands, and try
+  #            to build up operand-specific refs, using a mechanism similar
+  #            to McSema's `get_instruction_references`. Might want to pass
+  #            in a boolean argument to tell us if IDA thinks this is an
+  #            instruction head.
+
   for ref_ea in _xref_generator(ea, ida_xref.get_first_cref_from, \
                                 ida_xref.get_next_cref_from):
     if not ida_funcs.func_contains(pfn, ref_ea):
