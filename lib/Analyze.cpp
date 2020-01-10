@@ -398,7 +398,7 @@ static void ReplaceBarrier(
 // Lower a memory read intrinsic into a `load` instruction.
 static void ReplaceMemReadOp(
     llvm::Module &module, const char *name, llvm::Type *val_type,
-    std::vector<llvm::Value *> &pointers) {
+    std::unordered_set<llvm::Value *> &pointers) {
   auto func = module.getFunction(name);
   if (!func) {
     return;
@@ -414,7 +414,7 @@ static void ReplaceMemReadOp(
     llvm::IRBuilder<> ir(call_inst);
     llvm::Value *ptr = nullptr;
     if (auto as_int = llvm::dyn_cast<llvm::PtrToIntInst>(addr)) {
-      pointers.push_back(as_int->getPointerOperand());
+      pointers.insert(as_int->getPointerOperand());
       ptr = ir.CreateBitCast(
           as_int->getPointerOperand(),
           llvm::PointerType::get(val_type, as_int->getPointerAddressSpace()));
@@ -423,7 +423,7 @@ static void ReplaceMemReadOp(
       ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
     }
 
-    pointers.push_back(ptr);
+    pointers.insert(ptr);
 
     llvm::Value *val = ir.CreateLoad(ptr);
     if (val_type->isX86_FP80Ty()) {
@@ -439,7 +439,7 @@ static void ReplaceMemReadOp(
 // Lower a memory write intrinsic into a `store` instruction.
 static void ReplaceMemWriteOp(
     llvm::Module &module, const char *name, llvm::Type *val_type,
-    std::vector<llvm::Value *> &pointers) {
+    std::unordered_set<llvm::Value *> &pointers) {
   auto func = module.getFunction(name);
   if (!func) {
     return;
@@ -459,7 +459,7 @@ static void ReplaceMemWriteOp(
 
     llvm::Value *ptr = nullptr;
     if (auto as_int = llvm::dyn_cast<llvm::PtrToIntInst>(addr)) {
-      pointers.push_back(as_int->getPointerOperand());
+      pointers.insert(as_int->getPointerOperand());
       ptr = ir.CreateBitCast(
           as_int->getPointerOperand(),
           llvm::PointerType::get(val_type, as_int->getPointerAddressSpace()));
@@ -467,7 +467,7 @@ static void ReplaceMemWriteOp(
       ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
     }
 
-    pointers.push_back(ptr);
+    pointers.insert(ptr);
 
     if (val_type->isX86_FP80Ty()) {
       val = ir.CreateFPExt(val, val_type);
@@ -482,7 +482,7 @@ static void ReplaceMemWriteOp(
 }
 
 static void LowerMemOps(llvm::Module &module,
-                        std::vector<llvm::Value *> &pointers) {
+                        std::unordered_set<llvm::Value *> &pointers) {
   auto &context = module.getContext();
 
   ReplaceMemReadOp(module, "__remill_read_memory_8",
@@ -587,7 +587,7 @@ static uint64_t GetIndexesInto(
 static void RecoverStackMemoryAccesses(
     const Program &program, llvm::Function *func,
     const std::vector<Cell> &cells,
-    std::vector<llvm::Value *> &pointers) {
+    std::unordered_set<llvm::Value *> &pointers) {
 
   auto sp = program.InitialStackPointer();
   if (!sp) {
@@ -642,7 +642,7 @@ static void RecoverStackMemoryAccesses(
   const auto frame = ir.CreateAlloca(frame_type);
   llvm::Value *i8_frame = nullptr;
 
-  pointers.push_back(frame);
+  pointers.insert(frame);
   std::unordered_map<uint64_t, llvm::Value *> offset_cache;
 
   for (const auto &cell : cells) {
@@ -660,11 +660,11 @@ static void RecoverStackMemoryAccesses(
 
         if (!i8_frame) {
           i8_frame = ir.CreateBitCast(frame, i8_ptr_type);
-          pointers.push_back(i8_frame);
+          pointers.insert(i8_frame);
         }
 
         gep = ir.CreateInBoundsGEP(i8_type, i8_frame, indexes);
-        pointers.push_back(gep);
+        pointers.insert(gep);
       }
 
       use.set(ir.CreatePtrToInt(gep, cell.address_val->getType()));
@@ -825,7 +825,9 @@ static void RecoverGlobalVariableAccesses(
 // Given a pointer `ptr`, look through its uses and see if it is casted to
 // and integer and then used in an addition instruction. We then try to replace
 // that pattern with a mix of GEPs and bitcasts.
-static bool TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
+static bool TransformPattern_PTI_Add(
+    llvm::DataLayout &dl, llvm::Value *ptr,
+    std::vector<llvm::Instruction *> &to_remove) {
   auto changed = false;
   auto type = ptr->getType()->getPointerElementType();
   auto &context = type->getContext();
@@ -872,41 +874,71 @@ static bool TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
       indexes.push_back(llvm::ConstantInt::get(i32_type, base_index));
       remainder = GetIndexesInto(dl, type, indexes, remainder);
 
-      llvm::Value *gep = nullptr;
-      if (auto global = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
-        auto gep0 = llvm::ConstantExpr::getGetElementPtr(
-            nullptr, global, indexes);
-        auto gep1 = llvm::ConstantExpr::getPtrToInt(gep0, addr_type);
-        if (remainder) {
-          gep = llvm::ConstantExpr::getAdd(
-              gep1, llvm::ConstantInt::get(addr_type, remainder));
+      llvm::Type *goal_type = nullptr;
+      uint64_t goal_index = 0;
+
+      // If we won't be able to directly index to the thing, then we'll try to
+      // bitcast to something else. Lets see if we can find a good bitcast
+      // candidate type, otherwise fall back to an `i8*`.
+      if (remainder) {
+        goal_type = GetDownstreamType(add);
+        if (auto goal_ptr_type = llvm::dyn_cast<llvm::PointerType>(goal_type)) {
+          auto el_type = goal_ptr_type->getElementType();
+          auto el_size = dl.getTypeAllocSize(el_type);
+          if (remainder % el_size) {
+            goal_type = llvm::Type::getInt8PtrTy(
+                context, goal_ptr_type->getAddressSpace());
+            goal_index = remainder;
+          } else {
+            goal_index = remainder / el_size;
+          }
         } else {
-          gep = gep1;
-        }
-      } else if (llvm::isa<llvm::Argument>(ptr) ||
-          llvm::isa<llvm::Instruction>(ptr)) {
-        auto insert_loc = llvm::dyn_cast<llvm::Instruction>(add);
-        gep = llvm::GetElementPtrInst::Create(
-            nullptr, ptr, indexes, "", insert_loc);
-        gep = new llvm::PtrToIntInst(gep, addr_type, "", insert_loc);
-        if (remainder) {
-          gep = llvm::BinaryOperator::Create(
-              llvm::Instruction::Add, gep,
-              llvm::ConstantInt::get(addr_type, remainder), "", insert_loc);
+          goal_type = llvm::Type::getInt8PtrTy(context, 0);
+          goal_index = remainder;
         }
       }
 
-      if (!gep) {
+      llvm::Value *gep = nullptr;
+      if (auto global = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
+        auto gep1 = llvm::ConstantExpr::getGetElementPtr(
+            nullptr, global, indexes);
+
+        if (remainder) {
+          indexes.clear();
+          indexes.push_back(llvm::ConstantInt::get(i32_type, goal_index));
+          gep1 = llvm::ConstantExpr::getBitCast(gep1, goal_type);
+          gep1 = llvm::ConstantExpr::getGetElementPtr(nullptr, gep1, indexes);
+        }
+
+        gep = llvm::ConstantExpr::getPtrToInt(gep1, addr_type);
+
+      } else if (llvm::isa<llvm::Argument>(ptr) ||
+                 llvm::isa<llvm::Instruction>(ptr)) {
+        auto insert_loc = llvm::dyn_cast<llvm::Instruction>(add);
+        gep = llvm::GetElementPtrInst::Create(
+            nullptr, ptr, indexes, "", insert_loc);
+        if (remainder) {
+          indexes.clear();
+          indexes.push_back(llvm::ConstantInt::get(i32_type, goal_index));
+          gep = new llvm::BitCastInst(gep, goal_type, "", insert_loc);
+          gep = llvm::GetElementPtrInst::Create(
+              nullptr, ptr, indexes, "", insert_loc);
+        }
+        gep = new llvm::PtrToIntInst(gep, addr_type, "", insert_loc);
+      }
+
+      if (!gep || gep == add) {
         LOG(ERROR)
             << "Could not GEP into " << remill::LLVMThingToString(ptr);
         continue;
       }
 
-      // NOTE(pag): We don't erase `add` because a future DCE pass will do it
-      //            for us, and then we don't need to worry about iterator
-      //            invalidation.
       add->replaceAllUsesWith(gep);
       changed = true;
+
+      if (auto add_inst = llvm::dyn_cast<llvm::BinaryOperator>(add)) {
+        to_remove.push_back(add_inst);
+      }
     }
   }
 
@@ -918,7 +950,13 @@ static bool TransformPattern_PTI_Add(llvm::DataLayout &dl, llvm::Value *ptr) {
 // is basically trying to sink `inttoptr`s to occur after PHI nodes, rather
 // than before them.
 static bool TransformPattern_IntToPtr_PHI(
-    llvm::PHINode *phi, std::vector<llvm::Value *> &pointers) {
+    llvm::PHINode *phi, std::unordered_set<llvm::Value *> &pointers,
+    std::vector<llvm::Instruction *> &to_remove) {
+
+  if (!phi->hasNUsesOrMore(1)) {
+    return false;
+  }
+
   llvm::Type *last_pointer_type = nullptr;
   for (auto &use : phi->incoming_values()) {
     if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(use.get())) {
@@ -937,7 +975,7 @@ static bool TransformPattern_IntToPtr_PHI(
 
   llvm::IRBuilder<> ir(phi);
   auto new_phi = ir.CreatePHI(ideal_type, phi->getNumIncomingValues());
-  pointers.push_back(new_phi);
+  pointers.insert(new_phi);
 
   for (auto &use : phi->incoming_values()) {
     auto block = phi->getIncomingBlock(use);
@@ -950,6 +988,7 @@ static bool TransformPattern_IntToPtr_PHI(
   ir.SetInsertPoint(phi);
   auto new_int_version = ir.CreatePtrToInt(new_phi, phi->getType());
   phi->replaceAllUsesWith(new_int_version);
+  to_remove.push_back(phi);
 
   return true;
 }
@@ -1022,7 +1061,7 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
     }
   };
 
-  std::vector<llvm::Value *> pointers;
+  std::unordered_set<llvm::Value *> pointers;
 
   // Scan through the stack cells and try to compute bounds on the stack frame
   // so that we can create a structure representing the stack frame.
@@ -1093,12 +1132,12 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   for (auto &global_or_func : nearby) {
     auto global = llvm::dyn_cast<llvm::GlobalVariable>(global_or_func.second);
     if (global) {
-      pointers.push_back(global);
+      pointers.insert(global);
     } else {
       auto func = llvm::dyn_cast<llvm::Function>(global_or_func.second);
       for (auto &arg : func->args()) {
         if (arg.getType()->isPointerTy()) {
-          pointers.push_back(&arg);
+          pointers.insert(&arg);
         }
       }
 
@@ -1108,23 +1147,36 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
       for (auto maybe_caller : func->users()) {
         if (auto ci = llvm::dyn_cast<llvm::CallInst>(maybe_caller)) {
-          pointers.push_back(ci);
+          pointers.insert(ci);
         }
       }
     }
   }
 
+  std::vector<llvm::Instruction *> to_remove;
+  auto clear_old_vals = [&to_remove] (void) {
+    for (auto inst : to_remove) {
+      if (inst->hasNUses(0)) {
+        inst->eraseFromParent();
+      }
+    }
+    to_remove.clear();
+  };
+
   // Go through and replace things like `ptrtoint+add` with `gep`s.
   for (auto ptr : pointers) {
-    TransformPattern_PTI_Add(dl, ptr);
+    TransformPattern_PTI_Add(dl, ptr, to_remove);
   }
 
+  clear_old_vals();
   pointers.clear();
   LowerMemOps(module, pointers);
 
   for (auto ptr : pointers) {
-    TransformPattern_PTI_Add(dl, ptr);
+    TransformPattern_PTI_Add(dl, ptr, to_remove);
   }
+
+  clear_old_vals();
 
   auto ptr_size_bits = dl.getPointerSizeInBits(0);
 
@@ -1148,16 +1200,18 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
     pointers.clear();
     for (auto phi : phi_nodes) {
-      if (TransformPattern_IntToPtr_PHI(phi, pointers)) {
+      if (TransformPattern_IntToPtr_PHI(phi, pointers, to_remove)) {
         changed = true;
       }
     }
 
     for (auto ptr : pointers) {
-      if (TransformPattern_PTI_Add(dl, ptr)) {
+      if (TransformPattern_PTI_Add(dl, ptr, to_remove)) {
         changed = true;
       }
     }
+
+    clear_old_vals();
   }
 }
 
