@@ -19,6 +19,8 @@
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
+#include <remill/OS/OS.h>
+#include <remill/Arch/Name.h>
 
 #include <anvill/Decl.h>
 
@@ -26,42 +28,6 @@ DECLARE_string(arch);
 DECLARE_string(os);
 DEFINE_string(bc_file, "",
               "Path to BITcode file containing data to be specified");
-
-// Returns a tuple consisting of arch, os
-std::tuple<std::string, std::string> getPlatformInformation(
-    llvm::Module *module) {
-  std::string s = module->getTargetTriple();
-
-  // Split the triple
-  replace(s.begin(), s.end(), '-', ' ');
-  std::stringstream ss(s);
-  std::istream_iterator<std::string> begin(ss);
-  std::istream_iterator<std::string> end;
-  std::vector<std::string> triple(begin, end);
-
-  // Check that we actually got 3 strings
-  if (triple.size() != 3) {
-    LOG(ERROR) << "Could not extract a valid triple";
-    exit(EXIT_FAILURE);
-  }
-
-  std::string arch = triple[0];
-  std::string os = triple[2];
-
-  // Change the architecture into something that the rest of anvill and remill
-  // can understand.
-  if (arch.find("x86_64") != std::string::npos) {
-    arch = "amd64";
-  }
-
-  // Trim the versioning information
-  // TODO: cover the other OSes as well
-  if (os.find("macos") != std::string::npos) {
-    os = "macos";
-  }
-
-  return std::make_tuple(arch, os);
-}
 
 int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
@@ -81,12 +47,13 @@ int main(int argc, char *argv[]) {
 
   auto context = new llvm::LLVMContext;
   auto module = remill::LoadModuleFromFile(context, FLAGS_bc_file);
-  std::string arch, os;
-  std::tie(arch, os) = getPlatformInformation(module);
+  auto arch = remill::Arch::GetModuleArch(*module);
+  std::string arch_name = remill::GetOSName(arch->os_name);
+  std::string os_name = remill::GetArchName(arch->arch_name);
 
   llvm::json::Object json;
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch});
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os});
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name});
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name});
 
   llvm::json::Array funcs_json;
 
