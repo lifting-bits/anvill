@@ -61,7 +61,7 @@ std::map<unsigned, std::string> TryRecoverParamNames(
   return param_names;
 }
 
-// TODO: This doesn't really fit here so I will need to find a better place for
+// TODO(aty): This doesn't really fit here so I will need to find a better place for
 // this. Translates an llvm::Type to a type that conforms to the spec in
 // TypeParser.cpp
 std::string TranslateType(const llvm::Type &type) {
@@ -129,7 +129,7 @@ std::string TranslateType(const llvm::Type &type) {
       auto struct_ptr = llvm::cast<llvm::StructType>(&type);
       std::string element_list = "";
       for (unsigned i = 0; i < struct_ptr->getNumElements(); i++) {
-        // TODO: BUG: this if statement protects against infinite chained
+        // TODO(aty): BUG: this if statement protects against infinite chained
         // pointers, which this code has a hard time with. Notably, this
         // includes some types of C++ ostream functions.
         if (struct_ptr->getElementType(i)->isPtrOrPtrVectorTy()) {
@@ -177,7 +177,7 @@ remill::Register *TryRegisterAllocate(
     if (width == 64) {
       size_constraint = kMinBit64;
     } else {
-      // TODO: I know that this is wrong but for now its fine
+      // TODO(aty): I know that this is wrong but for now its fine
       size_constraint = kMinBit32;
     }
   } else if (type.isFloatTy()) {
@@ -192,7 +192,7 @@ remill::Register *TryRegisterAllocate(
     type_constraint = kTypeIntegral;
     size_constraint = kMinBit64;
   }
-  // TODO: Handle other types
+  // TODO(aty): Handle other types
 
   for (size_t i = 0; i < register_constraints.size(); i++) {
     if (reserved[i]) continue;
@@ -244,7 +244,7 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
 
   for (auto &block : function) {
     for (auto &inst : block) {
-      // TODO: There has to be a better way of doing this, right now I am
+      // TODO(aty): There has to be a better way of doing this, right now I am
       // iterating over every single return instruction in the function and
       // its type. This will get confused if there are multiple return
       // instructions. I haven't gotten this to happen from C yet but it is

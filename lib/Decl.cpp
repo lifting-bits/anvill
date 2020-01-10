@@ -305,7 +305,7 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
     case llvm::CallingConv::X86_64_SysV:
       cc = std::make_unique<anvill::X86_64_SysV>();
     default:
-      // TODO: find a better way to do this since the calling conventions given
+      // TODO(aty): find a better way to do this since the calling conventions given
       // by llvm::function cannot be trusted
       cc = std::make_unique<anvill::X86_64_SysV>();
   }
@@ -314,7 +314,7 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
   decl.returns = cc->BindReturnValues(func);
   decl.return_stack_pointer = cc->BindReturnStackPointer(func);
 
-  // TODO: for a better and more comprehensive serialization
+  // TODO(aty): for a better and more comprehensive serialization
   // decl->address =
   // decl->return_address =
   // decl->return_stack_pointer =
