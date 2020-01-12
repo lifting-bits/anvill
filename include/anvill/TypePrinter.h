@@ -5,7 +5,6 @@
 
 namespace anvill {
 
-std::string TranslateType(llvm::Type &type, llvm::DataLayout* dl);
-std::string TranslateType(llvm::Type &type);
+std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl);
 
 }  // namespace anvill

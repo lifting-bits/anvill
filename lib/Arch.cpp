@@ -70,29 +70,47 @@ remill::Register *TryRegisterAllocate(
   SizeConstraint size_constraint;
   TypeConstraint type_constraint;
 
-  if (type.isIntegerTy()) {
-    type_constraint = kTypeInt;
-    auto derived = llvm::cast<llvm::IntegerType>(type);
-    unsigned int width = derived.getBitWidth();
-    if (width == 64) {
-      size_constraint = kMinBit64;
-    } else {
-      // TODO(aty): I know that this is wrong but for now its fine
-      size_constraint = kMinBit32;
+  switch (type.getTypeID()) {
+    case llvm::Type::IntegerTyID: {
+      type_constraint = kTypeInt;
+      auto derived = llvm::cast<llvm::IntegerType>(type);
+      unsigned int width = derived.getBitWidth();
+      if (width == 64) {
+        size_constraint = kMinBit64;
+      } else {
+        // TODO(aty): I know that this is wrong but for now its fine
+        size_constraint = kMinBit32;
+      }
+      break;
     }
-  } else if (type.isFloatTy()) {
-    type_constraint = kTypeFloat;
-    // We automatically know it is 32-bit IEEE floating point type
-    size_constraint = kMinBit32;
-  } else if (type.isDoubleTy()) {
-    type_constraint = kTypeFloat;
-    // We automatically know it is 64-bit IEEE floating point type
-    size_constraint = kMinBit64;
-  } else if (type.isPointerTy()) {
-    type_constraint = kTypeIntegral;
-    size_constraint = kMinBit64;
+    case llvm::Type::FloatTyID: {
+      type_constraint = kTypeFloat;
+      // We automatically know it is 32-bit IEEE floating point type
+      size_constraint = kMinBit32;
+      break;
+    }
+    case llvm::Type::DoubleTyID: {
+      type_constraint = kTypeFloat;
+      // We automatically know it is 64-bit IEEE floating point type
+      size_constraint = kMinBit64;
+      break;
+    }
+    case llvm::Type::PointerTyID: {
+      type_constraint = kTypeIntegral;
+      size_constraint = kMinBit64;
+      break;
+    }
+    case llvm::Type::X86_FP80TyID: {
+      type_constraint = kTypeIntegral;
+      size_constraint = kMinBit80;
+    }
+    default: {
+      LOG(FATAL) << "Could not assign type and size constraints in "
+                    "TryRegisterAllocate()";
+      // TODO(aty): Handle other types like X86_MMXTyID, etc.
+      break;
+    }
   }
-  // TODO(aty): Handle other types
 
   for (size_t i = 0; i < register_constraints.size(); i++) {
     if (reserved[i]) continue;
@@ -141,67 +159,48 @@ std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
 std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     const llvm::Function &function) {
   std::vector<anvill::ValueDecl> return_value_declarations;
+  anvill::ValueDecl value_declaration = {};
+  llvm::Type *ret_type = function.getReturnType();
+  value_declaration.type = ret_type;
 
-  for (auto &block : function) {
-    for (auto &inst : block) {
-      // TODO(aty): There has to be a better way of doing this, right now I am
-      // iterating over every single return instruction in the function and
-      // its type. This will get confused if there are multiple return
-      // instructions. I haven't gotten this to happen from C yet but it is
-      // to construct a trivial example where this breaks in bitcode. I think
-      // its possible that I only need to consider the first return instruction
-      // that I see, because they all should be of the same type but I am not
-      // sure.
-      if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
-        anvill::ValueDecl value_declaration = {};
-
-        const llvm::Value *value = return_inst->getReturnValue();
-        if (!value) continue;
-        value_declaration.type = value->getType();
-
-        switch (value_declaration.type->getTypeID()) {
-          case llvm::Type::IntegerTyID:
-          case llvm::Type::PointerTyID: {
-            // Allocate RAX for an integer or pointer
-            value_declaration.reg =
-                new remill::Register("RAX", 0, 8, 0, value_declaration.type);
-            break;
-          }
-          case llvm::Type::FloatTyID: {
-            // Allocate XMM0 for a floating point value
-            value_declaration.reg =
-                new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
-            break;
-          }
-          case llvm::Type::StructTyID: {
-            // Try to split the struct over the registers
-            std::vector<bool> allocated(return_register_constraints.size(),
-                                        false);
-            auto struct_ptr =
-                llvm::cast<llvm::StructType>(value_declaration.type);
-            auto mapping = TryReturnThroughRegisters(
-                *struct_ptr, return_register_constraints);
-            if (mapping) {
-              // There is a valid split over registers, so add the mapping
-              return *mapping;
-            } else {
-              // Struct splitting didn't work so do RVO. Assume that the pointer
-              // to the return value resides in RAX.
-              value_declaration.reg =
-                  new remill::Register("RAX", 0, 8, 0, value_declaration.type);
-            }
-            break;
-          }
-          default: {
-            LOG(ERROR) << "Encountered an unknown return type";
-            exit(1);
-          }
-        }
-
-        return_value_declarations.push_back(value_declaration);
+  switch (ret_type->getTypeID()) {
+    case llvm::Type::IntegerTyID:
+    case llvm::Type::PointerTyID: {
+      // Allocate RAX for an integer or pointer
+      value_declaration.reg =
+          new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+      break;
+    }
+    case llvm::Type::FloatTyID: {
+      // Allocate XMM0 for a floating point value
+      value_declaration.reg =
+          new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
+      break;
+    }
+    case llvm::Type::StructTyID: {
+      // Try to split the struct over the registers
+      std::vector<bool> allocated(return_register_constraints.size(), false);
+      auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
+      auto mapping =
+          TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+      if (mapping) {
+        // There is a valid split over registers, so add the mapping
+        return *mapping;
+      } else {
+        // Struct splitting didn't work so do RVO. Assume that the pointer
+        // to the return value resides in RAX.
+        value_declaration.reg =
+            new remill::Register("RAX", 0, 8, 0, value_declaration.type);
       }
+      break;
+    }
+    default: {
+      LOG(ERROR) << "Encountered an unknown return type";
+      exit(1);
     }
   }
+
+  return_value_declarations.push_back(value_declaration);
 
   return return_value_declarations;
 }
@@ -293,58 +292,47 @@ std::vector<ParameterDecl> X86_C::BindParameters(
 std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     const llvm::Function &function) {
   std::vector<anvill::ValueDecl> return_value_declarations;
+  anvill::ValueDecl value_declaration = {};
+  llvm::Type *ret_type = function.getReturnType();
+  value_declaration.type = ret_type;
 
-  for (auto &block : function) {
-    for (auto &inst : block) {
-      if (auto return_inst = llvm::dyn_cast<llvm::ReturnInst>(&inst)) {
-        const llvm::Value *value = return_inst->getReturnValue();
-        if (!value) continue;
-
-        anvill::ValueDecl value_declaration = {};
-        value_declaration.type = value->getType();
-
-        switch (value_declaration.type->getTypeID()) {
-          case llvm::Type::IntegerTyID:
-          case llvm::Type::PointerTyID: {
-            // Allocate EAX for an integer or pointer
-            value_declaration.reg =
-                new remill::Register("EAX", 0, 8, 0, value->getType());
-            break;
-          }
-          case llvm::Type::FloatTyID: {
-            // Allocate ST0 for a floating point value
-            value_declaration.reg =
-                new remill::Register("ST0", 0, 16, 0, value->getType());
-            break;
-          }
-          case llvm::Type::StructTyID: {
-            // Try to split the struct over the registers
-            std::vector<bool> allocated(return_register_constraints.size(),
-                                        false);
-            auto struct_ptr =
-                llvm::cast<llvm::StructType>(value_declaration.type);
-            auto mapping = TryReturnThroughRegisters(
-                *struct_ptr, return_register_constraints);
-            if (mapping) {
-              // There is a valid split over registers, so return the mapping
-              return *mapping;
-            } else {
-              // Struct splitting didn't work so do RVO. Assume that the pointer
-              // to the return value resides in EAX.
-              value_declaration.reg =
-                  new remill::Register("EAX", 0, 8, 0, value_declaration.type);
-            }
-            break;
-          }
-          default: {
-            LOG(ERROR) << "Encountered an unknown return type";
-            exit(1);
-          }
-        }
-        return_value_declarations.push_back(value_declaration);
+  switch (ret_type->getTypeID()) {
+    case llvm::Type::IntegerTyID:
+    case llvm::Type::PointerTyID: {
+      // Allocate EAX for an integer or pointer
+      value_declaration.reg =
+          new remill::Register("EAX", 0, 8, 0, value_declaration.type);
+      break;
+    }
+    case llvm::Type::FloatTyID: {
+      // Allocate ST0 for a floating point value
+      value_declaration.reg =
+          new remill::Register("ST0", 0, 16, 0, value_declaration.type);
+      break;
+    }
+    case llvm::Type::StructTyID: {
+      // Try to split the struct over the registers
+      std::vector<bool> allocated(return_register_constraints.size(), false);
+      auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
+      auto mapping =
+          TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+      if (mapping) {
+        // There is a valid split over registers, so return the mapping
+        return *mapping;
+      } else {
+        // Struct splitting didn't work so do RVO. Assume that the pointer
+        // to the return value resides in EAX.
+        value_declaration.reg =
+            new remill::Register("EAX", 0, 8, 0, value_declaration.type);
       }
+      break;
+    }
+    default: {
+      LOG(ERROR) << "Encountered an unknown return type";
+      exit(1);
     }
   }
+  return_value_declarations.push_back(value_declaration);
 
   return return_value_declarations;
 }

@@ -210,7 +210,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
 
   llvm::json::Array params_json;
   for (auto pdecl : this->params) {
-    llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON());
+    llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON(*this->dl));
     params_json.push_back(v);
   }
   json.insert(
@@ -219,7 +219,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
 
   llvm::json::Array returns_json;
   for (auto rdecl : this->returns) {
-    returns_json.push_back(llvm::json::Value(rdecl.SerializeToJSON()));
+    returns_json.push_back(llvm::json::Value(rdecl.SerializeToJSON(*this->dl)));
   }
   json.insert(
       llvm::json::Object::KV{llvm::json::ObjectKey("return values"),
@@ -233,7 +233,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
         llvm::json::ObjectKey("offset"), this->return_stack_pointer->offset});
     return_stack_pointer_json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("type"),
-        TranslateType(*this->return_stack_pointer->type)});
+        TranslateType(*this->return_stack_pointer->type, *this->dl)});
 
     json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("return stack pointer"),
@@ -243,10 +243,10 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
 }
 
 // Serialize a ParameterDecl to JSON
-llvm::json::Object ParameterDecl::SerializeToJSON() {
+llvm::json::Object ParameterDecl::SerializeToJSON(const llvm::DataLayout &dl) {
   // Get the serialization for the ValueDecl
   ValueDecl *val_decl_ptr = dynamic_cast<ValueDecl *>(this);
-  llvm::json::Object param_json = val_decl_ptr->SerializeToJSON();
+  llvm::json::Object param_json = val_decl_ptr->SerializeToJSON(dl);
 
   // Insert "name"
   param_json.insert(
@@ -256,7 +256,7 @@ llvm::json::Object ParameterDecl::SerializeToJSON() {
 }
 
 // Serialize a ValueDecl to JSON
-llvm::json::Object ValueDecl::SerializeToJSON() {
+llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
   llvm::json::Object value_json;
 
   if (this->reg) {
@@ -281,7 +281,7 @@ llvm::json::Object ValueDecl::SerializeToJSON() {
   }
 
   value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-                                           TranslateType(*this->type)});
+                                           TranslateType(*this->type, dl)});
 
   // Note:: Ignore mem_offset for now becuare remill::Register has that
   // information.
@@ -290,12 +290,13 @@ llvm::json::Object ValueDecl::SerializeToJSON() {
 }
 
 // Create a Function Declaration from llvm::Function
-FunctionDecl FunctionDecl::Create(const llvm::Function &func) {
+FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::DataLayout &dl) {
   FunctionDecl decl;
   decl.type = func.getFunctionType();
   
   decl.name = func.getName().data();
   decl.demangled_name = llvm::demangle(func.getName().data());
+  decl.dl = &dl;
 
   // Try to guess the parameter and return value register allocation by looking
   // at the calling convention of the function

@@ -26,17 +26,20 @@ enum SizeConstraint : unsigned {
   kBit16 = (1 << 1),
   kBit32 = (1 << 2),
   kBit64 = (1 << 3),
-  kBit128 = (1 << 4),
+  kBit80 = (1 << 4),
+  kBit128 = (1 << 5),
 
-  kMaxBit128 = kBit128 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMaxBit128 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMaxBit80 = kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit64 = kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit32 = kBit32 | kBit16 | kBit8,
   kMaxBit16 = kBit16 | kBit8,
   kMaxBit8 = kBit8,
 
   kMinBit128 = kBit128,
-  kMinBit64 = kBit128 | kBit64,
-  kMinBit32 = kBit128 | kBit64 | kBit32,
+  kMinBit80 = kBit128 | kBit80,
+  kMinBit64 = kBit128 | kBit80 | kBit64,
+  kMinBit32 = kBit128 | kBit80 | kBit64 | kBit32,
 };
 
 enum TypeConstraint : unsigned {
@@ -174,8 +177,8 @@ class X86_64_SysV : public CallingConvention {
 
       // Since the FPU registers are 80 bits wide, they are only able to hold
       // 64-bit values.
-      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit64)}),
-      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit64)}),
+      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit80)}),
   };
 };
 
@@ -209,8 +212,8 @@ class X86_C : public CallingConvention {
           VariantConstraint("CX", kTypeIntegral, kMaxBit16),
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
       }),
-      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit64)}),
-      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit64)}),
+      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit80)}),
   };
 };
 
@@ -220,7 +223,5 @@ class X86_C : public CallingConvention {
 remill::Register *TryRegisterAllocate(
     const llvm::Argument &argument, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints);
-
-std::string TranslateType(llvm::Type &type);
 
 }  // namespace anvill

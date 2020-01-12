@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/Support/JSON.h>
 
@@ -65,13 +66,13 @@ struct ValueDecl {
   // Type of this value.
   llvm::Type *type{nullptr};
 
-  llvm::json::Object SerializeToJSON();
+  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
 };
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
 
-  llvm::json::Object SerializeToJSON();
+  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
 };
 
 struct GlobalVarDecl {
@@ -142,6 +143,9 @@ struct FunctionDecl {
   //            value when the function might throw an exception.
   std::vector<ValueDecl> returns;
 
+  // The DataLayout of the module that contains the function
+  const llvm::DataLayout *dl{nullptr};
+
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
 
@@ -166,7 +170,7 @@ struct FunctionDecl {
       llvm::Value *mem_ptr) const;
 
   llvm::json::Object SerializeToJSON();
-  static FunctionDecl Create(const llvm::Function &func);
+  static FunctionDecl Create(const llvm::Function &func, const llvm::DataLayout &dl);
 
  private:
   friend class Program;

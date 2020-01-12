@@ -47,8 +47,8 @@ int main(int argc, char *argv[]) {
   auto context = new llvm::LLVMContext;
   auto module = remill::LoadModuleFromFile(context, FLAGS_bc_file);
   auto arch = remill::Arch::GetModuleArch(*module);
-  std::string arch_name = remill::GetOSName(arch->os_name);
-  std::string os_name = remill::GetArchName(arch->arch_name);
+  std::string arch_name = remill::GetArchName(arch->arch_name);
+  std::string os_name = remill::GetOSName(arch->os_name);
 
   llvm::json::Object json;
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name});
@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
     }
 
     funcs_json.push_back(
-        anvill::FunctionDecl::Create(function).SerializeToJSON());
+        anvill::FunctionDecl::Create(function, module->getDataLayout()).SerializeToJSON());
   }
 
   // Insert functions array into top level JSON

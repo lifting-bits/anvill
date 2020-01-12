@@ -15,7 +15,7 @@ namespace anvill {
 // TypeParser.cpp
 void TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
                            std::map<llvm::Type *, size_t> ids,
-                           llvm::DataLayout* dl) {
+                           const llvm::DataLayout &dl) {
   unsigned int id = type.getTypeID();
   switch (id) {
     case llvm::Type::VoidTyID: {
@@ -120,30 +120,20 @@ void TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     }
 
     default: {
-      if (dl) {
-        // Approximate the type by making an array of bytes of a similar size
-        uint64_t type_size = dl->getTypeStoreSize(&type);
-        auto arr_type_ptr = llvm::ArrayType::get(
-            llvm::IntegerType::get(type.getContext(), 8), type_size / 8);
-        TranslateTypeInternal(*arr_type_ptr, ss, ids, dl);
-      } else {
-        // If a DataLayout wasn't passed then there is nothing more we can do
-        LOG(FATAL) << "Cannot translate a data type, try passing a DataLayout "
-                      "to TranslateType";
-      }
+      // Approximate the type by making an array of bytes of a similar size
+      uint64_t type_size = dl.getTypeStoreSize(&type);
+      auto arr_type_ptr = llvm::ArrayType::get(
+          llvm::IntegerType::get(type.getContext(), 8), type_size / 8);
+      TranslateTypeInternal(*arr_type_ptr, ss, ids, dl);
     }
   }
 }
 
-std::string TranslateType(llvm::Type &type, llvm::DataLayout* dl) {
+std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl) {
   std::stringstream ss;
   std::map<llvm::Type *, size_t> ids = {};
   TranslateTypeInternal(type, ss, ids, dl);
   return ss.str();
-}
-
-std::string TranslateType(llvm::Type &type) {
-  return TranslateType(type, nullptr);
 }
 
 }  // namespace anvill
