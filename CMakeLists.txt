@@ -50,14 +50,16 @@ endif()
 set(ANVILL anvill-${REMILL_LLVM_VERSION})
 
 add_library(${ANVILL} STATIC
-    include/anvill/TypeParser.h
     include/anvill/Decl.h
     include/anvill/Program.h
     include/anvill/Type.h
     include/anvill/Arch.h
+    include/anvill/TypeParser.h
+    include/anvill/TypePrinter.h
 
     lib/Arch.cpp
     lib/TypeParser.cpp
+    lib/TypePrinter.cpp
     lib/Program.cpp lib/Decl.cpp include/anvill/Lift.h lib/Lift.cpp lib/Lift.h include/anvill/Optimize.h lib/Optimize.cpp include/anvill/Analyze.h lib/Analyze.cpp)
 
 target_compile_definitions(${ANVILL} PUBLIC

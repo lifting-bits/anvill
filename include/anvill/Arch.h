@@ -90,7 +90,7 @@ class CallingConvention {
 class X86_64_SysV : public CallingConvention {
  public:
   X86_64_SysV() : CallingConvention(llvm::CallingConv::X86_64_SysV) {}
-  ~X86_64_SysV() = default;
+  virtual ~X86_64_SysV() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
   remill::Register *BindReturnStackPointer(const llvm::Function &function);
@@ -183,7 +183,7 @@ class X86_64_SysV : public CallingConvention {
 class X86_C : public CallingConvention {
  public:
   X86_C() : CallingConvention(llvm::CallingConv::C) {}
-  ~X86_C() = default;
+  virtual ~X86_C() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
   remill::Register *BindReturnStackPointer(const llvm::Function &function);
@@ -221,6 +221,6 @@ remill::Register *TryRegisterAllocate(
     const llvm::Argument &argument, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints);
 
-std::string TranslateType(const llvm::Type &type);
+std::string TranslateType(llvm::Type &type);
 
 }  // namespace anvill
