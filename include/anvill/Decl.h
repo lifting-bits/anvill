@@ -170,7 +170,7 @@ struct FunctionDecl {
       llvm::Value *mem_ptr) const;
 
   llvm::json::Object SerializeToJSON();
-  static FunctionDecl Create(const llvm::Function &func, const llvm::DataLayout &dl);
+  static FunctionDecl Create(const llvm::Function &func, const llvm::Module &mdl);
 
  private:
   friend class Program;

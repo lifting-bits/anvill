@@ -50,6 +50,10 @@ int main(int argc, char *argv[]) {
   std::string arch_name = remill::GetArchName(arch->arch_name);
   std::string os_name = remill::GetOSName(arch->os_name);
 
+  // Need arch_module to get the register table for the architecture
+  auto arch_module = remill::LoadArchSemantics(arch);
+  arch->PrepareModule(arch_module);
+
   llvm::json::Object json;
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name});
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name});
@@ -64,7 +68,7 @@ int main(int argc, char *argv[]) {
     }
 
     funcs_json.push_back(
-        anvill::FunctionDecl::Create(function, module->getDataLayout()).SerializeToJSON());
+        anvill::FunctionDecl::Create(function, *module).SerializeToJSON());
   }
 
   // Insert functions array into top level JSON

@@ -74,17 +74,33 @@ struct RegisterConstraint {
 
 class CallingConvention {
  public:
-  CallingConvention(llvm::CallingConv::ID _identity) : identity(_identity) {}
+  CallingConvention(llvm::CallingConv::ID _identity, const remill::Arch *_arch) : arch(_arch), identity(_identity) {}
   virtual ~CallingConvention() = default;
 
   virtual std::vector<ParameterDecl> BindParameters(
       const llvm::Function &function) = 0;
   virtual std::vector<ValueDecl> BindReturnValues(
       const llvm::Function &function) = 0;
-  virtual remill::Register *BindReturnStackPointer(
-      const llvm::Function &function) = 0;
+  virtual void BindReturnStackPointer(FunctionDecl &fdecl,
+                                       const llvm::Function &func) = 0;
 
   llvm::CallingConv::ID getIdentity() { return identity; }
+
+  // Try to allocate a register for the argument based on the register constraints
+  // and what has already been reserved. Return nullptr if there is no possible
+  // register allocation.
+  const remill::Register *TryRegisterAllocate(
+    llvm::Type &type, std::vector<bool> &reserved,
+    const std::vector<RegisterConstraint> &register_constraints);
+
+  // For each element of the struct, try to allocate it to a register, if all of
+  // them can be allocated, then return that allocation. Otherwise return a
+  // nullptr.
+  std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
+      const llvm::StructType &st,
+      const std::vector<RegisterConstraint> &constraints);
+
+  const remill::Arch* arch;
 
  private:
   llvm::CallingConv::ID identity;
@@ -92,11 +108,11 @@ class CallingConvention {
 
 class X86_64_SysV : public CallingConvention {
  public:
-  X86_64_SysV() : CallingConvention(llvm::CallingConv::X86_64_SysV) {}
+  X86_64_SysV(const remill::Arch *arch) : CallingConvention(llvm::CallingConv::X86_64_SysV, arch) {}
   virtual ~X86_64_SysV() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
-  remill::Register *BindReturnStackPointer(const llvm::Function &function);
+  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
 
  private:
   const std::vector<RegisterConstraint> parameter_register_constraints = {
@@ -185,11 +201,11 @@ class X86_64_SysV : public CallingConvention {
 // This is the cdecl calling convention referenced by llvm::CallingConv::C
 class X86_C : public CallingConvention {
  public:
-  X86_C() : CallingConvention(llvm::CallingConv::C) {}
+  X86_C(remill::Arch *arch) : CallingConvention(llvm::CallingConv::C, arch) {}
   virtual ~X86_C() = default;
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
-  remill::Register *BindReturnStackPointer(const llvm::Function &function);
+  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
 
  private:
   // Register allocations for parameters are not allowed in vanilla cdecl
@@ -216,12 +232,5 @@ class X86_C : public CallingConvention {
       RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit80)}),
   };
 };
-
-// Try to allocate a register for the argument based on the register constraints
-// and what has already been reserved. Return nullptr if there is no possible
-// register allocation.
-remill::Register *TryRegisterAllocate(
-    const llvm::Argument &argument, std::vector<bool> &reserved,
-    const std::vector<RegisterConstraint> &register_constraints);
 
 }  // namespace anvill

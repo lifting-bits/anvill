@@ -230,7 +230,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
     return_stack_pointer_json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("register"), this->return_stack_pointer->name});
     return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("offset"), this->return_stack_pointer->offset});
+        llvm::json::ObjectKey("offset"), this->return_stack_pointer_offset});
     return_stack_pointer_json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("type"),
         TranslateType(*this->return_stack_pointer->type, *this->dl)});
@@ -290,7 +290,10 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 }
 
 // Create a Function Declaration from llvm::Function
-FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::DataLayout &dl) {
+FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::Module &mdl) {
+  const llvm::DataLayout dl = mdl.getDataLayout();
+  const remill::Arch* arch = remill::Arch::GetModuleArch(mdl);
+
   FunctionDecl decl;
   decl.type = func.getFunctionType();
   
@@ -305,16 +308,16 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::DataLa
 
   switch (cc_id) {
     case llvm::CallingConv::X86_64_SysV:
-      cc = std::make_unique<anvill::X86_64_SysV>();
+      cc = std::unique_ptr<anvill::X86_64_SysV>(new X86_64_SysV(arch));
     default:
       // TODO(aty): find a better way to do this since the calling conventions given
       // by llvm::function cannot be trusted
-      cc = std::make_unique<anvill::X86_64_SysV>();
+      cc = std::unique_ptr<anvill::X86_64_SysV>(new X86_64_SysV(arch));
   }
 
   decl.params = cc->BindParameters(func);
   decl.returns = cc->BindReturnValues(func);
-  decl.return_stack_pointer = cc->BindReturnStackPointer(func);
+  cc->BindReturnStackPointer(decl, func);
 
   // TODO(aty): for a better and more comprehensive serialization
   // decl->address =

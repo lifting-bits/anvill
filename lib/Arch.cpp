@@ -64,7 +64,7 @@ std::map<unsigned, std::string> TryRecoverParamNames(
 // Try to allocate a register for the argument based on the register constraints
 // and what has already been reserved. Return nullptr if there is no possible
 // register allocation.
-remill::Register *TryRegisterAllocate(
+const remill::Register *CallingConvention::TryRegisterAllocate(
     llvm::Type &type, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints) {
   SizeConstraint size_constraint;
@@ -122,9 +122,7 @@ remill::Register *TryRegisterAllocate(
       if (size_constraint & variant.size_constraint &&
           type_constraint & variant.type_constraint) {
         reserved[i] = true;
-        remill::Register *reg =
-            new remill::Register(variant.register_name, 0, 0, 0, &type);
-        return reg;
+        return arch->RegisterByName(variant.register_name);
       }
     }
   }
@@ -134,7 +132,7 @@ remill::Register *TryRegisterAllocate(
 // For each element of the struct, try to allocate it to a register, if all of
 // them can be allocated, then return that allocation. Otherwise return a
 // nullptr.
-std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
+std::unique_ptr<std::vector<anvill::ValueDecl>> CallingConvention::TryReturnThroughRegisters(
     const llvm::StructType &st,
     const std::vector<RegisterConstraint> &constraints) {
   auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
@@ -167,14 +165,12 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     case llvm::Type::IntegerTyID:
     case llvm::Type::PointerTyID: {
       // Allocate RAX for an integer or pointer
-      value_declaration.reg =
-          new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+      value_declaration.reg = arch->RegisterByName("RAX");
       break;
     }
     case llvm::Type::FloatTyID: {
       // Allocate XMM0 for a floating point value
-      value_declaration.reg =
-          new remill::Register("XMM0", 0, 16, 0, value_declaration.type);
+      value_declaration.reg = arch->RegisterByName("XMM0");
       break;
     }
     case llvm::Type::StructTyID: {
@@ -189,8 +185,7 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
       } else {
         // Struct splitting didn't work so do RVO. Assume that the pointer
         // to the return value resides in RAX.
-        value_declaration.reg =
-            new remill::Register("RAX", 0, 8, 0, value_declaration.type);
+        value_declaration.reg = arch->RegisterByName("RAX");
       }
       break;
     }
@@ -223,15 +218,13 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
 
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
-    if (remill::Register *reg = TryRegisterAllocate(
+    if (const remill::Register *reg = TryRegisterAllocate(
             *argument.getType(), allocated, parameter_register_constraints)) {
       declaration.reg = reg;
     } else {
-      remill::Register *mem_reg =
-          new remill::Register("RSP", stack_offset, 8, 0, argument.getType());
-
+      declaration.mem_offset = stack_offset;
+      declaration.mem_reg = arch->RegisterByName("RSP");
       stack_offset += dl.getTypeAllocSize(argument.getType());
-      declaration.mem_reg = mem_reg;
     }
 
     // Try to get a name for the IR parameter
@@ -245,8 +238,8 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   return parameter_declarations;
 }
 
-remill::Register *X86_64_SysV::BindReturnStackPointer(
-    const llvm::Function &function) {
+void X86_64_SysV::BindReturnStackPointer(
+      FunctionDecl &fdecl, const llvm::Function &func) {
   // For the X86_64_SysV ABI, it is always:
   //
   // "return_stack_pointer": {
@@ -255,8 +248,8 @@ remill::Register *X86_64_SysV::BindReturnStackPointer(
   //     "type": "L"
   // }
 
-  auto int64_ptr_ty = llvm::IntegerType::get(function.getContext(), 64);
-  return new remill::Register("RSP", 8, 8, 0, int64_ptr_ty);
+  fdecl.return_stack_pointer_offset = 8;
+  fdecl.return_stack_pointer = arch->RegisterByName("RSP");
 }
 
 std::vector<ParameterDecl> X86_C::BindParameters(
@@ -273,11 +266,9 @@ std::vector<ParameterDecl> X86_C::BindParameters(
     declaration.type = argument.getType();
 
     // Since there are no registers, just allocate from the stack
-    remill::Register *mem_reg =
-        new remill::Register("ESP", stack_offset, 4, 0, argument.getType());
-
+    declaration.mem_offset = stack_offset;
+    declaration.mem_reg = arch->RegisterByName("ESP");
     stack_offset += dl.getTypeAllocSize(argument.getType());
-    declaration.mem_reg = mem_reg;
 
     // Get a name for the IR parameter.
     // Need to add 1 because param_names uses logical numbering, but
@@ -300,14 +291,12 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     case llvm::Type::IntegerTyID:
     case llvm::Type::PointerTyID: {
       // Allocate EAX for an integer or pointer
-      value_declaration.reg =
-          new remill::Register("EAX", 0, 8, 0, value_declaration.type);
+      value_declaration.reg = arch->RegisterByName("EAX");
       break;
     }
     case llvm::Type::FloatTyID: {
       // Allocate ST0 for a floating point value
-      value_declaration.reg =
-          new remill::Register("ST0", 0, 16, 0, value_declaration.type);
+      value_declaration.reg = arch->RegisterByName("ST0");
       break;
     }
     case llvm::Type::StructTyID: {
@@ -322,8 +311,7 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
       } else {
         // Struct splitting didn't work so do RVO. Assume that the pointer
         // to the return value resides in EAX.
-        value_declaration.reg =
-            new remill::Register("EAX", 0, 8, 0, value_declaration.type);
+        value_declaration.reg = arch->RegisterByName("EAX");
       }
       break;
     }
@@ -337,8 +325,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
   return return_value_declarations;
 }
 
-remill::Register *X86_C::BindReturnStackPointer(
-    const llvm::Function &function) {
+void X86_C::BindReturnStackPointer(
+      FunctionDecl &fdecl, const llvm::Function &func) {
   // For X86_C ABI, it is always:
   //
   // "return_stack_pointer": {
@@ -346,8 +334,8 @@ remill::Register *X86_C::BindReturnStackPointer(
   //   "offset": 4
   // }
 
-  auto int32_ptr_ty = llvm::IntegerType::get(function.getContext(), 32);
-  return new remill::Register("ESP", 4, 4, 0, int32_ptr_ty);
+  fdecl.return_stack_pointer_offset = 4;
+  fdecl.return_stack_pointer = arch->RegisterByName("ESP");
 }
 
 }  // namespace anvill
