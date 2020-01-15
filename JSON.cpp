@@ -328,6 +328,7 @@ static bool ParseVariable(const remill::Arch *arch,
   if (remill::IsError(maybe_type)) {
     LOG(ERROR)
         << remill::GetErrorString(maybe_type);
+    return false;
   }
 
   decl.type = remill::GetReference(maybe_type);

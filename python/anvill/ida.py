@@ -19,6 +19,7 @@ import weakref
 
 import idc
 import ida_bytes
+import ida_fixup
 import ida_frame
 import ida_funcs
 import ida_ida
@@ -96,7 +97,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
   if 0 < depth:
     context = TYPE_CONTEXT_NESTED
 
-  if tinfo in cache:
+  if tinfo in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
     return cache[tinfo]
 
   # Void type.
@@ -130,7 +131,12 @@ def _convert_ida_type(tinfo, cache, depth, context):
       if tinfo.is_purging_cc():
         ret.set_num_bytes_popped_off_stack(tinfo.calc_purged_bytes())
 
-      return ret
+      if TYPE_CONTEXT_NESTED == context or TYPE_CONTEXT_FUNCTION == context:
+        return ret
+
+      func_ptr = PointerType()
+      func_ptr.set_element_type(ret)
+      return func_ptr
 
     elif tinfo.is_array():
       num_elems = tinfo.get_array_nelems()
@@ -227,12 +233,16 @@ def _convert_ida_type(tinfo, cache, depth, context):
         "Complex numbers are not yet handled: {}".format(tinfo.dstr()), tinfo)
 
   # Type alias/reference.
+  #
+  # NOTE(pag): We return the underlying type because it may be void.
   elif tinfo.is_typeref():
     ret = TypedefType()
     cache[tinfo] = ret
-    ret.set_underlying_type(_convert_ida_type(
-        tinfo.get_realtype(), cache, depth, context))
-    return ret
+    utype = _convert_ida_type(
+      ida_typeinf.tinfo_t(tinfo.get_realtype(True)), cache, depth, context)
+    ret.set_underlying_type(utype)
+    cache[tinfo] = utype
+    return utype
 
   else:
     raise UnhandledTypeException(
@@ -467,6 +477,28 @@ def _find_segment_containing_ea(ea, seg_ref):
   return None
 
 
+def _is_extern_seg(seg):
+  """Returns `True` if `seg` refers to a segment with external variable or
+  function declarations."""
+  if not seg:
+    return False
+
+  seg_type = idc.get_segm_attr(seg.start_ea, idc.SEGATTR_TYPE)
+  return seg_type == idc.SEG_XTRN
+
+
+def _is_imported_table_seg(seg):
+  """Returns `True` if `seg` refers to a segment that typically contains
+  import entries, i.e. cross-reference pointers into an external segment."""
+  if not seg:
+    return False
+
+  seg_name = idc.get_segm_name(seg.start_ea)
+  return ".idata" in seg_name or \
+         ".plt" in seg_name or \
+         ".got" in seg_name
+
+
 def _is_executable_seg(seg):
   """Returns `True` a segment's data is executable."""
   if 0 != (seg.perm & ida_segment.SEGPERM_EXEC):
@@ -556,13 +588,32 @@ def _get_function_bounds(func, seg_ref):
   return min_ea, max_ea
 
 
-def _xref_generator(ea, get_first, get_next):
+def _xref_iterator(ea, get_first, get_next):
   """Generate the cross-references addresses using functors `get_first` and
   `get_next`."""
   target_ea = get_first(ea)
   while target_ea != ida_idaapi.BADADDR:
     yield target_ea
     target_ea = get_next(ea, target_ea)
+
+
+def _xref_generator(ea, seg_ref):
+  """Generate all outbound cross-references from `ea`"""
+  for ref_ea in _xref_iterator(ea, ida_xref.get_first_cref_from, \
+                               ida_xref.get_next_cref_from):
+    if _find_segment_containing_ea(ref_ea, seg_ref):
+      yield ref_ea
+
+  for ref_ea in _xref_iterator(ea, ida_xref.get_first_dref_from, \
+                               ida_xref.get_next_dref_from):
+    if _find_segment_containing_ea(ref_ea, seg_ref):
+      yield ref_ea
+
+  fd = ida_fixup.fixup_data_t()
+  if fd.get(ea):
+    if _find_segment_containing_ea(fd.off, seg_ref):
+      yield fd.off
+      # TODO(pag): What about `fd.displacement`?
 
 
 _OPERANDS_NUMS = (0, 1, 2)
@@ -595,7 +646,7 @@ def _add_real_xref(ea, ref_ea, out_ref_eas):
       out_ref_eas.add(op_val)
 
 
-def _collect_xrefs_from_func(pfn, ea, out_ref_eas):
+def _collect_xrefs_from_func(pfn, ea, out_ref_eas, seg_ref):
   """Collect cross-references at `ea` in `pfn` that target code/data
   outside of `pfn`. Save them into `out_ref_eas`."""
   global _OPERANDS_NUMS
@@ -605,18 +656,58 @@ def _collect_xrefs_from_func(pfn, ea, out_ref_eas):
   #            to McSema's `get_instruction_references`. Might want to pass
   #            in a boolean argument to tell us if IDA thinks this is an
   #            instruction head.
-
-  for ref_ea in _xref_generator(ea, ida_xref.get_first_cref_from, \
-                                ida_xref.get_next_cref_from):
+  for ref_ea in _xref_generator(ea, seg_ref):
     if not ida_funcs.func_contains(pfn, ref_ea):
       out_ref_eas.add(ref_ea)
       _add_real_xref(ea, ref_ea, out_ref_eas)
 
-  for ref_ea in _xref_generator(ea, ida_xref.get_first_dref_from, \
-                                ida_xref.get_next_dref_from):
-    if not ida_funcs.func_contains(pfn, ref_ea):
-      out_ref_eas.add(ref_ea)
-      _add_real_xref(ea, ref_ea, out_ref_eas)
+
+def _invent_var_type(ea, seg_ref, min_size=1):
+  """Try to invent a variable type. This will basically be an array of bytes
+  that spans what we need. We will, however, try to be slightly smarter and
+  look for cross-references in the range, and when possible, use their types."""
+  seg = _find_segment_containing_ea(ea, seg_ref)
+  if not seg:
+    return ea, None
+
+  head_ea = ida_bytes.get_item_head(ea)
+  if head_ea < ea:
+    head_seg = _find_segment_containing_ea(head_ea, seg_ref)
+    if head_seg != seg:
+      return ea, None
+    return _invent_var_type(head_ea, seg_ref, ea - head_ea)
+
+  min_size = max(min_size, ida_bytes.get_item_size(ea))
+  next_ea = ida_bytes.next_head(ea + 1, seg.end_ea)
+  next_seg = _find_segment_containing_ea(next_ea, seg_ref)
+
+  arr = ArrayType()
+  arr.set_element_type(IntegerType(1, False))
+
+  if next_seg != seg:
+    arr.set_num_elements(min_size)
+    return ea, arr
+
+  min_size = min(min_size, next_ea - ea)
+
+  # TODO(pag): Go and do a better job, e.g. find pointers inside of the global.
+  # i = 0
+  # while i < min_size:
+  #   for ref_ea in _xref_generator(ea + i, seg_ref):
+  #     break
+  #   i += 1
+
+  arr.set_num_elements(min_size)
+  return ea, arr
+
+
+def _visit_ref_ea(program, ref_ea, add_refs_as_defs):
+  """Try to add `ref_ea` as some referenced entity."""
+  if not program.try_add_referenced_entity(ref_ea, add_refs_as_defs):
+    seg_ref = [None]
+    seg = _find_segment_containing_ea(ref_ea, seg_ref)
+    if seg:
+      print("Unable to add {:x} as a variable or function".format(ref_ea))
 
 
 class IDAFunction(Function):
@@ -634,25 +725,25 @@ class IDAFunction(Function):
       pass
     return ""
 
-  def visit(self, program, is_definition):
+  def visit(self, program, is_definition, add_refs_as_defs):
     if not is_definition:
       return
 
     memory = program.memory()
 
-    seg = [None]
+    seg_ref = [None]
 
     ref_eas = set()
     
     # Map the continuous range of bytes associated with the main body of the
     # function. We might get a bit beyond that, as our function bounds stuff
     # looks for previous and next function locations.
-    ea, max_ea = _get_function_bounds(self._pfn, seg)
+    ea, max_ea = _get_function_bounds(self._pfn, seg_ref)
 
     while ea < max_ea:
-      if not _try_map_byte(memory, ea, seg):
+      if not _try_map_byte(memory, ea, seg_ref):
         break
-      _collect_xrefs_from_func(self._pfn, ea, ref_eas)
+      _collect_xrefs_from_func(self._pfn, ea, ref_eas, seg_ref)
       ea += 1
 
     # Map the bytes of function chunks. These are discontinuous parts of a
@@ -665,22 +756,16 @@ class IDAFunction(Function):
       ea = chunk.start_ea
       max_ea = chunk.end_ea
       while ea < max_ea:
-        if not _try_map_byte(memory, ea, seg):
+        if not _try_map_byte(memory, ea, seg_ref):
           break
-        _collect_xrefs_from_func(self._pfn, ea, ref_eas)
+        _collect_xrefs_from_func(self._pfn, ea, ref_eas, seg_ref)
         ea += 1
 
       ok = fti.next()
 
     # Now go and inspect cross-referenced date/code, and add it to the program.
     for ref_ea in ref_eas:
-      try:
-        program.add_function_declaration(ref_ea)
-      except InvalidFunctionException:
-        program.add_variable_declaration(ref_ea)
-
-      # TODO(pag): Global variables.
-      # TODO(pag): Other memory, e.g. read-only, non-global vars.
+      _visit_ref_ea(program, ref_ea, add_refs_as_defs)
 
 
 class IDAVariable(Variable):
@@ -698,7 +783,13 @@ class IDAVariable(Variable):
       pass
     return ""
 
-  def visit(self, program, is_definition):
+  def visit(self, program, is_definition, add_refs_as_defs):
+    seg_ref = [None]
+    seg = _find_segment_containing_ea(self.address(), seg_ref)
+    if seg and _is_imported_table_seg(seg):
+      print("{} at {:x} is in an import table!".format(self.name(), self.address()))
+      is_definition = True
+
     if not is_definition:
       return
 
@@ -709,7 +800,10 @@ class IDAProgram(Program):
   def __init__(self, *args):
     super(IDAProgram, self).__init__(_get_arch(), _get_os())
     self._functions = weakref.WeakValueDictionary()
-    self._dwarf = DWARFCore(ida_nalt.get_input_file_path())
+    try:
+      self._dwarf = DWARFCore(ida_nalt.get_input_file_path())
+    except:
+      self._dwarf = None
     self._variables = weakref.WeakValueDictionary()
 
   def get_variable(self, address):
@@ -721,26 +815,34 @@ class IDAProgram(Program):
     arch = self._arch
 
     seg_ref = [None]
-    if not _find_segment_containing_ea(address, seg_ref):
+    address, backup_var_type = _invent_var_type(address, seg_ref)
+    if not backup_var_type:
       raise InvalidVariableException(
-          "No variable defined at or containing address {:x}".format(address))
+        "No variable defined at or containing address {:x}".format(address))
 
-    seg = seg_ref[0]
+    assert not isinstance(backup_var_type, VoidType)
 
     tif = ida_typeinf.tinfo_t()
     if not ida_nalt.get_tinfo(tif, address):
-      ida_typeinf.guess_tinfo(tif, address)
+      if ida_typeinf.GUESS_FUNC_FAILED == ida_typeinf.guess_tinfo(tif, address):
+        tif = backup_var_type
 
     # Try to handle a variable type, otherwise make it big and empty.
     try:
       var_type = get_type(tif, TYPE_CONTEXT_GLOBAL_VAR)
-    except UnhandledTypeException as e:
-      # TODO(pag): Make it a big empty array type? (especially if it's in .bss)
-      raise InvalidVariableException(
-          "Could not assign type to function at address {:x}: {}".format(
-              address, str(e)))
+      if isinstance(var_type, VoidType):
+        var_type = backup_var_type
 
-    var = IDAVariable(arch, address, var_type, seg)
+    except UnhandledTypeException as e:
+      print("Could not assign type to variable at address {:x}: {}".format(
+          address, str(e)))
+      var_type = backup_var_type
+
+    assert not isinstance(var_type, VoidType)
+    assert not isinstance(var_type, FunctionType)
+
+    var = IDAVariable(arch, address, var_type,
+                      _find_segment_containing_ea(address, seg_ref))
     self._variables[address] = var
     return var
 
@@ -753,8 +855,17 @@ class IDAProgram(Program):
     if not pfn:
       pfn = ida_funcs.get_prev_func(address)
 
+    seg_ref = [None]
+    seg = _find_segment_containing_ea(address, seg_ref)
+
     # Check this function.
-    if not pfn or not ida_funcs.func_contains(pfn, address):
+    if not pfn or not seg:
+      raise InvalidFunctionException(
+          "No function defined at or containing address {:x}".format(address))
+
+    elif not ida_funcs.func_contains(pfn, address) and \
+         not _is_extern_seg(seg) and \
+         not _is_imported_table_seg(seg):
       raise InvalidFunctionException(
           "No function defined at or containing address {:x}".format(address))
 
@@ -765,7 +876,9 @@ class IDAProgram(Program):
     
     tif = ida_typeinf.tinfo_t()
     if not ida_nalt.get_tinfo(tif, address):
-      ida_typeinf.guess_tinfo(tif, address)
+      if ida_typeinf.GUESS_FUNC_FAILED == ida_typeinf.guess_tinfo(tif, address):
+        raise InvalidFunctionException(
+            "Can't guess type information for function at address {:x}".format(address))
 
     if not tif.is_func():
       raise InvalidFunctionException(

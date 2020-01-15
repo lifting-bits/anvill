@@ -294,7 +294,7 @@ class BNFunction(Function):
   def name(self):
     return self._bn_func.name
 
-  def visit(self, program, is_definition):
+  def visit(self, program, is_definition, add_refs_as_defs):
     if not is_definition:
       return
 
@@ -307,8 +307,8 @@ class BNFunction(Function):
     self._fill_bytes(memory, ea, max_ea, ref_eas)
 
     for ref_ea in ref_eas:
-      print hex(ref_ea)
-      program.add_function_declaration(ref_ea)
+      program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
+
 
   def _fill_bytes(self, memory, start, end, ref_eas):
     br = bn.BinaryReader(self._bv)

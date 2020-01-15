@@ -168,6 +168,7 @@ class PointerType(Type):
     if not self._elem_type:
       return "*v"
     else:
+      assert isinstance(self._elem_type, Type)
       return "*{}".format(self._elem_type.serialize(arch, ids))
 
   def flatten(self, arch, out_list):
@@ -359,7 +360,9 @@ class IntegerType(Type):
     self._is_signed = is_signed
 
   def serialize(self, arch, ids):
-    return self._FORM[self._size, self._is_signed]
+    ret = self._FORM[self._size, self._is_signed]
+    assert ret is not None
+    return ret
 
   def size(self, arch):
     return self._size
@@ -402,7 +405,9 @@ class FloatingPointType(Type):
     self._size = size
 
   def serialize(self, arch, ids):
-    return self._FORM[self._size]
+    ret = self._FORM[self._size]
+    assert ret is not None
+    return ret
 
   def size(self, arch):
     return self._size
@@ -473,7 +478,8 @@ class AliasType(Type):
     self._underlying_type = underlying_type
 
   def serialize(self, arch, ids):
-    self._underlying_type.serialize(arch, ids)
+    assert isinstance(self._underlying_type, Type)
+    return self._underlying_type.serialize(arch, ids)
 
   def size(self, arch):
     return self._underlying_type.size(arch)

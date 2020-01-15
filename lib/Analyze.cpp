@@ -54,7 +54,7 @@ struct Cell {
   llvm::User *user{nullptr};
   llvm::ConstantInt *address_val{nullptr};
   uint64_t address_const{0};
-  uint16_t size{0};
+  unsigned size{0};
   bool is_load{false};
   bool is_store{false};
   bool is_volatile{false};
@@ -217,6 +217,7 @@ static llvm::Type *GetUpstreamTypeFromPointer(llvm::Value *val) {
 // Locate references to memory locations.
 static void FindMemoryReferences(
     const Program &program, llvm::Function &func,
+    llvm::SmallPtrSetImpl<llvm::Type* > &size_checked,
     std::vector<Cell> &stack_cells, std::vector<Cell> &global_cells) {
 
   llvm::DataLayout dl(func.getParent());
@@ -314,8 +315,16 @@ static void FindMemoryReferences(
       } else {
         continue;
       }
+      if (cell.type->isFunctionTy()) {
+        cell.size = dl.getPointerSize(0);
 
-      cell.size = static_cast<uint16_t>(dl.getTypeAllocSize(cell.type));
+      } else {
+        CHECK(cell.type->isSized(&size_checked))
+                << "Unable to determine size of type: "
+                << remill::LLVMThingToString(cell.type);
+
+        cell.size = static_cast<unsigned>(dl.getTypeAllocSize(cell.type));
+      }
 
       user_bases.clear();
       seen.clear();
@@ -350,7 +359,15 @@ static void FindMemoryReferences(
       Cell cell;
       cell.containing_func = &func;
       cell.type = val->getType()->getPointerElementType();
-      cell.size = static_cast<uint16_t>(dl.getTypeAllocSize(cell.type));
+      if (cell.type->isFunctionTy()) {
+        cell.size = dl.getPointerSize(0);
+      } else {
+        CHECK(cell.type->isSized(&size_checked))
+                << "Unable to determine size of type: "
+                << remill::LLVMThingToString(cell.type);
+
+        cell.size = static_cast<unsigned>(dl.getTypeAllocSize(cell.type));
+      }
 
       user_bases.clear();
       seen.clear();
@@ -1006,13 +1023,23 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   std::unordered_map<llvm::Function *, std::vector<Cell>> stack_cells;
   std::vector<Cell> global_cells;
 
-  program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
-    const auto func = decl->DeclareInModule(module);
-    nearby[decl->address] = func;
+  llvm::SmallPtrSet<llvm::Type *, 32> size_checked;
 
-    if (func && !func->isDeclaration()) {
-      FindMemoryReferences(
-          program, *func, stack_cells[func], global_cells);
+  program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
+    auto &entity = nearby[decl->address];
+    if (!entity) {
+      if (const auto func = decl->DeclareInModule(module)) {
+        entity = func;
+        if (!func->isDeclaration()) {
+          FindMemoryReferences(
+              program, *func, size_checked,
+              stack_cells[func], global_cells);
+        }
+      }
+    } else {
+      LOG(WARNING)
+          << "Multiple entities defined at address "
+          << std::hex << decl->address << std::dec;
     }
     return true;
   });
@@ -1020,11 +1047,18 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   // Global cells are a bit different. Really, they are about being
   // "close" enough to the real thing
   program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
-    nearby[decl->address] = decl->DeclareInModule(module);
+    auto &var = nearby[decl->address];
+    if (!var) {
+      var = decl->DeclareInModule(module);
+    } else {
+      LOG(WARNING)
+          << "Multiple entities defined at address "
+          << std::hex << decl->address << std::dec;
+    }
     return true;
   });
 
-  std::unordered_map<uint64_t, std::unordered_map<llvm::Type *, int>> popularity;
+  std::unordered_map<uint64_t, std::unordered_map<llvm::Type *, unsigned>> popularity;
 
   // Order cells to prefer wider types over smaller types, or wider aligned
   // types over lesser aligned types.
@@ -1082,7 +1116,7 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   // Go collect basic type popularity info across all functions but for
   // things that look like global variables.
-  auto max_popularity = 0;
+  auto max_popularity = 0u;
   for (auto &cell : global_cells) {
     popularity[cell.address_const][cell.type] += 1;
     max_popularity += 1;
@@ -1094,13 +1128,22 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   // the popularity. This forces them to be the ideal types for what we have
   // specified.
   program.ForEachVariable([&] (const GlobalVarDecl *decl) -> bool {
-    auto var = llvm::dyn_cast<llvm::GlobalVariable>(nearby[decl->address]);
+    const auto var = llvm::dyn_cast_or_null<llvm::GlobalVariable>(
+        nearby[decl->address]);
+    if (!var) {
+      LOG(WARNING)
+          << "Variable '" << decl->name << "' at address " << std::hex
+          << decl->address << std::dec << " shadows a function";
+      return true;
+    }
+
     std::vector<llvm::Type *> types;
     FlattenTypeInto(var->getValueType(), types);
     size_t offset = 0;
     for (auto type : types) {
+
       auto size = dl.getTypeAllocSize(type);
-      popularity[decl->address + offset][type] += max_popularity;
+      popularity[decl->address + offset][type] = (~0u >> 1u);
       offset += size;
     }
 
@@ -1111,6 +1154,17 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
       max_var_size = offset;
     }
 
+    return true;
+  });
+
+  program.ForEachFunction([&] (const FunctionDecl *decl) {
+    const auto func = llvm::dyn_cast_or_null<llvm::Function>(
+        nearby[decl->address]);
+    if (!func) {
+      return true;
+    }
+
+    popularity[decl->address][func->getType()] = ~0u;
     return true;
   });
 
