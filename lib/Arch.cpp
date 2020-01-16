@@ -6,6 +6,8 @@
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 
+#include <llvm/IR/Attributes.h>
+
 namespace remill {
 class Arch;
 class IntrinsicTable;
@@ -252,14 +254,43 @@ void X86_64_SysV::BindReturnStackPointer(
   fdecl.return_stack_pointer = arch->RegisterByName("RSP");
 }
 
+void X86_64_SysV::AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func) {
+  return;
+}
+
+// Allocates the elements of the function signature of func to memory or
+// registers. This includes parameters/arguments, return values, and the return
+// stack pointer.
+void X86_C::AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func) {
+  // Bind return values first to see if we have injected an sret into the
+  // parameter list. Then, bind the parameters. It is important that we bind the
+  // return values before the parameters in case we inject an sret.
+  bool injected_sret = false;
+  fdecl.returns = BindReturnValues(func, injected_sret);
+  fdecl.params = BindParameters(func, injected_sret);
+  BindReturnStackPointer(fdecl, func);
+}
+
 std::vector<ParameterDecl> X86_C::BindParameters(
-    const llvm::Function &function) {
+    const llvm::Function &function, bool injected_sret) {
   std::vector<anvill::ParameterDecl> parameter_declarations;
   auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
 
   // Stack position of the first argument
   unsigned int stack_offset = 4;
+
+  // If there is an injected sret (an implicit sret) then we need to allocate
+  // the first parameter to the sret struct. The type of said sret parameter
+  // will be the return type of the function.
+  if (injected_sret) {
+    anvill::ParameterDecl decl = {};
+    decl.type = function.getReturnType();
+    decl.mem_offset = stack_offset;
+    decl.mem_reg = arch->RegisterByName("ESP");
+    stack_offset += dl.getTypeAllocSize(decl.type);
+    parameter_declarations.push_back(decl);
+  }
 
   for (auto &argument : function.args()) {
     anvill::ParameterDecl declaration = {};
@@ -281,9 +312,24 @@ std::vector<ParameterDecl> X86_C::BindParameters(
 }
 
 std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
-    const llvm::Function &function) {
+    const llvm::Function &function, bool &injected_sret) {
   std::vector<anvill::ValueDecl> return_value_declarations;
   anvill::ValueDecl value_declaration = {};
+  injected_sret = false;
+
+  // If there is an sret parameter then it is a special case. For the X86_C ABI,
+  // the sret parameters are guarenteed the be in %eax. In this case, we can
+  // assume the actual return value of the function will be the sret struct
+  // pointer.
+  for (auto arg = function.arg_begin(); arg != function.arg_end(); arg++) {
+    if (arg->hasStructRetAttr()) {
+      value_declaration.type = arg->getType();
+      value_declaration.reg = arch->RegisterByName("EAX");
+      return_value_declarations.push_back(value_declaration);
+      return return_value_declarations;
+    }
+  }
+
   llvm::Type *ret_type = function.getReturnType();
   value_declaration.type = ret_type;
 
@@ -310,7 +356,9 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
         return *mapping;
       } else {
         // Struct splitting didn't work so do RVO. Assume that the pointer
-        // to the return value resides in EAX.
+        // to the return value resides in EAX. In this case we have injected an
+        // sret into the first parameter so we need to take note of that.
+        injected_sret = true;
         value_declaration.reg = arch->RegisterByName("EAX");
       }
       break;
@@ -325,16 +373,27 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
   return return_value_declarations;
 }
 
+// The return stack pointer describes where the stack will be upon return from
+// the function in terms of the registers of the current function. For x86_C,
+// this is usually ESP + 4 since that is where the return address is stored.
 void X86_C::BindReturnStackPointer(
       FunctionDecl &fdecl, const llvm::Function &func) {
-  // For X86_C ABI, it is always:
+  // Check if the first argument is an sret. If it is, then by the X86_C ABI,
+  // the callee is responbile for returning said sret argument in %eax and
+  // cleaning up the sret argument with a `ret 4`. This changes the
+  // return_stack_pointer offset because it will now be 4 bytes higher than we
+  // thought.
   //
-  // "return_stack_pointer": {
-  //   "register": "ESP",
-  //   "offset": 4
-  // }
+  // However, even if there is sret on the second argument as well, we do not
+  // need to worry about this. For some reason the callee is only responsible
+  // for cleaning up the case where an sret argument is passed in as the first
+  // argument.
+  if (func.hasParamAttribute(0, llvm::Attribute::StructRet)) {
+    fdecl.return_stack_pointer_offset = 8;
+  } else {
+    fdecl.return_stack_pointer_offset = 4;
+  }
 
-  fdecl.return_stack_pointer_offset = 4;
   fdecl.return_stack_pointer = arch->RegisterByName("ESP");
 }
 

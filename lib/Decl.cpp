@@ -269,7 +269,7 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
     memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
                                               this->mem_reg->name});
     memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("offset"),
-                                              this->mem_reg->offset});
+                                              this->mem_offset});
 
     // Wrap the memory_json structure in a memory block
     value_json.insert(
@@ -282,9 +282,6 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 
   value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
                                            TranslateType(*this->type, dl)});
-
-  // Note:: Ignore mem_offset for now becuare remill::Register has that
-  // information.
 
   return value_json;
 }
@@ -312,12 +309,10 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::Module
     default:
       // TODO(aty): find a better way to do this since the calling conventions given
       // by llvm::function cannot be trusted
-      cc = std::unique_ptr<anvill::X86_64_SysV>(new X86_64_SysV(arch));
+      cc = std::unique_ptr<anvill::X86_C>(new X86_C(arch));
   }
 
-  decl.params = cc->BindParameters(func);
-  decl.returns = cc->BindReturnValues(func);
-  cc->BindReturnStackPointer(decl, func);
+  cc->AllocateSignature(decl, func);
 
   // TODO(aty): for a better and more comprehensive serialization
   // decl->address =

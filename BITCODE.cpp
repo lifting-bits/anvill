@@ -47,6 +47,11 @@ int main(int argc, char *argv[]) {
   auto context = new llvm::LLVMContext;
   auto module = remill::LoadModuleFromFile(context, FLAGS_bc_file);
   auto arch = remill::Arch::GetModuleArch(*module);
+  if (!arch) {
+    LOG(FATAL) << "Could not determine arch from module";
+    return EXIT_FAILURE;
+  }
+
   std::string arch_name = remill::GetArchName(arch->arch_name);
   std::string os_name = remill::GetOSName(arch->os_name);
 
@@ -62,8 +67,7 @@ int main(int argc, char *argv[]) {
 
   for (auto &function : *module) {
     // Skip llvm debug intrinsics
-    const llvm::StringRef func_name = function.getName();
-    if (func_name.startswith("llvm.")) {
+    if (function.getIntrinsicID()) {
       continue;
     }
 
@@ -79,5 +83,5 @@ int main(int argc, char *argv[]) {
   llvm::raw_fd_ostream S(STDOUT_FILENO, false);
   S << llvm::formatv("{0:4}", llvm::json::Value(std::move(json)));
 
-  return 0;
+  return EXIT_SUCCESS;
 }
