@@ -306,6 +306,7 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::Module
   switch (cc_id) {
     case llvm::CallingConv::X86_64_SysV:
       cc = std::unique_ptr<anvill::X86_64_SysV>(new X86_64_SysV(arch));
+      break;
     default:
       // TODO(aty): find a better way to do this since the calling conventions given
       // by llvm::function cannot be trusted

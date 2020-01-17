@@ -49,6 +49,7 @@ enum TypeConstraint : unsigned {
   kTypeVec = (1 << 3),
 
   kTypeIntegral = kTypeInt | kTypePtr,
+  kTypeFloatOrVec = kTypeFloat | kTypeVec,
 };
 
 // Captures the constraints of different register sizes
@@ -67,26 +68,31 @@ struct VariantConstraint {
 // Captures the different sizes and constraints of a single register
 struct RegisterConstraint {
   RegisterConstraint(std::vector<VariantConstraint> _variants)
-      : variants(_variants) {}
+      : variants(std::move(_variants)) {}
 
   std::vector<VariantConstraint> variants;
 };
 
+std::map<unsigned, std::string> TryRecoverParamNames(
+    const llvm::Function &function);
+
 class CallingConvention {
  public:
-  CallingConvention(llvm::CallingConv::ID _identity, const remill::Arch *_arch) : arch(_arch), identity(_identity) {}
+  CallingConvention(llvm::CallingConv::ID _identity, const remill::Arch *_arch)
+      : arch(_arch), identity(_identity) {}
   virtual ~CallingConvention() = default;
 
-  virtual void AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func) = 0;
+  virtual void AllocateSignature(FunctionDecl &fdecl,
+                                 const llvm::Function &func) = 0;
   llvm::CallingConv::ID getIdentity() { return identity; }
 
-protected:
-  // Try to allocate a register for the argument based on the register constraints
-  // and what has already been reserved. Return nullptr if there is no possible
-  // register allocation.
+ protected:
+  // Try to allocate a register for the argument based on the register
+  // constraints and what has already been reserved. Return nullptr if there is
+  // no possible register allocation.
   const remill::Register *TryRegisterAllocate(
-    llvm::Type &type, std::vector<bool> &reserved,
-    const std::vector<RegisterConstraint> &register_constraints);
+      llvm::Type &type, std::vector<bool> &reserved,
+      const std::vector<RegisterConstraint> &register_constraints);
 
   // For each element of the struct, try to allocate it to a register, if all of
   // them can be allocated, then return that allocation. Otherwise return a
@@ -95,7 +101,7 @@ protected:
       const llvm::StructType &st,
       const std::vector<RegisterConstraint> &constraints);
 
-  const remill::Arch* arch;
+  const remill::Arch *arch;
 
  private:
   llvm::CallingConv::ID identity;
@@ -103,11 +109,14 @@ protected:
 
 class X86_64_SysV : public CallingConvention {
  public:
-  X86_64_SysV(const remill::Arch *arch) : CallingConvention(llvm::CallingConv::X86_64_SysV, arch) {}
+  X86_64_SysV(const remill::Arch *arch)
+      : CallingConvention(llvm::CallingConv::X86_64_SysV, arch) {}
   virtual ~X86_64_SysV() = default;
   void AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func);
-  std::vector<ParameterDecl> BindParameters(const llvm::Function &function);
-  std::vector<ValueDecl> BindReturnValues(const llvm::Function &function);
+  std::vector<ParameterDecl> BindParameters(const llvm::Function &function,
+                                            bool injected_sret);
+  std::vector<ValueDecl> BindReturnValues(const llvm::Function &function,
+                                          bool &injected_sret);
   void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
 
  private:
@@ -149,14 +158,14 @@ class X86_64_SysV : public CallingConvention {
           VariantConstraint("R9", kTypeIntegral, kMaxBit64),
       }),
 
-      RegisterConstraint({VariantConstraint("XMM0", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM1", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM2", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM3", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM4", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM5", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM6", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM7", kTypeFloat, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM0", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM1", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM2", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM3", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM4", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM5", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM6", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM7", kTypeFloatOrVec, kMaxBit128)}),
   };
 
   // This a bit undocumented and warrants and explanation. For x86_64, clang has
@@ -197,11 +206,14 @@ class X86_64_SysV : public CallingConvention {
 // This is the cdecl calling convention referenced by llvm::CallingConv::C
 class X86_C : public CallingConvention {
  public:
-  X86_C(const remill::Arch *arch) : CallingConvention(llvm::CallingConv::C, arch) {}
+  X86_C(const remill::Arch *arch)
+      : CallingConvention(llvm::CallingConv::C, arch) {}
   virtual ~X86_C() = default;
   void AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func);
-  std::vector<ParameterDecl> BindParameters(const llvm::Function &function, bool injected_sret);
-  std::vector<ValueDecl> BindReturnValues(const llvm::Function &function, bool &injected_sret);
+  std::vector<ParameterDecl> BindParameters(const llvm::Function &function,
+                                            bool injected_sret);
+  std::vector<ValueDecl> BindReturnValues(const llvm::Function &function,
+                                          bool &injected_sret);
   void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
 
  private:

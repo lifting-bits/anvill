@@ -57,7 +57,9 @@ add_library(${ANVILL} STATIC
     include/anvill/TypeParser.h
     include/anvill/TypePrinter.h
 
-    lib/Arch.cpp
+    lib/Arch/X86_C.cpp
+    lib/Arch/X86_64_SysV.cpp
+    lib/Arch/Arch.cpp
     lib/TypeParser.cpp
     lib/TypePrinter.cpp
     lib/Program.cpp lib/Decl.cpp include/anvill/Lift.h lib/Lift.cpp lib/Lift.h include/anvill/Optimize.h lib/Optimize.cpp include/anvill/Analyze.h lib/Analyze.cpp)
