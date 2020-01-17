@@ -66,7 +66,7 @@ std::map<unsigned, std::string> TryRecoverParamNames(
 // Try to allocate a register for the argument based on the register constraints
 // and what has already been reserved. Return nullptr if there is no possible
 // register allocation.
-const remill::Register *CallingConvention::\TryRegisterAllocate(
+const remill::Register *CallingConvention::TryRegisterAllocate(
     llvm::Type &type, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &register_constraints) {
   SizeConstraint size_constraint;
