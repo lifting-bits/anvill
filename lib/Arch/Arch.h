@@ -11,7 +11,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 
-#include "Decl.h"
+#include "anvill/Decl.h"
 
 namespace remill {
 class Arch;
@@ -40,6 +40,8 @@ enum SizeConstraint : unsigned {
   kMinBit80 = kBit128 | kBit80,
   kMinBit64 = kBit128 | kBit80 | kBit64,
   kMinBit32 = kBit128 | kBit80 | kBit64 | kBit32,
+  kMinBit16 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16,
+  kMinBit8 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
 };
 
 enum TypeConstraint : unsigned {
@@ -158,14 +160,22 @@ class X86_64_SysV : public CallingConvention {
           VariantConstraint("R9", kTypeIntegral, kMaxBit64),
       }),
 
-      RegisterConstraint({VariantConstraint("XMM0", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM1", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM2", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM3", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM4", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM5", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM6", kTypeFloatOrVec, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM7", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM0", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM1", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM2", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM3", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM4", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM5", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM6", kTypeFloatOrVec, kMaxBit128)}),
+      RegisterConstraint(
+          {VariantConstraint("XMM7", kTypeFloatOrVec, kMaxBit128)}),
   };
 
   // This a bit undocumented and warrants and explanation. For x86_64, clang has
@@ -193,13 +203,13 @@ class X86_64_SysV : public CallingConvention {
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
           VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
       }),
-      RegisterConstraint({VariantConstraint("XMM0", kTypeFloat, kMaxBit128)}),
-      RegisterConstraint({VariantConstraint("XMM1", kTypeFloat, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM0", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM1", kTypeVec, kMaxBit128)}),
 
       // Since the FPU registers are 80 bits wide, they are only able to hold
       // 64-bit values.
-      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit80)}),
-      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST0", kTypeVec, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeVec, kMaxBit80)}),
   };
 };
 
@@ -214,11 +224,26 @@ class X86_C : public CallingConvention {
                                             bool injected_sret);
   std::vector<ValueDecl> BindReturnValues(const llvm::Function &function,
                                           bool &injected_sret);
-  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
+  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func,
+                              bool injected_sret);
 
  private:
-  // Register allocations for parameters are not allowed in vanilla cdecl
-  const std::vector<RegisterConstraint> parameter_register_constraints = {};
+  // Register based parameter passing is generally not allowed for x86_C for
+  // types other than vector types. Even in the case of vector types it is
+  // important to note that if LLVM lowers something like a vector(2) of floats
+  // to <float, float> in IR, we will not be able to allocate it to a vector
+  // register because in our eyes it will no longer be a vector. This is
+  // consistent with the behavior of Clang but not GCC.
+  const std::vector<RegisterConstraint> parameter_register_constraints = {
+      RegisterConstraint({VariantConstraint("XMM0", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM1", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM2", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM3", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM4", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM5", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM6", kTypeVec, kMaxBit128)}),
+      RegisterConstraint({VariantConstraint("XMM7", kTypeVec, kMaxBit128)}),
+  };
 
   // For x86_C (cdecl), structs can be split over EAX, EDX, ECX, ST0, ST1.
   const std::vector<RegisterConstraint> return_register_constraints = {
@@ -237,8 +262,8 @@ class X86_C : public CallingConvention {
           VariantConstraint("CX", kTypeIntegral, kMaxBit16),
           VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
       }),
-      RegisterConstraint({VariantConstraint("ST0", kTypeFloat, kMaxBit80)}),
-      RegisterConstraint({VariantConstraint("ST1", kTypeFloat, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST0", kTypeVec, kMaxBit80)}),
+      RegisterConstraint({VariantConstraint("ST1", kTypeVec, kMaxBit80)}),
   };
 };
 

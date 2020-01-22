@@ -38,7 +38,7 @@
 #include <remill/BC/Util.h>
 
 #include "Lift.h"
-#include "anvill/Arch.h"
+#include "Arch/Arch.h"
 #include "anvill/TypePrinter.h"
 
 DEFINE_bool(demangle_names, false, "Demangle function and variable names");

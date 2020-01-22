@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "anvill/Arch.h"
+#include "Arch.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
@@ -11,7 +11,8 @@ namespace anvill {
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
-void X86_64_SysV::AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func) {
+void X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
+                                    const llvm::Function &func) {
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -21,8 +22,8 @@ void X86_64_SysV::AllocateSignature(FunctionDecl &fdecl, const llvm::Function &f
   BindReturnStackPointer(fdecl, func);
 }
 
-void X86_64_SysV::BindReturnStackPointer(
-      FunctionDecl &fdecl, const llvm::Function &func) {
+void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
+                                         const llvm::Function &func) {
   // For the X86_64_SysV ABI, it is always:
   //
   // "return_stack_pointer": {
@@ -64,7 +65,8 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
       value_declaration.reg = arch->RegisterByName("RAX");
       break;
     }
-    case llvm::Type::FloatTyID: {
+    case llvm::Type::FloatTyID:
+    case llvm::Type::DoubleTyID: {
       // Allocate XMM0 for a floating point value
       value_declaration.reg = arch->RegisterByName("XMM0");
       break;
@@ -85,6 +87,13 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
         value_declaration.reg = arch->RegisterByName("RAX");
       }
       break;
+    }
+    case llvm::Type::X86_MMXTyID: {
+      value_declaration.reg = arch->RegisterByName("MM0");
+      break;
+    }
+    case llvm::Type::X86_FP80TyID: {
+      value_declaration.reg = arch->RegisterByName("ST0");
     }
     default: {
       LOG(ERROR) << "Encountered an unknown return type";
@@ -155,4 +164,4 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   return parameter_declarations;
 }
 
-} // namespace anvill
+}  // namespace anvill

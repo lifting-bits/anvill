@@ -1,10 +1,11 @@
 #include <vector>
 
-#include "anvill/Arch.h"
+#include "Arch.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/Util.h>
 
 #include <llvm/IR/Attributes.h>
 
@@ -77,11 +78,21 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
       type_constraint = kTypeInt;
       auto derived = llvm::cast<llvm::IntegerType>(type);
       unsigned int width = derived.getBitWidth();
-      if (width == 64) {
-        size_constraint = kMinBit64;
-      } else {
-        // TODO(aty): I know that this is wrong but for now its fine
+      if (width <= 8) {
+        size_constraint = kMinBit8;
+      } else if (width <= 16) {
+        size_constraint = kMinBit16;
+      } else if (width <= 32) {
         size_constraint = kMinBit32;
+      } else if (width <= 64) {
+        size_constraint = kMinBit64;
+      } else if (width <= 80) {
+        size_constraint = kMinBit80;
+      } else if (width <= 128) {
+        size_constraint = kMinBit128;
+      } else {
+        LOG(FATAL) << "Integer too big: "
+                   << remill::LLVMThingToString(&derived);
       }
       break;
     }
@@ -121,7 +132,9 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
   }
 
   for (size_t i = 0; i < register_constraints.size(); i++) {
-    if (reserved[i]) continue;
+    if (reserved[i]) {
+      continue;
+    }
 
     const RegisterConstraint &constraint = register_constraints[i];
     // Iterate through the different sizes of a single register to find the
@@ -129,8 +142,12 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
     for (auto const &variant : constraint.variants) {
       if (size_constraint & variant.size_constraint &&
           type_constraint & variant.type_constraint) {
+        auto reg = arch->RegisterByName(variant.register_name);
+        if (!reg) {
+          LOG(FATAL) << "Could not find the register";
+        }
         reserved[i] = true;
-        return arch->RegisterByName(variant.register_name);
+        return reg;
       }
     }
   }
@@ -140,7 +157,8 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
 // For each element of the struct, try to allocate it to a register, if all of
 // them can be allocated, then return that allocation. Otherwise return a
 // nullptr.
-std::unique_ptr<std::vector<anvill::ValueDecl>> CallingConvention::TryReturnThroughRegisters(
+std::unique_ptr<std::vector<anvill::ValueDecl>>
+CallingConvention::TryReturnThroughRegisters(
     const llvm::StructType &st,
     const std::vector<RegisterConstraint> &constraints) {
   auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();

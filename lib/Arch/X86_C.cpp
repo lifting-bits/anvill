@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "anvill/Arch.h"
+#include "Arch.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
@@ -18,14 +18,15 @@ void X86_C::AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func) {
   bool injected_sret = false;
   fdecl.returns = BindReturnValues(func, injected_sret);
   fdecl.params = BindParameters(func, injected_sret);
-  BindReturnStackPointer(fdecl, func);
+  BindReturnStackPointer(fdecl, func, injected_sret);
 }
 
 // The return stack pointer describes where the stack will be upon return from
 // the function in terms of the registers of the current function. For x86_C,
 // this is usually ESP + 4 since that is where the return address is stored.
-void X86_C::BindReturnStackPointer(
-      FunctionDecl &fdecl, const llvm::Function &func) {
+void X86_C::BindReturnStackPointer(FunctionDecl &fdecl,
+                                   const llvm::Function &func,
+                                   bool injected_sret) {
   // Check if the first argument is an sret. If it is, then by the X86_C ABI,
   // the callee is responbile for returning said sret argument in %eax and
   // cleaning up the sret argument with a `ret 4`. This changes the
@@ -36,7 +37,7 @@ void X86_C::BindReturnStackPointer(
   // need to worry about this. For some reason the callee is only responsible
   // for cleaning up the case where an sret argument is passed in as the first
   // argument.
-  if (func.hasParamAttribute(0, llvm::Attribute::StructRet)) {
+  if (func.hasParamAttribute(0, llvm::Attribute::StructRet) || injected_sret) {
     fdecl.return_stack_pointer_offset = 8;
   } else {
     fdecl.return_stack_pointer_offset = 4;
@@ -74,7 +75,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
       value_declaration.reg = arch->RegisterByName("EAX");
       break;
     }
-    case llvm::Type::FloatTyID: {
+    case llvm::Type::FloatTyID:
+    case llvm::Type::DoubleTyID: {
       // Allocate ST0 for a floating point value
       value_declaration.reg = arch->RegisterByName("ST0");
       break;
@@ -107,8 +109,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
   return return_value_declarations;
 }
 
-std::vector<ParameterDecl> X86_C::BindParameters(
-    const llvm::Function &function, bool injected_sret) {
+std::vector<ParameterDecl> X86_C::BindParameters(const llvm::Function &function,
+                                                 bool injected_sret) {
   std::vector<anvill::ParameterDecl> parameter_declarations;
   auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
