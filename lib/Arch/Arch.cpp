@@ -24,6 +24,9 @@ std::map<unsigned, std::string> TryRecoverParamNames(
     const llvm::Function &function) {
   std::map<unsigned int, std::string> param_names;
 
+  // Iterate through all the instructions and look for debug intrinsics that
+  // give us debug information about the parameters. We need to do this because
+  // arg.uses() and arg.users() both do not take into account debug intrinsics.
   for (auto &block : function) {
     for (auto &inst : block) {
       if (auto debug_inst = llvm::dyn_cast<llvm::DbgInfoIntrinsic>(&inst)) {
