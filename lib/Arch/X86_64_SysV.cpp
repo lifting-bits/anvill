@@ -46,13 +46,19 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
   // X86_64_SysV ABI, the sret parameters are guarenteed the be in %rax. In this
   // case, we can assume the actual return value of the function will be the
   // sret struct pointer.
-  for (auto arg = function.arg_begin(); arg != function.arg_end(); arg++) {
-    if (arg->hasStructRetAttr()) {
-      value_declaration.type = arg->getType();
-      value_declaration.reg = arch->RegisterByName("RAX");
-      return_value_declarations.push_back(value_declaration);
-      return return_value_declarations;
+  if (function.hasStructRetAttr()) {
+    // Check both first and second parameter because llvm does that in
+    // llvm::Function::hasStructRetAttr()
+    if (function.hasParamAttribute(0, llvm::Attribute::StructRet)) {
+      value_declaration.type = function.getParamByValType(0);
+    } else if (function.hasParamAttribute(1, llvm::Attribute::StructRet)) {
+      value_declaration.type = function.getParamByValType(1);
+    } else {
+      LOG(FATAL) << "Function has sret that is not the first or second argument";
     }
+    value_declaration.reg = arch->RegisterByName("RAX");
+    return_value_declarations.push_back(value_declaration);
+    return return_value_declarations;
   }
 
   llvm::Type *ret_type = function.getReturnType();

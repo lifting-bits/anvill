@@ -44,7 +44,6 @@ std::map<unsigned, std::string> TryRecoverParamNames(
               llvm::cast<llvm::DILocalVariable>(mdn);
 
           if (div->getArg() != 0) {
-            LOG(INFO) << div->getArg() << " : " << div->getName().data();
             param_names[div->getArg()] = div->getName().data();
           }
         }

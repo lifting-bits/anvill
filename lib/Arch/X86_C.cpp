@@ -5,6 +5,7 @@
 
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/Util.h>
 
 namespace anvill {
 
@@ -76,7 +77,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
       break;
     }
     case llvm::Type::FloatTyID:
-    case llvm::Type::DoubleTyID: {
+    case llvm::Type::DoubleTyID:
+    case llvm::Type::FP128TyID: {
       // Allocate ST0 for a floating point value
       value_declaration.reg = arch->RegisterByName("ST0");
       break;
@@ -99,9 +101,13 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
       }
       break;
     }
+    case llvm::Type::X86_MMXTyID: {
+      value_declaration.reg = arch->RegisterByName("MM0");
+      break;
+    }
     default: {
-      LOG(ERROR) << "Encountered an unknown return type";
-      exit(1);
+      LOG(FATAL) << "Encountered an unknown return type"
+                 << remill::LLVMThingToString(ret_type);
     }
   }
   return_value_declarations.push_back(value_declaration);

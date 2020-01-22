@@ -199,14 +199,13 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 llvm::json::Object FunctionDecl::SerializeToJSON() {
   llvm::json::Object json;
 
-  std::string output_name;
-  if (FLAGS_demangle_names) {
-    output_name = this->demangled_name;
-  } else {
-    output_name = this->name;
-  }
   json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("name"), output_name});
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+
+  if (FLAGS_demangle_names) {
+    json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("demangled_name"),
+                                       this->demangled_name});
+  }
 
   llvm::json::Array params_json;
   for (auto pdecl : this->params) {
