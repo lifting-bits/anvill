@@ -107,6 +107,11 @@ class CallingConvention {
 
  private:
   llvm::CallingConv::ID identity;
+
+  std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegistersInternal(
+      const llvm::StructType &st,
+      std::vector<bool> &reserved,
+      const std::vector<RegisterConstraint> &constraints);
 };
 
 class X86_64_SysV : public CallingConvention {

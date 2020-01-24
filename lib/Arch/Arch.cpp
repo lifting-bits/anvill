@@ -37,7 +37,6 @@ std::map<unsigned, std::string> TryRecoverParamNames(
 
           // Make sure it is actually an argument
           if (div->getArg() != 0) {
-            LOG(INFO) << div->getArg() << " : " << div->getName().data();
             param_names[div->getArg()] = div->getName().data();
           }
         } else if (auto value_intrin =
@@ -127,7 +126,8 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
     }
     default: {
       LOG(FATAL) << "Could not assign type and size constraints in "
-                    "TryRegisterAllocate()";
+                    "TryRegisterAllocate() for type "
+                 << remill::LLVMThingToString(&type);
       // TODO(aty): Handle other types like X86_MMXTyID, etc.
       break;
     }
@@ -156,27 +156,54 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
   return nullptr;
 }
 
-// For each element of the struct, try to allocate it to a register, if all of
-// them can be allocated, then return that allocation. Otherwise return a
-// nullptr.
 std::unique_ptr<std::vector<anvill::ValueDecl>>
 CallingConvention::TryReturnThroughRegisters(
     const llvm::StructType &st,
     const std::vector<RegisterConstraint> &constraints) {
-  auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
   std::vector<bool> reserved(constraints.size(), false);
+  return TryReturnThroughRegistersInternal(st, reserved, constraints);
+}
+
+std::unique_ptr<std::vector<anvill::ValueDecl>>
+CallingConvention::TryReturnThroughRegistersInternal(
+    const llvm::StructType &st, std::vector<bool> &reserved,
+    const std::vector<RegisterConstraint> &constraints) {
+  auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
   for (unsigned i = 0; i < st.getNumElements(); i++) {
-    anvill::ValueDecl value_decl = {};
-    auto reg =
-        TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
-    if (reg) {
-      value_decl.reg = reg;
-      value_decl.type = st.getElementType(i);
+    const llvm::Type *elem_type = st.getElementType(i);
+    if (llvm::isa<llvm::CompositeType>(elem_type)) {
+      if (llvm::isa<llvm::StructType>(elem_type)) {
+        // Recurse and try to allocate the elements of the inner struct. If the
+        // inner struct returns a nullptr, then return a nullptr because we
+        // couldn't fully allocate the inner structure. Otherwise, combine the
+        // declarations that were made in the recursive call to our
+        // declarations.
+        auto inner_ret =
+            TryReturnThroughRegistersInternal(st, reserved, constraints);
+        if (!inner_ret) {
+          return nullptr;
+        } else {
+          ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()), std::make_move_iterator(inner_ret->end()));
+        }
+      } else {
+        // TODO(aty): Might have to come back to this but structs don't seem to
+        // be split over any other composite types such as arrays or vectors.
+        return nullptr;
+      }
     } else {
-      // The struct cannot be split over registers
-      return nullptr;
+      // Value is a non-composite type so proceed normally.
+      anvill::ValueDecl value_decl = {};
+      auto reg =
+          TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
+      if (reg) {
+        value_decl.reg = reg;
+        value_decl.type = st.getElementType(i);
+      } else {
+        // The struct cannot be split over registers.
+        return nullptr;
+      }
+      ret->push_back(value_decl);
     }
-    ret->push_back(value_decl);
   }
 
   return ret;
