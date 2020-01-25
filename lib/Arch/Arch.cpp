@@ -183,7 +183,8 @@ CallingConvention::TryReturnThroughRegistersInternal(
         if (!inner_ret) {
           return nullptr;
         } else {
-          ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()), std::make_move_iterator(inner_ret->end()));
+          ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()),
+                      std::make_move_iterator(inner_ret->end()));
         }
       } else {
         // TODO(aty): Might have to come back to this but structs don't seem to
