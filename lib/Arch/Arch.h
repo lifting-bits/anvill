@@ -100,7 +100,7 @@ class CallingConvention {
   // them can be allocated, then return that allocation. Otherwise return a
   // nullptr.
   std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
-      const llvm::StructType &st,
+      llvm::CompositeType &ct,
       const std::vector<RegisterConstraint> &constraints);
 
   const remill::Arch *arch;
@@ -109,8 +109,14 @@ class CallingConvention {
   llvm::CallingConv::ID identity;
 
   std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegistersInternal(
-      const llvm::StructType &st,
+      llvm::CompositeType &ct,
       std::vector<bool> &reserved,
+      const std::vector<RegisterConstraint> &constraints);
+  std::unique_ptr<anvill::ValueDecl> TryBasicReturnThroughRegisters(
+      llvm::Type &ty, std::vector<bool> &reserved,
+      const std::vector<RegisterConstraint> &constraints);
+  std::unique_ptr<std::vector<anvill::ValueDecl>> TryVectorReturnThroughRegisters(
+      llvm::VectorType &vt, std::vector<bool> &reserved,
       const std::vector<RegisterConstraint> &constraints);
 };
 

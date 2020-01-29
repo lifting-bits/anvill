@@ -53,10 +53,10 @@ add_library(${ANVILL} STATIC
     include/anvill/Decl.h
     include/anvill/Program.h
     include/anvill/Type.h
-    include/anvill/Arch.h
     include/anvill/TypeParser.h
     include/anvill/TypePrinter.h
 
+    lib/Arch/Arch.h
     lib/Arch/X86_C.cpp
     lib/Arch/X86_64_SysV.cpp
     lib/Arch/Arch.cpp

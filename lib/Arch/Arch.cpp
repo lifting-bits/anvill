@@ -158,56 +158,137 @@ const remill::Register *CallingConvention::TryRegisterAllocate(
 
 std::unique_ptr<std::vector<anvill::ValueDecl>>
 CallingConvention::TryReturnThroughRegisters(
-    const llvm::StructType &st,
+    llvm::CompositeType &ct,
     const std::vector<RegisterConstraint> &constraints) {
   std::vector<bool> reserved(constraints.size(), false);
-  return TryReturnThroughRegistersInternal(st, reserved, constraints);
+  return TryReturnThroughRegistersInternal(ct, reserved, constraints);
 }
 
 std::unique_ptr<std::vector<anvill::ValueDecl>>
 CallingConvention::TryReturnThroughRegistersInternal(
-    const llvm::StructType &st, std::vector<bool> &reserved,
+    llvm::CompositeType &ct, std::vector<bool> &reserved,
     const std::vector<RegisterConstraint> &constraints) {
   auto ret = std::make_unique<std::vector<anvill::ValueDecl>>();
-  for (unsigned i = 0; i < st.getNumElements(); i++) {
-    const llvm::Type *elem_type = st.getElementType(i);
-    if (llvm::isa<llvm::CompositeType>(elem_type)) {
-      if (llvm::isa<llvm::StructType>(elem_type)) {
-        // Recurse and try to allocate the elements of the inner struct. If the
-        // inner struct returns a nullptr, then return a nullptr because we
-        // couldn't fully allocate the inner structure. Otherwise, combine the
-        // declarations that were made in the recursive call to our
-        // declarations.
-        auto inner_ret =
-            TryReturnThroughRegistersInternal(st, reserved, constraints);
-        if (!inner_ret) {
-          return nullptr;
-        } else {
+
+  // In general if the element is a composite type, then try to recurse. If that
+  // is successful the append the declarations to our own declarations,
+  // otherwise, we cannot return through registers.
+  if (auto st = llvm::dyn_cast<llvm::StructType>(&ct)) {
+    for (unsigned i = 0; i < st->getNumElements(); i++) {
+      llvm::Type *elem_type = st->getElementType(i);
+      if (auto comp_type = llvm::dyn_cast<llvm::CompositeType>(elem_type)) {
+        if (auto inner_ret = TryReturnThroughRegistersInternal(
+                *comp_type, reserved, constraints)) {
           ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()),
                       std::make_move_iterator(inner_ret->end()));
+        } else {
+          return nullptr;
         }
       } else {
-        // TODO(aty): Might have to come back to this but structs don't seem to
-        // be split over any other composite types such as arrays or vectors.
-        return nullptr;
+        if (auto inner_ret = TryBasicReturnThroughRegisters(
+                *elem_type, reserved, constraints)) {
+          ret->push_back(std::move(*inner_ret));
+        } else {
+          return nullptr;
+        }
       }
-    } else {
-      // Value is a non-composite type so proceed normally.
-      anvill::ValueDecl value_decl = {};
-      auto reg =
-          TryRegisterAllocate(*st.getElementType(i), reserved, constraints);
-      if (reg) {
-        value_decl.reg = reg;
-        value_decl.type = st.getElementType(i);
-      } else {
-        // The struct cannot be split over registers.
-        return nullptr;
-      }
-      ret->push_back(value_decl);
     }
+  } else if (auto arr = llvm::dyn_cast<llvm::ArrayType>(&ct)) {
+    // Arrays must be of uniform type.
+    llvm::Type *elem_type = arr->getArrayElementType();
+    for (unsigned i = 0; i < arr->getNumElements(); i++) {
+      if (auto comp_type = llvm::dyn_cast<llvm::CompositeType>(elem_type)) {
+        if (auto inner_ret = TryReturnThroughRegistersInternal(
+                *comp_type, reserved, constraints)) {
+          ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()),
+                      std::make_move_iterator(inner_ret->begin()));
+        } else {
+          return nullptr;
+        }
+      } else {
+        if (auto inner_ret = TryBasicReturnThroughRegisters(
+                *elem_type, reserved, constraints)) {
+          ret->push_back(std::move(*inner_ret));
+        } else {
+          return nullptr;
+        }
+      }
+    }
+  } else if (auto vec = llvm::dyn_cast<llvm::VectorType>(&ct)) {
+    // Vectors are a special case because they can be packed.
+    if (auto inner_ret =
+            TryVectorReturnThroughRegisters(*vec, reserved, constraints)) {
+      ret->insert(ret->end(), std::make_move_iterator(inner_ret->begin()),
+                  std::make_move_iterator(inner_ret->begin()));
+    } else {
+      return nullptr;
+    }
+  } else {
+    LOG(FATAL) << "Cannot interpret composite type: "
+               << remill::LLVMThingToString(&ct);
   }
 
   return ret;
+}
+
+std::unique_ptr<anvill::ValueDecl>
+CallingConvention::TryBasicReturnThroughRegisters(
+    llvm::Type &ty, std::vector<bool> &reserved,
+    const std::vector<RegisterConstraint> &constraints) {
+  if (ty.isAggregateType() || ty.isVectorTy()) {
+    LOG(FATAL) << "Expected a basic type but got a composite type";
+  }
+
+  auto val_decl = std::make_unique<anvill::ValueDecl>();
+  if (auto reg = TryRegisterAllocate(ty, reserved, constraints)) {
+    val_decl->reg = reg;
+    val_decl->type = &ty;
+  } else {
+    return nullptr;
+  }
+  return val_decl;
+}
+
+// +----------------------------------------------------------------------+
+// | Returning Vectors Through Registers                                  |
+// +----------+-----+-----------------------------------------------------+
+// |          |     |                     Element Size                    |
+// +----------+-----+---------------+-----------+------------+------------+
+// |          |     | i64           | i32       |  i16       | i8         |
+// +----------+-----+---------------+-----------+------------+------------+
+// |  Number  | 2   | xmm0          | xmm0      | xmm0       | xmm0       |
+// |    of    +-----+---------------+-----------+------------+------------+
+// | Elements | 3   | rax, rdx, rcx | xmm0      | ax, dx, cx | al, dl, cl |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 4   | xmm0 xmm1     | xmm0      | xmm0       | RVO        |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 5   | RVO           | RVO       | xmm0       | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | ... | "             | "         | "          | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 8   | "             | xmm0 xmm1 | "          | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 9   | "             | RVO       | RVO        | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | ... | "             | "         | "          | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 16  | "             | xmm0-3    | xmm0 xmm1  | xmm0       |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 17  | "             | RVO       | RVO        | RVO        |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | ... | "             | "         | "          | "          |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | 32  | "             | "         | "          | xmm0 xmm1  |
+// |          +-----+---------------+-----------+------------+------------+
+// |          | ... | "             | "         | "          | "          |
+// +----------+-----+---------------+-----------+------------+------------+
+std::unique_ptr<std::vector<anvill::ValueDecl>>
+CallingConvention::TryVectorReturnThroughRegisters(
+    llvm::VectorType &vt, std::vector<bool> &reserved,
+    const std::vector<RegisterConstraint> &constraints) {
+  LOG(FATAL) << "Returning vectors through registers is unimplemented";
+  // TODO(aty): Come back and implement according to the table
+  return nullptr;
 }
 
 }  // namespace anvill

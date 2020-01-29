@@ -77,17 +77,19 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
       value_declaration.reg = arch->RegisterByName("XMM0");
       break;
     }
+    case llvm::Type::VectorTyID:
+    case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
-      // Try to split the struct over the registers
+      // Try to split the composite type over registers
       std::vector<bool> allocated(return_register_constraints.size(), false);
-      auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
+      auto comp_ptr = llvm::cast<llvm::CompositeType>(value_declaration.type);
       auto mapping =
-          TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+          TryReturnThroughRegisters(*comp_ptr, return_register_constraints);
       if (mapping) {
         // There is a valid split over registers, so add the mapping
         return *mapping;
       } else {
-        // Struct splitting didn't work so do RVO. Assume that the pointer
+        // Composite type splitting didn't work so do RVO. Assume that the pointer
         // to the return value resides in RAX.
         injected_sret = true;
         value_declaration.reg = arch->RegisterByName("RAX");
