@@ -73,6 +73,15 @@ struct RegisterConstraint {
       : variants(std::move(_variants)) {}
 
   std::vector<VariantConstraint> variants;
+
+  bool ContainsVariant(const std::string& name) const;
+};
+
+struct SizeAndType {
+  SizeAndType(SizeConstraint _sc, TypeConstraint _tc) : sc(_sc), tc(_tc) {}
+
+  SizeConstraint sc;
+  TypeConstraint tc;
 };
 
 std::map<unsigned, std::string> TryRecoverParamNames(
@@ -89,35 +98,10 @@ class CallingConvention {
   llvm::CallingConv::ID getIdentity() { return identity; }
 
  protected:
-  // Try to allocate a register for the argument based on the register
-  // constraints and what has already been reserved. Return nullptr if there is
-  // no possible register allocation.
-  const remill::Register *TryRegisterAllocate(
-      llvm::Type &type, std::vector<bool> &reserved,
-      const std::vector<RegisterConstraint> &register_constraints);
-
-  // For each element of the struct, try to allocate it to a register, if all of
-  // them can be allocated, then return that allocation. Otherwise return a
-  // nullptr.
-  std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegisters(
-      llvm::CompositeType &ct,
-      const std::vector<RegisterConstraint> &constraints);
-
   const remill::Arch *arch;
 
  private:
   llvm::CallingConv::ID identity;
-
-  std::unique_ptr<std::vector<anvill::ValueDecl>> TryReturnThroughRegistersInternal(
-      llvm::CompositeType &ct,
-      std::vector<bool> &reserved,
-      const std::vector<RegisterConstraint> &constraints);
-  std::unique_ptr<anvill::ValueDecl> TryBasicReturnThroughRegisters(
-      llvm::Type &ty, std::vector<bool> &reserved,
-      const std::vector<RegisterConstraint> &constraints);
-  std::unique_ptr<std::vector<anvill::ValueDecl>> TryVectorReturnThroughRegisters(
-      llvm::VectorType &vt, std::vector<bool> &reserved,
-      const std::vector<RegisterConstraint> &constraints);
 };
 
 class X86_64_SysV : public CallingConvention {

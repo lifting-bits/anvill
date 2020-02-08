@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "Arch.h"
+#include "../AllocationState.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
@@ -49,7 +50,7 @@ void X86_C::BindReturnStackPointer(FunctionDecl &fdecl,
 
 std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     const llvm::Function &function, bool &injected_sret) {
-  std::vector<anvill::ValueDecl> return_value_declarations;
+  std::vector<anvill::ValueDecl> ret;
   anvill::ValueDecl value_declaration = {};
   injected_sret = false;
 
@@ -61,8 +62,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     if (arg->hasStructRetAttr()) {
       value_declaration.type = arg->getType();
       value_declaration.reg = arch->RegisterByName("EAX");
-      return_value_declarations.push_back(value_declaration);
-      return return_value_declarations;
+      ret.push_back(value_declaration);
+      return ret;
     }
   }
 
@@ -85,13 +86,12 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     }
     case llvm::Type::StructTyID: {
       // Try to split the struct over the registers
-      std::vector<bool> allocated(return_register_constraints.size(), false);
       auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
-      auto mapping =
-          TryReturnThroughRegisters(*struct_ptr, return_register_constraints);
+      AllocationState alloc_ret(return_register_constraints, arch);
+      auto mapping = alloc_ret.TryRegisterAllocate(*struct_ptr);
       if (mapping) {
         // There is a valid split over registers, so return the mapping
-        return *mapping;
+        return alloc_ret.CoalescePacking(mapping.getValue());
       } else {
         // Struct splitting didn't work so do RVO. Assume that the pointer
         // to the return value resides in EAX. In this case we have injected an
@@ -110,9 +110,9 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
                  << remill::LLVMThingToString(ret_type);
     }
   }
-  return_value_declarations.push_back(value_declaration);
+  ret.push_back(value_declaration);
 
-  return return_value_declarations;
+  return ret;
 }
 
 std::vector<ParameterDecl> X86_C::BindParameters(const llvm::Function &function,

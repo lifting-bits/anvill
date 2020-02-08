@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "Arch.h"
+#include "../AllocationState.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
@@ -38,7 +39,7 @@ void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
 
 std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     const llvm::Function &function, bool &injected_sret) {
-  std::vector<anvill::ValueDecl> return_value_declarations;
+  std::vector<anvill::ValueDecl> ret;
   anvill::ValueDecl value_declaration = {};
   injected_sret = false;
 
@@ -57,8 +58,8 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
       LOG(FATAL) << "Function has sret that is not the first or second argument";
     }
     value_declaration.reg = arch->RegisterByName("RAX");
-    return_value_declarations.push_back(value_declaration);
-    return return_value_declarations;
+    ret.push_back(value_declaration);
+    return ret;
   }
 
   llvm::Type *ret_type = function.getReturnType();
@@ -81,13 +82,13 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
       // Try to split the composite type over registers
-      std::vector<bool> allocated(return_register_constraints.size(), false);
       auto comp_ptr = llvm::cast<llvm::CompositeType>(value_declaration.type);
+      AllocationState alloc_ret(return_register_constraints, arch);
       auto mapping =
-          TryReturnThroughRegisters(*comp_ptr, return_register_constraints);
+          alloc_ret.TryRegisterAllocate(*comp_ptr);
       if (mapping) {
         // There is a valid split over registers, so add the mapping
-        return *mapping;
+        return alloc_ret.CoalescePacking(mapping.getValue());
       } else {
         // Composite type splitting didn't work so do RVO. Assume that the pointer
         // to the return value resides in RAX.
@@ -109,9 +110,9 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     }
   }
 
-  return_value_declarations.push_back(value_declaration);
+  ret.push_back(value_declaration);
 
-  return return_value_declarations;
+  return ret;
 }
 
 // For X86_64_SysV, the general argument passing behavior is, try to pass the
@@ -127,7 +128,7 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   llvm::DataLayout dl(function.getParent());
 
   // Used to keep track of which registers have been allocated
-  std::vector<bool> allocated(parameter_register_constraints.size(), false);
+  AllocationState alloc_param(parameter_register_constraints, arch);
 
   // Stack offset describes the stack position of the first stack argument on
   // entry to the callee. For X86_64_SysV, this is [rsp + 8] since there is the
@@ -142,7 +143,7 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
     decl.name = "param0";
     decl.type = function.getReturnType();
     decl.reg = arch->RegisterByName("RAX");
-    allocated[0] = true;
+    alloc_param.reserved[0] = true;
     parameter_declarations.push_back(decl);
   }
 
@@ -152,9 +153,8 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
 
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
-    if (const remill::Register *reg = TryRegisterAllocate(
-            *argument.getType(), allocated, parameter_register_constraints)) {
-      declaration.reg = reg;
+    if (auto allocation = alloc_param.TryRegisterAllocate(*declaration.type)) {
+      declaration.reg = allocation->front().reg;
     } else {
       declaration.mem_offset = stack_offset;
       declaration.mem_reg = arch->RegisterByName("RSP");
