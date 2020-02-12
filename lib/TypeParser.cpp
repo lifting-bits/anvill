@@ -26,9 +26,6 @@
 #include <llvm/IR/DerivedTypes.h>
 
 #include <remill/BC/Compat/Error.h>
-#include <remill/BC/Util.h>
-
-#include <iostream>
 
 namespace anvill {
 namespace {
