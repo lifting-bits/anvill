@@ -1,4 +1,4 @@
-# pragma once
+#pragma once
 
 #include <vector>
 
@@ -19,29 +19,31 @@ namespace anvill {
 // registers.
 struct AllocationState {
   AllocationState(const std::vector<RegisterConstraint> &_constraints,
-                  const remill::Arch *_arch)
+                  const remill::Arch *_arch, const CallingConvention *_conv)
       : constraints(_constraints),
         arch(_arch),
         reserved(_constraints.size(), false),
-        fill(constraints.size(), 0) {}
+        fill(constraints.size(), 0),
+        conv(_conv) {}
 
   const std::vector<RegisterConstraint> &constraints;
   const remill::Arch *arch;
   std::vector<bool> reserved;
   std::vector<uint64_t> fill;
+  const CallingConvention *conv;
 
-  SizeAndType AssignSizeAndType(llvm::Type &type);
-  llvm::Optional<std::vector<anvill::ValueDecl>> TryRegisterAllocate(
-      llvm::Type &type, bool pack = false);
+  static SizeAndType AssignSizeAndType(llvm::Type &type);
+  llvm::Optional<std::vector<ValueDecl>> TryRegisterAllocate(llvm::Type &type,
+                                                             bool pack);
   llvm::Optional<std::vector<anvill::ValueDecl>> TryCompositeRegisterAllocate(
       llvm::CompositeType &type);
-  llvm::Optional<std::vector<anvill::ValueDecl>> TryBasicRegisterAllocate(
+  llvm::Optional<std::vector<ValueDecl>> TryBasicRegisterAllocate(
       llvm::Type &type, llvm::Optional<SizeAndType> hint, bool pack);
   llvm::Optional<std::vector<anvill::ValueDecl>> TryVectorRegisterAllocate(
       llvm::VectorType &type);
   bool isFilled(size_t i);
   uint64_t getRemainingSpace(size_t i);
-  llvm::Optional<std::vector<anvill::ValueDecl>> ProcessIntegerVector(
+  llvm::Optional<std::vector<anvill::ValueDecl>> ProcessIntVecX86_64SysV(
       llvm::Type *elem_type, unsigned int vec_size, unsigned int bit_width);
   std::vector<anvill::ValueDecl> CoalescePacking(
       const std::vector<anvill::ValueDecl> &vector);

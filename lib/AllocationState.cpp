@@ -1,5 +1,6 @@
 #include "AllocationState.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "Arch/Arch.h"
@@ -10,7 +11,6 @@
 #include <remill/BC/Util.h>
 
 #include <llvm/IR/Attributes.h>
-
 
 namespace anvill {
 
@@ -132,8 +132,8 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
   return {size_constraint, type_constraint};
 }
 
-llvm::Optional<std::vector<ValueDecl>>
-AllocationState::TryRegisterAllocate(llvm::Type &type, bool pack) {
+llvm::Optional<std::vector<ValueDecl>> AllocationState::TryRegisterAllocate(
+    llvm::Type &type, bool pack) {
   if (type.isStructTy() || type.isArrayTy() || type.isVectorTy()) {
     return TryCompositeRegisterAllocate(llvm::cast<llvm::CompositeType>(type));
   } else {
@@ -182,12 +182,13 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
   assert(!(type.isStructTy() || type.isArrayTy() || type.isVectorTy()));
   auto ret = std::vector<ValueDecl>();
   SizeAndType st = (hint) ? hint.getValue() : AssignSizeAndType(type);
+  uint64_t size = SizeConstraintToSize(st.sc);
 
   for (size_t i = 0; i < constraints.size(); i++) {
     // Assume for now that the type constraints are uniform across variants.
     // Skip if register is already reserved, or filled, or if types don't match.
     TypeConstraint tc = constraints[i].variants.front().type_constraint;
-    if (reserved[i] || isFilled(i) || !(tc && st.tc)) {
+    if (reserved[i] || isFilled(i) || !(tc & st.tc)) {
       continue;
     }
 
@@ -198,7 +199,6 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
     }
 
     uint64_t space = getRemainingSpace(i);
-    uint64_t size = SizeConstraintToSize(st.sc);
 
     // TODO:(aty) This might not always be the case and we might have to care
     // about alignment before we decide to pack a register. But for right now
@@ -228,11 +228,25 @@ AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
 
   for (unsigned i = 0; i < vec_size; i++) {
     auto elem_type = type.getVectorElementType();
+
     if (elem_type->isIntegerTy()) {
       auto t = llvm::cast<llvm::IntegerType>(elem_type);
-      if (auto inner =
-              ProcessIntegerVector(elem_type, vec_size, t->getBitWidth())) {
-        ret.insert(ret.end(), inner->begin(), inner->end());
+
+      if (conv->getIdentity() == llvm::CallingConv::X86_64_SysV) {
+        // Special case for x86_64
+        if (auto inner = ProcessIntVecX86_64SysV(elem_type, vec_size,
+                                                 t->getBitWidth())) {
+          ret.insert(ret.end(), inner->begin(), inner->end());
+        } else {
+          return llvm::None;
+        }
+      } else {
+        // Generally, try to pack the registers for a vector
+        if (auto inner = TryRegisterAllocate(*elem_type, true)) {
+          ret.insert(ret.end(), inner->begin(), inner->end());
+        } else {
+          return llvm::None;
+        }
       }
     } else {
       LOG(FATAL) << "Unhandled vector type: "
@@ -279,9 +293,10 @@ AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
 // |          +-----+---------------+-----------+------------+------------+
 // |          | ... | "             | "         | "          | "          |
 // +----------+-----+---------------+-----------+------------+------------+
-llvm::Optional<std::vector<ValueDecl>>
-AllocationState::ProcessIntegerVector(llvm::Type *elem_type, unsigned vec_size,
-                                      unsigned bit_width) {
+// Note: i128 is all RVO for sizes 2+.
+
+llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
+    llvm::Type *elem_type, unsigned vec_size, unsigned bit_width) {
   switch (bit_width) {
     case 64: {
       switch (vec_size) {

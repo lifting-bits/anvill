@@ -95,7 +95,7 @@ class CallingConvention {
 
   virtual void AllocateSignature(FunctionDecl &fdecl,
                                  const llvm::Function &func) = 0;
-  llvm::CallingConv::ID getIdentity() { return identity; }
+  llvm::CallingConv::ID getIdentity() const { return identity; }
 
  protected:
   const remill::Arch *arch;

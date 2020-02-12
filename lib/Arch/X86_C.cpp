@@ -87,8 +87,8 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     case llvm::Type::StructTyID: {
       // Try to split the struct over the registers
       auto struct_ptr = llvm::cast<llvm::StructType>(value_declaration.type);
-      AllocationState alloc_ret(return_register_constraints, arch);
-      auto mapping = alloc_ret.TryRegisterAllocate(*struct_ptr);
+      AllocationState alloc_ret(return_register_constraints, arch, this);
+      auto mapping = alloc_ret.TryRegisterAllocate(*struct_ptr, false);
       if (mapping) {
         // There is a valid split over registers, so return the mapping
         return alloc_ret.CoalescePacking(mapping.getValue());

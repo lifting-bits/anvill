@@ -8,6 +8,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+#include <remill/BC/Util.h>
 
 namespace anvill {
 
@@ -70,6 +71,15 @@ void TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
         case 64: {
           ss << (sign ? "l" : "L");
           break;
+        }
+        case 128: {
+          ss << (sign ? "o" : "O");
+          break;
+        }
+        default: {
+          LOG(ERROR)
+              << "Could not find an appropriate integer representation for "
+              << remill::LLVMThingToString(&derived);
         }
       }
       break;

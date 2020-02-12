@@ -1,7 +1,7 @@
 #include <vector>
 
-#include "Arch.h"
 #include "../AllocationState.h"
+#include "Arch.h"
 #include "anvill/Decl.h"
 
 #include <glog/logging.h>
@@ -55,7 +55,8 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     } else if (function.hasParamAttribute(1, llvm::Attribute::StructRet)) {
       value_declaration.type = function.getParamByValType(1);
     } else {
-      LOG(FATAL) << "Function has sret that is not the first or second argument";
+      LOG(FATAL)
+          << "Function has sret that is not the first or second argument";
     }
     value_declaration.reg = arch->RegisterByName("RAX");
     ret.push_back(value_declaration);
@@ -68,14 +69,47 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
   switch (ret_type->getTypeID()) {
     case llvm::Type::IntegerTyID:
     case llvm::Type::PointerTyID: {
-      // Allocate RAX for an integer or pointer
-      value_declaration.reg = arch->RegisterByName("RAX");
+      AllocationState alloc_ret(return_register_constraints, arch, this);
+
+      // If an integer is an i128, then split it into two i64
+      if (auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type)) {
+        if (int_ty->getBitWidth() == 128) {
+          std::vector<llvm::Type *> types = {
+              llvm::IntegerType::get(*arch->context, 64),
+              llvm::IntegerType::get(*arch->context, 64)};
+          llvm::ArrayRef<llvm::Type *> ar(types);
+          auto mapping = alloc_ret.TryRegisterAllocate(
+              *llvm::StructType::create(*arch->context, types), false);
+          if (mapping) {
+            return mapping.getValue();
+          } else {
+            LOG(FATAL) << "Could not allocate split i128";
+          }
+        }
+      }
+
+      // Otherwise, try to do a regular allocation
+      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
+      if (mapping) {
+        return mapping.getValue();
+      } else {
+        LOG(FATAL) << "Could not allocate simple integer to return register: "
+                   << remill::LLVMThingToString(ret_type);
+      }
       break;
     }
+
     case llvm::Type::FloatTyID:
     case llvm::Type::DoubleTyID: {
-      // Allocate XMM0 for a floating point value
-      value_declaration.reg = arch->RegisterByName("XMM0");
+      AllocationState alloc_ret(return_register_constraints, arch, this);
+      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
+      if (mapping) {
+        return mapping.getValue();
+      } else {
+        LOG(FATAL) << "Could not allocate simple floating point type to return "
+                      "register: "
+                   << remill::LLVMThingToString(ret_type);
+      }
       break;
     }
     case llvm::Type::VectorTyID:
@@ -83,15 +117,14 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     case llvm::Type::StructTyID: {
       // Try to split the composite type over registers
       auto comp_ptr = llvm::cast<llvm::CompositeType>(value_declaration.type);
-      AllocationState alloc_ret(return_register_constraints, arch);
-      auto mapping =
-          alloc_ret.TryRegisterAllocate(*comp_ptr);
+      AllocationState alloc_ret(return_register_constraints, arch, this);
+      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr, false);
       if (mapping) {
         // There is a valid split over registers, so add the mapping
         return alloc_ret.CoalescePacking(mapping.getValue());
       } else {
-        // Composite type splitting didn't work so do RVO. Assume that the pointer
-        // to the return value resides in RAX.
+        // Composite type splitting didn't work so do RVO. Assume that the
+        // pointer to the return value resides in RAX.
         injected_sret = true;
         value_declaration.reg = arch->RegisterByName("RAX");
       }
@@ -110,8 +143,6 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
     }
   }
 
-  ret.push_back(value_declaration);
-
   return ret;
 }
 
@@ -128,7 +159,7 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   llvm::DataLayout dl(function.getParent());
 
   // Used to keep track of which registers have been allocated
-  AllocationState alloc_param(parameter_register_constraints, arch);
+  AllocationState alloc_param(parameter_register_constraints, arch, this);
 
   // Stack offset describes the stack position of the first stack argument on
   // entry to the callee. For X86_64_SysV, this is [rsp + 8] since there is the
@@ -153,7 +184,8 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
 
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
-    if (auto allocation = alloc_param.TryRegisterAllocate(*declaration.type)) {
+    if (auto allocation =
+            alloc_param.TryRegisterAllocate(*declaration.type, false)) {
       declaration.reg = allocation->front().reg;
     } else {
       declaration.mem_offset = stack_offset;
