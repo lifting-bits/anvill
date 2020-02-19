@@ -93,6 +93,8 @@ class CallingConvention {
       : arch(_arch), identity(_identity) {}
   virtual ~CallingConvention() = default;
 
+  static std::unique_ptr<CallingConvention> CreateCCFromArch(
+      const remill::Arch *arch);
   virtual void AllocateSignature(FunctionDecl &fdecl,
                                  const llvm::Function &func) = 0;
   llvm::CallingConv::ID getIdentity() const { return identity; }

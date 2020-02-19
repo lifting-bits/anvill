@@ -8,6 +8,8 @@
 #include <remill/BC/Util.h>
 
 #include <llvm/IR/Attributes.h>
+#include <remill/Arch/Name.h>
+#include <remill/OS/OS.h>
 
 namespace remill {
 class Arch;
@@ -18,13 +20,61 @@ struct Register;
 namespace anvill {
 
 // Return true if the RegisterConstraint contains the named variant.
-bool RegisterConstraint::ContainsVariant(const std::string& name) const {
+bool RegisterConstraint::ContainsVariant(const std::string &name) const {
   for (const auto &v : variants) {
     if (v.register_name == name) {
       return true;
     }
   }
   return false;
+}
+
+// Factory method that returns the correct calling convention for a given
+// architecture
+std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
+    const remill::Arch *arch) {
+  switch (arch->arch_name) {
+    case remill::kArchInvalid: {
+      LOG(FATAL) << "Invalid architecture: "
+                 << remill::GetArchName(arch->arch_name);
+      break;
+    }
+    case remill::kArchX86: {
+      if (arch->os_name == remill::kOSmacOS ||
+          arch->os_name == remill::kOSLinux) {
+        return std::make_unique<X86_C>(arch);
+      } else {
+        LOG(FATAL) << "Unsupported (arch, os) pair: "
+                   << remill::GetArchName(arch->arch_name) << " "
+                   << remill::GetOSName(arch->os_name);
+      }
+      break;
+    }
+    case remill::kArchAMD64: {
+      if (arch->os_name == remill::kOSmacOS ||
+          arch->os_name == remill::kOSLinux) {
+        return std::make_unique<X86_64_SysV>(arch);
+      } else {
+        LOG(FATAL) << "Unsupported (arch, os) pair: "
+                   << remill::GetArchName(arch->arch_name) << " "
+                   << remill::GetOSName(arch->os_name);
+      }
+      break;
+    }
+
+    // Fallthrough for unsupported architectures
+    case remill::kArchX86_AVX:
+    case remill::kArchX86_AVX512:
+    case remill::kArchAMD64_AVX:
+    case remill::kArchAMD64_AVX512:
+    case remill::kArchMips32:
+    case remill::kArchMips64:
+    case remill::kArchAArch64LittleEndian: {
+      LOG(FATAL) << "Unsupported architecture: "
+                 << remill::GetArchName(arch->arch_name);
+      break;
+    }
+  }
 }
 
 // Try to recover parameter names using debug information. Otherwise, name the

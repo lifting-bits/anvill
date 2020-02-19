@@ -286,31 +286,21 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 }
 
 // Create a Function Declaration from llvm::Function
-FunctionDecl FunctionDecl::Create(const llvm::Function &func, const llvm::Module &mdl) {
-  const llvm::DataLayout dl = mdl.getDataLayout();
-  const remill::Arch* arch = remill::Arch::GetModuleArch(mdl);
+FunctionDecl FunctionDecl::Create(const llvm::Function &func,
+                                  const llvm::Module &mdl) {
+  const llvm::DataLayout& dl = mdl.getDataLayout();
+  const remill::Arch *arch = remill::Arch::GetModuleArch(mdl);
 
   FunctionDecl decl;
   decl.type = func.getFunctionType();
-  
   decl.name = func.getName().data();
   decl.demangled_name = llvm::demangle(func.getName().data());
   decl.dl = &dl;
 
   // Try to guess the parameter and return value register allocation by looking
   // at the calling convention of the function
-  llvm::CallingConv::ID cc_id = func.getCallingConv();
-  std::unique_ptr<CallingConvention> cc = nullptr;
-
-  switch (cc_id) {
-    case llvm::CallingConv::X86_64_SysV:
-      cc = std::unique_ptr<anvill::X86_64_SysV>(new X86_64_SysV(arch));
-      break;
-    default:
-      // TODO(aty): find a better way to do this since the calling conventions given
-      // by llvm::function cannot be trusted
-      cc = std::unique_ptr<anvill::X86_C>(new X86_C(arch));
-  }
+  std::unique_ptr<CallingConvention> cc =
+      CallingConvention::CreateCCFromArch(arch);
 
   cc->AllocateSignature(decl, func);
 
