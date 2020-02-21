@@ -297,10 +297,16 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func,
   decl.demangled_name = llvm::demangle(func.getName().data());
   decl.dl = &dl;
 
-  // Try to guess the parameter and return value register allocation by looking
-  // at the calling convention of the function
-  std::unique_ptr<CallingConvention> cc =
-      CallingConvention::CreateCCFromArch(arch);
+  // If the function calling convention is not the default llvm::CallingConv::C
+  // then use it. Otherwise, get the CallingConvention from the remill::Arch
+  std::unique_ptr<CallingConvention> cc;
+  llvm::CallingConv::ID cc_id = func.getCallingConv();
+  if (cc_id != llvm::CallingConv::C) {
+    // The value is not default so use it
+    cc = CallingConvention::CreateCCFromCCID(cc_id, arch);
+  } else {
+    cc = CallingConvention::CreateCCFromArch(arch);
+  }
 
   cc->AllocateSignature(decl, func);
 

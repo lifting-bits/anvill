@@ -29,8 +29,6 @@ bool RegisterConstraint::ContainsVariant(const std::string &name) const {
   return false;
 }
 
-// Factory method that returns the correct calling convention for a given
-// architecture
 std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
     const remill::Arch *arch) {
   switch (arch->arch_name) {
@@ -39,7 +37,10 @@ std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
                  << remill::GetArchName(arch->arch_name);
       break;
     }
-    case remill::kArchX86: {
+    // Fallthrough, AVX does not affect X86 specification
+    case remill::kArchX86:
+    case remill::kArchX86_AVX:
+    case remill::kArchX86_AVX512: {
       if (arch->os_name == remill::kOSmacOS ||
           arch->os_name == remill::kOSLinux) {
         return std::make_unique<X86_C>(arch);
@@ -63,8 +64,6 @@ std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
     }
 
     // Fallthrough for unsupported architectures
-    case remill::kArchX86_AVX:
-    case remill::kArchX86_AVX512:
     case remill::kArchAMD64_AVX:
     case remill::kArchAMD64_AVX512:
     case remill::kArchMips32:
@@ -72,6 +71,23 @@ std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
     case remill::kArchAArch64LittleEndian: {
       LOG(FATAL) << "Unsupported architecture: "
                  << remill::GetArchName(arch->arch_name);
+      break;
+    }
+  }
+}
+
+// Still need the arch to be passed in so we can create the calling convention
+std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromCCID(
+    const llvm::CallingConv::ID cc_id, const remill::Arch *arch) {
+  switch (cc_id) {
+    case llvm::CallingConv::C: {
+      return std::make_unique<X86_C>(arch);
+    }
+    case llvm::CallingConv::X86_64_SysV: {
+      return std::make_unique<X86_64_SysV>(arch);
+    }
+    default: {
+      LOG(FATAL) << "Unsupported Calling Convention ID: " << cc_id;
       break;
     }
   }

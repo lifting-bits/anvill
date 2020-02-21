@@ -74,7 +74,7 @@ struct RegisterConstraint {
 
   std::vector<VariantConstraint> variants;
 
-  bool ContainsVariant(const std::string& name) const;
+  bool ContainsVariant(const std::string &name) const;
 };
 
 struct SizeAndType {
@@ -95,6 +95,8 @@ class CallingConvention {
 
   static std::unique_ptr<CallingConvention> CreateCCFromArch(
       const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention> CreateCCFromCCID(
+      const llvm::CallingConv::ID, const remill::Arch *arch);
   virtual void AllocateSignature(FunctionDecl &fdecl,
                                  const llvm::Function &func) = 0;
   llvm::CallingConv::ID getIdentity() const { return identity; }
