@@ -289,7 +289,9 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 FunctionDecl FunctionDecl::Create(const llvm::Function &func,
                                   const llvm::Module &mdl) {
   const llvm::DataLayout& dl = mdl.getDataLayout();
-  const remill::Arch *arch = remill::Arch::GetModuleArch(mdl);
+
+  remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(mdl);
+  arch->PrepareModule(remill::LoadArchSemantics(arch.get()));
 
   FunctionDecl decl;
   decl.type = func.getFunctionType();
@@ -303,9 +305,9 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func,
   llvm::CallingConv::ID cc_id = func.getCallingConv();
   if (cc_id != llvm::CallingConv::C) {
     // The value is not default so use it
-    cc = CallingConvention::CreateCCFromCCID(cc_id, arch);
+    cc = CallingConvention::CreateCCFromCCID(cc_id, arch.get());
   } else {
-    cc = CallingConvention::CreateCCFromArch(arch);
+    cc = CallingConvention::CreateCCFromArch(arch.get());
   }
 
   cc->AllocateSignature(decl, func);

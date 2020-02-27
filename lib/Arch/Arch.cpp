@@ -51,7 +51,10 @@ std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
       }
       break;
     }
-    case remill::kArchAMD64: {
+    // Fallthrough, AVX does not affect x86-64 specification
+    case remill::kArchAMD64:
+    case remill::kArchAMD64_AVX:
+    case remill::kArchAMD64_AVX512: {
       if (arch->os_name == remill::kOSmacOS ||
           arch->os_name == remill::kOSLinux) {
         return std::make_unique<X86_64_SysV>(arch);
@@ -64,10 +67,6 @@ std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
     }
 
     // Fallthrough for unsupported architectures
-    case remill::kArchAMD64_AVX:
-    case remill::kArchAMD64_AVX512:
-    case remill::kArchMips32:
-    case remill::kArchMips64:
     case remill::kArchAArch64LittleEndian: {
       LOG(FATAL) << "Unsupported architecture: "
                  << remill::GetArchName(arch->arch_name);
