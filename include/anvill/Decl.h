@@ -25,6 +25,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/Support/JSON.h>
+#include <remill/Arch/Arch.h>
 
 namespace llvm {
 class BasicBlock;
@@ -170,7 +171,9 @@ struct FunctionDecl {
       llvm::Value *mem_ptr) const;
 
   llvm::json::Object SerializeToJSON();
-  static FunctionDecl Create(const llvm::Function &func, const llvm::Module &mdl);
+  static FunctionDecl Create(const llvm::Function &func,
+                             const llvm::Module &mdl,
+                             const remill::Arch::ArchPtr &arch);
 
  private:
   friend class Program;

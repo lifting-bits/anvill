@@ -287,11 +287,9 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 
 // Create a Function Declaration from llvm::Function
 FunctionDecl FunctionDecl::Create(const llvm::Function &func,
-                                  const llvm::Module &mdl) {
+                                  const llvm::Module &mdl,
+                                  const remill::Arch::ArchPtr &arch) {
   const llvm::DataLayout& dl = mdl.getDataLayout();
-
-  remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(mdl);
-  arch->PrepareModule(remill::LoadArchSemantics(arch.get()));
 
   FunctionDecl decl;
   decl.type = func.getFunctionType();

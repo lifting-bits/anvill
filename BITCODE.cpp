@@ -46,11 +46,8 @@ int main(int argc, char *argv[]) {
 
   auto context = new llvm::LLVMContext;
   auto module = remill::LoadModuleFromFile(context, FLAGS_bc_file);
-  auto arch = remill::Arch::GetModuleArch(*module);
-  if (!arch) {
-    LOG(FATAL) << "Could not determine arch from module";
-    return EXIT_FAILURE;
-  }
+  remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
+  arch->PrepareModule(remill::LoadArchSemantics(arch.get()));
 
   std::string arch_name = remill::GetArchName(arch->arch_name);
   std::string os_name = remill::GetOSName(arch->os_name);
@@ -68,7 +65,8 @@ int main(int argc, char *argv[]) {
     }
 
     funcs_json.push_back(
-        anvill::FunctionDecl::Create(function, *module).SerializeToJSON());
+        anvill::FunctionDecl::Create(function, *module, arch)
+            .SerializeToJSON());
   }
 
   // Insert functions array into top level JSON
