@@ -6,9 +6,34 @@
 
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 
 namespace anvill {
+
+X86_C::X86_C(const remill::Arch *arch)
+    : CallingConvention(llvm::CallingConv::C, arch) {
+  auto name = remill::GetArchName(arch->Triple());
+  switch (name) {
+    case remill::kArchX86: {
+      // Do nothing if there are no extensions
+      break;
+    }
+    case remill::kArchX86_AVX: {
+      parameter_register_constraints =
+          ApplyX86Ext(parameter_register_constraints, ArchExt::AVX);
+      break;
+    }
+    case remill::kArchX86_AVX512: {
+      parameter_register_constraints =
+          ApplyX86Ext(parameter_register_constraints, ArchExt::AVX512);
+    }
+    default: {
+      LOG(FATAL) << "Invalid architecture for X86_C "
+                 << remill::GetArchName(arch->arch_name);
+    }
+  }
+}
 
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return

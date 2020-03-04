@@ -140,4 +140,33 @@ std::map<unsigned, std::string> TryRecoverParamNames(
   return param_names;
 }
 
+// Applies the x86AVX extension by adding YMM_ variants to all XMM_ registers.
+std::vector<RegisterConstraint> ApplyX86Ext(
+    const std::vector<RegisterConstraint> &constraints, ArchExt ext) {
+  std::vector<RegisterConstraint> ret;
+  for (const auto &c : constraints) {
+    if (c.variants.size() == 1 &&
+        c.variants.front().register_name.rfind("XMM", 0) == 0) {
+      // Assuming the name of the register is of the form XMM_
+      auto reg_number = std::to_string(c.variants.front().register_name.back());
+      if (ext == ArchExt::AVX) {
+        ret.push_back(RegisterConstraint({
+            VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
+            VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
+        }));
+      } else if (ext == ArchExt::AVX512) {
+        ret.push_back(RegisterConstraint({
+            VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
+            VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
+            VariantConstraint("ZMM" + reg_number, kTypeFloatOrVec, kMaxBit512),
+        }));
+      }
+    } else {
+      // Just copy the constraint if it doesn't contain an interesting register
+      ret.push_back(c);
+    }
+  }
+  return ret;
+}
+
 }  // namespace anvill

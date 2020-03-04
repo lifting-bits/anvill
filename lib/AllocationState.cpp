@@ -17,6 +17,12 @@ namespace anvill {
 // Converts size constraints to reasonable sizes.
 uint64_t SizeConstraintToSize(const SizeConstraint &sc) {
   switch (sc) {
+    case kMaxBit512:
+    case kMinBit512:
+      return 512;
+    case kMaxBit256:
+    case kMinBit256:
+      return 256;
     case kMaxBit128:
     case kMinBit128:
       return 128;

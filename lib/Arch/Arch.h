@@ -21,6 +21,10 @@ struct Register;
 
 namespace anvill {
 
+enum class ArchExt {
+  AVX, AVX512
+};
+
 enum SizeConstraint : unsigned {
   kBit8 = (1 << 0),
   kBit16 = (1 << 1),
@@ -28,7 +32,11 @@ enum SizeConstraint : unsigned {
   kBit64 = (1 << 3),
   kBit80 = (1 << 4),
   kBit128 = (1 << 5),
+  kBit256 = (1 << 6),
+  kBit512 = (1 << 7),
 
+  kMaxBit512 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMaxBit256 = kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit128 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit80 = kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit64 = kBit64 | kBit32 | kBit16 | kBit8,
@@ -36,12 +44,14 @@ enum SizeConstraint : unsigned {
   kMaxBit16 = kBit16 | kBit8,
   kMaxBit8 = kBit8,
 
-  kMinBit128 = kBit128,
-  kMinBit80 = kBit128 | kBit80,
-  kMinBit64 = kBit128 | kBit80 | kBit64,
-  kMinBit32 = kBit128 | kBit80 | kBit64 | kBit32,
-  kMinBit16 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16,
-  kMinBit8 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMinBit512 = kBit512,
+  kMinBit256 = kBit512 | kBit256,
+  kMinBit128 = kBit512 | kBit256 | kBit128,
+  kMinBit80 = kBit512 | kBit256 | kBit128 | kBit80,
+  kMinBit64 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64,
+  kMinBit32 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32,
+  kMinBit16 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16,
+  kMinBit8 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
 };
 
 enum TypeConstraint : unsigned {
@@ -86,6 +96,8 @@ struct SizeAndType {
 
 std::map<unsigned, std::string> TryRecoverParamNames(
     const llvm::Function &function);
+std::vector<RegisterConstraint> ApplyX86Ext(
+    const std::vector<RegisterConstraint> &constraints, ArchExt ext);
 
 class CallingConvention {
  public:
@@ -110,8 +122,7 @@ class CallingConvention {
 
 class X86_64_SysV : public CallingConvention {
  public:
-  X86_64_SysV(const remill::Arch *arch)
-      : CallingConvention(llvm::CallingConv::X86_64_SysV, arch) {}
+  X86_64_SysV(const remill::Arch *arch);
   virtual ~X86_64_SysV() = default;
   void AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func);
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function,
@@ -121,7 +132,7 @@ class X86_64_SysV : public CallingConvention {
   void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
 
  private:
-  const std::vector<RegisterConstraint> parameter_register_constraints = {
+  std::vector<RegisterConstraint> parameter_register_constraints = {
       RegisterConstraint({
           VariantConstraint("DIL", kTypeIntegral, kMaxBit8),
           VariantConstraint("DI", kTypeIntegral, kMaxBit16),
@@ -215,8 +226,7 @@ class X86_64_SysV : public CallingConvention {
 // This is the cdecl calling convention referenced by llvm::CallingConv::C
 class X86_C : public CallingConvention {
  public:
-  X86_C(const remill::Arch *arch)
-      : CallingConvention(llvm::CallingConv::C, arch) {}
+  X86_C(const remill::Arch *arch);
   virtual ~X86_C() = default;
   void AllocateSignature(FunctionDecl &fdecl, const llvm::Function &func);
   std::vector<ParameterDecl> BindParameters(const llvm::Function &function,
@@ -233,7 +243,7 @@ class X86_C : public CallingConvention {
   // to <float, float> in IR, we will not be able to allocate it to a vector
   // register because in our eyes it will no longer be a vector. This is
   // consistent with the behavior of Clang but not GCC.
-  const std::vector<RegisterConstraint> parameter_register_constraints = {
+  std::vector<RegisterConstraint> parameter_register_constraints = {
       RegisterConstraint({VariantConstraint("XMM0", kTypeVec, kMaxBit128)}),
       RegisterConstraint({VariantConstraint("XMM1", kTypeVec, kMaxBit128)}),
       RegisterConstraint({VariantConstraint("XMM2", kTypeVec, kMaxBit128)}),
