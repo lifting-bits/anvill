@@ -22,7 +22,10 @@
 #include <vector>
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/Support/JSON.h>
+#include <remill/Arch/Arch.h>
 
 namespace llvm {
 class BasicBlock;
@@ -63,10 +66,14 @@ struct ValueDecl {
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
 };
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
+
+  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
 };
 
 struct GlobalVarDecl {
@@ -106,6 +113,7 @@ struct FunctionDecl {
   uint64_t address{0};
 
   std::string name;
+  std::string demangled_name;
   llvm::FunctionType *type{nullptr};
 
   // Specifies where the return address is located on entry to the function.
@@ -136,6 +144,9 @@ struct FunctionDecl {
   //            value when the function might throw an exception.
   std::vector<ValueDecl> returns;
 
+  // The DataLayout of the module that contains the function
+  const llvm::DataLayout *dl{nullptr};
+
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
 
@@ -158,6 +169,11 @@ struct FunctionDecl {
       llvm::BasicBlock *block,
       llvm::Value *state_ptr,
       llvm::Value *mem_ptr) const;
+
+  llvm::json::Object SerializeToJSON();
+  static FunctionDecl Create(const llvm::Function &func,
+                             const llvm::Module &mdl,
+                             const remill::Arch::ArchPtr &arch);
 
  private:
   friend class Program;

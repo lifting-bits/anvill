@@ -17,6 +17,7 @@
 
 #include "anvill/Decl.h"
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include <llvm/IR/DataLayout.h>
@@ -28,6 +29,8 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/JSON.h>
+#include <llvm/Demangle/Demangle.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
@@ -35,6 +38,10 @@
 #include <remill/BC/Util.h>
 
 #include "Lift.h"
+#include "Arch/Arch.h"
+#include "anvill/TypePrinter.h"
+
+DEFINE_bool(demangle_names, false, "Demangle function and variable names");
 
 namespace anvill {
 
@@ -186,6 +193,136 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   } else {
     return mem_ptr;
   }
+}
+
+// Serialize a FunctionDecl to JSON
+llvm::json::Object FunctionDecl::SerializeToJSON() {
+  llvm::json::Object json;
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+
+  if (FLAGS_demangle_names) {
+    json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("demangled_name"),
+                                       this->demangled_name});
+  }
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
+                                     this->is_variadic});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_noreturn"),
+                                     this->is_noreturn});
+
+  llvm::json::Array params_json;
+  for (auto pdecl : this->params) {
+    llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON(*this->dl));
+    params_json.push_back(v);
+  }
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("parameters"),
+                             llvm::json::Value(std::move(params_json))});
+
+  llvm::json::Array returns_json;
+  for (auto rdecl : this->returns) {
+    returns_json.push_back(llvm::json::Value(rdecl.SerializeToJSON(*this->dl)));
+  }
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("return_values"),
+                             llvm::json::Value(std::move(returns_json))});
+
+  if (this->return_stack_pointer) {
+    llvm::json::Object return_stack_pointer_json;
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("register"), this->return_stack_pointer->name});
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("offset"), this->return_stack_pointer_offset});
+    return_stack_pointer_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("type"),
+        TranslateType(*this->return_stack_pointer->type, *this->dl)});
+
+    json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("return_stack_pointer"),
+        llvm::json::Value(std::move(return_stack_pointer_json))});
+  }
+  return json;
+}
+
+// Serialize a ParameterDecl to JSON
+llvm::json::Object ParameterDecl::SerializeToJSON(const llvm::DataLayout &dl) {
+  // Get the serialization for the ValueDecl
+  llvm::json::Object param_json = this->ValueDecl::SerializeToJSON(dl);
+
+  // Insert "name"
+  param_json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
+
+  return param_json;
+}
+
+// Serialize a ValueDecl to JSON
+llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
+  llvm::json::Object value_json;
+
+  if (this->reg) {
+    // The value is in a register
+    value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
+                                             this->reg->name});
+  } else if (this->mem_reg) {
+    // The value is in memory
+    llvm::json::Object memory_json;
+    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
+                                              this->mem_reg->name});
+    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("offset"),
+                                              this->mem_offset});
+
+    // Wrap the memory_json structure in a memory block
+    value_json.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
+                               llvm::json::Value(std::move(memory_json))});
+  } else {
+    LOG(ERROR) << "Trying to serialize a value that has not been allocated";
+    exit(1);
+  }
+
+  value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
+                                           TranslateType(*this->type, dl)});
+
+  return value_json;
+}
+
+// Create a Function Declaration from llvm::Function
+FunctionDecl FunctionDecl::Create(const llvm::Function &func,
+                                  const llvm::Module &mdl,
+                                  const remill::Arch::ArchPtr &arch) {
+  const llvm::DataLayout &dl = mdl.getDataLayout();
+
+  FunctionDecl decl;
+  decl.type = func.getFunctionType();
+  decl.name = func.getName().data();
+  decl.demangled_name = llvm::demangle(func.getName().data());
+  decl.dl = &dl;
+  decl.is_variadic = func.isVarArg();
+  decl.is_noreturn = func.hasFnAttribute(llvm::Attribute::NoReturn);
+
+  // If the function calling convention is not the default llvm::CallingConv::C
+  // then use it. Otherwise, get the CallingConvention from the remill::Arch
+  std::unique_ptr<CallingConvention> cc;
+  llvm::CallingConv::ID cc_id = func.getCallingConv();
+  if (cc_id != llvm::CallingConv::C) {
+    // The value is not default so use it
+    cc = CallingConvention::CreateCCFromCCID(cc_id, arch.get());
+  } else {
+    cc = CallingConvention::CreateCCFromArch(arch.get());
+  }
+
+  cc->AllocateSignature(decl, func);
+
+  // TODO(aty): for a better and more comprehensive serialization
+  // decl->address =
+  // decl->return_address =
+  // decl->num_bytes_in_redzone =
+
+  return decl;
 }
 
 }  // namespace anvill
