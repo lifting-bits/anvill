@@ -207,6 +207,12 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
                                        this->demangled_name});
   }
 
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
+                                     this->is_variadic});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_noreturn"),
+                                     this->is_noreturn});
+
   llvm::json::Array params_json;
   for (auto pdecl : this->params) {
     llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON(*this->dl));
@@ -221,7 +227,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
     returns_json.push_back(llvm::json::Value(rdecl.SerializeToJSON(*this->dl)));
   }
   json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("return values"),
+      llvm::json::Object::KV{llvm::json::ObjectKey("return_values"),
                              llvm::json::Value(std::move(returns_json))});
 
   if (this->return_stack_pointer) {
@@ -235,7 +241,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
         TranslateType(*this->return_stack_pointer->type, *this->dl)});
 
     json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("return stack pointer"),
+        llvm::json::ObjectKey("return_stack_pointer"),
         llvm::json::Value(std::move(return_stack_pointer_json))});
   }
   return json;
@@ -244,8 +250,7 @@ llvm::json::Object FunctionDecl::SerializeToJSON() {
 // Serialize a ParameterDecl to JSON
 llvm::json::Object ParameterDecl::SerializeToJSON(const llvm::DataLayout &dl) {
   // Get the serialization for the ValueDecl
-  ValueDecl *val_decl_ptr = dynamic_cast<ValueDecl *>(this);
-  llvm::json::Object param_json = val_decl_ptr->SerializeToJSON(dl);
+  llvm::json::Object param_json = this->ValueDecl::SerializeToJSON(dl);
 
   // Insert "name"
   param_json.insert(
@@ -289,13 +294,15 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
 FunctionDecl FunctionDecl::Create(const llvm::Function &func,
                                   const llvm::Module &mdl,
                                   const remill::Arch::ArchPtr &arch) {
-  const llvm::DataLayout& dl = mdl.getDataLayout();
+  const llvm::DataLayout &dl = mdl.getDataLayout();
 
   FunctionDecl decl;
   decl.type = func.getFunctionType();
   decl.name = func.getName().data();
   decl.demangled_name = llvm::demangle(func.getName().data());
   decl.dl = &dl;
+  decl.is_variadic = func.isVarArg();
+  decl.is_noreturn = func.hasFnAttribute(llvm::Attribute::NoReturn);
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch
@@ -313,10 +320,6 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func,
   // TODO(aty): for a better and more comprehensive serialization
   // decl->address =
   // decl->return_address =
-  // decl->return_stack_pointer =
-  // decl->return_stack_pointer_offset =
-  // decl->is_noreturn =
-  // decl->is_variadic =
   // decl->num_bytes_in_redzone =
 
   return decl;
