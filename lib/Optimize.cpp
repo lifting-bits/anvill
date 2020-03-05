@@ -326,11 +326,14 @@ static void RemoveUnneededInlineAsm(
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const Program &program, llvm::Module &module) {
+void OptimizeModule(const remill::Arch *arch,
+                    const Program &program,
+                    llvm::Module &module) {
   auto &context = module.getContext();
   const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
 
   std::vector<llvm::Function *> traces;
+
   if (auto bb_func = module.getFunction("__remill_basic_block")) {
     const auto bb_func_type = bb_func->getType();
     for (auto &func : module) {
@@ -343,14 +346,15 @@ void OptimizeModule(const Program &program, llvm::Module &module) {
   if (traces.empty()) {
     remill::OptimizeBareModule(&module);
   } else {
-    remill::OptimizeModule(&module, traces);
+    remill::OptimizeModule(arch, &module, traces);
   }
 
   std::unordered_set<llvm::Function *> changed_funcs;
 
-  // These improve optimzability.
+  // These improve optimizability.
   MuteStateEscape(module, "__remill_function_return", changed_funcs);
-  MuteStateEscape(module, "__remill_function_error", changed_funcs);
+  MuteStateEscape(module, "__remill_error", changed_funcs);
+  MuteStateEscape(module, "__remill_missing_block", changed_funcs);
 
   // We can remove these when they are not used.
   RemoveUnusedCalls(module, "fpclassify", changed_funcs);

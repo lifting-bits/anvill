@@ -20,12 +20,16 @@
 namespace llvm {
 class Module;
 }  // namespace llvm
+namespace remill {
+class Arch;
+}  // namespace remill
 namespace anvill {
 
 class Program;
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const Program &program, llvm::Module &module);
+void OptimizeModule(const remill::Arch *arch,
+                    const Program &program, llvm::Module &module);
 
 }  // namespace anvill

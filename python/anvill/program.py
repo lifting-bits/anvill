@@ -20,6 +20,7 @@ import json
 from .function import *
 from .var import *
 from .mem import *
+from .exc import *
 
 
 class Program(object):
@@ -40,18 +41,18 @@ class Program(object):
   def get_variable(self, ea):
     raise NotImplementedError()
 
-  def add_variable_declaration(self, ea):
+  def add_variable_declaration(self, ea, add_refs_as_defs=False):
     var = self.get_variable(ea)
-    if isinstance(var, Function):
+    if isinstance(var, Variable):
       ea = var.address()
       if ea not in self._var_defs and ea not in self._var_decls:
-        self._var_decls[ea] = func
-        func.visit(self, False)
+        self._var_decls[ea] = var
+        var.visit(self, False, add_refs_as_defs)
       return True
     else:
       return False
 
-  def add_variable_definition(self, ea):
+  def add_variable_definition(self, ea, add_refs_as_defs=False):
     var = self.get_variable(ea)
     if isinstance(var, Variable):
       ea = var.address()
@@ -59,12 +60,12 @@ class Program(object):
         if ea in self._var_decls:
           del self._var_decls[ea]
         self._var_defs[ea] = var
-        var.visit(self, True)
+        var.visit(self, True, add_refs_as_defs)
       return True
     else:
       return False
 
-  def add_function_definition(self, ea):
+  def add_function_definition(self, ea, add_refs_as_defs=False):
     func = self.get_function(ea)
     if isinstance(func, Function):
       ea = func.address()
@@ -72,21 +73,38 @@ class Program(object):
         if ea in self._func_decls:
           del self._func_decls[ea]
         self._func_defs[ea] = func
-        func.visit(self, True)
+        func.visit(self, True, add_refs_as_defs)
       return True
     else:
       return False
 
-  def add_function_declaration(self, ea):
+  def add_function_declaration(self, ea, add_refs_as_defs=False):
     func = self.get_function(ea)
     if isinstance(func, Function):
       ea = func.address()
       if ea not in self._func_defs and ea not in self._func_decls:
         self._func_decls[ea] = func
-        func.visit(self, False)
+        func.visit(self, False, add_refs_as_defs)
       return True
     else:
       return False
+
+  def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
+    try:
+      if add_refs_as_defs:
+        self.add_function_definition(ea, add_refs_as_defs)
+      else:
+        self.add_function_declaration(ea, add_refs_as_defs)
+      return True
+    except InvalidFunctionException as e1:
+      try:
+        if add_refs_as_defs:
+          self.add_variable_definition(ea, add_refs_as_defs)
+        else:
+          self.add_variable_declaration(ea, add_refs_as_defs)
+        return True
+      except InvalidVariableException as e2:
+        return False
 
   def memory(self):
     return self._memory
@@ -96,14 +114,19 @@ class Program(object):
     proto["arch"] = self._arch.name()
     proto["os"] = self._os.name()
     proto["functions"] = []
-
-    # TODO(pag): Global variables.
+    proto["variables"] = []
 
     for func in self._func_decls.values():
       proto["functions"].append(func.proto())
 
     for func in self._func_defs.values():
       proto["functions"].append(func.proto())
+
+    for var in self._var_decls.values():
+      proto["variables"].append(var.proto())
+
+    for var in self._var_defs.values():
+      proto["variables"].append(var.proto())
 
     proto["memory"] = self._memory.proto()
 

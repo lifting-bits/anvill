@@ -328,6 +328,7 @@ static bool ParseVariable(const remill::Arch *arch,
   if (remill::IsError(maybe_type)) {
     LOG(ERROR)
         << remill::GetErrorString(maybe_type);
+    return false;
   }
 
   decl.type = remill::GetReference(maybe_type);
@@ -658,7 +659,7 @@ int main(int argc, char *argv[]) {
   const auto os_name = remill::GetOSName(os_str);
 
   llvm::LLVMContext context;
-  auto arch = remill::Arch::Get(context, os_name, arch_name);
+  const auto arch = remill::Arch::Build(&context, os_name, arch_name);
   if (!arch) {
     return EXIT_FAILURE;
   }
@@ -672,7 +673,7 @@ int main(int argc, char *argv[]) {
   remill::IntrinsicTable intrinsics(semantics);
 
   anvill::Program program;
-  if (!ParseSpec(arch, context, program, spec)) {
+  if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
 
@@ -700,7 +701,7 @@ int main(int argc, char *argv[]) {
 
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
-  anvill::OptimizeModule(program, *semantics);
+  anvill::OptimizeModule(arch.get(), program, *semantics);
 
   llvm::Module dest_module("", context);
   arch->PrepareModuleDataLayout(&dest_module);
@@ -712,9 +713,9 @@ int main(int argc, char *argv[]) {
     return true;
   });
 
-  anvill::OptimizeModule(program, dest_module);
+  anvill::OptimizeModule(arch.get(), program, dest_module);
   anvill::RecoverMemoryAccesses(program, dest_module);
-  anvill::OptimizeModule(program, dest_module);
+  anvill::OptimizeModule(arch.get(), program, dest_module);
 
   int ret = EXIT_SUCCESS;
 

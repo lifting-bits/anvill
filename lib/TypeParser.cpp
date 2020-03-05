@@ -59,6 +59,7 @@ static bool Parse(llvm::StringRef spec, size_t &i, Filter filter, T *out) {
 // accepts.
 static llvm::Expected<llvm::Type *> ParseType(
     llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
+    llvm::SmallPtrSetImpl<llvm::Type* > &size_checked,
     llvm::StringRef spec, size_t &i) {
 
   llvm::StructType *struct_type = nullptr;
@@ -70,11 +71,19 @@ static llvm::Expected<llvm::Type *> ParseType(
       case '{': {
         llvm::SmallVector<llvm::Type *, 4> elem_types;
         for (i += 1; i < spec.size() && spec[i] != '}';) {
-          auto maybe_elem_type = ParseType(context, ids, spec, i);
+          auto maybe_elem_type = ParseType(
+              context, ids, size_checked, spec, i);
           if (remill::IsError(maybe_elem_type)) {
             return maybe_elem_type;
           } else {
             if (auto elem_type = remill::GetReference(maybe_elem_type)) {
+              if (!elem_type->isSized(&size_checked)) {
+                return llvm::createStringError(
+                    std::make_error_code(std::errc::invalid_argument),
+                    "Cannot create structure with an unsized element type "
+                    "(e.g. void or function type) in type specification '%s'",
+                    spec.str().c_str());
+              }
               elem_types.push_back(elem_type);
             } else {
               break;
@@ -108,13 +117,19 @@ static llvm::Expected<llvm::Type *> ParseType(
       // Parse an array type.
       case '[': {
         i += 1;
-        auto maybe_elem_type = ParseType(context, ids, spec, i);
+        auto maybe_elem_type = ParseType(context, ids, size_checked, spec, i);
         if (remill::IsError(maybe_elem_type)) {
           return maybe_elem_type;
         }
 
         llvm::Type *elem_type = remill::GetReference(maybe_elem_type);
-
+        if (!elem_type->isSized(&size_checked)) {
+          return llvm::createStringError(
+              std::make_error_code(std::errc::invalid_argument),
+              "Cannot create array with unsized element type (e.g. void or "
+              "function type) in type specification '%s'",
+              spec.str().c_str());
+        }
         if (i >= spec.size() || 'x' != spec[i]) {
           return llvm::createStringError(
               std::make_error_code(std::errc::invalid_argument),
@@ -152,12 +167,19 @@ static llvm::Expected<llvm::Type *> ParseType(
       // Parse a vector type.
       case '<': {
         i += 1;
-        auto maybe_elem_type = ParseType(context, ids, spec, i);
+        auto maybe_elem_type = ParseType(context, ids, size_checked, spec, i);
         if (remill::IsError(maybe_elem_type)) {
           return maybe_elem_type;
         }
 
         llvm::Type *elem_type = remill::GetReference(maybe_elem_type);
+        if (!elem_type->isSized(&size_checked)) {
+          return llvm::createStringError(
+              std::make_error_code(std::errc::invalid_argument),
+              "Cannot create vector with unsized element type (e.g. void "
+              "or function type) in type specification '%s'",
+              spec.str().c_str());
+        }
         if (i >= spec.size() || 'x' != spec[i]) {
           return llvm::createStringError(
               std::make_error_code(std::errc::invalid_argument),
@@ -195,7 +217,7 @@ static llvm::Expected<llvm::Type *> ParseType(
       // Parse a pointer type.
       case '*': {
         i += 1;
-        auto maybe_elem_type = ParseType(context, ids, spec, i);
+        auto maybe_elem_type = ParseType(context, ids, size_checked, spec, i);
         if (remill::IsError(maybe_elem_type)) {
           return maybe_elem_type;
         }
@@ -208,14 +230,26 @@ static llvm::Expected<llvm::Type *> ParseType(
               spec.str().c_str());
         }
 
-        return llvm::PointerType::get(elem_type, 0);
+        if (elem_type->isVoidTy()) {
+          return llvm::IntegerType::getInt8PtrTy(context, 0);
+
+        } else if (!elem_type->isFunctionTy() &&
+                   !elem_type->isSized(&size_checked)) {
+          return llvm::createStringError(
+              std::make_error_code(std::errc::invalid_argument),
+              "Cannot create a pointer to an unsized type in type "
+              "specification '%s'",
+              spec.str().c_str());
+        } else {
+          return llvm::PointerType::get(elem_type, 0);
+        }
       }
 
       // Parse a function type.
       case '(': {
         llvm::SmallVector<llvm::Type *, 4> elem_types;
         for (i += 1; i < spec.size() && spec[i] != ')';) {
-          auto maybe_elem_type = ParseType(context, ids, spec, i);
+          auto maybe_elem_type = ParseType(context, ids, size_checked, spec, i);
           if (remill::IsError(maybe_elem_type)) {
             return maybe_elem_type;
           } else {
@@ -262,7 +296,7 @@ static llvm::Expected<llvm::Type *> ParseType(
           is_var_arg = true;
           elem_types.pop_back();
 
-          // If second-to-last is a void type, then it must be the first.
+        // If second-to-last is a void type, then it must be the first.
         } else if (elem_types.back()->isVoidTy()) {
           if (1 == elem_types.size()) {
             elem_types.pop_back();
@@ -434,12 +468,23 @@ llvm::Expected<llvm::Type *>
 ParseType(llvm::LLVMContext &context, llvm::StringRef spec) {
   std::vector<llvm::Type *> ids;
   size_t i = 0;
-  auto ret = ParseType(context, ids, spec, i);
-  if (!remill::IsError(ret) && i < spec.size()) {
-    return llvm::createStringError(
-        std::make_error_code(std::errc::invalid_argument),
-        "Type specification '%s' contains trailing unparsed characters",
-        spec.str().c_str());
+  llvm::SmallPtrSet<llvm::Type *, 8> size_checked;
+  auto ret = ParseType(context, ids, size_checked, spec, i);
+  if (!remill::IsError(ret)) {
+    if (i < spec.size()) {
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Type specification '%s' contains trailing unparsed characters",
+          spec.str().c_str());
+    }
+
+    auto type = remill::GetReference(ret);
+    if (!type->isSized(&size_checked)) {
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Type specification '%s' does not correspond with a sized type",
+          spec.str().c_str());
+    }
   }
 
   return ret;
