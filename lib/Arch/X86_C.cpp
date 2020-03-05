@@ -104,7 +104,7 @@ std::vector<anvill::ValueDecl> X86_C::BindReturnValues(
     }
     case llvm::Type::FloatTyID:
     case llvm::Type::DoubleTyID:
-    case llvm::Type::FP128TyID: {
+    case llvm::Type::X86_FP80TyID: {
       // Allocate ST0 for a floating point value
       value_declaration.reg = arch->RegisterByName("ST0");
       break;
