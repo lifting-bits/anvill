@@ -82,19 +82,19 @@ static void TranslateTypeInternal(
       //            Tracked: https://github.com/lifting-bits/anvill/issues/16
       auto sign = true;
       const auto bit_width = derived->getBitWidth();
-      if (8 >= bit_width) {
+      if (8u >= bit_width) {
         ss << (sign ? 'b' : 'B');
 
-      } else if (16 >= bit_width) {
+      } else if (16u >= bit_width) {
         ss << (sign ? 'h' : 'H');
 
-      } else if (32 >= bit_width) {
+      } else if (32u >= bit_width) {
         ss << (sign ? 'i' : 'I');
 
-      } else if (64 >= bit_width) {
+      } else if (64u >= bit_width) {
         ss << (sign ? 'l' : 'L');
 
-      } else if (128 >= bit_width) {
+      } else if (128u >= bit_width) {
         ss << (sign ? 'o' : 'O');
 
       } else {
@@ -196,11 +196,19 @@ static void TranslateTypeInternal(
       break;
     }
 
+    case llvm::Type::VectorTyID: {
+      const auto vec_ptr = llvm::cast<llvm::VectorType>(&type);
+      ss << '<';
+      TranslateTypeInternal(*vec_ptr->getElementType(), ss, ids, dl);
+      ss << 'x' << vec_ptr->getNumElements() << '>';
+      break;
+    }
+
     case llvm::Type::ArrayTyID: {
-      auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
+      const auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
       ss << '[';
       TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl);
-      ss << ']';
+      ss << 'x' << array_ptr->getNumElements() << ']';
       break;
     }
 
