@@ -18,6 +18,7 @@
 #pragma once
 
 #include <llvm/Support/Error.h>
+
 namespace llvm {
 class LLVMContext;
 class StringRef;

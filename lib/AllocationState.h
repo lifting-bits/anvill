@@ -45,8 +45,10 @@ struct AllocationState {
   uint64_t getRemainingSpace(size_t i);
   llvm::Optional<std::vector<anvill::ValueDecl>> ProcessIntVecX86_64SysV(
       llvm::Type *elem_type, unsigned int vec_size, unsigned int bit_width);
-  std::vector<anvill::ValueDecl> CoalescePacking(
-      const std::vector<anvill::ValueDecl> &vector);
+
+  llvm::Error CoalescePacking(
+      const std::vector<anvill::ValueDecl> &vector,
+      std::vector<anvill::ValueDecl> &packed_values);
 };
 
 }  // namespace anvill

@@ -154,24 +154,25 @@ AllocationState::TryCompositeRegisterAllocate(llvm::CompositeType &type) {
   if (auto st = llvm::dyn_cast<llvm::StructType>(&type)) {
     for (unsigned i = 0; i < st->getNumElements(); i++) {
       llvm::Type *elem_type = st->getElementType(i);
-      if (auto inner = TryRegisterAllocate(*elem_type, true)) {
+      if (auto inner = TryRegisterAllocate(*elem_type, true); inner) {
         ret.insert(ret.end(), inner->begin(), inner->end());
       } else {
         return llvm::None;
       }
     }
+
+  // Arrays must be of a uniform type
   } else if (auto arr = llvm::dyn_cast<llvm::ArrayType>(&type)) {
-    // Arrays must be of a uniform type
     llvm::Type *elem_type = arr->getArrayElementType();
     for (unsigned i = 0; i < arr->getNumElements(); i++) {
-      if (auto inner = TryRegisterAllocate(*elem_type, true)) {
+      if (auto inner = TryRegisterAllocate(*elem_type, true); inner) {
         ret.insert(ret.end(), inner->begin(), inner->end());
       } else {
         return llvm::None;
       }
     }
   } else if (auto vec = llvm::dyn_cast<llvm::VectorType>(&type)) {
-    if (auto inner = TryVectorRegisterAllocate(*vec)) {
+    if (auto inner = TryVectorRegisterAllocate(*vec); inner) {
       ret.insert(ret.end(), inner->begin(), inner->end());
     }
   } else {
@@ -206,9 +207,9 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
 
     uint64_t space = getRemainingSpace(i);
 
-    // TODO:(aty) This might not always be the case and we might have to care
-    // about alignment before we decide to pack a register. But for right now
-    // We are just packing the register if we can.
+    // TODO(aty): This might not always be the case and we might have to care
+    //            about alignment before we decide to pack a register. But for
+    //            right now. We are just packing the register if we can.
     if (size <= space) {
       fill[i] += size;
       if (getRemainingSpace(i) == 0) {
@@ -304,23 +305,21 @@ AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
 llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
     llvm::Type *elem_type, unsigned vec_size, unsigned bit_width) {
   switch (bit_width) {
-    case 64: {
+    case 64:
       switch (vec_size) {
-        case 3: {
+        case 3:
           return TryRegisterAllocate(*elem_type, false);
-        }
         case 2:
         case 4: {
           auto hint = AssignSizeAndType(*elem_type);
           hint.tc = kTypeFloatOrVec;
           return TryBasicRegisterAllocate(*elem_type, hint, true);
         }
-        default: {
+        default:
           return llvm::None;
-        }
       }
-    }
-    case 32: {
+
+    case 32:
       switch (vec_size) {
         case 2:
         case 3:
@@ -331,16 +330,14 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           hint.tc = kTypeFloatOrVec;
           return TryBasicRegisterAllocate(*elem_type, hint, true);
         }
-        default: {
+        default:
           return llvm::None;
-        }
       }
-    }
-    case 16: {
+
+    case 16:
       switch (vec_size) {
-        case 3: {
+        case 3:
           return TryRegisterAllocate(*elem_type, false);
-        }
         case 2:
         case 4:
         case 5:
@@ -352,16 +349,14 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           hint.tc = kTypeFloatOrVec;
           return TryBasicRegisterAllocate(*elem_type, hint, true);
         }
-        default: {
+        default:
           return llvm::None;
-        }
       }
-    }
-    case 8: {
+
+    case 8:
       switch (vec_size) {
-        case 3: {
+        case 3:
           return TryRegisterAllocate(*elem_type, false);
-        }
         case 2:
         case 16:
         case 32: {
@@ -369,22 +364,23 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           hint.tc = kTypeFloatOrVec;
           return TryBasicRegisterAllocate(*elem_type, hint, true);
         }
-        default: {
+        default:
           return llvm::None;
-        }
       }
-    }
-    default: {
-      LOG(FATAL) << "Invalid bit width: " << bit_width;
-    }
+
+    default:
+      LOG(FATAL)
+          << "Invalid bit width: " << bit_width;
+      return llvm::None;
   }
-  return llvm::None;
 }
 
 // Coalesce any packed registers into structs that contain the packed types.
 // For example, two i32s in a register would become one {i32, 32}.
-std::vector<ValueDecl> AllocationState::CoalescePacking(
-    const std::vector<ValueDecl> &vector) {
+llvm::Error AllocationState::CoalescePacking(
+    const std::vector<ValueDecl> &vector,
+    std::vector<anvill::ValueDecl> &packed_values) {
+
   // Group the decls together by the register that they are allocated to.
   std::vector<std::vector<ValueDecl>> groups(constraints.size());
   for (auto decl : vector) {
@@ -399,14 +395,13 @@ std::vector<ValueDecl> AllocationState::CoalescePacking(
 
   // Construct structs for each of the registers that have more than one type
   // in them.
-  std::vector<ValueDecl> ret;
   for (unsigned i = 0; i < groups.size(); i++) {
     const auto &g = groups[i];
     if (g.empty()) {
       continue;
     }
     if (g.size() == 1) {
-      ret.push_back(g.front());
+      packed_values.push_back(g.front());
       continue;
     }
     std::vector<llvm::Type *> types;
@@ -420,10 +415,10 @@ std::vector<ValueDecl> AllocationState::CoalescePacking(
         GetSmallestVariantName(constraints[i].variants,
                                arch->DataLayout().getTypeAllocSizeInBits(st)));
     v.type = st;
-    ret.push_back(v);
+    packed_values.push_back(v);
   }
 
-  return ret;
+  return llvm::Error::success();
 }
 
 }  // namespace anvill

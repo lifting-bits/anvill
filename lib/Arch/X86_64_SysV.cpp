@@ -9,43 +9,140 @@
 #include <remill/Arch/Name.h>
 
 namespace anvill {
+namespace {
+static const std::vector<RegisterConstraint> kParamRegConstraints = {
+    RegisterConstraint({
+        VariantConstraint("DIL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("DI", kTypeIntegral, kMaxBit16),
+        VariantConstraint("EDI", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RDI", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("SIL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("SI", kTypeIntegral, kMaxBit16),
+        VariantConstraint("ESI", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RSI", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("DL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("DX", kTypeIntegral, kMaxBit16),
+        VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RDX", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("CL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("CX", kTypeIntegral, kMaxBit16),
+        VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("R8L", kTypeIntegral, kMaxBit8),
+        VariantConstraint("R8W", kTypeIntegral, kMaxBit16),
+        VariantConstraint("R8D", kTypeIntegral, kMaxBit32),
+        VariantConstraint("R8", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("R9L", kTypeIntegral, kMaxBit8),
+        VariantConstraint("R9W", kTypeIntegral, kMaxBit16),
+        VariantConstraint("R9D", kTypeIntegral, kMaxBit32),
+        VariantConstraint("R9", kTypeIntegral, kMaxBit64),
+    }),
+
+    RegisterConstraint(
+        {VariantConstraint("XMM0", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM1", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM2", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM3", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM4", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM5", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM6", kTypeFloatOrVec, kMaxBit128)}),
+    RegisterConstraint(
+        {VariantConstraint("XMM7", kTypeFloatOrVec, kMaxBit128)}),
+};
+
+static const std::vector<RegisterConstraint> kAVXParamRegConstraints =
+    ApplyX86Ext(kParamRegConstraints, remill::kArchAMD64_AVX);
+
+static const std::vector<RegisterConstraint> kAVX512ParamRegConstraints =
+    ApplyX86Ext(kParamRegConstraints, remill::kArchAMD64_AVX512);
+
+// This a bit undocumented and warrants and explanation. For x86_64, clang has
+// the option to split a created (not passed by reference) struct over the
+// following registers: RAX, RDX, RCX, XMM0, XMM1, ST0, ST1. The first 3 are
+// used for integer or pointer types and the last 4 are used for floating
+// point values. If there is no valid struct split using these registers then
+// the compiler will try RVO.
+static const std::vector<RegisterConstraint> kReturnRegConstraints = {
+    RegisterConstraint({
+        VariantConstraint("AL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("AX", kTypeIntegral, kMaxBit16),
+        VariantConstraint("EAX", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RAX", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("DL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("DX", kTypeIntegral, kMaxBit16),
+        VariantConstraint("EDX", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RDX", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({
+        VariantConstraint("CL", kTypeIntegral, kMaxBit8),
+        VariantConstraint("CX", kTypeIntegral, kMaxBit16),
+        VariantConstraint("ECX", kTypeIntegral, kMaxBit32),
+        VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
+    }),
+    RegisterConstraint({VariantConstraint("XMM0", kTypeVec, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("XMM1", kTypeVec, kMaxBit128)}),
+
+    // Since the FPU registers are 80 bits wide, they are only able to hold
+    // 64-bit values.
+    RegisterConstraint({VariantConstraint("ST0", kTypeVec, kMaxBit80)}),
+    RegisterConstraint({VariantConstraint("ST1", kTypeVec, kMaxBit80)}),
+};
+
+static const std::vector<RegisterConstraint> kAVXReturnRegConstraints =
+    ApplyX86Ext(kReturnRegConstraints, remill::kArchAMD64_AVX);
+
+static const std::vector<RegisterConstraint> kAVX512ReturnRegConstraints =
+    ApplyX86Ext(kReturnRegConstraints, remill::kArchAMD64_AVX512);
+
+}  // namespace
 
 X86_64_SysV::X86_64_SysV(const remill::Arch *arch)
-    : CallingConvention(llvm::CallingConv::X86_64_SysV, arch) {
-  auto name = remill::GetArchName(arch->Triple());
-  switch (name) {
-    case remill::kArchAMD64: {
-      // Do nothing if there are no extensions
-      break;
-    }
-    case remill::kArchAMD64_AVX: {
-      parameter_register_constraints =
-          ApplyX86Ext(parameter_register_constraints, ArchExt::AVX);
-      break;
-    }
-    case remill::kArchAMD64_AVX512: {
-      parameter_register_constraints =
-          ApplyX86Ext(parameter_register_constraints, ArchExt::AVX512);
-    }
-    default: {
-      LOG(FATAL) << "Invalid architecture for X86_64_SysV "
-                 << remill::GetArchName(arch->arch_name);
-    }
-  }
-}
+    : CallingConvention(llvm::CallingConv::X86_64_SysV, arch),
+      parameter_register_constraints(SelectX86Constraint(
+          arch->arch_name, kParamRegConstraints,
+          kAVXParamRegConstraints, kAVX512ParamRegConstraints)),
+      return_register_constraints(SelectX86Constraint(
+          arch->arch_name, kReturnRegConstraints,
+          kAVXReturnRegConstraints, kAVX512ReturnRegConstraints)) {}
 
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
-void X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
-                                    const llvm::Function &func) {
+llvm::Error X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
+                                           const llvm::Function &func) {
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
   bool injected_sret = false;
-  fdecl.returns = BindReturnValues(func, injected_sret);
-  fdecl.params = BindParameters(func, injected_sret);
+  auto err = BindReturnValues(func, injected_sret, fdecl.returns);
+  if (remill::IsError(err)) {
+    return err;
+  }
+  err = BindParameters(func, injected_sret, fdecl.params);
+  if (remill::IsError(err)) {
+    return err;
+  }
+
   BindReturnStackPointer(fdecl, func);
+  return llvm::Error::success();
 }
 
 void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
@@ -62,10 +159,11 @@ void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
   fdecl.return_stack_pointer = arch->RegisterByName("RSP");
 }
 
-std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
-    const llvm::Function &function, bool &injected_sret) {
-  std::vector<anvill::ValueDecl> ret;
-  anvill::ValueDecl value_declaration = {};
+llvm::Error X86_64_SysV::BindReturnValues(
+    const llvm::Function &function, bool &injected_sret,
+    std::vector<anvill::ValueDecl> &ret_values) {
+
+  llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
   // If there is an sret parameter then it is a special case. For the
@@ -73,102 +171,176 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
   // case, we can assume the actual return value of the function will be the
   // sret struct pointer.
   if (function.hasStructRetAttr()) {
+    ret_values.emplace_back();
+    auto &value_declaration = ret_values.back();
+
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
     if (function.hasParamAttribute(0, llvm::Attribute::StructRet)) {
       value_declaration.type = function.getParamByValType(0);
+
     } else if (function.hasParamAttribute(1, llvm::Attribute::StructRet)) {
       value_declaration.type = function.getParamByValType(1);
-    } else {
-      LOG(FATAL)
-          << "Function has sret that is not the first or second argument";
     }
+
+    value_declaration.type = llvm::PointerType::get(
+        value_declaration.type, 0);
+
+    if (!ret_type->isVoidTy()) {
+      return llvm::createStringError(
+          std::errc::invalid_argument,
+          "Function '%s' with sret-attributed parameter has non-void return type '%s'",
+          function.getName().str().c_str(),
+          remill::LLVMThingToString(ret_type).c_str());
+    }
+
     value_declaration.reg = arch->RegisterByName("RAX");
-    ret.push_back(value_declaration);
-    return ret;
+    return llvm::Error::success();
   }
 
-  llvm::Type *ret_type = function.getReturnType();
-  value_declaration.type = ret_type;
-
   switch (ret_type->getTypeID()) {
-    case llvm::Type::IntegerTyID:
-    case llvm::Type::PointerTyID: {
-      AllocationState alloc_ret(return_register_constraints, arch, this);
+    case llvm::Type::VoidTyID:
+      return llvm::Error::success();
 
-      // If an integer is an i128, then split it into two i64
-      if (auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type)) {
-        if (int_ty->getBitWidth() == 128) {
-          std::vector<llvm::Type *> types = {
-              llvm::IntegerType::get(*arch->context, 64),
-              llvm::IntegerType::get(*arch->context, 64)};
-          llvm::ArrayRef<llvm::Type *> ar(types);
-          auto mapping = alloc_ret.TryRegisterAllocate(
-              *llvm::StructType::create(*arch->context, types), false);
-          if (mapping) {
-            return mapping.getValue();
-          } else {
-            LOG(FATAL) << "Could not allocate split i128";
-          }
+    case llvm::Type::IntegerTyID: {
+      const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
+      const auto int64_ty = llvm::Type::getInt64Ty(int_ty->getContext());
+      const auto bit_width = int_ty->getBitWidth();
+      // Put into EAX.
+      if (bit_width <= 32) {
+        ret_values.emplace_back();
+        auto &value_declaration = ret_values.back();
+        value_declaration.reg = arch->RegisterByName("EAX");
+        value_declaration.type = ret_type;
+        return llvm::Error::success();
+
+      // Put into RAX.
+      } else if (bit_width <= 64) {
+        ret_values.emplace_back();
+        auto &value_declaration = ret_values.back();
+        value_declaration.reg = arch->RegisterByName("RAX");
+        value_declaration.type = ret_type;
+        return llvm::Error::success();
+
+      // Split over RDX:RAX
+      } else if (bit_width <= 128) {
+        ret_values.emplace_back();
+        auto &v0 = ret_values.back();
+        v0.reg = arch->RegisterByName("RAX");
+        v0.type = int64_ty;
+
+        ret_values.emplace_back();
+        auto &v1 = ret_values.back();
+        v1.reg = arch->RegisterByName("RDX");
+        v1.type = int64_ty;
+
+        return llvm::Error::success();
+
+      // Split over RCX:RDX:RAX.
+      } else if (bit_width <= 192) {
+        ret_values.emplace_back();
+        auto &v0 = ret_values.back();
+        v0.reg = arch->RegisterByName("RAX");
+        v0.type = int64_ty;
+
+        ret_values.emplace_back();
+        auto &v1 = ret_values.back();
+        v1.reg = arch->RegisterByName("RDX");
+        v1.type = int64_ty;
+
+        ret_values.emplace_back();
+        auto &v2 = ret_values.back();
+        v2.reg = arch->RegisterByName("RCX");
+        v2.type = int64_ty;
+
+        return llvm::Error::success();
+
+      // Otherwise, try to do a regular allocation for big integers.
+      } else {
+        AllocationState alloc_ret(return_register_constraints, arch, this);
+        auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
+        if (mapping) {
+          mapping.getValue().swap(ret_values);
+          return llvm::Error::success();
+
+        } else {
+          return llvm::createStringError(
+              std::errc::invalid_argument,
+              "Could not allocate integral type '%s' to return register in function '%s'",
+              remill::LLVMThingToString(ret_type).c_str(),
+              function.getName().str().c_str());
         }
       }
-
-      // Otherwise, try to do a regular allocation
-      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
-      if (mapping) {
-        return mapping.getValue();
-      } else {
-        LOG(FATAL) << "Could not allocate simple integer to return register: "
-                   << remill::LLVMThingToString(ret_type);
-      }
-      break;
     }
 
+    // Pointers always fit into `RAX`.
+    case llvm::Type::PointerTyID: {
+      ret_values.emplace_back();
+      auto &value_declaration = ret_values.back();
+      value_declaration.reg = arch->RegisterByName("RAX");
+      value_declaration.type = ret_type;
+      return llvm::Error::success();
+    }
+
+    // Floats and doubles always go in `xmm0`.
     case llvm::Type::FloatTyID:
     case llvm::Type::DoubleTyID: {
-      AllocationState alloc_ret(return_register_constraints, arch, this);
-      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
-      if (mapping) {
-        return mapping.getValue();
-      } else {
-        LOG(FATAL) << "Could not allocate simple floating point type to return "
-                      "register: "
-                   << remill::LLVMThingToString(ret_type);
-      }
-      break;
+      ret_values.emplace_back();
+      auto &value_declaration = ret_values.back();
+      value_declaration.reg = arch->RegisterByName("XMM0");
+      value_declaration.type = ret_type;
+      return llvm::Error::success();
     }
+
+    case llvm::Type::X86_MMXTyID: {
+      ret_values.emplace_back();
+      auto &value_declaration = ret_values.back();
+      value_declaration.reg = arch->RegisterByName("MM0");
+      value_declaration.type = ret_type;
+      return llvm::Error::success();
+    }
+
+    case llvm::Type::X86_FP80TyID: {
+      ret_values.emplace_back();
+      auto &value_declaration = ret_values.back();
+      value_declaration.reg = arch->RegisterByName("ST0");
+      value_declaration.type = ret_type;
+      return llvm::Error::success();
+    }
+
+    // Try to split the composite type over registers, and fall back on RVO
+    // if it's not possible.
     case llvm::Type::VectorTyID:
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
-      // Try to split the composite type over registers
-      auto comp_ptr = llvm::cast<llvm::CompositeType>(value_declaration.type);
+      auto comp_ptr = llvm::dyn_cast<llvm::CompositeType>(ret_type);
       AllocationState alloc_ret(return_register_constraints, arch, this);
       auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr, false);
-      if (mapping) {
-        // There is a valid split over registers, so add the mapping
-        return alloc_ret.CoalescePacking(mapping.getValue());
-      } else {
-        // Composite type splitting didn't work so do RVO. Assume that the
-        // pointer to the return value resides in RAX.
-        injected_sret = true;
-        value_declaration.reg = arch->RegisterByName("RAX");
-      }
-      break;
-    }
-    case llvm::Type::X86_MMXTyID: {
-      value_declaration.reg = arch->RegisterByName("MM0");
-      break;
-    }
-    case llvm::Type::X86_FP80TyID: {
-      value_declaration.reg = arch->RegisterByName("ST0");
-    }
-    default: {
-      LOG(ERROR) << "Encountered an unknown return type";
-      exit(1);
-    }
-  }
 
-  return ret;
+      // There is a valid split over registers, so add the mapping
+      if (mapping) {
+        return alloc_ret.CoalescePacking(mapping.getValue(), ret_values);
+
+      // Composite type splitting didn't work so do RVO. Assume that the
+      // pointer to the return value resides in RAX.
+      } else {
+        injected_sret = true;
+
+        ret_values.emplace_back();
+        auto &value_declaration = ret_values.back();
+        value_declaration.reg = arch->RegisterByName("RAX");
+        value_declaration.type = llvm::PointerType::get(ret_type, 0);
+        return llvm::Error::success();
+      }
+    }
+
+    default:
+      return llvm::createStringError(
+          std::errc::invalid_argument,
+          "Could not allocate unsupported type '%s' to return register in function '%s'",
+          remill::LLVMThingToString(ret_type).c_str(),
+          function.getName().str().c_str());
+  }
 }
 
 // For X86_64_SysV, the general argument passing behavior is, try to pass the
@@ -177,10 +349,11 @@ std::vector<anvill::ValueDecl> X86_64_SysV::BindReturnValues(
 // completely split over the above registers, then greedily split it over the
 // registers. Otherwise, the struct is passed entirely on the stack. If we run
 // our of registers then pass the rest of the arguments on the stack.
-std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
-    const llvm::Function &function, bool injected_sret) {
-  std::vector<anvill::ParameterDecl> parameter_declarations;
-  auto param_names = TryRecoverParamNames(function);
+llvm::Error X86_64_SysV::BindParameters(
+    const llvm::Function &function, bool injected_sret,
+    std::vector<ParameterDecl> &parameter_declarations) {
+
+  const auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
 
   // Used to keep track of which registers have been allocated
@@ -195,38 +368,66 @@ std::vector<anvill::ParameterDecl> X86_64_SysV::BindParameters(
   // the first parameter to the sret struct. The type of said sret parameter
   // will be the return type of the function.
   if (injected_sret) {
-    anvill::ParameterDecl decl = {};
-    decl.name = "param0";
+    parameter_declarations.emplace_back();
+    auto &decl = parameter_declarations.back();
+
+    decl.name = "__struct_ret_ptr";
     decl.type = function.getReturnType();
     decl.reg = arch->RegisterByName("RAX");
     alloc_param.reserved[0] = true;
     parameter_declarations.push_back(decl);
   }
 
+  const auto rsp_reg = arch->RegisterByName("RSP");
+
   for (auto &argument : function.args()) {
-    anvill::ParameterDecl declaration = {};
-    declaration.type = argument.getType();
+    const auto &param_name = param_names[argument.getArgNo()];
+    const auto param_type = argument.getType();
 
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
     if (auto allocation =
-            alloc_param.TryRegisterAllocate(*declaration.type, false)) {
-      declaration.reg = allocation->front().reg;
+            alloc_param.TryRegisterAllocate(*param_type, false)) {
+      auto prev_size = parameter_declarations.size();
+
+      for (const auto &param_decl : allocation.getValue()) {
+        parameter_declarations.emplace_back();
+        auto &declaration = parameter_declarations.back();
+        declaration.type = param_decl.type;
+        declaration.reg = param_decl.reg;
+        declaration.mem_offset = param_decl.mem_offset;
+        declaration.mem_reg = param_decl.mem_reg;
+      }
+
+      // The parameter fit in one register / stack slot.
+      if ((prev_size + 1u) == parameter_declarations.size()) {
+        if (!param_name.empty()) {
+          parameter_declarations[prev_size].name = param_name;
+        }
+
+      // The parameter was spread across multiple registers.
+      } else if (!param_name.empty()) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+          parameter_declarations[prev_size + i].name =
+              param_name + std::to_string(i);
+        }
+      }
+
     } else {
+      parameter_declarations.emplace_back();
+      auto &declaration = parameter_declarations.back();
+      declaration.type = param_type;
       declaration.mem_offset = stack_offset;
-      declaration.mem_reg = arch->RegisterByName("RSP");
+      declaration.mem_reg = rsp_reg;
       stack_offset += dl.getTypeAllocSize(argument.getType());
+
+      if (!param_name.empty()) {
+        declaration.name = param_name;
+      }
     }
-
-    // Try to get a name for the IR parameter
-    // Need to add 1 because param_names uses logical numbering, but
-    // argument.getArgNo() uses index numbering
-    declaration.name = param_names[argument.getArgNo() + 1];
-
-    parameter_declarations.push_back(declaration);
   }
 
-  return parameter_declarations;
+  return llvm::Error::success();
 }
 
 }  // namespace anvill

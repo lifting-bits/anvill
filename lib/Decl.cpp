@@ -20,6 +20,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include <llvm/ADT/StringRef.h>
+
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -37,9 +39,10 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <anvill/TypePrinter.h>
+
 #include "Lift.h"
 #include "Arch/Arch.h"
-#include "anvill/TypePrinter.h"
 
 DEFINE_bool(demangle_names, false, "Demangle function and variable names");
 
@@ -196,7 +199,7 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 }
 
 // Serialize a FunctionDecl to JSON
-llvm::json::Object FunctionDecl::SerializeToJSON() {
+llvm::json::Object FunctionDecl::SerializeToJSON(void) {
   llvm::json::Object json;
 
   json.insert(
@@ -290,11 +293,11 @@ llvm::json::Object ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) {
   return value_json;
 }
 
-// Create a Function Declaration from llvm::Function
-FunctionDecl FunctionDecl::Create(const llvm::Function &func,
-                                  const llvm::Module &mdl,
-                                  const remill::Arch::ArchPtr &arch) {
-  const llvm::DataLayout &dl = mdl.getDataLayout();
+// Create a Function Declaration from an `llvm::Function`.
+llvm::Expected<FunctionDecl> FunctionDecl::Create(
+    const llvm::Function &func, const llvm::Module &module,
+    const remill::Arch::ArchPtr &arch) {
+  const llvm::DataLayout &dl = module.getDataLayout();
 
   FunctionDecl decl;
   decl.type = func.getFunctionType();
@@ -308,14 +311,38 @@ FunctionDecl FunctionDecl::Create(const llvm::Function &func,
   // then use it. Otherwise, get the CallingConvention from the remill::Arch
   std::unique_ptr<CallingConvention> cc;
   llvm::CallingConv::ID cc_id = func.getCallingConv();
+
+  // The value is not default so use it.
   if (cc_id != llvm::CallingConv::C) {
-    // The value is not default so use it
-    cc = CallingConvention::CreateCCFromCCID(cc_id, arch.get());
+    auto maybe_cc = CallingConvention::CreateCCFromCCID(cc_id, arch.get());
+    if (remill::IsError(maybe_cc)) {
+      const auto sub_error = remill::GetErrorString(maybe_cc);
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Calling convention of function '%s' is not supported: %s",
+          func.getName().str().c_str(), sub_error.c_str());
+    } else {
+      remill::GetReference(maybe_cc).swap(cc);
+    }
+
+  // Figure out the default calling convention for this triple.
   } else {
-    cc = CallingConvention::CreateCCFromArch(arch.get());
+    auto maybe_cc = CallingConvention::CreateCCFromArch(arch.get());
+    if (remill::IsError(maybe_cc)) {
+      const auto sub_error = remill::GetErrorString(maybe_cc);
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Calling convention of function '%s' is not supported: %s",
+          func.getName().str().c_str(), sub_error.c_str());
+    } else {
+      remill::GetReference(maybe_cc).swap(cc);
+    }
   }
 
-  cc->AllocateSignature(decl, func);
+  auto err = cc->AllocateSignature(decl, func);
+  if (remill::IsError(err)) {
+    return std::move(err);
+  }
 
   // TODO(aty): for a better and more comprehensive serialization
   // decl->address =

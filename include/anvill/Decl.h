@@ -21,11 +21,10 @@
 #include <string>
 #include <vector>
 
-#include <llvm/ADT/StringRef.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/GlobalVariable.h>
 #include <llvm/Support/JSON.h>
+
 #include <remill/Arch/Arch.h>
+#include <remill/BC/Compat/Error.h>
 
 namespace llvm {
 class BasicBlock;
@@ -170,10 +169,13 @@ struct FunctionDecl {
       llvm::Value *state_ptr,
       llvm::Value *mem_ptr) const;
 
-  llvm::json::Object SerializeToJSON();
-  static FunctionDecl Create(const llvm::Function &func,
-                             const llvm::Module &mdl,
-                             const remill::Arch::ArchPtr &arch);
+  // Serialize this function decl to JSON.
+  llvm::json::Object SerializeToJSON(void);
+
+  // Creata a function declaration from an LLVM function.
+  static llvm::Expected<FunctionDecl> Create(
+      const llvm::Function &func, const llvm::Module &module,
+      const remill::Arch::ArchPtr &arch);
 
  private:
   friend class Program;

@@ -64,9 +64,14 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    funcs_json.push_back(
-        anvill::FunctionDecl::Create(function, *module, arch)
-            .SerializeToJSON());
+    auto maybe_func = anvill::FunctionDecl::Create(function, *module, arch);
+    if (remill::IsError(maybe_func)) {
+      LOG(ERROR)
+          << remill::GetErrorString(maybe_func);
+    } else {
+      auto &func = remill::GetReference(maybe_func);
+      funcs_json.push_back(func.SerializeToJSON());
+    }
   }
 
   // Insert functions array into top level JSON

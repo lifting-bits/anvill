@@ -50,21 +50,38 @@ endif()
 set(ANVILL anvill-${REMILL_LLVM_VERSION})
 
 add_library(${ANVILL} STATIC
-    include/anvill/Decl.h
-    include/anvill/Program.h
     include/anvill/Type.h
-    include/anvill/TypeParser.h
-    include/anvill/TypePrinter.h
-    lib/Arch/Arch.h
-    lib/AllocationState.h
 
     lib/Arch/X86_C.cpp
     lib/Arch/X86_64_SysV.cpp
+    
+    lib/Arch/Arch.h
     lib/Arch/Arch.cpp
+    
+    include/anvill/TypeParser.h
     lib/TypeParser.cpp
+    
+    include/anvill/TypePrinter.h
     lib/TypePrinter.cpp
+    
+    lib/AllocationState.h
     lib/AllocationState.cpp
-    lib/Program.cpp lib/Decl.cpp include/anvill/Lift.h lib/Lift.cpp lib/Lift.h include/anvill/Optimize.h lib/Optimize.cpp include/anvill/Analyze.h lib/Analyze.cpp)
+    
+    include/anvill/Program.h
+    lib/Program.cpp
+    
+    include/anvill/Decl.h
+    lib/Decl.cpp
+    
+    include/anvill/Lift.h
+    lib/Lift.cpp
+    lib/Lift.h
+    
+    include/anvill/Optimize.h
+    lib/Optimize.cpp
+    
+    include/anvill/Analyze.h
+    lib/Analyze.cpp)
 
 target_compile_definitions(${ANVILL} PUBLIC
     ${PROJECT_DEFINITIONS})
@@ -89,7 +106,7 @@ target_link_libraries(${DECOMPILE_JSON} PRIVATE ${ANVILL})
 
 set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
 
-add_executable(${SPECIFY_BITCODE} BITCODE.cpp lib/AllocationState.cpp)
+add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
 #

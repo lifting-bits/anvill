@@ -1,15 +1,21 @@
 #include <vector>
 
 #include "Arch.h"
-#include "anvill/Decl.h"
 
 #include <glog/logging.h>
-#include <remill/Arch/Arch.h>
-#include <remill/BC/Util.h>
 
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/DebugInfoMetadata.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/IntrinsicInst.h>
+
+
+#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
+#include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
+
+#include <anvill/Decl.h>
 
 namespace remill {
 class Arch;
@@ -29,75 +35,85 @@ bool RegisterConstraint::ContainsVariant(const std::string &name) const {
   return false;
 }
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromArch(
-    const remill::Arch *arch) {
+llvm::Expected<std::unique_ptr<CallingConvention>>
+CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
   switch (arch->arch_name) {
-    case remill::kArchInvalid: {
-      LOG(FATAL) << "Invalid architecture: "
-                 << remill::GetArchName(arch->arch_name);
-      break;
-    }
-    // Fallthrough, AVX does not affect X86 specification
+    case remill::kArchInvalid:
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Invalid architecture");
+
+    // NOTE: AVX does not affect X86 specification
     case remill::kArchX86:
     case remill::kArchX86_AVX:
-    case remill::kArchX86_AVX512: {
+    case remill::kArchX86_AVX512:
       if (arch->os_name == remill::kOSmacOS ||
           arch->os_name == remill::kOSLinux) {
         return std::make_unique<X86_C>(arch);
       } else {
-        LOG(FATAL) << "Unsupported (arch, os) pair: "
-                   << remill::GetArchName(arch->arch_name) << " "
-                   << remill::GetOSName(arch->os_name);
+        break;
       }
-      break;
-    }
-    // Fallthrough, AVX does not affect x86-64 specification
+
+    // NOTE: AVX does not affect x86-64 specification
     case remill::kArchAMD64:
     case remill::kArchAMD64_AVX:
-    case remill::kArchAMD64_AVX512: {
+    case remill::kArchAMD64_AVX512:
       if (arch->os_name == remill::kOSmacOS ||
           arch->os_name == remill::kOSLinux) {
         return std::make_unique<X86_64_SysV>(arch);
       } else {
-        LOG(FATAL) << "Unsupported (arch, os) pair: "
-                   << remill::GetArchName(arch->arch_name) << " "
-                   << remill::GetOSName(arch->os_name);
+        break;
       }
-      break;
-    }
 
     // Fallthrough for unsupported architectures
-    case remill::kArchAArch64LittleEndian: {
-      LOG(FATAL) << "Unsupported architecture: "
-                 << remill::GetArchName(arch->arch_name);
+    case remill::kArchAArch64LittleEndian:
+    default:
       break;
-    }
   }
+
+  const auto arch_name = remill::GetArchName(arch->arch_name);
+  const auto os_name = remill::GetOSName(arch->os_name);
+  return llvm::createStringError(
+      std::make_error_code(std::errc::invalid_argument),
+      "Unsupported architecture/OS pair: %s and %s",
+      arch_name.c_str(), os_name.c_str());
 }
 
 // Still need the arch to be passed in so we can create the calling convention
-std::unique_ptr<CallingConvention> CallingConvention::CreateCCFromCCID(
+llvm::Expected<std::unique_ptr<CallingConvention>>
+CallingConvention::CreateCCFromCCID(
     const llvm::CallingConv::ID cc_id, const remill::Arch *arch) {
   switch (cc_id) {
-    case llvm::CallingConv::C: {
+    case llvm::CallingConv::C:
       return std::make_unique<X86_C>(arch);
-    }
-    case llvm::CallingConv::X86_64_SysV: {
+
+    case llvm::CallingConv::X86_64_SysV:
       return std::make_unique<X86_64_SysV>(arch);
-    }
-    default: {
-      LOG(FATAL) << "Unsupported Calling Convention ID: " << cc_id;
-      break;
-    }
+
+    default:
+      return llvm::createStringError(
+        std::make_error_code(std::errc::invalid_argument),
+        "Unsupported calling convention ID %u",
+        static_cast<unsigned>(cc_id));
   }
 }
 
 // Try to recover parameter names using debug information. Otherwise, name the
 // parameters with the form "param_x". The mapping of the return value is
 // positional starting at 1.
-std::map<unsigned, std::string> TryRecoverParamNames(
-    const llvm::Function &function) {
-  std::map<unsigned int, std::string> param_names;
+std::vector<std::string> TryRecoverParamNames(const llvm::Function &function) {
+  std::vector<std::string> param_names(
+      function.getFunctionType()->getNumParams());
+
+  auto i = 0u;
+  for (auto &param : function.args()) {
+    if (param.hasName()) {
+      param_names[i] = param.getName().str();
+    } else {
+      param_names[i] = "param" + std::to_string(i);
+    }
+    ++i;
+  }
 
   // Iterate through all the instructions and look for debug intrinsics that
   // give us debug information about the parameters. We need to do this because
@@ -111,8 +127,11 @@ std::map<unsigned, std::string> TryRecoverParamNames(
               llvm::cast<llvm::DILocalVariable>(mdn);
 
           // Make sure it is actually an argument
-          if (div->getArg() != 0) {
-            param_names[div->getArg()] = div->getName().data();
+          if (div->isParameter() && div->getArg() <= param_names.size()) {
+            const auto found_name = div->getName();
+            if (!found_name.empty()) {
+              param_names[div->getArg() - 1u] = found_name.data();
+            }
           }
         } else if (auto value_intrin =
                        llvm::dyn_cast<llvm::DbgValueInst>(debug_inst)) {
@@ -120,53 +139,82 @@ std::map<unsigned, std::string> TryRecoverParamNames(
           const llvm::DILocalVariable *div =
               llvm::cast<llvm::DILocalVariable>(mdn);
 
-          if (div->getArg() != 0) {
-            param_names[div->getArg()] = div->getName().data();
+          if (div->isParameter() && div->getArg() <= param_names.size()) {
+            const auto found_name = div->getName();
+            if (!found_name.empty()) {
+              param_names[div->getArg() - 1u] = found_name.data();
+            }
           }
         }
       }
     }
   }
 
-  // If we don't have names for some parameters then automatically name them
-  unsigned int num_args =
-      (unsigned int)(function.args().end() - function.args().begin());
-  for (unsigned int i = 1; i <= num_args; i++) {
-    if (!param_names.count(i)) {
-      param_names[i] = "param" + std::to_string(i);
-    }
-  }
-
   return param_names;
 }
 
-// Applies the x86AVX extension by adding YMM_ variants to all XMM_ registers.
+// Return a vector of register constraints, augmented to to support additional
+// registers made available in AVX or AVX512.
 std::vector<RegisterConstraint> ApplyX86Ext(
-    const std::vector<RegisterConstraint> &constraints, ArchExt ext) {
+    const std::vector<RegisterConstraint> &constraints,
+    remill::ArchName arch_name) {
+
+  const auto is_avx = remill::kArchAMD64_AVX == arch_name ||
+                      remill::kArchX86_AVX == arch_name;
+
+  const auto is_avx512 = remill::kArchAMD64_AVX512 == arch_name ||
+                         remill::kArchX86_AVX512 == arch_name;
+
   std::vector<RegisterConstraint> ret;
+  ret.reserve(constraints.size());
+
   for (const auto &c : constraints) {
     if (c.variants.size() == 1 &&
         c.variants.front().register_name.rfind("XMM", 0) == 0) {
+
       // Assuming the name of the register is of the form XMM_
-      auto reg_number = std::to_string(c.variants.front().register_name.back());
-      if (ext == ArchExt::AVX) {
+      const auto reg_number = std::to_string(c.variants.front().register_name.back());
+      if (is_avx) {
         ret.push_back(RegisterConstraint({
             VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
             VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
         }));
-      } else if (ext == ArchExt::AVX512) {
+
+      } else if (is_avx512) {
         ret.push_back(RegisterConstraint({
             VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
             VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
             VariantConstraint("ZMM" + reg_number, kTypeFloatOrVec, kMaxBit512),
         }));
+
+      } else {
+        ret.push_back(c);
       }
+
     } else {
       // Just copy the constraint if it doesn't contain an interesting register
       ret.push_back(c);
     }
   }
   return ret;
+}
+
+// Select and return one of `basic`, `avx`, or `avx512` given `arch_name`.
+const std::vector<RegisterConstraint> &SelectX86Constraint(
+    remill::ArchName arch_name,
+    const std::vector<RegisterConstraint> &basic,
+    const std::vector<RegisterConstraint> &avx,
+    const std::vector<RegisterConstraint> &avx512) {
+  switch (arch_name) {
+    case remill::kArchX86:
+    case remill::kArchAMD64:
+      return basic;
+    case remill::kArchX86_AVX:
+    case remill::kArchAMD64_AVX:
+      return avx;
+    default:
+      return avx512;
+  }
 }
 
 }  // namespace anvill
