@@ -20,3 +20,18 @@ this tool will decompile machine code into high-quality bitcode given
 a specification describing the input and output locations and
 types of compiled functions, as well as type and location information
 about any of their dependencies.
+
+## `anvill-specify-json`
+
+`anvill-specify-json` is a tool that produces specifications for all functions
+contained in an LLVM bitcode module. The purpose of this tool is to enable
+the creation of a database of specifications for commonly used, often externally-
+defined functions in binaries (e.g. libc, libc++, libstdc++) in binaries lifted
+by [McSema](https://github.com/lifting-bits/mcsema).
+
+This tool also exists for enabling function declarations for binary code to be
+written in C or C++, and then translated down into the specification form within
+a decompiler toolchain.
+
+Finally, this tool exists to enable round-trip testing of LLVM's ISEL lowering
+and code generation for arbitrary functions.
