@@ -669,7 +669,7 @@ int main(int argc, char *argv[]) {
   //            of the state structure and its named registers is
   //            by analyzing a module, and this is done in `PrepareModule`,
   //            which is called by `LoadArchSemantics`.
-  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch));
+  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch.get()));
   remill::IntrinsicTable intrinsics(semantics);
 
   anvill::Program program;
@@ -688,7 +688,7 @@ int main(int argc, char *argv[]) {
   auto trace_manager = anvill::TraceManager::Create(
       *semantics, program);
 
-  remill::InstructionLifter inst_lifter(arch, intrinsics);
+  remill::InstructionLifter inst_lifter(arch.get(), intrinsics);
   remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
 
   program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
