@@ -346,7 +346,7 @@ void OptimizeModule(const remill::Arch *arch,
   if (traces.empty()) {
     remill::OptimizeBareModule(&module);
   } else {
-    remill::OptimizeModule(arch, &module, traces);
+    remill::OptimizeModule(&module, traces);
   }
 
   std::unordered_set<llvm::Function *> changed_funcs;
