@@ -13,6 +13,22 @@ equivalent C function.
 All code in this directory and all subdirectories is subject to the AGPL
 v3 license. The details of that license can be found in [LICENSE](LICENSE).
 
+## Building
+
+**Note: Anvill requires at least LLVM 9.**
+
+To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
+
+```
+ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
+   docker build . \
+   -t anvill-llvm${LLVM}-${DIST}-${ARCH} \
+   -f Dockerfile \
+   --build-arg DISTRO_BASE=${DIST} \
+   --build-arg ARCH=${ARCH} \
+   --build-arg LLVM_VERSION=${LLVM}
+```
+
 ## `anvill-decompile-json`
 
 `anvill-decompile-json` is a specification-based decompiler. That is,
