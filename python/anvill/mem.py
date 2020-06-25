@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -24,7 +24,6 @@ class Memory(object):
   def _extend_range(self, range_proto, ea, val, can_write, can_exec):
     if not len(range_proto):
       range_proto["address"] = ea
-      range_proto["is_readable"] = True
       range_proto["is_writeable"] = can_write
       range_proto["is_executable"] = can_exec
       range_proto["data"] = "{:02x}".format(val)

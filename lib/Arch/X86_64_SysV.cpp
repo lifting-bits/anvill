@@ -1,15 +1,34 @@
-#include <vector>
+/*
+ * Copyright (c) 2020 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-#include "../AllocationState.h"
 #include "Arch.h"
-#include "anvill/Decl.h"
 
 #include <glog/logging.h>
+
+#include <anvill/Decl.h>
+
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 
+#include "AllocationState.h"
+
 namespace anvill {
 namespace {
+
 static const std::vector<RegisterConstraint> kParamRegConstraints = {
     RegisterConstraint({
         VariantConstraint("DIL", kTypeIntegral, kMaxBit8),
@@ -114,6 +133,32 @@ static const std::vector<RegisterConstraint> kAVX512ReturnRegConstraints =
 
 }  // namespace
 
+class X86_64_SysV : public CallingConvention {
+ public:
+  explicit X86_64_SysV(const remill::Arch *arch);
+  virtual ~X86_64_SysV(void) = default;
+
+  llvm::Error AllocateSignature(FunctionDecl &fdecl,
+                                llvm::Function &func) override;
+
+ private:
+  llvm::Error BindParameters(llvm::Function &function,
+                             bool injected_sret,
+                             std::vector<ParameterDecl> &param_decls);
+
+  llvm::Error BindReturnValues(llvm::Function &function,
+                               bool &injected_sret,
+                               std::vector<ValueDecl> &ret_decls);
+
+  const std::vector<RegisterConstraint> &parameter_register_constraints;
+  const std::vector<RegisterConstraint> &return_register_constraints;
+};
+
+std::unique_ptr<CallingConvention> CallingConvention::CreateX86_64_SysV(
+      const remill::Arch *arch) {
+  return std::unique_ptr<CallingConvention>(new X86_64_SysV(arch));
+}
+
 X86_64_SysV::X86_64_SysV(const remill::Arch *arch)
     : CallingConvention(llvm::CallingConv::X86_64_SysV, arch),
       parameter_register_constraints(SelectX86Constraint(
@@ -127,7 +172,7 @@ X86_64_SysV::X86_64_SysV(const remill::Arch *arch)
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
 llvm::Error X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
-                                           const llvm::Function &func) {
+                                           llvm::Function &func) {
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -141,12 +186,6 @@ llvm::Error X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
     return err;
   }
 
-  BindReturnStackPointer(fdecl, func);
-  return llvm::Error::success();
-}
-
-void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
-                                         const llvm::Function &func) {
   // For the X86_64_SysV ABI, it is always:
   //
   // "return_stack_pointer": {
@@ -157,10 +196,16 @@ void X86_64_SysV::BindReturnStackPointer(FunctionDecl &fdecl,
 
   fdecl.return_stack_pointer_offset = 8;
   fdecl.return_stack_pointer = arch->RegisterByName("RSP");
+
+  fdecl.return_address.mem_reg = fdecl.return_stack_pointer;
+  fdecl.return_address.mem_offset = 0;
+  fdecl.return_address.type = fdecl.return_stack_pointer->type;
+
+  return llvm::Error::success();
 }
 
 llvm::Error X86_64_SysV::BindReturnValues(
-    const llvm::Function &function, bool &injected_sret,
+    llvm::Function &function, bool &injected_sret,
     std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
@@ -177,10 +222,12 @@ llvm::Error X86_64_SysV::BindReturnValues(
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
     if (function.hasParamAttribute(0, llvm::Attribute::StructRet)) {
-      value_declaration.type = function.getParamByValType(0);
+      value_declaration.type =
+          remill::NthArgument(&function, 0)->getType()->getPointerElementType();
 
     } else if (function.hasParamAttribute(1, llvm::Attribute::StructRet)) {
-      value_declaration.type = function.getParamByValType(1);
+      value_declaration.type =
+          remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
     value_declaration.type = llvm::PointerType::get(
@@ -206,16 +253,9 @@ llvm::Error X86_64_SysV::BindReturnValues(
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
       const auto int64_ty = llvm::Type::getInt64Ty(int_ty->getContext());
       const auto bit_width = int_ty->getBitWidth();
-      // Put into EAX.
-      if (bit_width <= 32) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
-        value_declaration.reg = arch->RegisterByName("EAX");
-        value_declaration.type = ret_type;
-        return llvm::Error::success();
 
       // Put into RAX.
-      } else if (bit_width <= 64) {
+      if (bit_width <= 64) {
         ret_values.emplace_back();
         auto &value_declaration = ret_values.back();
         value_declaration.reg = arch->RegisterByName("RAX");
@@ -258,7 +298,7 @@ llvm::Error X86_64_SysV::BindReturnValues(
       // Otherwise, try to do a regular allocation for big integers.
       } else {
         AllocationState alloc_ret(return_register_constraints, arch, this);
-        auto mapping = alloc_ret.TryRegisterAllocate(*ret_type, false);
+        auto mapping = alloc_ret.TryRegisterAllocate(*ret_type);
         if (mapping) {
           mapping.getValue().swap(ret_values);
           return llvm::Error::success();
@@ -315,7 +355,7 @@ llvm::Error X86_64_SysV::BindReturnValues(
     case llvm::Type::StructTyID: {
       auto comp_ptr = llvm::dyn_cast<llvm::CompositeType>(ret_type);
       AllocationState alloc_ret(return_register_constraints, arch, this);
-      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr, false);
+      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr);
 
       // There is a valid split over registers, so add the mapping
       if (mapping) {
@@ -350,7 +390,7 @@ llvm::Error X86_64_SysV::BindReturnValues(
 // registers. Otherwise, the struct is passed entirely on the stack. If we run
 // our of registers then pass the rest of the arguments on the stack.
 llvm::Error X86_64_SysV::BindParameters(
-    const llvm::Function &function, bool injected_sret,
+    llvm::Function &function, bool injected_sret,
     std::vector<ParameterDecl> &parameter_declarations) {
 
   const auto param_names = TryRecoverParamNames(function);
@@ -362,7 +402,7 @@ llvm::Error X86_64_SysV::BindParameters(
   // Stack offset describes the stack position of the first stack argument on
   // entry to the callee. For X86_64_SysV, this is [rsp + 8] since there is the
   // return address at [rsp].
-  unsigned int stack_offset = 8;
+  uint64_t stack_offset = 8;
 
   // If there is an injected sret (an implicit sret) then we need to allocate
   // the first parameter to the sret struct. The type of said sret parameter
@@ -387,16 +427,19 @@ llvm::Error X86_64_SysV::BindParameters(
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
     if (auto allocation =
-            alloc_param.TryRegisterAllocate(*param_type, false)) {
+            alloc_param.TryRegisterAllocate(*param_type)) {
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
         parameter_declarations.emplace_back();
         auto &declaration = parameter_declarations.back();
         declaration.type = param_decl.type;
-        declaration.reg = param_decl.reg;
-        declaration.mem_offset = param_decl.mem_offset;
-        declaration.mem_reg = param_decl.mem_reg;
+        if (param_decl.reg) {
+          declaration.reg = param_decl.reg;
+        } else {
+          declaration.mem_offset = param_decl.mem_offset;
+          declaration.mem_reg = param_decl.mem_reg;
+        }
       }
 
       // The parameter fit in one register / stack slot.
@@ -417,7 +460,7 @@ llvm::Error X86_64_SysV::BindParameters(
       parameter_declarations.emplace_back();
       auto &declaration = parameter_declarations.back();
       declaration.type = param_type;
-      declaration.mem_offset = stack_offset;
+      declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = rsp_reg;
       stack_offset += dl.getTypeAllocSize(argument.getType());
 

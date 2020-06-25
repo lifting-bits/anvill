@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,9 +17,12 @@
 
 #include <cstdint>
 #include <ios>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
+
+#if __has_include(<llvm/Support/JSON.h>)
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -191,11 +194,6 @@ static bool ParseFunction(
   decl.arch = arch;
   decl.address = static_cast<uint64_t>(*maybe_ea);
 
-  auto maybe_name = obj->getString("name");
-  if (maybe_name) {
-    decl.name = maybe_name->str();
-  }
-
   if (auto params = obj->getArray("parameters")) {
     for (llvm::json::Value &maybe_param : *params) {
       if (auto param_obj = maybe_param.getAsObject()) {
@@ -286,6 +284,10 @@ static bool ParseFunction(
     decl.is_variadic = *maybe_is_variadic;
   }
 
+  if (auto maybe_cc = obj->getInteger("calling_convention")) {
+    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
+  }
+
   auto err = program.DeclareFunction(decl);
   if (remill::IsError(err)) {
     LOG(ERROR)
@@ -311,11 +313,6 @@ static bool ParseVariable(const remill::Arch *arch,
   }
 
   decl.address = static_cast<uint64_t>(*maybe_ea);
-
-  auto maybe_name = obj->getString("name");
-  if (maybe_name) {
-    decl.name = maybe_name->str();
-  }
 
   auto maybe_type_str = obj->getString("type");
   if (!maybe_type_str) {
@@ -356,12 +353,7 @@ static bool ParseRange(anvill::Program &program,
   anvill::ByteRange range;
   range.address = static_cast<uint64_t>(*maybe_ea);
 
-  auto perm = obj->getBoolean("is_readable");
-  if (perm) {
-    range.is_readable = *perm;
-  }
-
-  perm = obj->getBoolean("is_writeable");
+  auto perm = obj->getBoolean("is_writeable");
   if (perm) {
     range.is_writeable = *perm;
   }
@@ -413,66 +405,6 @@ static bool ParseRange(anvill::Program &program,
   range.end = decoded_bytes.data() + decoded_bytes.size();
 
   auto err = program.MapRange(range);
-  if (remill::IsError(err)) {
-    LOG(ERROR)
-        << remill::GetErrorString(err);
-    return false;
-  }
-
-  return true;
-}
-
-
-// Parse a stack declaration. This is a concrete range of memory that
-// is not itself part of any ranges, and will be used to "fake" the
-// stack frames of the functions.
-static bool ParseStack(
-    anvill::Program &program,
-    llvm::json::Object *obj) {
-
-  auto maybe_ea = obj->getInteger("address");
-  if (!maybe_ea) {
-    LOG(ERROR)
-        << "Missing 'address' in stack specification";
-    return false;
-  }
-
-  auto maybe_size = obj->getInteger("size");
-  if (!maybe_size) {
-    LOG(ERROR)
-        << "Missing 'size' in stack specification";
-    return false;
-  }
-
-  auto maybe_start_offset = obj->getInteger("start_offset");
-  if (!maybe_start_offset) {
-    LOG(ERROR)
-        << "Missing 'start_offset' in stack specification";
-    return false;
-  }
-
-  auto size = *maybe_size;
-  if (0 >= size) {
-    LOG(ERROR)
-        << "Zero- or negative-valued 'size' in stack specification";
-    return false;
-  }
-
-  auto start_offset = *maybe_start_offset;
-  if (0 > start_offset) {
-    LOG(ERROR)
-        << "Negative 'start_offset' in stack specification";
-    return false;
-  }
-
-  std::vector<uint8_t> data;
-  data.resize(static_cast<size_t>(size));
-
-  auto address = static_cast<uint64_t>(*maybe_ea);
-  auto err = program.MapStack(
-      address, address + static_cast<uint64_t>(size),
-      address + static_cast<uint64_t>(start_offset));
-
   if (remill::IsError(err)) {
     LOG(ERROR)
         << remill::GetErrorString(err);
@@ -574,30 +506,49 @@ static bool ParseSpec(
     return false;
   }
 
-  if (auto stack = spec->getObject("stack")) {
-    if (!ParseStack(program, stack)) {
-      return false;
+  if (auto symbols = spec->getArray("symbols")) {
+    for (llvm::json::Value &maybe_ea_name : *symbols) {
+      if (auto ea_name = maybe_ea_name.getAsArray(); ea_name) {
+        if (ea_name->size() != 2) {
+          LOG(ERROR)
+              << "Symbol entry doesn't have two values in spec file '"
+              << FLAGS_spec << "'";
+          return false;
+        }
+        auto &maybe_ea = ea_name->operator [](0);
+        auto &maybe_name = ea_name->operator [](1);
+
+        if (auto ea = maybe_ea.getAsInteger(); ea) {
+          if (auto name = maybe_name.getAsString(); name) {
+            program.AddNameToAddress(
+                name->str(), static_cast<uint64_t>(ea.getValue()));
+          } else {
+            LOG(ERROR)
+                << "Second value in symbol entry must be a string in spec file '"
+                << FLAGS_spec << "'";
+            return false;
+          }
+        } else {
+          LOG(ERROR)
+              << "First value in symbol entry must be an integer in spec file '"
+              << FLAGS_spec << "'";
+          return false;
+        }
+      } else {
+        LOG(ERROR)
+            << "Expected array entries inside of 'symbols' array in spec file '"
+            << FLAGS_spec << "'";
+        return false;
+      }
     }
-  } else {
+  } else if (spec->find("symbols") != spec->end()) {
     LOG(ERROR)
-        << "Absent or non-object value in 'stack' field of spec file '"
+        << "Non-JSON array value for 'symbols' in spec file '"
         << FLAGS_spec << "'";
     return false;
   }
 
   return true;
-}
-
-// Clear out LLVM variable names. They're usually not helpful.
-static void ClearVariableNames(llvm::Function *func) {
-  for (auto &block : *func) {
-    block.setName("");
-    for (auto &inst : block) {
-      if (inst.hasName()) {
-        inst.setName("");
-      }
-    }
-  }
 }
 
 }  // namespace
@@ -669,7 +620,7 @@ int main(int argc, char *argv[]) {
   //            of the state structure and its named registers is
   //            by analyzing a module, and this is done in `PrepareModule`,
   //            which is called by `LoadArchSemantics`.
-  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch.get()));
+  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch));
   remill::IntrinsicTable intrinsics(semantics);
 
   anvill::Program program;
@@ -680,15 +631,10 @@ int main(int argc, char *argv[]) {
   std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
   std::unordered_map<uint64_t, llvm::Function *> lift_targets;
 
-  program.ForEachVariable([&] (const anvill::GlobalVarDecl *decl) {
-    global_vars[decl->address] = decl->DeclareInModule(*semantics);
-    return true;
-  });
-
   auto trace_manager = anvill::TraceManager::Create(
       *semantics, program);
 
-  remill::InstructionLifter inst_lifter(arch.get(), intrinsics);
+  remill::InstructionLifter inst_lifter(arch, intrinsics);
   remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
 
   program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
@@ -703,31 +649,27 @@ int main(int argc, char *argv[]) {
   // that we actually lifted.
   anvill::OptimizeModule(arch.get(), program, *semantics);
 
-  llvm::Module dest_module("", context);
-  arch->PrepareModuleDataLayout(&dest_module);
-
-  program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
-    const auto func = decl->DeclareInModule(*semantics);
-    remill::MoveFunctionIntoModule(func, &dest_module);
-    ClearVariableNames(func);
+  program.ForEachVariable([&] (const anvill::GlobalVarDecl *decl) {
+    std::stringstream ss;
+    ss << "data_" << std::hex << decl->address;
+    global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
     return true;
   });
 
-  anvill::OptimizeModule(arch.get(), program, dest_module);
-  anvill::RecoverMemoryAccesses(program, dest_module);
-  anvill::OptimizeModule(arch.get(), program, dest_module);
+  anvill::RecoverMemoryAccesses(program, *semantics);
+//  anvill::OptimizeModule(arch.get(), program, dest_module);
 
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(&dest_module, FLAGS_ir_out, true)) {
+    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
       LOG(ERROR)
           << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(&dest_module, FLAGS_bc_out, true)) {
+    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
       LOG(ERROR)
           << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
@@ -736,3 +678,10 @@ int main(int argc, char *argv[]) {
 
   return ret;
 }
+
+#else
+int main(int, char *[]) {
+  std::cerr << "LLVM JSON API is not available in this version of LLVM\n";
+  return EXIT_FAILURE;
+}
+#endif

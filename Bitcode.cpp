@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2020 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <algorithm>
 #include <bitset>
 #include <iostream>
@@ -22,6 +39,8 @@
 #include <remill/Arch/Name.h>
 
 #include <anvill/Decl.h>
+
+#if __has_include(<llvm/Support/JSON.h>)
 
 DECLARE_string(arch);
 DECLARE_string(os);
@@ -58,19 +77,20 @@ int main(int argc, char *argv[]) {
 
   llvm::json::Array funcs_json;
 
+  const auto &dl = module->getDataLayout();
   for (auto &function : *module) {
     // Skip llvm debug intrinsics
     if (function.getIntrinsicID()) {
       continue;
     }
 
-    auto maybe_func = anvill::FunctionDecl::Create(function, *module, arch);
+    auto maybe_func = anvill::FunctionDecl::Create(function, arch);
     if (remill::IsError(maybe_func)) {
       LOG(ERROR)
           << remill::GetErrorString(maybe_func);
     } else {
       auto &func = remill::GetReference(maybe_func);
-      funcs_json.push_back(func.SerializeToJSON());
+      funcs_json.push_back(func.SerializeToJSON(dl));
     }
   }
 
@@ -84,3 +104,9 @@ int main(int argc, char *argv[]) {
 
   return EXIT_SUCCESS;
 }
+#else
+int main(int, char *[]) {
+  std::cerr << "LLVM JSON API is not available in this version of LLVM\n";
+  return EXIT_FAILURE;
+}
+#endif

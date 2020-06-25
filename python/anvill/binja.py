@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import weakref
 import magic
 import binaryninja as bn
 
@@ -286,8 +285,8 @@ class CallingConvention(object):
 
 
 class BNFunction(Function):
-  def __init__(self, bv, arch, address, param_list, ret_list, bn_func):
-    super(BNFunction, self).__init__(arch, address, param_list, ret_list)
+  def __init__(self, bv, arch, address, param_list, ret_list, bn_func, func_type):
+    super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
     self._bv = bv
     self._bn_func = bn_func
 
@@ -339,7 +338,7 @@ def load_binary(path):
   else:
     bv_type = bn.BinaryViewType['Raw']
 
-  print 'Loading binary in binja... ', path
+  #print 'Loading binary in binja... ', path
   bv = bv_type.open(path)
   bv.add_analysis_option("linearsweep")
   bv.update_analysis_and_wait()
@@ -347,13 +346,12 @@ def load_binary(path):
 
 class BNProgram(Program):
   def __init__(self, path):
-    self._functions = weakref.WeakValueDictionary()
     self._path = path
     self._bv = load_binary(self._path)
     self._dwarf = DWARFCore(path)
     super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 
-  def get_function(self, address):
+  def get_function_impl(self, address):
     """Given an architecture and an address, return a `Function` instance or
     raise an `InvalidFunctionException` exception."""
     arch = self._arch
@@ -368,7 +366,7 @@ class BNProgram(Program):
       raise InvalidFunctionException(
         "No function defined at or containing address {:x}".format(address))
 
-    print binja_func.name, binja_func.function_type
+    # print binja_func.name, binja_func.function_type
     func_type =  get_type(binja_func.function_type)
     calling_conv = CallingConvention(arch, binja_func)
 
@@ -413,8 +411,7 @@ class BNProgram(Program):
         loc.set_type(retTy)
         ret_list.append(loc)
 
-    func = BNFunction(self._bv, arch, address, param_list, ret_list, binja_func)
-    self._functions[address] = func
+    func = BNFunction(self._bv, arch, address, param_list, ret_list, binja_func, func_type)
     return func
 
   @property

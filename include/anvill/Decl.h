@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -21,7 +21,14 @@
 #include <string>
 #include <vector>
 
-#include <llvm/Support/JSON.h>
+#include <llvm/IR/CallingConv.h>
+
+#if __has_include(<llvm/Support/JSON.h>)
+# include <llvm/Support/JSON.h>
+# define ANVILL_WITH_JSON(...) __VA_ARGS__
+#else
+# define ANVILL_WITH_JSON(...)
+#endif
 
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Compat/Error.h>
@@ -66,27 +73,29 @@ struct ValueDecl {
   // Type of this value.
   llvm::Type *type{nullptr};
 
-  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
+  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
+      const llvm::DataLayout &dl) const;)
 };
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
 
-  llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl);
+  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
+      const llvm::DataLayout &dl) const;)
 };
 
 struct GlobalVarDecl {
-  std::string name;
   llvm::Type *type{nullptr};
   uint64_t address{0};
 
   // Declare this global variable in an LLVM module.
-  llvm::GlobalVariable *DeclareInModule(llvm::Module &) const;
+  llvm::GlobalVariable *DeclareInModule(
+      const std::string &name, llvm::Module &, bool allow_unowned=false) const;
 
  private:
   friend class Program;
 
-  bool is_valid{false};
+  void *owner{nullptr};
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -108,11 +117,10 @@ struct FunctionDecl {
   // The architecture from which this function's code derives.
   const remill::Arch *arch{nullptr};
 
-  // Load address of this function.
+  // Address of this function in memory.
   uint64_t address{0};
 
-  std::string name;
-  std::string demangled_name;
+  // ABI-level type of this function.
   llvm::FunctionType *type{nullptr};
 
   // Specifies where the return address is located on entry to the function.
@@ -143,14 +151,14 @@ struct FunctionDecl {
   //            value when the function might throw an exception.
   std::vector<ValueDecl> returns;
 
-  // The DataLayout of the module that contains the function
-  const llvm::DataLayout *dl{nullptr};
-
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
 
   // Is this a variadic function?
   bool is_variadic{false};
+
+  // The calling convention of this function.
+  llvm::CallingConv::ID calling_convention{llvm::CallingConv::C};
 
   // The mazimum number of bytes of redzone afforded to this function
   // (if it doesn't change the stack pointer, or, for example, writes
@@ -158,30 +166,32 @@ struct FunctionDecl {
   uint64_t num_bytes_in_redzone{0};
 
   // Declare this function in an LLVM module.
-  llvm::Function *DeclareInModule(llvm::Module &) const;
+  llvm::Function *DeclareInModule(
+      const std::string &name, llvm::Module &, bool allow_unowned=false) const;
 
-  // Create a call to this function from within a basic block in a
-  // lifted bitcode function. Returns the new value of the memory
-  // pointer.
+  // Create a call to this function with name `name` from within a basic block
+  // in a lifted bitcode function. Returns the new value of the memory pointer.
   llvm::Value *CallFromLiftedBlock(
+      const std::string &name,
       const remill::IntrinsicTable &intrinsics,
       llvm::BasicBlock *block,
       llvm::Value *state_ptr,
-      llvm::Value *mem_ptr) const;
+      llvm::Value *mem_ptr,
+      bool allow_unowned=false) const;
 
   // Serialize this function decl to JSON.
-  llvm::json::Object SerializeToJSON(void);
+  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
+      const llvm::DataLayout &dl) const;)
 
-  // Creata a function declaration from an LLVM function.
+  // Create a function declaration from an LLVM function.
   static llvm::Expected<FunctionDecl> Create(
-      const llvm::Function &func, const llvm::Module &module,
-      const remill::Arch::ArchPtr &arch);
+      llvm::Function &func, const remill::Arch::ArchPtr &arch);
 
  private:
   friend class Program;
 
-  // Whether or not this declaration is valid.
-  bool is_valid{false};
+  // The owner of this decl. Only set if this is valid.
+  void *owner{nullptr};
 };
 
 }  // namespace anvill

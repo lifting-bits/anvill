@@ -1,6 +1,19 @@
-//
-// Created by Peter Goodman on 2019-10-11.
-//
+/*
+ * Copyright (c) 2020 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "anvill/Program.h"
 
@@ -8,14 +21,17 @@
 #include <map>
 #include <sstream>
 #include <system_error>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/DerivedTypes.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
+#include <remill/BC/Util.h>
 
 #include "anvill/Decl.h"
 
@@ -23,29 +39,26 @@
 
 namespace anvill {
 
-// A byte, its address, and any associated metadata. The metadata is
-// updated throughout the lifting/decompiling process.
-struct Byte::Impl {
-  uint8_t value;
+// A byte's associated metadata. The metadata is updated throughout the
+// lifting/decompiling process.
+struct Byte::Meta {
 
-  bool _unused:1;
+  // True if there is a subsequent byte in the range that can be accessed.
+  bool next_byte_is_in_range:1;
+
+  // True if there is a subsequent byte
+  bool next_byte_starts_new_range:1;
 
   // Is the value of this byte undefined? Our model of the stack
   // begins with all stack bytes, unless explicitly specified, as
   // undefined.
   bool is_undefined:1;
 
-  // Is this byte from the stack?
-  bool is_stack:1;
-
   // Is this byte the beginning of a variable?
   bool is_variable_head:1;
 
   // These require `is_executable` to be `true`.
   bool is_function_head:1;
-
-  // Your basic permissions.
-  bool is_readable:1;
 
   // If `false`, then the implied semantic is that the byte will *never* be
   // writable. For example, if we're decompiling a snapshot or a core dump,
@@ -64,11 +77,20 @@ struct Byte::Impl {
   //            code.
   bool is_executable:1;
 
+  // Do we have extended meta-data attached to this byte? This might include
+  // things like devirtualization targets for calls through thunks or jump
+  // tables.
+  bool has_extended_meta:1;
+
 } __attribute__((packed));
 
 static_assert(
-    sizeof(Byte::Impl) == sizeof(uint16_t),
-    "Invalid packing of `struct Byte::Impl`.");
+    sizeof(Byte::Data) == sizeof(uint8_t),
+    "Invalid packing of `struct Byte::Data`.");
+
+static_assert(
+    sizeof(Byte::Meta) == sizeof(uint8_t),
+    "Invalid packing of `struct Byte::Meta`.");
 
 enum ProgramEvent {
   kFunctionDeclared,
@@ -78,39 +100,41 @@ enum ProgramEvent {
 };
 
 // Default implementation of a program.
-class Program::Impl {
+class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
  public:
-  llvm::Error DeclareFunction(const FunctionDecl &decl_template);
+  llvm::Expected<FunctionDecl *> DeclareFunction(
+      const FunctionDecl &decl_template, bool force);
+
   FunctionDecl *FindFunction(uint64_t address);
-  void ForEachFunction(std::function<bool(const FunctionDecl *)> callback);
-  void ForEachFunctionWithName(
-      const std::string &name,
-      std::function<bool(const FunctionDecl *)> callback);
 
   llvm::Error DeclareVariable(const GlobalVarDecl &decl_template);
-  GlobalVarDecl *FindVariable(uint64_t address);
-  GlobalVarDecl *FindVariable(const std::string &name);
-  void ForEachVariable(std::function<bool(const GlobalVarDecl *)> callback);
-  void ForEachVariableWithName(
-      const std::string &name,
-      std::function<bool(const GlobalVarDecl *)> callback);
 
-  Byte::Impl *FindByte(uint64_t address);
+  GlobalVarDecl *FindVariable(uint64_t address);
+
+  GlobalVarDecl *FindVariable(const std::string &name);
+
+  std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
+
+  std::tuple<Byte::Data *, Byte::Meta *, size_t>
+  FindBytes(uint64_t address, size_t size);
+
   llvm::Error MapRange(const ByteRange &range);
-  llvm::Error MapStack(uint64_t base_address, uint64_t limit_address,
-                       uint64_t start_address);
 
   void EmitEvent(ProgramEvent event, uint64_t address) {}
 
+  // Mapping between addresses and names.
+  std::multimap<uint64_t, std::string> ea_to_name;
+  std::multimap<std::string, uint64_t> name_to_ea;
+
   // Declarations for the functions.
+  bool funcs_are_sorted{true};
   std::vector<std::unique_ptr<FunctionDecl>> funcs;
   std::unordered_map<uint64_t, FunctionDecl *> ea_to_func;
-  std::unordered_multimap<std::string, FunctionDecl *> name_to_func;
 
   // Declarations for the variables.
+  bool vars_are_sorted{true};
   std::vector<std::unique_ptr<GlobalVarDecl>> vars;
   std::unordered_map<uint64_t, GlobalVarDecl *> ea_to_var;
-  std::unordered_multimap<std::string, GlobalVarDecl *> name_to_var;
 
   // Values of all bytes mapped in memory, including additional
   // bits of metadata, and the address at which each byte is
@@ -119,7 +143,7 @@ class Program::Impl {
   // The keys of the maps are the address of the last byte in
   // the range as represented in the mapped vector. The vectors
   // are sorted in order.
-  std::map<uint64_t, std::vector<Byte::Impl>> bytes;
+  std::map<uint64_t, std::pair<std::vector<Byte::Data>, std::vector<Byte::Meta>>> bytes;
 
   // Initial stack pointer.
   uint64_t initial_stack_pointer{0};
@@ -128,78 +152,151 @@ class Program::Impl {
 
 namespace {
 
+static size_t EstimateSize(const remill::Arch *arch, llvm::Type *type) {
+  switch (type->getTypeID()) {
+    case llvm::Type::HalfTyID: return 2;
+    case llvm::Type::FloatTyID: return 4;
+    case llvm::Type::DoubleTyID: return 8;
+    case llvm::Type::X86_FP80TyID: return 10;  // Assume no padding.
+    case llvm::Type::X86_MMXTyID: return 8;
+
+    case llvm::Type::IntegerTyID:
+      return (type->getScalarSizeInBits() + 7u) / 8u;
+
+    case llvm::Type::FP128TyID:
+    case llvm::Type::PPC_FP128TyID:
+      return 16;
+
+    // Store a structure by storing the individual elements of the structure.
+    //
+    // NOTE(pag): We'll assume no padding.
+    case llvm::Type::StructTyID: {
+      auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
+      size_t size = 0;
+      for (auto elem_type : struct_type->elements()) {
+        size += EstimateSize(arch, elem_type);
+      }
+      return size;
+    }
+
+    // Build up the array store in the same was as we do with structures.
+    case llvm::Type::ArrayTyID: {
+      auto arr_type = llvm::dyn_cast<llvm::ArrayType>(type);
+      const auto num_elems = arr_type->getNumElements();
+      const auto elem_type = arr_type->getElementType();
+      return num_elems * EstimateSize(arch, elem_type);
+    }
+
+    // Write pointers to memory by converting to the correct sized integer,
+    // then storing that
+    case llvm::Type::PointerTyID:
+      return arch->address_size / 8u;
+
+    // Build up the vector store in the nearly the same was as we do with arrays.
+    case llvm::Type::VectorTyID: {
+      auto vec_type = llvm::dyn_cast<llvm::VectorType>(type);
+      const auto num_elems = vec_type->getNumElements();
+      const auto elem_type = vec_type->getElementType();
+      return num_elems * EstimateSize(arch, elem_type);
+    }
+
+    case llvm::Type::VoidTyID:
+    case llvm::Type::LabelTyID:
+    case llvm::Type::MetadataTyID:
+    case llvm::Type::TokenTyID:
+    case llvm::Type::FunctionTyID:
+    default:
+      LOG(FATAL)
+          << "Unable to produce IR sequence to store type "
+          << remill::LLVMThingToString(type) << " to memory";
+      return 0;
+  }
+}
+
 template <typename T>
 static llvm::Error CheckValueDecl(
     const T &decl, llvm::LLVMContext &context,
-    const char *desc, uint64_t func_address) {
+    const char *desc, const FunctionDecl &tpl) {
   if (!decl.type) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "Missing LLVM type information for %s "
-        "in function declaration at '%lx'",
-        desc, func_address);
+        "in function declaration at %lx", desc, tpl.address);
 
   } else if (decl.type->isFunctionTy()) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "LLVM type information for %s "
-        "in function declaration at '%lx' is a function type; "
+        "in function declaration at %lx is a function type; "
         "did you mean to use a function pointer type?",
-        desc, func_address);
+        desc, tpl.address);
 
   } else if (decl.type->isVoidTy()) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "LLVM type information for %s "
-        "in function declaration at '%lx' is a void type; "
+        "in function declaration at %lx is a void type; "
         "did you mean to use a void pointer type, or to "
         "exclude it entirely?",
-        desc, func_address);
+        desc, tpl.address);
 
   } else if (&(decl.type->getContext()) != &context) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "LLVM type information for %s "
-        "in function declaration at '%lx' is associated "
+        "in function declaration at %lx is associated "
         "with a different LLVM context than the function's "
         "architecture",
-        desc, func_address);
+        desc, tpl.address);
 
   } else if (decl.reg && decl.mem_reg) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "A %s cannot be resident in both a "
         "register (%s) and a memory location (%s + %ld) in "
-        "function declaration at '%lx'",
+        "function declaration at %lx",
         desc, decl.reg->name.c_str(), decl.mem_reg->name.c_str(),
-        decl.mem_offset, func_address);
+        decl.mem_offset, tpl.address);
 
   } else if (decl.reg &&
              &(decl.reg->type->getContext()) != &context) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "LLVM type information for %s "
-        "in function declaration at '%lx' is associated "
+        "in function declaration at %lx is associated "
         "with a different LLVM context than the %s's "
         "register location",
-        desc, func_address, desc);
+        desc, tpl.address, desc);
 
   } else if (decl.mem_reg &&
              &(decl.mem_reg->type->getContext()) != &context) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "LLVM type information for %s "
-        "in function declaration at '%lx' is associated "
+        "in function declaration at %lx is associated "
         "with a different LLVM context than the %s's "
         "memory location base register",
-        desc, func_address, desc);
+        desc, tpl.address, desc);
 
   } else if (decl.mem_reg && !decl.mem_reg->type->isIntegerTy()) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
         "Type of memory base register of %s in function "
-        "declaration at '%lx' must be integral",
-        desc, func_address);
+        "declaration at %lx must be integral",
+        desc, tpl.address);
+  }
+
+  if (decl.reg && decl.type) {
+    auto reg_size = EstimateSize(tpl.arch, decl.reg->type);
+    auto type_size = EstimateSize(tpl.arch, decl.type);
+    if (reg_size < type_size) {
+      return llvm::createStringError(
+          std::make_error_code(std::errc::invalid_argument),
+          "Size of register %s of %s in function "
+          "declaration at %lx is too small (%lu bytes) for "
+          "value of size %lu bytes",
+          decl.reg->name.c_str(), desc, tpl.address, reg_size, type_size);
+    }
   }
 
   return llvm::Error::success();
@@ -207,64 +304,79 @@ static llvm::Error CheckValueDecl(
 
 }  // namespace
 
-bool Byte::IsReadableImpl(void) const {
-  return impl->is_readable;
-}
-
 bool Byte::IsWriteableImpl(void) const {
-  return impl->is_writeable;
+  return meta->is_writeable;
 }
 
 bool Byte::IsExecutableImpl(void) const {
-  return impl->is_executable;
-}
-
-bool Byte::IsStackImpl(void) const {
-  return impl->is_stack;
+  return meta->is_executable;
 }
 
 bool Byte::IsUndefinedImpl(void) const {
-  return impl->is_undefined;
+  return meta->is_undefined;
 }
 
 bool Byte::SetUndefinedImpl(bool is_undef) const {
-  if (impl->is_function_head && !impl->is_variable_head) {
-    impl->is_undefined = is_undef;
+  if (meta->is_function_head && !meta->is_variable_head) {
+    meta->is_undefined = is_undef;
     return true;
   } else {
     return false;
   }
 }
 
-uint8_t Byte::ValueImpl(void) const {
-  return impl->value;
+// Convert this byte sequence to a string.
+std::string_view ByteSequence::ToString(void) const {
+  if (first_data) {
+    return std::string_view(reinterpret_cast<const char *>(first_data), size);
+  } else {
+    return std::string_view();
+  }
+}
+
+// Extract a substring of bytes from this byte sequence.
+std::string_view ByteSequence::Substring(uint64_t ea, size_t seq_size) const {
+  if (const auto offset = ea - address; address <= ea && offset < size) {
+    std::string_view data(reinterpret_cast<const char *>(first_data), size);
+    if (auto max_ea = ea + seq_size; max_ea > (address + size)) {
+      return data.substr(offset, size - offset);
+    } else {
+      return data.substr(offset, seq_size);
+    }
+  } else {
+    return std::string_view();
+  }
+}
+
+// Index a specific byte within this sequence. Indexing is based off of the
+  // byte's address.
+Byte ByteSequence::operator[](uint64_t ea) const {
+  if (const auto offset = ea - address; address <= ea && offset < size) {
+    return Byte(ea, &(first_data[offset]), &(first_meta[offset]));
+  } else {
+    return Byte();
+  }
 }
 
 // Declare a function in this view.
-llvm::Error Program::Impl::DeclareFunction(const FunctionDecl &tpl) {
+llvm::Expected<FunctionDecl *> Program::Impl::DeclareFunction(
+    const FunctionDecl &tpl, bool force) {
 
-  const auto byte = FindByte(tpl.address);
-  if (byte) {
-    if (!byte->is_executable) {
+  const auto [data, meta] = FindByte(tpl.address);
+  if (meta) {
+    (void) data;
+    if (!meta->is_executable) {
       return llvm::createStringError(
           std::make_error_code(std::errc::bad_address),
           "Function at address '%lx' is not executable.",
           tpl.address);
-
-    } else if (byte->is_stack) {
-      return llvm::createStringError(
-          std::make_error_code(std::errc::bad_address),
-          "Cannot declare function at address '%lx' "
-          "within the stack.",
-          tpl.address);
     }
   }
 
-  if (auto existing_decl = FindFunction(tpl.address)) {
+  if (auto existing_decl = FindFunction(tpl.address); existing_decl && !force) {
     return llvm::createStringError(
         std::make_error_code(std::errc::address_in_use),
-        "The function '%s' is already declared at '%lx'",
-        existing_decl->name.c_str(), existing_decl->address);
+        "A function is already declared at '%lx'", existing_decl->address);
   }
 
   if (!tpl.arch) {
@@ -275,14 +387,6 @@ llvm::Error Program::Impl::DeclareFunction(const FunctionDecl &tpl) {
   }
 
   auto &context = *(tpl.arch->context);
-
-  if (tpl.type) {
-    return llvm::createStringError(
-        std::make_error_code(std::errc::invalid_argument),
-        "LLVM type information for function declaration at '%lx' "
-        "should not be manually specified",
-        tpl.address);
-  }
 
   ValueDecl return_address = tpl.return_address;
   const auto pc_reg_name = tpl.arch->ProgramCounterRegisterName();
@@ -311,25 +415,22 @@ llvm::Error Program::Impl::DeclareFunction(const FunctionDecl &tpl) {
         pc_reg_name, tpl.address);
   }
 
-  auto err = CheckValueDecl(
-      return_address, context, "return address", tpl.address);
+  auto err = CheckValueDecl(return_address, context, "return address", tpl);
   if (err) {
-    return err;
+    return std::move(err);
   }
 
-  for (auto &param : tpl.returns) {
-    err = CheckValueDecl(
-        param, context, "parameter", tpl.address);
+  for (auto &param : tpl.params) {
+    err = CheckValueDecl(param, context, "parameter", tpl);
     if (err) {
-      return err;
+      return std::move(err);
     }
   }
 
   for (auto &ret : tpl.returns) {
-    err = CheckValueDecl(
-        ret, context, "return value", tpl.address);
+    err = CheckValueDecl(ret, context, "return value", tpl);
     if (err) {
-      return err;
+      return std::move(err);
     }
   }
 
@@ -395,44 +496,55 @@ llvm::Error Program::Impl::DeclareFunction(const FunctionDecl &tpl) {
   // represent it as a structure if two 32-bit ints, and make sure to say
   // that one part is in EAX, and the other is in EDX.
   } else {
-    std::vector<llvm::Type *> ret_types;
+    llvm::SmallVector<llvm::Type *, 8> ret_types;
     for (auto &ret_val : tpl.returns) {
       ret_types.push_back(ret_val.type);
     }
     ret_type = llvm::StructType::get(context, ret_types, true);
   }
 
-  std::vector<llvm::Type *> param_types;
+  llvm::SmallVector<llvm::Type *, 8> param_types;
   for (auto &param_val : tpl.params) {
     param_types.push_back(param_val.type);
+  }
+
+  const auto func_type = llvm::FunctionType::get(
+      ret_type, param_types, tpl.is_variadic);
+  if (tpl.type && tpl.type != func_type) {
+    LOG(ERROR)
+        << remill::LLVMThingToString(tpl.type);
+    LOG(ERROR)
+        << remill::LLVMThingToString(func_type);
+
+    return llvm::createStringError(
+        std::make_error_code(std::errc::invalid_argument),
+        "LLVM type information for function declaration at '%lx' "
+        "should not be manually specified",
+        tpl.address);
   }
 
   std::unique_ptr<FunctionDecl> decl(new FunctionDecl(std::move(tpl)));
   const auto decl_ptr = decl.get();
   decl_ptr->return_address = return_address;
-  decl_ptr->is_valid = true;
-  decl->type = llvm::FunctionType::get(ret_type, param_types, tpl.is_variadic);
+  decl_ptr->owner = this;
+  decl->type = func_type;
 
-  // Use the standard convention for adding names to anonymous
-  // functions.
-  if (decl->name.empty()) {
-    std::stringstream ss;
-    ss << "sub_" << std::hex << decl->address;
-    ss.str().swap(decl->name);
+  if (funcs_are_sorted && !funcs.empty() &&
+      funcs.back()->address > decl->address) {
+    funcs_are_sorted = false;
   }
 
   funcs.emplace_back(std::move(decl));
   ea_to_func.emplace(decl_ptr->address, decl_ptr);
-  name_to_func.emplace(decl_ptr->name, decl_ptr);
 
-  if (byte) {
-    byte->is_function_head = true;
+  if (meta) {
+    meta->is_function_head = true;
     EmitEvent(kFunctionDefined, decl_ptr->address);
   } else {
     EmitEvent(kFunctionDeclared, decl_ptr->address);
   }
 
-  return llvm::Error::success();
+  return decl_ptr;
 }
 
 // Search for a specific function.
@@ -445,46 +557,14 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
   }
 }
 
-// Internal iterator over functions.
-void Program::Impl::ForEachFunction(
-    std::function<bool(const FunctionDecl *)> callback) {
-  for (size_t i = 0; i < funcs.size(); ++i) {
-    if (const auto decl = funcs[i].get()) {
-      if (!callback(decl)) {
-        return;
-      }
-    }
-  }
-}
-
-// Internal iterator over each function declared with the same
-// name.
-void Program::Impl::ForEachFunctionWithName(
-    const std::string &name,
-    std::function<bool(const FunctionDecl *)> callback) {
-  for (auto iterator_invalid = true; iterator_invalid; ) {
-    iterator_invalid = false;
-    const auto initial_num_funcs = funcs.size();
-    for (auto range = name_to_func.equal_range(name);
-         range.first != range.second;
-         ++range.first) {
-      if (!callback(range.first->second)) {
-        return;
-      } else if (initial_num_funcs != funcs.size()) {
-        iterator_invalid = true;
-        break;
-      }
-    }
-  }
-}
-
 // Declare a variable in this view.
 llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
-  if (auto existing_decl = FindVariable(tpl.address)) {
+
+
+  if (auto existing_decl = FindVariable(tpl.address); existing_decl) {
     return llvm::createStringError(
         std::make_error_code(std::errc::address_in_use),
-        "The variable '%s' is already declared at '%lx'",
-        existing_decl->name.c_str(), existing_decl->address);
+        "A variable is already declared at '%lx'", existing_decl->address);
   }
 
   if (!tpl.type) {
@@ -501,32 +581,23 @@ llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
         tpl.address);
   }
 
-  auto byte = FindByte(tpl.address);
-  if (byte && byte->is_stack) {
-    return llvm::createStringError(
-        std::make_error_code(std::errc::invalid_argument),
-        "Cannot declare global variable at '%lx' within the stack",
-        tpl.address);
-  }
-
+  auto [data, meta] = FindByte(tpl.address);
   std::unique_ptr<GlobalVarDecl> decl(new GlobalVarDecl(tpl));
 
-  // Use the standard convention for adding names to anonymous
-  // variables.
-  if (decl->name.empty()) {
-    std::stringstream ss;
-    ss << "data_" << std::hex << decl->address;
-    ss.str().swap(decl->name);
+  const auto decl_ptr = decl.get();
+  decl_ptr->owner = this;
+
+  if (vars_are_sorted && !vars.empty() &&
+      vars.back()->address > decl->address) {
+    vars_are_sorted = false;
   }
 
-  const auto decl_ptr = decl.get();
-  decl_ptr->is_valid = true;
   vars.emplace_back(std::move(decl));
   ea_to_var.emplace(decl_ptr->address, decl_ptr);
-  name_to_var.emplace(decl_ptr->name, decl_ptr);
 
-  if (byte) {
-    byte->is_variable_head = true;
+  if (meta) {
+    (void) data;
+    meta->is_variable_head = true;
     EmitEvent(kGlobalVariableDefined, decl_ptr->address);
   } else {
     EmitEvent(kGlobalVariableDeclared, decl_ptr->address);
@@ -545,69 +616,87 @@ GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
   }
 }
 
-// Internal iterator over variables.
-void Program::Impl::ForEachVariable(
-    std::function<bool(const GlobalVarDecl *)> callback) {
-  for (size_t i = 0; i < vars.size(); ++i) {
-    if (const auto decl = vars[i].get()) {
-      if (!callback(decl)) {
-        return;
-      }
-    }
-  }
-}
-
-// Internal iterator over each variable declared with the same
-// name.
-void Program::Impl::ForEachVariableWithName(
-    const std::string &name,
-    std::function<bool(const GlobalVarDecl *)> callback) {
-  for (auto iterator_invalid = true; iterator_invalid; ) {
-    iterator_invalid = false;
-    const auto initial_num_vars = vars.size();
-    for (auto range = name_to_var.equal_range(name);
-         range.first != range.second;
-         ++range.first) {
-      if (!callback(range.first->second)) {
-        return;
-      } else if (initial_num_vars != vars.size()) {
-        iterator_invalid = true;
-        break;
-      }
-    }
-  }
-}
-
 // Access memory, looking for a specific byte. Returns
 // a reference to the found byte, or to an invalid byte.
-Byte::Impl *Program::Impl::FindByte(uint64_t address) {
+std::pair<Byte::Data *, Byte::Meta *> Program::Impl::FindByte(uint64_t address) {
   uint64_t limit_address = 0;
-  std::vector<Byte::Impl> *mapped_bytes = nullptr;
+  std::vector<Byte::Data> *mapped_data = nullptr;
+  std::vector<Byte::Meta> *mapped_meta = nullptr;
 
   auto it = bytes.upper_bound(address);
   if (it == bytes.end()) {
-    if (bytes.empty()) {
-      return nullptr;
+    const auto rit = bytes.rbegin();
+    if (rit == bytes.rend()) {
+      return {nullptr, nullptr};
+
+    } else if (rit->first == address) {
+      limit_address = rit->first;
+      mapped_data = &(rit->second.first);
+      mapped_meta = &(rit->second.second);
     } else {
-      auto rit = bytes.rbegin();
-      if (rit->first == address) {
-        limit_address = rit->first;
-        mapped_bytes = &(rit->second);
-      } else {
-        return nullptr;
-      }
+      return {nullptr, nullptr};
     }
+
   } else {
     limit_address = it->first;
-    mapped_bytes = &(it->second);
+    mapped_data = &(it->second.first);
+    mapped_meta = &(it->second.second);
   }
 
-  const auto base_address = limit_address - mapped_bytes->size();
+  const auto base_address = limit_address - mapped_data->size();
   if (base_address <= address &&
-      address <= limit_address) {
-    return &((*mapped_bytes)[address - base_address]);
+      address < limit_address) {
+    const auto offset = address - base_address;
+    return {&((*mapped_data)[offset]), &((*mapped_meta)[offset])};
   } else {
-    return nullptr;
+    return {nullptr, nullptr};
+  }
+}
+
+// Find a sequence of bytes within the same mapped range starting at
+// `address` and including as many bytes fall within the range up to
+// but not including `address+size`.
+std::tuple<Byte::Data *, Byte::Meta *, size_t> Program::Impl::FindBytes(
+    uint64_t address, size_t size) {
+  if (!size) {
+    return {nullptr, nullptr, 0};
+  }
+
+  uint64_t limit_address = 0;
+  std::vector<Byte::Data> *mapped_data = nullptr;
+  std::vector<Byte::Meta> *mapped_meta = nullptr;
+
+  auto it = bytes.upper_bound(address);
+  if (it == bytes.end()) {
+    const auto rit = bytes.rbegin();
+    if (rit == bytes.rend()) {
+      return {nullptr, nullptr, 0};
+
+    } else if (rit->first == address) {
+      limit_address = rit->first;
+      mapped_data = &(rit->second.first);
+      mapped_meta = &(rit->second.second);
+    } else {
+      return {nullptr, nullptr, 0};
+    }
+
+  } else {
+    limit_address = it->first;
+    mapped_data = &(it->second.first);
+    mapped_meta = &(it->second.second);
+  }
+
+  const auto base_address = limit_address - mapped_data->size();
+  if (base_address <= address &&
+      address < limit_address) {
+    const auto offset = address - base_address;
+    if (size > mapped_data->size()) {
+      size = mapped_data->size();
+    }
+    return {&((*mapped_data)[offset]), &((*mapped_meta)[offset]), size};
+
+  } else {
+    return {nullptr, nullptr, 0};
   }
 }
 
@@ -640,10 +729,10 @@ llvm::Error Program::Impl::MapRange(const ByteRange &range) {
   }
 
   // Make sure this range doesn't overlap with another one.
-  for (auto existing : bytes) {
-    auto existing_max_address = existing.first + 1U;
+  for (const auto &existing : bytes) {
+    auto existing_max_address = existing.first;
     auto existing_min_address =
-        existing_max_address - existing.second.size();
+        existing_max_address - existing.second.first.size();
 
     if (existing_min_address >= end_address) {
       break;
@@ -672,9 +761,8 @@ llvm::Error Program::Impl::MapRange(const ByteRange &range) {
         return llvm::createStringError(
             std::make_error_code(std::errc::invalid_argument),
             "Memory range [%lx, %lx) is not marked as executable, "
-            "and contains a declared function '%s' at %lx",
-            range.address, end_address, decl->name.c_str(),
-            decl->address);
+            "and contains a declared function at %lx",
+            range.address, end_address, decl->address);
       } else {
         contains_funcs = true;
       }
@@ -683,24 +771,26 @@ llvm::Error Program::Impl::MapRange(const ByteRange &range) {
 
   // Make sure the range isn't mapped twice.
   auto &byte_impls = bytes[end_address];
-  byte_impls.reserve(size);
+  byte_impls.first.reserve(size);
 
-  Byte::Impl byte_impl = {};
-  byte_impl.is_readable = range.is_readable;
-  byte_impl.is_writeable = range.is_writeable;
-  byte_impl.is_executable = range.is_executable;
+  Byte::Meta meta_impl = {};
+  meta_impl.is_writeable = range.is_writeable;
+  meta_impl.is_executable = range.is_executable;
+  meta_impl.next_byte_is_in_range = true;
 
-  for (auto b = range.begin; b < range.end; ++b) {
-    byte_impl.value = *b;
-    byte_impls.push_back(byte_impl);
-  }
+  byte_impls.first.insert(byte_impls.first.end(), range.begin, range.end);
+  byte_impls.second.insert(byte_impls.second.end(), size, meta_impl);
+  byte_impls.second.back().next_byte_is_in_range = false;
 
   if (contains_funcs) {
     for (const auto &decl : funcs) {
       if (range.address <= decl->address &&
           decl->address < end_address) {
-        auto byte = FindByte(decl->address);
-        byte->is_function_head = true;
+        if (auto [data, meta] = FindByte(decl->address); meta) {
+          (void) data;
+          meta->is_function_head = true;
+          EmitEvent(kFunctionDefined, decl->address);
+        }
       }
     }
   }
@@ -710,101 +800,22 @@ llvm::Error Program::Impl::MapRange(const ByteRange &range) {
   for (const auto &decl : vars) {
     if (range.address <= decl->address &&
         decl->address < end_address) {
-      auto byte = FindByte(decl->address);
-      byte->is_variable_head = true;
-      EmitEvent(kGlobalVariableDefined, decl->address);
+      if (auto [data, meta] = FindByte(decl->address); meta) {
+        (void) data;
+        meta->is_variable_head = true;
+        EmitEvent(kGlobalVariableDefined, decl->address);
+      }
     }
   }
 
-  return llvm::Error::success();
-}
-
-// Map a custom stack range.
-llvm::Error Program::Impl::MapStack(
-    uint64_t base_address, uint64_t limit_address,
-    uint64_t start_address) {
-  if (has_initial_stack_pointer) {
-    return llvm::createStringError(
-        std::make_error_code(std::errc::invalid_argument),
-        "Program already has stack initialized");
+  // Mark the last byte in the previous range, if it exists, as having a
+  // subsequent byte.
+  if (auto [prev_data, prev_meta] = FindByte(range.address - 1);
+      prev_meta && range.address) {
+    (void) prev_data;
+    prev_meta->next_byte_is_in_range = false;
+    prev_meta->next_byte_starts_new_range = true;
   }
-
-
-  if (!(base_address < start_address) ||
-      !(start_address < limit_address)) {
-    return llvm::createStringError(
-        std::make_error_code(std::errc::bad_address),
-        "Stack base address '%lx' must be less than the "
-        "stack start address '%lx', which must be less than "
-        "the stack limit address '%lx'",
-        base_address, start_address, limit_address);
-  }
-
-  // Make sure this range doesn't overlap with another one.
-  for (auto existing : bytes) {
-    auto existing_max_address = existing.first + 1U;
-    auto existing_min_address =
-        existing_max_address - existing.second.size();
-
-    if (existing_min_address >= limit_address) {
-      break;
-
-    } else if (existing_max_address <= base_address) {
-      continue;
-
-    } else {
-      return llvm::createStringError(
-          std::make_error_code(std::errc::invalid_argument),
-          "Stack memory at [%lx, %lx) overlaps with an "
-          "existing range [%lx, %lx)'",
-          base_address, limit_address,
-          existing_min_address, existing_max_address);
-    }
-  }
-
-  // Go see if this range is agreeable with any of our function
-  // declarations.
-  for (const auto &decl : funcs) {
-    if (base_address <= decl->address &&
-        decl->address < limit_address) {
-      return llvm::createStringError(
-          std::make_error_code(std::errc::invalid_argument),
-          "Stack memory range [%lx, %lx) contains a declared "
-          "function '%s' at %lx",
-          base_address, limit_address, decl->name.c_str(),
-          decl->address);
-    }
-  }
-
-  // Ditto for variables.
-  for (const auto &decl : vars) {
-    if (base_address <= decl->address &&
-        decl->address < limit_address) {
-      return llvm::createStringError(
-          std::make_error_code(std::errc::invalid_argument),
-          "Stack memory range [%lx, %lx) contains a declared "
-          "global variable '%s' at %lx",
-          base_address, limit_address, decl->name.c_str(),
-          decl->address);
-    }
-  }
-
-  // Make sure the range isn't mapped twice.
-  auto &byte_impls = bytes[limit_address];
-  byte_impls.reserve(limit_address - base_address);
-
-  Byte::Impl byte_impl = {};
-  byte_impl.is_readable = true;
-  byte_impl.is_writeable = true;
-  byte_impl.is_stack = true;
-  byte_impl.is_undefined = true;
-
-  for (auto b = base_address; b < limit_address; ++b) {
-    byte_impls.push_back(byte_impl);
-  }
-
-  has_initial_stack_pointer = true;
-  initial_stack_pointer = start_address;
 
   return llvm::Error::success();
 }
@@ -817,15 +828,30 @@ Program::~Program(void) {}
 // Declare a function in this view. This takes in a function
 // declaration that will act as a sort of "template" for the
 // declaration that we will make and will be owned by `Program`.
-llvm::Error Program::DeclareFunction(
-    const FunctionDecl &decl) const {
-  return impl->DeclareFunction(decl);
+llvm::Expected<FunctionDecl *> Program::DeclareFunction(
+    const FunctionDecl &decl,
+    bool force) const {
+  return impl->DeclareFunction(decl, force);
 }
 
 // Internal iterator over all functions.
 void Program::ForEachFunction(
     std::function<bool(const FunctionDecl *)> callback) const {
-  return impl->ForEachFunction(callback);
+  if (!impl->funcs_are_sorted) {
+    std::sort(impl->vars.begin(), impl->vars.end(),
+              [] (const std::unique_ptr<GlobalVarDecl> &a,
+                  const std::unique_ptr<GlobalVarDecl> &b) {
+                return a->address < b->address;
+              });
+    impl->funcs_are_sorted = true;
+  }
+  for (size_t i = 0; i < impl->funcs.size(); ++i) {
+    if (const auto decl = impl->funcs[i].get()) {
+      if (!callback(decl)) {
+        return;
+      }
+    }
+  }
 }
 
 // Search for a specific function by its address.
@@ -838,21 +864,103 @@ const FunctionDecl *Program::FindFunction(uint64_t address) const {
 void Program::ForEachFunctionWithName(
     const std::string &name,
     std::function<bool(const FunctionDecl *)> callback) const {
-  impl->ForEachFunctionWithName(name, callback);
+  const auto func_it_end = impl->ea_to_func.end();
+  for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
+       it != it_end && it->first == name;
+       ++it) {
+    if (auto func_it = impl->ea_to_func.find(it->second);
+        func_it != func_it_end) {
+      if (!callback(func_it->second)) {
+        return;
+      }
+    }
+  }
+}
+
+// Apply a function `cb` to each name of the address `address`.
+void Program::ForEachNameOfAddress(
+    uint64_t ea,
+    std::function<bool(const std::string &, const FunctionDecl *,
+                       const GlobalVarDecl *)> callback) const {
+
+  const auto func = FindFunction(ea);
+  const auto var = FindVariable(ea);
+
+  for (auto it = impl->ea_to_name.find(ea), it_end = impl->ea_to_name.end();
+       it != it_end && it->first == ea; ++it) {
+    if (!callback(it->second, func, var)) {
+      return;
+    }
+  }
+}
+
+// Apply a function `cb` to each name of the address `address`.
+void Program::ForEachAddressOfName(
+    const std::string &name,
+    std::function<bool(uint64_t, const FunctionDecl *,
+                       const GlobalVarDecl *)> callback) const {
+
+  for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
+       it != it_end && it->first == name; ++it) {
+    const auto ea = it->second;
+    const auto func = FindFunction(ea);
+    const auto var = FindVariable(ea);
+    if (!callback(ea, func, var)) {
+      return;
+    }
+  }
+}
+
+// Apply a function `cb` to each address/name pair.
+void Program::ForEachNamedAddress(
+    std::function<bool(uint64_t, const std::string &, const FunctionDecl *,
+                       const GlobalVarDecl *)> callback) const {
+  for (auto it = impl->ea_to_name.begin(), it_end = impl->ea_to_name.end();
+       it != it_end; ++it) {
+    const auto ea = it->first;
+    const auto func = FindFunction(ea);
+    const auto var = FindVariable(ea);
+    if (!callback(ea, it->second, func, var)) {
+      return;
+    }
+  }
+}
+
+// Add a name to an address.
+void Program::AddNameToAddress(const std::string &name, uint64_t address) const {
+  if (!name.empty() && address) {
+    impl->name_to_ea.emplace(name, address);
+    impl->ea_to_name.emplace(address, name);
+  }
 }
 
 // Declare a variable in this view. This takes in a variable
 // declaration that will act as a sort of "template" for the
 // declaration that we will make and will be owned by `Program`.
-llvm::Error Program::DeclareVariable(
-    const GlobalVarDecl &decl_template) const {
-  return impl->DeclareVariable(decl_template);
+llvm::Error Program::DeclareVariable(const GlobalVarDecl &decl) const {
+  return impl->DeclareVariable(decl);
 }
 
 // Internal iterator over all vars.
 void Program::ForEachVariable(
     std::function<bool(const GlobalVarDecl *)> callback) const {
-  return impl->ForEachVariable(callback);
+  if (!impl->vars_are_sorted) {
+    std::sort(impl->vars.begin(), impl->vars.end(),
+              [] (const std::unique_ptr<GlobalVarDecl> &a,
+                  const std::unique_ptr<GlobalVarDecl> &b) {
+                return a->address < b->address;
+              });
+    impl->vars_are_sorted = true;
+  }
+
+  // NOTE(pag): Size of variables may change.
+  for (size_t i = 0; i < impl->vars.size(); ++i) {
+    if (const auto decl = impl->vars[i].get(); decl) {
+      if (!callback(decl)) {
+        return;
+      }
+    }
+  }
 }
 
 // Search for a specific variable by its address.
@@ -864,13 +972,44 @@ const GlobalVarDecl *Program::FindVariable(uint64_t address) const {
 void Program::ForEachVariableWithName(
     const std::string &name,
     std::function<bool(const GlobalVarDecl *)> callback) const {
-  impl->ForEachVariableWithName(name, callback);
+  const auto var_it_end = impl->ea_to_var.end();
+  for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
+       it != it_end && it->first == name;
+       ++it) {
+    if (auto var_it = impl->ea_to_var.find(it->second); var_it != var_it_end) {
+      if (!callback(var_it->second)) {
+        return;
+      }
+    }
+  }
 }
 
 // Access memory, looking for a specific byte. Returns
 // the byte found, if any.
 Byte Program::FindByte(uint64_t address) const {
-  return Byte(address, impl->FindByte(address));
+  auto [data, meta] = impl->FindByte(address);
+  return Byte(address, data, meta);
+}
+
+// Find the next byte.
+Byte Program::FindNextByte(Byte byte) const {
+  if (byte.meta) {
+    if (byte.meta->next_byte_is_in_range) {
+      return Byte(byte.addr + 1u, &(byte.data[1]), &(byte.meta[1]));
+
+    } else if (byte.meta->next_byte_starts_new_range) {
+      return FindByte(byte.addr + 1u);
+    }
+  }
+  return Byte(byte.addr + 1u, nullptr, nullptr);
+}
+
+// Find a sequence of bytes within the same mapped range starting at
+// `address` and including as many bytes fall within the range up to
+// but not including `address+size`.
+ByteSequence Program::FindBytes(uint64_t address, size_t size) const {
+  auto [data, meta, found_size] = impl->FindBytes(address, size);
+  return ByteSequence(address, data, meta, found_size);
 }
 
 // Map a range of bytes into the program.
@@ -882,21 +1021,28 @@ llvm::Error Program::MapRange(const ByteRange &range) {
   return impl->MapRange(range);
 }
 
-// Map a custom stack range.
-llvm::Error Program::MapStack(
-    uint64_t base_address, uint64_t limit_address,
-    uint64_t start_address) {
-  return impl->MapStack(base_address, limit_address, start_address);
+Program::Program(void *opaque)
+    : impl(reinterpret_cast<Program::Impl *>(opaque)->shared_from_this()) {}
+
+llvm::Expected<Program> Program::Containing(const FunctionDecl *decl) {
+  if (!decl->owner) {
+    return llvm::createStringError(
+        std::errc::invalid_argument,
+        "The function at '%08x'is not valid or does not have an owner.",
+        decl->address);
+  } else {
+    return Program(decl->owner);
+  }
 }
 
-// Returns the initial stack pointer for functions to use.
-llvm::Expected<uint64_t> Program::InitialStackPointer(void) const {
-  if (impl->has_initial_stack_pointer) {
-    return impl->initial_stack_pointer;
-  } else {
+llvm::Expected<Program> Program::Containing(const GlobalVarDecl *decl) {
+  if (!decl->owner) {
     return llvm::createStringError(
-        std::make_error_code(std::errc::not_enough_memory),
-        "Stack memory range has not yet been initialized.");
+        std::errc::invalid_argument,
+        "The variable at '%08x' is not valid or does not have an owner.",
+        decl->address);
+  } else {
+    return Program(decl->owner);
   }
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -447,6 +447,9 @@ static llvm::Expected<llvm::Type *> ParseType(
       case 'M':  // MMX type.
         i += 1;
         return llvm::Type::getX86_MMXTy(context);
+      case 'Q':  // Quad-precision float.
+        i += 1;
+        return llvm::Type::getFP128Ty(context);
       case 'v':  // void.
         i += 1;
         return llvm::Type::getVoidTy(context);

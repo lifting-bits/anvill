@@ -33,4 +33,9 @@
 
 # Python
 *.pyc
-
+anvill.egg-info/*
+dist/*
+build/*
+python/anvill.egg-info/*
+python/build/*
+python/dist/*

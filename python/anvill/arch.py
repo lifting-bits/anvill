@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -37,6 +37,9 @@ class Arch(object):
 
   def register_family(self, reg_name):
     raise NotImplementedError()
+
+  def register_name(self, reg_name):
+    return reg_name
 
 
 class AMD64Arch(Arch):
@@ -647,15 +650,15 @@ class AArch64Arch(Arch):
     ("W30", 0, 4)
   )
 
-  _REG_FAMILY_SP = {
+  _REG_FAMILY_SP = (
     ("SP", 0, 8),
     ("WSP", 0, 4),
-  }
+  )
 
-  _REG_FAMILY_ZR = {
+  _REG_FAMILY_ZR = (
     ("ZR", 0, 8),
     ("WZR", 0, 4),
-  }
+  )
 
   _REG_FAMILY_Vn = lambda l: (
     ("V{}".format(l), 0, 16),

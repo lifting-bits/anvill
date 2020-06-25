@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -34,9 +34,8 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-#include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Local.h>
+#include <llvm/Transforms/IPO.h>
 
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
@@ -210,7 +209,7 @@ static void ReplaceConstMemoryReads(
 
     for (size_t i = 0; i< ret_val_size; ++i) {
       auto byte = program.FindByte(addr);
-      if (byte && byte.IsReadable() && !byte.IsWriteable()) {
+      if (byte && !byte.IsWriteable()) {
         bytes.push_back(*byte.Value());
       } else {
         bytes.clear();
@@ -260,8 +259,14 @@ static void RemoveUnneededInlineAsm(
     const Program &program, llvm::Module &module) {
   std::vector<llvm::CallInst *> to_remove;
 
-  program.ForEachFunction([&] (const FunctionDecl *decl) -> bool {
-    const auto func = decl->DeclareInModule(module);
+  program.ForEachNamedAddress(
+      [&] (uint64_t, const std::string &name, const FunctionDecl *decl,
+           const GlobalVarDecl *) -> bool {
+    if (!decl) {
+      return true;
+    }
+
+    const auto func = decl->DeclareInModule(name, module);
     if (func->isDeclaration()) {
       return true;
     }
@@ -329,25 +334,82 @@ static void RemoveUnneededInlineAsm(
 void OptimizeModule(const remill::Arch *arch,
                     const Program &program,
                     llvm::Module &module) {
-  auto &context = module.getContext();
-  const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
+//  auto &context = module.getContext();
+//  const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
 
-  std::vector<llvm::Function *> traces;
+  if (auto used = module.getGlobalVariable("llvm.used"); used) {
+    used->eraseFromParent();
+  }
 
-  if (auto bb_func = module.getFunction("__remill_basic_block")) {
-    const auto bb_func_type = bb_func->getType();
-    for (auto &func : module) {
-      if (func.getType() == bb_func_type) {
-        traces.push_back(&func);
-      }
+  // Delete the `__remill_intrinsics` so that we can get rid of more
+  // functions.
+  if (auto intrinsic_keeper = module.getFunction("__remill_intrinsics");
+      intrinsic_keeper) {
+    intrinsic_keeper->eraseFromParent();
+  }
+
+  if (auto mark_as_used = module.getFunction("__remill_mark_as_used");
+      mark_as_used) {
+    mark_as_used->eraseFromParent();
+  }
+
+  std::vector<llvm::GlobalVariable *> vars_to_remove;
+  for (auto &gv : module.globals()) {
+    if (!gv.hasNUsesOrMore(1)) {
+      vars_to_remove.push_back(&gv);
+    } else if (gv.getName().startswith("ISEL_") ||
+               gv.getName().startswith("COND_")) {
+      gv.setInitializer(nullptr);
+      gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));
+      vars_to_remove.push_back(&gv);
     }
   }
 
-  if (traces.empty()) {
-    remill::OptimizeBareModule(&module);
-  } else {
-    remill::OptimizeModule(&module, traces);
+  for (auto var : vars_to_remove) {
+    var->eraseFromParent();
   }
+
+  std::vector<llvm::Function *> funcs_to_remove;
+  for (auto &func : module) {
+    if (!func.hasNUsesOrMore(1) &&
+        (func.getName().startswith("__remill_") ||
+         !func.hasValidDeclarationLinkage())) {
+      funcs_to_remove.push_back(&func);
+    }
+  }
+
+  for (auto func : funcs_to_remove) {
+    func->eraseFromParent();
+  }
+
+  llvm::legacy::PassManager mpm;
+  mpm.add(llvm::createFunctionInliningPass(250));
+  mpm.run(module);
+
+  llvm::legacy::FunctionPassManager fpm(&module);
+  fpm.add(llvm::createEarlyCSEPass(true));
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createConstantPropagationPass());
+  fpm.add(llvm::createSinkingPass());
+  fpm.add(llvm::createNewGVNPass());
+  fpm.add(llvm::createSCCPPass());
+  fpm.add(llvm::createDeadStoreEliminationPass());
+  fpm.add(llvm::createSROAPass());
+  fpm.add(llvm::createPromoteMemoryToRegisterPass());
+  fpm.add(llvm::createBitTrackingDCEPass());
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createSinkingPass());
+  fpm.add(llvm::createCFGSimplificationPass());
+
+  if (auto err = module.materializeAll(); remill::IsError(err)) {
+    LOG(FATAL) << remill::GetErrorString(err);
+  }
+
+  fpm.doInitialization();
+  for (auto &func : module) {
+    fpm.run(func);
+  }
+  fpm.doFinalization();
 
   std::unordered_set<llvm::Function *> changed_funcs;
 
@@ -363,42 +425,48 @@ void OptimizeModule(const remill::Arch *arch,
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
 
   do {
-    RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_32", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_64", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f32", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f64", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f80", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_32", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_64", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_f32", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_f64", changed_funcs);
+//    RemoveUndefMemoryReads(module, "__remill_read_memory_f80", changed_funcs);
+//
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_8", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_16", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_32", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_64", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_f32", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_f64", changed_funcs);
+//    RemoveUndefMemoryWrites(module, "__remill_write_memory_f80", changed_funcs);
 
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_8", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_16", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_32", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_64", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f32", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f64", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f80", changed_funcs);
+    (void) RemoveUndefMemoryReads;
+    (void) RemoveUndefMemoryWrites;
 
-    llvm::legacy::FunctionPassManager pm(&module);
-    pm.add(llvm::createDeadCodeEliminationPass());
-    pm.add(llvm::createSROAPass());
-    pm.add(llvm::createPromoteMemoryToRegisterPass());
+//    llvm::legacy::FunctionPassManager pm(&module);
+//    pm.add(llvm::createDeadCodeEliminationPass());
+//    pm.add(llvm::createSROAPass());
+//    pm.add(llvm::createPromoteMemoryToRegisterPass());
 
+    fpm.doInitialization();
     for (auto func : changed_funcs) {
-      pm.run(*func);
+      fpm.run(*func);
     }
+    fpm.doFinalization();
 
     changed_funcs.clear();
 
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_8", changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_16", changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_32", changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_64", changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f32", changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64", changed_funcs);
-    ReplaceConstMemoryReads(
-        program, module, "__remill_read_memory_f80", changed_funcs,
-        fp80_type);
+    (void) ReplaceConstMemoryReads;
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_8", changed_funcs);
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_16", changed_funcs);
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_32", changed_funcs);
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_64", changed_funcs);
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f32", changed_funcs);
+//    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64", changed_funcs);
+//    ReplaceConstMemoryReads(
+//        program, module, "__remill_read_memory_f80", changed_funcs,
+//        fp80_type);
 
   } while (!changed_funcs.empty());
 

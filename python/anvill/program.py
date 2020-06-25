@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -14,8 +14,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import collections
 import json
-
 
 from .function import *
 from .var import *
@@ -34,12 +34,33 @@ class Program(object):
     self._var_decls = {}
     self._func_defs = {}
     self._func_decls = {}
+    self._symbols = collections.defaultdict(set)
 
   def get_function(self, ea):
-    raise NotImplementedError()
+    if ea in self._func_defs:
+      return self._func_defs[ea]
+    elif ea in self._func_decls:
+      return self._func_decls[ea]
+    else:
+      return self.get_function_impl(ea)
 
   def get_variable(self, ea):
+    if ea in self._var_defs:
+      return self._var_defs[ea]
+    elif ea in self._var_decls:
+      return self._var_decls[ea]
+    else:
+      return self.get_variable_impl(ea)
+
+  def get_function_impl(self, ea):
     raise NotImplementedError()
+
+  def get_variable_impl(self, ea):
+    raise NotImplementedError()
+  
+  def add_symbol(self, ea, name):
+    if len(name):
+      self._symbols[ea].add(name)
 
   def add_variable_declaration(self, ea, add_refs_as_defs=False):
     var = self.get_variable(ea)
@@ -115,6 +136,11 @@ class Program(object):
     proto["os"] = self._os.name()
     proto["functions"] = []
     proto["variables"] = []
+    proto["symbols"] = []
+    
+    for ea, names in self._symbols.items():
+      for name in names:
+        proto["symbols"].append([ea, name])
 
     for func in self._func_decls.values():
       proto["functions"].append(func.proto())

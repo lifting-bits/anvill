@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2020 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <string>
@@ -5,18 +22,23 @@
 
 #include <llvm/IR/CallingConv.h>
 
-#include "anvill/Decl.h"
+#include <remill/BC/Compat/Error.h>
 
 namespace llvm {
-
+class Function;
 }  // namespace llvm
 namespace remill {
 class Arch;
+enum ArchName : uint32_t;
 class IntrinsicTable;
 struct Register;
 }  // namespace remill
-
 namespace anvill {
+
+struct FunctionDecl;
+struct ValueDecl;
+struct ParameterDecl;
+
 enum SizeConstraint : unsigned {
   kBit8 = (1 << 0),
   kBit16 = (1 << 1),
@@ -53,6 +75,7 @@ enum TypeConstraint : unsigned {
   kTypeVec = (1 << 3),
 
   kTypeIntegral = kTypeInt | kTypePtr,
+  kTypeNumeric = kTypeIntegral | kTypeFloat,
   kTypeFloatOrVec = kTypeFloat | kTypeVec,
 };
 
@@ -118,64 +141,32 @@ class CallingConvention {
       const llvm::CallingConv::ID, const remill::Arch *arch);
 
   virtual llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                        const llvm::Function &func) = 0;
+                                        llvm::Function &func) = 0;
 
   llvm::CallingConv::ID getIdentity(void) const {
     return identity;
   }
 
  protected:
-  const remill::Arch *arch;
+  const remill::Arch * const arch;
+
+  static std::unique_ptr<CallingConvention> CreateX86_C(
+      const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention> CreateX86_StdCall(
+      const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention> CreateX86_FastCall(
+      const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention> CreateX86_ThisCall(
+      const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention> CreateX86_64_SysV(
+      const remill::Arch *arch);
 
  private:
-  llvm::CallingConv::ID identity;
-};
-
-class X86_64_SysV : public CallingConvention {
- public:
-  explicit X86_64_SysV(const remill::Arch *arch);
-  virtual ~X86_64_SysV(void) = default;
-
-  llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                const llvm::Function &func) override;
-
- private:
-  llvm::Error BindParameters(const llvm::Function &function,
-                             bool injected_sret,
-                             std::vector<ParameterDecl> &param_decls);
-
-  llvm::Error BindReturnValues(const llvm::Function &function,
-                               bool &injected_sret,
-                               std::vector<ValueDecl> &ret_decls);
-
-  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func);
-
-  const std::vector<RegisterConstraint> &parameter_register_constraints;
-  const std::vector<RegisterConstraint> &return_register_constraints;
-};
-
-// This is the cdecl calling convention referenced by llvm::CallingConv::C
-class X86_C : public CallingConvention {
- public:
-  explicit X86_C(const remill::Arch *arch);
-  virtual ~X86_C(void) = default;
-
-  llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                const llvm::Function &func) override;
-
- private:
-  llvm::Error BindParameters(const llvm::Function &function, bool injected_sret,
-                             std::vector<ParameterDecl> &param_decls);
-
-  llvm::Error BindReturnValues(const llvm::Function &function,
-                               bool &injected_sret,
-                               std::vector<ValueDecl> &ret_decls);
-
-  void BindReturnStackPointer(FunctionDecl &fdecl, const llvm::Function &func,
-                              bool injected_sret);
-
-  const std::vector<RegisterConstraint> &parameter_register_constraints;
-  const std::vector<RegisterConstraint> &return_register_constraints;
+  const llvm::CallingConv::ID identity;
 };
 
 }  // namespace anvill

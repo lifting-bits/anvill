@@ -1,14 +1,26 @@
-#include <vector>
+/*
+ * Copyright (c) 2020 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "Arch.h"
-
-#include <glog/logging.h>
 
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IntrinsicInst.h>
-
 
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -48,8 +60,13 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
     case remill::kArchX86_AVX:
     case remill::kArchX86_AVX512:
       if (arch->os_name == remill::kOSmacOS ||
-          arch->os_name == remill::kOSLinux) {
-        return std::make_unique<X86_C>(arch);
+          arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateX86_C(arch);
+
+      } else if (arch->os_name == remill::kOSWindows) {
+        return CreateX86_StdCall(arch);
+
       } else {
         break;
       }
@@ -59,8 +76,9 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
     case remill::kArchAMD64_AVX:
     case remill::kArchAMD64_AVX512:
       if (arch->os_name == remill::kOSmacOS ||
-          arch->os_name == remill::kOSLinux) {
-        return std::make_unique<X86_64_SysV>(arch);
+          arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateX86_64_SysV(arch);
       } else {
         break;
       }
@@ -85,17 +103,55 @@ CallingConvention::CreateCCFromCCID(
     const llvm::CallingConv::ID cc_id, const remill::Arch *arch) {
   switch (cc_id) {
     case llvm::CallingConv::C:
-      return std::make_unique<X86_C>(arch);
+      if (arch->IsX86()) {
+        return CreateX86_C(arch);
+      } else if (arch->IsAMD64()) {
+        return CreateX86_64_SysV(arch);
+      }
+      break;
+
+    case llvm::CallingConv::X86_StdCall:
+      if (arch->IsX86()) {
+        return CreateX86_StdCall(arch);
+
+      } else if (arch->IsAMD64()) {
+        return CreateX86_C(arch);  // Ignored on AMD64.
+      }
+      break;
+
+    case llvm::CallingConv::X86_FastCall:
+      if (arch->IsX86()) {
+        return CreateX86_FastCall(arch);
+
+      } else if (arch->IsAMD64()) {
+        return CreateX86_C(arch);  // Ignored on AMD64.
+      }
+      break;
+
+    case llvm::CallingConv::X86_ThisCall:
+      if (arch->IsX86()) {
+        return CreateX86_ThisCall(arch);
+
+      } else if (arch->IsAMD64()) {
+        return CreateX86_C(arch);  // Ignored on AMD64.
+      }
+      break;
 
     case llvm::CallingConv::X86_64_SysV:
-      return std::make_unique<X86_64_SysV>(arch);
+      if (arch->IsAMD64()) {
+        return CreateX86_64_SysV(arch);
+      } else {
+        break;
+      }
 
     default:
-      return llvm::createStringError(
-        std::make_error_code(std::errc::invalid_argument),
-        "Unsupported calling convention ID %u",
-        static_cast<unsigned>(cc_id));
+      break;
   }
+
+  return llvm::createStringError(
+      std::make_error_code(std::errc::invalid_argument),
+      "Unsupported calling convention ID %u",
+      static_cast<unsigned>(cc_id));
 }
 
 // Try to recover parameter names using debug information. Otherwise, name the

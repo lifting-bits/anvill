@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -15,7 +15,6 @@
 
 
 import itertools
-import weakref
 
 import idc
 import ida_bytes
@@ -90,6 +89,8 @@ TYPE_CONTEXT_FUNCTION = 2
 TYPE_CONTEXT_PARAMETER = 3
 TYPE_CONTEXT_RETURN = 4
 
+_FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
+
 def _convert_ida_type(tinfo, cache, depth, context):
   """Convert an IDA `tinfo_t` instance into a `Type` instance."""
   assert isinstance(tinfo, ida_typeinf.tinfo_t)
@@ -126,7 +127,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
         i += 1
 
       if tinfo.is_vararg_cc():
-        ret.set_is_vararg()
+        ret.set_is_variadic()
 
       if tinfo.is_purging_cc():
         ret.set_num_bytes_popped_off_stack(tinfo.calc_purged_bytes())
@@ -218,8 +219,11 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
   # Floating point.
   elif tinfo.is_floating():
-    if tinfo.is_ldouble():
-      return FloatingPointType(tinfo.get_unpadded_size())
+    size = tinfo.get_unpadded_size()
+    if size in _FLOAT_SIZES:
+      return FloatingPointType(size)
+    elif tinfo.is_ldouble():
+      return FloatingPointType(10)
     elif tinfo.is_double():
       return FloatingPointType(8)
     elif tinfo.is_float():
@@ -272,6 +276,8 @@ def _get_os():
     return MacOS()
   elif name == "windows":
     return WindowsOS()
+  elif name == "solaris":
+    return SolarisOS()
   else:
     raise UnhandledOSException(
         "Missing operating system object type for OS '{}'".format(name))
@@ -320,7 +326,7 @@ def _get_address_sized_reg(arch, reg_name):
         return f_reg_name
   except:
     pass
-  return reg_name
+  return arch.register_name(reg_name)
 
 
 def _expand_locations(arch, pfn, ty, argloc, out_locs):
@@ -377,7 +383,7 @@ def _expand_locations(arch, pfn, ty, argloc, out_locs):
       reg_name = (ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name).upper()
 
     loc = Location()
-    loc.set_register(reg_name)
+    loc.set_register(arch.register_name(reg_name))
     loc.set_type(ty)
     out_locs.append(loc)
 
@@ -423,12 +429,12 @@ def _expand_locations(arch, pfn, ty, argloc, out_locs):
       reg_name2 = (ida_idp.get_reg_name(argloc.reg2(), ty_size) or reg_name2).upper()
 
     loc1 = Location()
-    loc1.set_register(reg_name1)
+    loc1.set_register(arch.register_name(reg_name1))
     loc1.set_type(ty1)
     out_locs.append(loc1)
 
     loc2 = Location()
-    loc2.set_register(reg_name2)
+    loc2.set_register(arch.register_name(reg_name2))
     loc2.set_type(ty2)
     out_locs.append(loc2)
 
@@ -684,7 +690,7 @@ def _invent_var_type(ea, seg_ref, min_size=1):
   arr = ArrayType()
   arr.set_element_type(IntegerType(1, False))
 
-  if next_seg != seg:
+  if not next_seg or next_seg != seg:
     arr.set_num_elements(min_size)
     return ea, arr
 
@@ -710,20 +716,27 @@ def _visit_ref_ea(program, ref_ea, add_refs_as_defs):
       print("Unable to add {:x} as a variable or function".format(ref_ea))
 
 
-class IDAFunction(Function):
-  def __init__(self, arch, address, param_list, ret_list, ida_func):
-    super(IDAFunction, self).__init__(arch, address, param_list, ret_list)
-    self._pfn = ida_func
+def _function_name(ea):
+  """Try to get the name of a function."""
+  try:
+    flags = ida_bytes.get_full_flags(ea)
+    if ida_bytes.has_name(flags):
+      return ida_funcs.get_func_name(ea)
+  except:
+    pass
+  return "sub_{:x}".format(ea)
 
-  def name(self):
-    ea = self.address()
-    try:
-      flags = ida_bytes.get_full_flags(ea)
-      if ida_bytes.has_name(flags):
-        return ida_funcs.get_func_name(ea)
-    except:
-      pass
-    return ""
+class IDAFunction(Function):
+
+  __slots__ = ('_pfn', '_is_noreturn')
+
+  def __init__(self, arch, address, param_list, ret_list, ida_func, is_noreturn, func_type, cc):
+    super(IDAFunction, self).__init__(arch, address, param_list, ret_list, func_type, cc)
+    self._pfn = ida_func
+    self._is_noreturn = is_noreturn
+
+  def is_noreturn(self):
+    return self._is_noreturn
 
   def visit(self, program, is_definition, add_refs_as_defs):
     if not is_definition:
@@ -768,20 +781,58 @@ class IDAFunction(Function):
       _visit_ref_ea(program, ref_ea, add_refs_as_defs)
 
 
+def _get_calling_convention(arch, os, ftd):
+  is_variadic = ftd.is_vararg_cc()
+  arch_name = arch.name()
+  default_cc = os.default_calling_convention(arch)
+  if arch_name == "x86":
+    
+    if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+      return 64, is_variadic
+    elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+      return 0, is_variadic
+    elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+      return 0, True
+    elif ftc.cc & ida_typeinf.CM_CC_THISCALL:
+      return 70, is_variadic
+    else:
+      return default_cc, is_variadic
+  
+  # NOTE(pag): Most x86 calling conventions are ignored in 64-bit.
+  elif arch_name == "amd64":
+    if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+      return default_cc, is_variadic
+    elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+      return default_cc, is_variadic
+    elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+      return default_cc, True
+    elif ftc.cc & ida_typeinf.CM_CC_THISCALL:
+      return 70, is_variadic
+    else:
+      return default_cc, is_variadic
+  
+  # Unknown, just assume the default C calling convention.
+  else:
+    return default_cc, is_variadic
+
+
+def _variable_name(ea):
+  """Return the name of a variable."""
+  try:
+    flags = ida_bytes.get_full_flags(ea)
+    if ida_bytes.has_name(flags):
+      return ida_name.get_ea_name(ea)
+  except:
+    pass
+  return ""
+
 class IDAVariable(Variable):
+
+  __slots__ = ('_ida_seg', )
+
   def __init__(self, arch, address, type_, ida_seg):
     super(IDAVariable, self).__init__(arch, address, type_)
     self._ida_seg = ida_seg
-
-  def name(self):
-    ea = self.address()
-    try:
-      flags = ida_bytes.get_full_flags(ea)
-      if ida_bytes.has_name(flags):
-        return ida_name.get_ea_name(ea)
-    except:
-      pass
-    return ""
 
   def visit(self, program, is_definition, add_refs_as_defs):
     seg_ref = [None]
@@ -797,21 +848,16 @@ class IDAVariable(Variable):
     # TODO
 
 class IDAProgram(Program):
-  def __init__(self, *args):
-    super(IDAProgram, self).__init__(_get_arch(), _get_os())
-    self._functions = weakref.WeakValueDictionary()
+  def __init__(self, *args, **kargs):
+    super(IDAProgram, self).__init__(kargs['arch'], kargs['os'])
     try:
       self._dwarf = DWARFCore(ida_nalt.get_input_file_path())
     except:
       self._dwarf = None
-    self._variables = weakref.WeakValueDictionary()
 
-  def get_variable(self, address):
+  def get_variable_impl(self, address):
     """Given an address, return a `Variable` instance, or
     raise an `InvalidVariableException` exception."""
-    if address in self._variables:
-      return self._variables[address]
-
     arch = self._arch
 
     seg_ref = [None]
@@ -824,7 +870,7 @@ class IDAProgram(Program):
 
     tif = ida_typeinf.tinfo_t()
     if not ida_nalt.get_tinfo(tif, address):
-      if ida_typeinf.GUESS_FUNC_FAILED == ida_typeinf.guess_tinfo(tif, address):
+      if ida_typeinf.GUESS_FUNC_OK != ida_typeinf.guess_tinfo(tif, address):
         tif = backup_var_type
 
     # Try to handle a variable type, otherwise make it big and empty.
@@ -840,16 +886,17 @@ class IDAProgram(Program):
 
     assert not isinstance(var_type, VoidType)
     assert not isinstance(var_type, FunctionType)
-
+	
+    self.add_symbol(address, _variable_name(address))
     var = IDAVariable(arch, address, var_type,
                       _find_segment_containing_ea(address, seg_ref))
-    self._variables[address] = var
     return var
 
-  def get_function(self, address):
+  def get_function_impl(self, address):
     """Given an address, return a `Function` instance or
     raise an `InvalidFunctionException` exception."""
     arch = self._arch
+    os = self._os
 
     pfn = ida_funcs.get_func(address)
     if not pfn:
@@ -871,14 +918,11 @@ class IDAProgram(Program):
 
     # Reset to the start of the function, and get the type of the function.
     address = pfn.start_ea
-    if address in self._functions:
-      return self._functions[address]
     
     tif = ida_typeinf.tinfo_t()
     if not ida_nalt.get_tinfo(tif, address):
-      if ida_typeinf.GUESS_FUNC_FAILED == ida_typeinf.guess_tinfo(tif, address):
-        raise InvalidFunctionException(
-            "Can't guess type information for function at address {:x}".format(address))
+      raise InvalidFunctionException(
+          "Can't guess type information for function at address {:x}".format(address))
 
     if not tif.is_func():
       raise InvalidFunctionException(
@@ -899,6 +943,12 @@ class IDAProgram(Program):
       raise InvalidFunctionException(
           "Could not assign type to function at address {:x}: {}".format(
               address, str(e)))
+
+    # Get the calling convention. The CC might override `is_variadic`, e.g. how
+    # old style C functions declared as `foo()` actually imply `foo(...)`.
+    cc, is_variadic = _get_calling_convention(arch, os, ftd)
+    if is_variadic:
+      func_type.set_is_variadic()
 
     # Go look into each of the parameters and their types. Each parameter may
     # refer to multiple locations, so we want to split each of those locations
@@ -933,18 +983,28 @@ class IDAProgram(Program):
     if not isinstance(ret_type, VoidType):
       _expand_locations(arch, pfn, ret_type, ftd.retloc, ret_list)
 
-    func = IDAFunction(arch, address, param_list, ret_list, pfn)
-    self._functions[address] = func
+    func = IDAFunction(arch, address, param_list, ret_list, pfn, ftd.is_noret(), func_type, cc)
+    self.add_symbol(address, _function_name(address))
     return func
 
 
 _PROGRAM = None
 
 def get_program(*args, **kargs):
+  if 'arch' not in kargs:
+    kargs['arch'] = _get_arch()
+
+  if 'os' not in kargs:
+    kargs['os'] = _get_os()
+
+  # Can pass in `cache=False` to get a unique program.
+  if 'cache' in kargs and not kargs['cache']:
+    return IDAProgram(**kargs)
+
   global _PROGRAM
   if _PROGRAM:
     return _PROGRAM
 
-  _PROGRAM = IDAProgram()
+  _PROGRAM = IDAProgram(**kargs)
   return _PROGRAM
 
