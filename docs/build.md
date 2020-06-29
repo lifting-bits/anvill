@@ -1,6 +1,6 @@
 # how to build
 
-anvill have a dependency related remill specified version. (.remill_commit_id)
+anvill have a dependency related remill specified version. (anvill/.remill_commit_id)
 
 a lot of way to build anvill, but easy way is just anvill foder add to remill like mcsema and run build script.
 
@@ -13,7 +13,7 @@ mv ./anvill ./remill/tools
 
 cd ./remill
 
-git checkout -b temp $(cat ../anvill/.remill_commit_id)
+git checkout -b temp-anvill $(cat ../anvill/.remill_commit_id)
 
 ./scripts/build.sh
 ```
