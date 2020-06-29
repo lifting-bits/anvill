@@ -127,3 +127,7 @@ install(
 install(
     TARGETS ${DECOMPILE_JSON}
     RUNTIME DESTINATION "${install_folder}/bin")
+
+    install(
+    TARGETS ${SPECIFY_BITCODE}
+    RUNTIME DESTINATION "${install_folder}/bin")
