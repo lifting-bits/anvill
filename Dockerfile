@@ -19,6 +19,14 @@ RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 g
 RUN update-alternatives --install /usr/bin/python2 python2 /usr/bin/python2.7 1
 
 # Build in the remill build directory
+
+WORKDIR /
+COPY .remill_commit_id ./
+RUN git clone https://github.com/lifting-bits/remill.git && \
+    cd remill && \
+    echo "Using remill commit $(cat ../.remill_commit_id)" && \
+    git checkout $(cat ../.remill_commit_id)
+
 RUN mkdir -p /remill/tools/anvill
 WORKDIR /remill/tools/anvill
 
