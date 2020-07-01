@@ -10,11 +10,13 @@ ARG LIBRARIES
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python2.7 wget zlib1g-dev && \
+    apt-get install -qqy ninja-build python2.7 python3 python3-pip curl wget zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # needed for 20.04 support until we migrate to py3
 RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 get-pip.py
+
+RUN update-alternatives --install /usr/bin/python2 python2 /usr/bin/python2.7 1
 
 # Build in the remill build directory
 RUN mkdir -p /remill/tools/anvill
