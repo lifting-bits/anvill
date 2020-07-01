@@ -10,7 +10,7 @@ ARG LIBRARIES
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python2.7 python3 python3-pip curl wget zlib1g-dev && \
+    apt-get install -qqy ninja-build python2.7 python3 python3-pip curl git wget zlib1g-dev build-essential ninja-build ccache && \
     rm -rf /var/lib/apt/lists/*
 
 # needed for 20.04 support until we migrate to py3
