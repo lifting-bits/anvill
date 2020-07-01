@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,8 +20,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string_view>
 
-#include <llvm/Support/Error.h>
+#include <remill/BC/Compat/Error.h>
 
 namespace anvill {
 
@@ -30,19 +31,20 @@ namespace anvill {
 struct ByteRange {
   uint64_t address{0};
   const uint8_t *begin{nullptr};
-  const uint8_t *end{nullptr};
-  bool is_readable{false};
+  const uint8_t *end{nullptr};  // Exclusive.
   bool is_writeable{false};
   bool is_executable{false};
 };
 
 class Program;
+struct ByteSequence;
 
 // Abstraction around a byte, its location, and metadata
 // associated with it.
 struct Byte {
  public:
-  struct Impl;
+  using Data = uint8_t;
+  struct Meta;
 
   ~Byte(void) = default;
   Byte(void) = default;
@@ -52,35 +54,27 @@ struct Byte {
   Byte &operator=(Byte &&) noexcept = default;
 
   inline operator bool(void) const {
-    return impl != nullptr;
+    return data != nullptr;
   }
 
   inline uint64_t Address(void) const {
     return addr;
   }
 
-  inline bool IsReadable(void) const {
-    return impl ? IsReadableImpl() : false;
-  }
-
   inline bool IsWriteable(void) const {
-    return impl ? IsWriteableImpl() : false;
+    return data ? IsWriteableImpl() : false;
   }
 
   inline bool IsExecutable(void) const {
-    return impl ? IsExecutableImpl() : false;
-  }
-
-  inline bool IsStack(void) const {
-    return impl ? IsStackImpl() : false;
+    return data ? IsExecutableImpl() : false;
   }
 
   inline bool IsUndefined(void) const {
-    return impl ? IsUndefinedImpl() : true;
+    return data ? IsUndefinedImpl() : true;
   }
 
   inline bool SetUndefined(bool is_undef=true) const {
-    if (impl) {
+    if (data) {
       return SetUndefinedImpl(is_undef);
     } else {
       return false;
@@ -88,8 +82,8 @@ struct Byte {
   }
 
   inline llvm::Expected<uint8_t> Value(void) const {
-    if (impl) {
-      return ValueImpl();
+    if (data) {
+      return *data;
     } else {
       return llvm::createStringError(
           std::make_error_code(std::errc::bad_address),
@@ -98,24 +92,66 @@ struct Byte {
     }
   }
 
+  inline uint8_t ValueOr(uint8_t backup) const {
+    return data ? *data : backup;
+  }
+
  private:
   friend class Program;
+  friend struct ByteSequence;
 
-  bool IsReadableImpl(void) const;
   bool IsWriteableImpl(void) const;
   bool IsExecutableImpl(void) const;
-  bool IsStackImpl(void) const;
 
   bool IsUndefinedImpl(void) const;
   bool SetUndefinedImpl(bool is_undef) const;
-  uint8_t ValueImpl(void) const;
 
-  explicit inline Byte(uint64_t addr_, Impl *impl_)
+  explicit inline Byte(uint64_t addr_, Data *data_, Meta *meta_)
       : addr(addr_),
-        impl(impl_) {}
+        data(data_),
+        meta(meta_){}
 
   uint64_t addr{0};
-  Impl *impl{nullptr};
+  Data *data{nullptr};
+  Meta *meta{nullptr};
+};
+
+// Abstraction around a byte sequence.
+struct ByteSequence {
+ public:
+  inline operator bool(void) const {
+    return first_data != nullptr;
+  }
+
+  size_t Size(void) const {
+    return size;
+  }
+
+  // Convert this byte sequence to a string.
+  std::string_view ToString(void) const;
+
+  // Extract a substring of bytes from this byte sequence.
+  std::string_view Substring(uint64_t ea, size_t seq_size) const;
+
+  // Index a specific byte within this sequence. Indexing is based off of the
+  // byte's address.
+  Byte operator[](uint64_t ea) const;
+
+ private:
+  friend class Program;
+
+  explicit inline ByteSequence(
+      uint64_t addr_, Byte::Data *first_data_, Byte::Meta *first_meta_,
+      size_t size_)
+      : address(addr_),
+        first_data(first_data_),
+        first_meta(first_meta_),
+        size(size_) {}
+
+  uint64_t address{0};
+  Byte::Data *first_data{nullptr};
+  Byte::Meta *first_meta{nullptr};  // Inclusive.
+  size_t size{0};
 };
 
 struct FunctionDecl;
@@ -141,10 +177,12 @@ class Program {
 
   ~Program(void);
   Program(const Program &) = default;
+  Program(Program &&) noexcept = default;
   Program &operator=(const Program &) = default;
+  Program &operator=(Program &&) noexcept = default;
 
-  // Returns the initial stack pointer for functions to use.
-  llvm::Expected<uint64_t> InitialStackPointer(void) const;
+  static llvm::Expected<Program> Containing(const FunctionDecl *decl);
+  static llvm::Expected<Program> Containing(const GlobalVarDecl *decl);
 
   // Map a range of bytes into the program.
   //
@@ -152,10 +190,6 @@ class Program {
   // are mapped. There are no requirements on the alignment
   // of the mapped bytes.
   llvm::Error MapRange(const ByteRange &range);
-
-  // Map a custom stack range.
-  llvm::Error MapStack(uint64_t base_address, uint64_t limit_address,
-                       uint64_t start_address);
 
   // Declare a function in this view. This takes in a function
   // declaration that will act as a sort of "template" for the
@@ -175,8 +209,9 @@ class Program {
   //
   // This function will check for error conditions and report them
   // as appropriate.
-  llvm::Error DeclareFunction(
-      const FunctionDecl &decl_template) const;
+  llvm::Expected<FunctionDecl *> DeclareFunction(
+      const FunctionDecl &decl_template,
+      bool force=false) const;
 
   // Internal iterator over all functions.
   //
@@ -196,6 +231,26 @@ class Program {
   void ForEachFunctionWithName(
       const std::string &name,
       std::function<bool(const FunctionDecl *)> callback) const;
+
+  // Add a name to an address.
+  void AddNameToAddress(const std::string &name, uint64_t address) const;
+
+  // Apply a function `cb` to each name of the address `address`.
+  void ForEachNameOfAddress(
+      uint64_t address,
+      std::function<bool(const std::string &, const FunctionDecl *,
+                         const GlobalVarDecl *)> cb) const;
+
+  // Apply a function `cb` to each address of the named symbol `name`.
+  void ForEachAddressOfName(
+      const std::string &name,
+      std::function<bool(uint64_t, const FunctionDecl *,
+                         const GlobalVarDecl *)> cb) const;
+
+  // Apply a function `cb` to each address/name pair.
+  void ForEachNamedAddress(
+      std::function<bool(uint64_t, const std::string &, const FunctionDecl *,
+                         const GlobalVarDecl *)> cb) const;
 
   // Declare a variable in this view. This takes in a variable
   // declaration that will act as a sort of "template" for the
@@ -233,15 +288,21 @@ class Program {
       const std::string &name,
       std::function<bool(const GlobalVarDecl *)> callback) const;
 
-  // Access memory, looking for a specific byte. Returns
-  // the byte found, if any.
+  // Access memory, looking for a specific byte. Returns the byte found, if any.
   Byte FindByte(uint64_t address) const;
+
+  // Find the next byte.
+  Byte FindNextByte(Byte byte) const;
+
+  // Find a sequence of bytes within the same mapped range starting at
+  // `address` and including as many bytes fall within the range up to
+  // but not including `address+size`.
+  ByteSequence FindBytes(uint64_t address, size_t size) const;
 
   class Impl;
 
  private:
-  Program(Program &&) noexcept = delete;
-  Program &operator=(Program &&) noexcept = delete;
+  explicit Program(void *opaque);
 
   std::shared_ptr<Impl> impl;
 };

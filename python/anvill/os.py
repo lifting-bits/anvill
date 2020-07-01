@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -22,13 +22,48 @@ class OS(object):
 class LinuxOS(OS):
   def name(self):
     return "linux"
+  
+  def default_calling_convention(self, arch):
+    arch_name = arch.name()
+    if arch_name == "x86":
+      return 0  # cdecl
+    elif arch_name == "amd64":
+      return 78  # X86_64_SysV
+    else:
+      return 0  # cdecl
 
 
 class MacOS(OS):
   def name(self):
     return "macos"
+  
+  def default_calling_convention(self, arch):
+    arch_name = arch.name()
+    if arch_name == "x86":
+      return 0  # cdecl
+    elif arch_name == "amd64":
+      return 78  # X86_64_SysV
+    else:
+      return 0  # cdecl
 
 
 class WindowsOS(OS):
   def name(self):
     return "windows"
+  
+  def default_calling_convention(self, arch):
+    arch_name = arch.name()
+    if arch_name == "x86":
+      return 64  # stdcall
+    elif arch_name == "amd64":
+      return 79  # Win64
+    else:
+      return 0  # cdecl
+
+
+class SolarisOS(OS):
+  def name(self):
+    return "solaris"
+  
+  def default_calling_convention(self, arch):
+    return 0

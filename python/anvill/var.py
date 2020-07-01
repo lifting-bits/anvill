@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -17,13 +17,12 @@
 class Variable(object):
   """Represents a generic global variable."""
 
+  __slots__ = ('_arch', '_address', '_type')
+
   def __init__(self, arch, address, type_):
     self._arch = arch
     self._address = address
     self._type = type_
-
-  def name(self):
-    return NotImplementedError()
 
   def address(self):
     return self._address
@@ -39,9 +38,6 @@ class Variable(object):
 
   def proto(self):
     proto = {}
-    name = self.name()
-    if len(name):
-      proto["name"] = name
     proto["address"] = self.address()
     proto["type"] = self.type().proto(self._arch)
     return proto

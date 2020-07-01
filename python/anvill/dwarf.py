@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -16,7 +16,6 @@
 import pprint
 import enum
 import sys
-import magic
 
 from .exc import *
 from .os import *
@@ -29,6 +28,13 @@ try:
 except ImportError:
   print("pyelftools not installed (pip install pyelftools)!")
 
+
+def _is_ELF_file(path):
+  with open(path, 'rb') as f:
+    magic_bytes = f.read(4)
+    return magic_bytes[0] == '\x7f' and magic_bytes[1] == 'E' and \
+           magic_bytes[2] == 'L' and magic_bytes[3] == 'F'
+  return False
 
 class DWVariable(object):
   """Represents the variables from dwarf info"""
@@ -129,8 +135,7 @@ class DWARFCore(object):
     try:
       from elftools.elf.elffile import ELFFile
 
-      file_type = magic.from_file(in_file)
-      if 'ELF' not in file_type:
+      if not _is_ELF_file(in_file):
         print("{} is not an ELF-format binary".format(in_file))
         self._dwarf_info = None
         return

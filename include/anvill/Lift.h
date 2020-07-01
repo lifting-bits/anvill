@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -24,9 +24,13 @@
 namespace llvm {
 class Module;
 }  // namespace llvm
+namespace remill {
+class IntrinsicTable;
+}  // namespace remill
 namespace anvill {
 
 class Program;
+struct ValueDecl;
 
 // Manages lifting of machine code functions from the input
 // program.
@@ -37,5 +41,25 @@ class TraceManager : public remill::TraceManager {
   static std::unique_ptr<TraceManager> Create(
       llvm::Module &semantics_module, const Program &);
 };
+
+// Produce one or more instructions in `in_block` to load and return
+// the lifted value associated with `decl`.
+llvm::Value *LoadLiftedValue(
+    const ValueDecl &decl,
+    const remill::IntrinsicTable &intrinsics,
+    llvm::BasicBlock *in_block,
+    llvm::Value *state_ptr,
+    llvm::Value *mem_ptr);
+
+// Produce one or more instructions in `in_block` to store the
+// native value `native_val` into the lifted state associated
+// with `decl`.
+llvm::Value *StoreNativeValue(
+    llvm::Value *native_val,
+    const ValueDecl &decl,
+    const remill::IntrinsicTable &intrinsics,
+    llvm::BasicBlock *in_block,
+    llvm::Value *state_ptr,
+    llvm::Value *mem_ptr);
 
 }  // namespace anvill

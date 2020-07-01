@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Trail of Bits, Inc.
+# Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,8 @@ from .exc import *
 
 
 class Type(object):
+  __slots__ = tuple()
+
   def size(self, arch):
     raise NotImplementedError()
 
@@ -135,7 +137,9 @@ class Type(object):
 
 class VoidType(Type):
   _INSTANCE = None
-  
+
+  __slots__ = tuple()
+
   def __new__(cls):
     if not cls._INSTANCE:
       cls._INSTANCE = super(VoidType, cls).__new__(cls)
@@ -153,6 +157,9 @@ class VoidType(Type):
 
 
 class PointerType(Type):
+
+  __slots__ = ('_elem_type',)
+
   def __init__(self):
     super(PointerType, self).__init__()
     self._elem_type = None
@@ -176,6 +183,8 @@ class PointerType(Type):
 
 
 class SequentialType(Type):
+  __slots__ = ('_elem_type', '_num_elems')
+
   def __init__(self):
     super(SequentialType, self).__init__()
     self._elem_type = IntegerType(1, False)
@@ -200,6 +209,8 @@ class SequentialType(Type):
 
 
 class ArrayType(SequentialType):
+  __slots__ = tuple()
+
   def serialize(self, arch, ids):
     if not self._elem_type:
       return "[Bx{}]".format(self._num_elems)
@@ -208,6 +219,8 @@ class ArrayType(SequentialType):
 
 
 class VectorType(SequentialType):
+  __slots__ = tuple()
+
   def serialize(self, arch, ids):
     if not self._elem_type:
       return "<Bx{}>".format(self._num_elems)
@@ -216,6 +229,8 @@ class VectorType(SequentialType):
 
 
 class PaddingType(SequentialType):
+  __slots__ = tuple()
+
   def __init__(self):
     super(PaddingType, self).__init__()
     self._num_elems = 1
@@ -230,6 +245,8 @@ class PaddingType(SequentialType):
 
 
 class StructureType(Type):
+  __slots__ = ('_elem_types',)
+
   def __init__(self):
     super(StructureType, self).__init__()
     self._elem_types = []
@@ -269,6 +286,8 @@ class StructureType(Type):
 
 
 class UnionType(Type):
+  __slots__ = ('_elem_types',)
+
   def __init__(self):
     super(UnionType, self).__init__()
     self._elem_types = []
@@ -321,6 +340,8 @@ class UnionType(Type):
 
 class IntegerType(Type):
   
+  __slots__ = ('_size', '_is_signed')
+
   _FORM = {
     (1, True): "b",
     (1, False): "B",
@@ -376,6 +397,8 @@ class IntegerType(Type):
 
 class FloatingPointType(Type):
 
+  __slots__ = ('_size',)
+
   _FORM = {
     2: "e",
     4: "f",
@@ -384,7 +407,10 @@ class FloatingPointType(Type):
     # Depending on the ABI, the size of a `long double` may be 10 bytes, or it
     # may be 12 bytes.
     10: "D",
-    12: "D"
+    12: "D",
+
+    # Quad-precision floating point.
+    16: "Q"
   }
 
   _CACHE = {}
@@ -417,11 +443,13 @@ class FloatingPointType(Type):
 
 
 class FunctionType(Type):
+  __slots__ = ('_return_type', '_param_types', '_is_variadic', '_num_bytes_popped_off_stack')
+
   def __init__(self):
     super(FunctionType, self).__init__()
     self._return_type = VoidType()
     self._param_types = []
-    self._is_var_arg = False
+    self._is_variadic = False
 
     # NOTE(pag): This excludes the return address
     self._num_bytes_popped_off_stack = 0
@@ -437,8 +465,14 @@ class FunctionType(Type):
   def parameter_type(self, index):
     return self._param_types[index]
 
-  def set_is_vararg(self, is_var_arg=True):
-    self._is_var_arg = is_var_arg
+  def is_variadic(self):
+    return self._is_variadic
+
+  def num_bytes_popped_off_stack(self):
+    return self._num_bytes_popped_off_stack
+
+  def set_is_variadic(self, is_variadic=True):
+    self._is_variadic = is_variadic
 
   def set_num_bytes_popped_off_stack(self, num_bytes_popped_off_stack):
     self._num_bytes_popped_off_stack = num_bytes_popped_off_stack
@@ -449,7 +483,7 @@ class FunctionType(Type):
   def serialize(self, arch, ids):
     parts = ["("]
     if not len(self._param_types):
-      if self._is_var_arg:
+      if self._is_variadic:
         parts.append("&")
       else:
         parts.append("v")
@@ -457,7 +491,7 @@ class FunctionType(Type):
       for param_type in self._param_types:
         parts.append(param_type.serialize(arch, ids))
 
-      if self._is_var_arg:
+      if self._is_variadic:
         parts.append("&")
 
     parts.append(self._return_type.serialize(arch, ids))

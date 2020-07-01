@@ -29,13 +29,17 @@
 namespace anvill {
 namespace {
 
-// Register based parameter passing is generally not allowed for x86_C for
-// types other than vector types. Even in the case of vector types it is
+// Register based parameter passing is generally not allowed for X86_FastCall for
+// types other than vector types, and other than the first two argumnets that
+// can fit into ECX and EDX. Even in the case of vector types it is
 // important to note that if LLVM lowers something like a vector(2) of floats
 // to <float, float> in IR, we will not be able to allocate it to a vector
 // register because in our eyes it will no longer be a vector. This is
 // consistent with the behavior of Clang but not GCC.
 static const std::vector<RegisterConstraint> kParamRegConstraints = {
+    RegisterConstraint({VariantConstraint("ECX", kTypeIntegral, kMaxBit32)}),
+    RegisterConstraint({VariantConstraint("EDX", kTypeIntegral, kMaxBit32)}),
+
     RegisterConstraint({VariantConstraint("XMM0", kTypeVec, kMaxBit128)}),
     RegisterConstraint({VariantConstraint("XMM1", kTypeVec, kMaxBit128)}),
     RegisterConstraint({VariantConstraint("XMM2", kTypeVec, kMaxBit128)}),
@@ -52,7 +56,7 @@ static const std::vector<RegisterConstraint> kAVXParamRegConstraints =
 static const std::vector<RegisterConstraint> kAVX512ParamRegConstraints =
     ApplyX86Ext(kParamRegConstraints, remill::kArchAMD64_AVX512);
 
-// For x86_C (cdecl), structs can be split over EAX, EDX, ECX, ST0, ST1.
+// For X86_FastCall (cdecl), structs can be split over EAX, EDX, ECX, ST0, ST1.
 static const std::vector<RegisterConstraint> kReturnRegConstraints = {
     RegisterConstraint({
         VariantConstraint("AL", kTypeIntegral, kMaxBit8),
@@ -82,17 +86,18 @@ static const std::vector<RegisterConstraint> kAVX512ReturnRegConstraints =
 }  // namespace
 
 // This is the cdecl calling convention referenced by llvm::CallingConv::C
-class X86_C : public CallingConvention {
+class X86_FastCall : public CallingConvention {
  public:
-  explicit X86_C(const remill::Arch *arch);
-  virtual ~X86_C(void) = default;
+  explicit X86_FastCall(const remill::Arch *arch);
+  virtual ~X86_FastCall(void) = default;
 
   llvm::Error AllocateSignature(FunctionDecl &fdecl,
                                 llvm::Function &func) override;
 
  private:
-  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
-                             std::vector<ParameterDecl> &param_decls);
+  llvm::ErrorOr<unsigned> BindParameters(
+      llvm::Function &function, bool injected_sret,
+      std::vector<ParameterDecl> &param_decls);
 
   llvm::Error BindReturnValues(llvm::Function &function,
                                bool &injected_sret,
@@ -102,13 +107,13 @@ class X86_C : public CallingConvention {
   const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateX86_C(
+std::unique_ptr<CallingConvention> CallingConvention::CreateX86_FastCall(
       const remill::Arch *arch) {
-  return std::unique_ptr<CallingConvention>(new X86_C(arch));
+  return std::unique_ptr<CallingConvention>(new X86_FastCall(arch));
 }
 
-X86_C::X86_C(const remill::Arch *arch)
-    : CallingConvention(llvm::CallingConv::C, arch),
+X86_FastCall::X86_FastCall(const remill::Arch *arch)
+    : CallingConvention(llvm::CallingConv::X86_FastCall, arch),
       parameter_register_constraints(SelectX86Constraint(
           arch->arch_name, kParamRegConstraints,
           kAVXParamRegConstraints, kAVX512ParamRegConstraints)),
@@ -119,8 +124,8 @@ X86_C::X86_C(const remill::Arch *arch)
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
-llvm::Error X86_C::AllocateSignature(FunctionDecl &fdecl,
-                                     llvm::Function &func) {
+llvm::Error X86_FastCall::AllocateSignature(FunctionDecl &fdecl,
+                                           llvm::Function &func) {
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -130,29 +135,15 @@ llvm::Error X86_C::AllocateSignature(FunctionDecl &fdecl,
     return err;
   }
 
-  err = BindParameters(func, injected_sret, fdecl.params);
-  if (remill::IsError(err)) {
-    return err;
+  auto maybe_rspo = BindParameters(func, injected_sret, fdecl.params);
+  if (remill::IsError(maybe_rspo)) {
+    return llvm::createStringError(
+        std::errc::invalid_argument, "%s",
+        remill::GetErrorString(maybe_rspo).c_str());
   }
 
-  // Check if the first argument is an sret. If it is, then by the X86_C ABI,
-  // the callee is responbile for returning said sret argument in %eax and
-  // cleaning up the sret argument with a `ret 4`. This changes the
-  // return_stack_pointer offset because it will now be 4 bytes higher than we
-  // thought.
-  //
-  // However, even if there is sret on the second argument as well, we do not
-  // need to worry about this. For some reason the callee is only responsible
-  // for cleaning up the case where an sret argument is passed in as the first
-  // argument.
-  if (func.hasParamAttribute(0, llvm::Attribute::StructRet) || injected_sret) {
-    fdecl.return_stack_pointer_offset = 8;
-  } else {
-    fdecl.return_stack_pointer_offset = 4;
-  }
-
+  fdecl.return_stack_pointer_offset = remill::GetReference(maybe_rspo);
   fdecl.return_stack_pointer = arch->RegisterByName("ESP");
-
   fdecl.return_address.mem_reg = fdecl.return_stack_pointer;
   fdecl.return_address.mem_offset = 0;
   fdecl.return_address.type = fdecl.return_stack_pointer->type;
@@ -160,14 +151,14 @@ llvm::Error X86_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error X86_C::BindReturnValues(
+llvm::Error X86_FastCall::BindReturnValues(
     llvm::Function &function, bool &injected_sret,
     std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
-  // If there is an sret parameter then it is a special case. For the X86_C ABI,
+  // If there is an sret parameter then it is a special case. For the X86_FastCall ABI,
   // the sret parameters are guarenteed the be in %eax. In this case, we can
   // assume the actual return value of the function will be the sret struct
   // pointer.
@@ -326,7 +317,7 @@ llvm::Error X86_C::BindReturnValues(
   }
 }
 
-llvm::Error X86_C::BindParameters(
+llvm::ErrorOr<unsigned> X86_FastCall::BindParameters(
     llvm::Function &function, bool injected_sret,
     std::vector<ParameterDecl> &parameter_declarations) {
 
@@ -334,8 +325,8 @@ llvm::Error X86_C::BindParameters(
   llvm::DataLayout dl(function.getParent());
 
   // stack_offset describes the position of the first stack argument on entry to
-  // the callee. For X86_C, this is at [esp + 4] because the return address is
-  // pushed onto the stack upon call instruction at [esp].
+  // the callee. For X86_FastCall, this is at [esp + 4] because the return address
+  // is pushed onto the stack upon call instruction at [esp].
   uint64_t stack_offset = 4;
 
   const auto esp_reg = arch->RegisterByName("ESP");
@@ -370,7 +361,7 @@ llvm::Error X86_C::BindParameters(
     declaration.name = param_names[argument.getArgNo()];
   }
 
-  return llvm::Error::success();
+  return static_cast<unsigned>(stack_offset);
 }
 
 }  // namespace anvill

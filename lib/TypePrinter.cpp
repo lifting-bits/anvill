@@ -38,35 +38,34 @@ static void TranslateTypeInternal(
     std::unordered_map<llvm::StructType *, size_t> &ids,
     const llvm::DataLayout &dl) {
   switch (type.getTypeID()) {
-    case llvm::Type::VoidTyID: {
+    case llvm::Type::VoidTyID:
       ss << 'v';
       break;
-    }
 
-    case llvm::Type::HalfTyID: {
+    case llvm::Type::HalfTyID:
       ss << 'e';
       break;
-    }
 
-    case llvm::Type::FloatTyID: {
+    case llvm::Type::FloatTyID:
       ss << 'f';
       break;
-    }
 
-    case llvm::Type::DoubleTyID: {
+    case llvm::Type::DoubleTyID:
       ss << 'd';
       break;
-    }
 
-    case llvm::Type::X86_FP80TyID: {
+    case llvm::Type::FP128TyID:
+      ss << 'Q';
+      break;
+
+    case llvm::Type::X86_FP80TyID:
       ss << 'D';
       break;
-    }
 
-    case llvm::Type::X86_MMXTyID: {
+    case llvm::Type::X86_MMXTyID:
       ss << 'M';
       break;
-    }
+
 
     case llvm::Type::IntegerTyID: {
       const auto derived = llvm::cast<llvm::IntegerType>(&type);
