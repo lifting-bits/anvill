@@ -178,3 +178,11 @@ install(
     TARGETS ${DECOMPILE_JSON}
     RUNTIME DESTINATION "${install_folder}/bin")
 
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
+)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
+    DESTINATION "${install_folder}/lib/cmake/anvill"
+)
