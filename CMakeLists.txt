@@ -22,6 +22,10 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/utils.cmake")
 
 FindAndSelectClangCompiler()
 
+macro(target_public_headers TARGET)
+  set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
+endmacro()
+
 # warnings and compiler settings
 if(NOT DEFINED WIN32)
   set(PROJECT_CXXFLAGS
@@ -95,6 +99,17 @@ target_include_directories(${ANVILL} PUBLIC
    "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 target_link_libraries(${ANVILL} PUBLIC remill)
+
+target_public_headers(${ANVILL}
+    include/anvill/Analyze.h
+    include/anvill/Decl.h
+    include/anvill/Lift.h
+    include/anvill/Optimize.h
+    include/anvill/Program.h
+    include/anvill/Type.h
+    include/anvill/TypeParser.h
+    include/anvill/TypePrinter.h
+  )
 
 #
 # tool target settings
