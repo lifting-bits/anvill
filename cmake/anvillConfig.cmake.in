@@ -26,4 +26,8 @@ if(NOT TARGET anvill)
   add_library(anvill STATIC IMPORTED)
   set_property(TARGET anvill PROPERTY IMPORTED_LOCATION "$${}{ANVILL_LIBRARY_LOCATION}")
   target_include_directories(anvill INTERFACE "$${}{ANVILL_INCLUDE_LOCATION}")
+
+  add_library(anvill-${REMILL_LLVM_VERSION} STATIC IMPORTED)
+  set_property(TARGET anvill-${REMILL_LLVM_VERSION} PROPERTY IMPORTED_LOCATION "$${}{ANVILL_LIBRARY_LOCATION}")
+  target_include_directories(anvill-${REMILL_LLVM_VERSION} INTERFACE "$${}{ANVILL_INCLUDE_LOCATION}")
 endif()
