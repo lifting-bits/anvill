@@ -24,6 +24,6 @@ if(NOT TARGET anvill)
   endif()
 
   add_library(anvill STATIC IMPORTED)
-  set_property(TARGET anvill PROPERTY IMPORTED_LOCATION "${ANVILL_LIBRARY_LOCATION}")
-  target_include_directories(anvill INTERFACE "${ANVILL_INCLUDE_LOCATION}")
+  set_property(TARGET anvill PROPERTY IMPORTED_LOCATION "$${}{ANVILL_LIBRARY_LOCATION}")
+  target_include_directories(anvill INTERFACE "$${}{ANVILL_INCLUDE_LOCATION}")
 endif()
