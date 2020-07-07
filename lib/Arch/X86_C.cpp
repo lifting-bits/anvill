@@ -204,8 +204,6 @@ llvm::Error X86_C::BindReturnValues(
 
   switch (ret_type->getTypeID()) {
     case llvm::Type::VoidTyID:
-      LOG(WARNING) << "Could not allocate unsupported type" << remill::LLVMThingToString(ret_type).c_str()
-                   << " to return register in function " << function.getName().str().c_str();
       return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
