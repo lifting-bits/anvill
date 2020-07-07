@@ -194,6 +194,11 @@ llvm::Error X86_FastCall::BindReturnValues(
 
 
   switch (ret_type->getTypeID()) {
+    case llvm::Type::VoidTyID:
+      LOG(WARNING) << "Could not allocate unsupported type" << remill::LLVMThingToString(ret_type).c_str()
+                   << " to return register in function " << function.getName().str().c_str();
+      return llvm::Error::success();
+
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
       const auto int32_ty = llvm::Type::getInt32Ty(int_ty->getContext());
@@ -336,7 +341,7 @@ llvm::ErrorOr<unsigned> X86_FastCall::BindParameters(
   // will be the return type of the function.
   if (injected_sret) {
     parameter_declarations.emplace_back();
-    auto decl = parameter_declarations.back();
+    auto &decl = parameter_declarations.back();
 
     decl.type = function.getReturnType();
     decl.mem_offset = static_cast<int64_t>(stack_offset);
@@ -346,7 +351,7 @@ llvm::ErrorOr<unsigned> X86_FastCall::BindParameters(
 
   for (auto &argument : function.args()) {
     parameter_declarations.emplace_back();
-    auto declaration = parameter_declarations.back();
+    auto &declaration = parameter_declarations.back();
 
     declaration.type = argument.getType();
 
