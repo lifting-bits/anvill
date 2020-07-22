@@ -14,7 +14,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import pprint
-import enum
 import sys
 
 from .exc import *
