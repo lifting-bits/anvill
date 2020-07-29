@@ -15,6 +15,12 @@ v3 license. The details of that license can be found in [LICENSE](LICENSE).
 
 ## Building
 
+```
+pip3 uninstall python-magic
+pip3 install python-magic-bin==0.4.14
+pip3 install pyelftools
+```
+
 **Note: Anvill requires at least LLVM 9.**
 
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
