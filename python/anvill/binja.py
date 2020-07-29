@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import magic
 import binaryninja as bn
 
 from .arch import *
@@ -328,6 +327,7 @@ class BNFunction(Function):
         ea += 1
 
 def load_binary(path):
+  import magic
   file_type = magic.from_file(path)
   if 'ELF' in file_type:
     bv_type = bn.BinaryViewType['ELF']
@@ -345,10 +345,14 @@ def load_binary(path):
   return bv
 
 class BNProgram(Program):
-  def __init__(self, path):
-    self._path = path
-    self._bv = load_binary(self._path)
-    self._dwarf = DWARFCore(path)
+  def __init__(self, path_or_bv):
+    if isinstance(path_or_bv, bn.BinaryView):
+      self._bv = path_or_bv
+      self._path = self._bv.file.filename
+    else:
+      self._path = path
+      self._bv = load_binary(self._path)
+    self._dwarf = DWARFCore(self._path)
     super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 
   def get_function_impl(self, address):
