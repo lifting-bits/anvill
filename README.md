@@ -80,21 +80,17 @@ cd ../../
 ./remill/scripts/build.sh
 ```
 
-To demonstrate usage we first make sure we have all the dependecies needed for Anvill's python plugins.
-
-```shell
-pip3 install pyelftools
-```
-
 Anvill's python plugins provide functionality needed to generate a JSON specification that contains information about the contents of a binary.
+These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [Binary Ninja](https://binary.ninja/) for various analysis tasks.
+
+Given that we have either of the above, we can try out Anvill's machine code lifter on a binary of our choice.
 
 ```shell
+# First make sure we have the required python packages
+pip3 install pyelftools
+# Next we generate a JSON specification from a binary
 python3 ./anvill/examples/lift.py --bin_in my_binary --spec_out spec.json
-```
-
-We then use the lifter to produce LLVM bitcode from a JSON specification.
-
-```shell
+# Finally we produce LLVM bitcode from a JSON specification
 ./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
 ```
 
