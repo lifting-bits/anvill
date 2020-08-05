@@ -14,6 +14,12 @@ equivalent C function.
 All code in this directory and all subdirectories is subject to the AGPL
 v3 license. The details of that license can be found in [LICENSE](LICENSE).
 
+<!-- ## Build Status
+
+|       | master |
+| ----- | ------ |
+| Linux | [![Build Status](https://github.com/lifting-bits/anvill/workflows/CI/badge.svg)](https://github.com/lifting-bits/anvill/actions?query=workflow%3ACI)| -->
+
 ## Getting Help
 
 If you are experiencing undocumented problems with Anvill then ask for help in the `#binary-lifting` channel of the [Empire Hacking Slack](https://empireslacking.herokuapp.com/).
@@ -105,7 +111,7 @@ We then use the lifter to produce LLVM bitcode from a JSON specification.
 
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
 
-```sh
+```shell
 ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
    docker build . \
    -t anvill-llvm${LLVM}-${DIST}-${ARCH} \
