@@ -371,7 +371,7 @@ class IntegerType(Type):
         "Cannot handle {}-byte {} integer type".format(
             size, ["unsigned", "signed"][int(is_signed)]), None)
 
-    inst = super(IntegerType, cls).__new__(cls, size, is_signed)
+    inst = super(IntegerType, cls).__new__(cls)
     cls._CACHE[key] = inst
     return inst
 
@@ -423,7 +423,7 @@ class FloatingPointType(Type):
       raise UnhandledTypeException(
         "Cannot handle {}-byte floating point type".format(size), None)
 
-    inst = super(FloatingPointType, cls).__new__(cls, size)
+    inst = super(FloatingPointType, cls).__new__(cls)
     cls._CACHE[size] = inst
     return inst
 
