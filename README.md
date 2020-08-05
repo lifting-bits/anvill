@@ -1,8 +1,9 @@
-# ANVILL Decompiler Toolchain
+# Anvill
 
-This directory contains code that implements simple decompiler primitives
-using Remill. The goal of these components is to produce high quality bitcode,
-which can then be further decompiled to C (via Clang ASTs) using [Rellic](https://github.com/trailofbits/rellic.git). 
+Anvill implements simple machine code lifting primitives using Remill.
+The goal of these components is to produce high quality bitcode,
+which can then be further decompiled to C (via Clang ASTs) using
+[Rellic](https://github.com/trailofbits/rellic.git).
 
 We define "high quality bitcode" as being similar in form to what the
 Clang compiler would produce if it were executed on a semantically
@@ -13,19 +14,98 @@ equivalent C function.
 All code in this directory and all subdirectories is subject to the AGPL
 v3 license. The details of that license can be found in [LICENSE](LICENSE).
 
-## Building
+## Getting Help
 
+If you are experiencing undocumented problems with Anvill then ask for help in the `#binary-lifting` channel of the [Empire Hacking Slack](https://empireslacking.herokuapp.com/).
+
+## Supported Platforms
+
+Anvill is supported on Linux platforms and has been tested on Ubuntu 18.04 and 20.04.
+
+## Dependencies
+
+Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/trailofbits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of cxx-common, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
+
+| Name | Version |
+| ---- | ------- |
+| [Git](https://git-scm.com/) | Latest |
+| [CMake](https://cmake.org/) | 3.2+ |
+| [Google Flags](https://github.com/google/glog) | Latest |
+| [Google Log](https://github.com/google/glog) | Latest |
+| [LLVM](http://llvm.org/) | 9.0+|
+| [Clang](http://clang.llvm.org/) | 9.0+ |
+| [Intel XED](https://github.com/intelxed/xed) | Latest |
+| [Python](https://www.python.org/) | 3.5.1+ |
+| [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |
+| [Binary Ninja](https://binary.ninja/) | Latest |
+
+## Pre-made Docker Images
+
+Pre-built Docker images are available on the Github Package Registry.
+
+## Getting and Building the Code
+
+### On Linux
+First, update aptitude and get install the baseline dependencies.
+
+```shell
+sudo apt-get update
+sudo apt-get upgrade
+
+sudo apt-get install \
+     git \
+     python3 \
+     python3-pip \
+     wget \
+     curl \
+     build-essential \
+     libtinfo-dev \
+     lsb-release \
+     zlib1g-dev \
+     ccache
+
+# Ubuntu 14.04, 16.04
+sudo apt-get install realpath
 ```
-pip3 uninstall python-magic
-pip3 install python-magic-bin==0.4.14
+
+The next step is to clone the Remill repository. We then clone the Anvill repository into the tools subdirectory of Remill. This is kind of like how Clang and LLVM are distributed separately, and the Clang source code needs to be put into LLVM's tools directory.
+
+```shell
+git clone https://github.com/lifting-bits/remill.git
+cd remill/tools/
+git clone https://github.com/lifting-bits/anvill.git
+```
+
+Finally, we build Remill along with Anvill. This script will create another directory, `remill-build`, in the current working directory. All remaining dependencies needed by Remill will be built in the `remill-build` directory.
+
+```shell
+cd ../../
+./remill/scripts/build.sh
+```
+
+To demonstrate usage we first make sure we have all the dependecies needed for Anvill's python plugins.
+
+```shell
 pip3 install pyelftools
 ```
 
-**Note: Anvill requires at least LLVM 9.**
+Anvill's python plugins provide functionality needed to generate a JSON specification that contains information about the contents of a binary.
+
+```shell
+python3 ./anvill/examples/lift.py --bin_in my_binary --spec_out spec.json
+```
+
+We then use the lifter to produce LLVM bitcode from a JSON specification.
+
+```shell
+./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
+```
+
+### Docker image
 
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
 
-```
+```sh
 ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
    docker build . \
    -t anvill-llvm${LLVM}-${DIST}-${ARCH} \
@@ -35,17 +115,9 @@ ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
    --build-arg LLVM_VERSION=${LLVM}
 ```
 
-## `anvill-decompile-json`
+## `anvill-specify-bitcode`
 
-`anvill-decompile-json` is a specification-based decompiler. That is,
-this tool will decompile machine code into high-quality bitcode given
-a specification describing the input and output locations and
-types of compiled functions, as well as type and location information
-about any of their dependencies.
-
-## `anvill-specify-json`
-
-`anvill-specify-json` is a tool that produces specifications for all functions
+`anvill-specify-bitcode` is a tool that produces specifications for all functions
 contained in an LLVM bitcode module. The purpose of this tool is to enable
 the creation of a database of specifications for commonly used, often externally-
 defined functions in binaries (e.g. libc, libc++, libstdc++) in binaries lifted
