@@ -9,11 +9,6 @@ We define "high quality bitcode" as being similar in form to what the
 Clang compiler would produce if it were executed on a semantically
 equivalent C function.
 
-## License
-
-All code in this directory and all subdirectories is subject to the AGPL
-v3 license. The details of that license can be found in [LICENSE](LICENSE).
-
 <!-- ## Build Status
 
 |       | master |
@@ -44,10 +39,6 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | [Python](https://www.python.org/) | 3.5.1+ |
 | [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |
 | [Binary Ninja](https://binary.ninja/) | Latest |
-
-## Pre-made Docker Images
-
-Pre-built Docker images are available on the Github Package Registry.
 
 ## Getting and Building the Code
 
