@@ -153,7 +153,7 @@ target_include_directories(${ANVILL} PUBLIC
    "${CMAKE_CURRENT_SOURCE_DIR}/include"
    ${PROJECT_INCLUDEDIRECTORIES})
 
-target_link_libraries(${ANVILL} PUBLIC remill ${PROJECT_LIBRARIES} AnvillVersion)
+target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion ${PROJECT_LIBRARIES})
 
 target_public_headers(${ANVILL}
     include/anvill/Analyze.h
