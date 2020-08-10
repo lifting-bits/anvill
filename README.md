@@ -21,7 +21,7 @@ pip3 install python-magic-bin==0.4.14
 pip3 install pyelftools
 ```
 
-**Note: Anvill requires at least LLVM 9.**
+**Note: Anvill requires at least LLVM 8.**
 
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
 
