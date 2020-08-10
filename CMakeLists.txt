@@ -31,7 +31,8 @@ endmacro()
 # warnings and compiler settings
 if(NOT DEFINED WIN32)
   set(PROJECT_CXXFLAGS
-    ${GLOBAL_CXXFLAGS} 
+    ${GLOBAL_CXXFLAGS} -Werror -Wconversion -pedantic
+      -Wno-unreachable-code-return
   )
 endif()
 
@@ -46,7 +47,6 @@ if(NOT TARGET remill)
   endif()
 
   find_package(remill REQUIRED ${REMILL_FINDPACKAGE_HINTS})
-  list(APPEND PROJECT_LIBRARIES remill)
 endif()
 
 # llvm
@@ -153,7 +153,7 @@ target_include_directories(${ANVILL} PUBLIC
    "${CMAKE_CURRENT_SOURCE_DIR}/include"
    ${PROJECT_INCLUDEDIRECTORIES})
 
-target_link_libraries(${ANVILL} PUBLIC ${PROJECT_LIBRARIES} AnvillVersion)
+target_link_libraries(${ANVILL} PUBLIC remill ${PROJECT_LIBRARIES} AnvillVersion)
 
 target_public_headers(${ANVILL}
     include/anvill/Analyze.h
