@@ -53,6 +53,8 @@ endif()
 
 set(ANVILL anvill-${REMILL_LLVM_VERSION})
 
+add_subdirectory(lib/Version)
+
 add_library(${ANVILL} STATIC
     include/anvill/Type.h
 
@@ -98,7 +100,7 @@ target_compile_options(${ANVILL} PUBLIC
 target_include_directories(${ANVILL} PUBLIC
    "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-target_link_libraries(${ANVILL} PUBLIC remill)
+target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion)
 
 target_public_headers(${ANVILL}
     include/anvill/Analyze.h
@@ -109,6 +111,7 @@ target_public_headers(${ANVILL}
     include/anvill/Type.h
     include/anvill/TypeParser.h
     include/anvill/TypePrinter.h
+    include/anvill/Version.h
   )
 
 #
