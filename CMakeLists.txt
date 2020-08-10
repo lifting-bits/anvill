@@ -31,8 +31,8 @@ endmacro()
 # warnings and compiler settings
 if(NOT DEFINED WIN32)
   set(PROJECT_CXXFLAGS
-    ${GLOBAL_CXXFLAGS} -Werror -Wconversion -pedantic
-      -Wno-unreachable-code-return
+    ${GLOBAL_CXXFLAGS} -Wconversion -pedantic
+    -Wno-unreachable-code-return
   )
 endif()
 
