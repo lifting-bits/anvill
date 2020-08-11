@@ -17,7 +17,6 @@ RUN apt-get update && \
     else \
         apt-get install -qqy --no-install-recommends libtinfo5 ; \
     fi && \
-    apt-get install -qqy --no-install-recommends libz3-4 && \
     rm -rf /var/lib/apt/lists/*
 
 # Build-time dependencies go here
@@ -28,7 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
     if [ "$(uname -m)" = "x86_64" ]; then apt-get install -qqy gcc-multilib g++-multilib; fi && \
-    apt-get install -qqy libz3-dev ninja-build python2.7 python3 python3-pip liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache && \
+    apt-get install -qqy ninja-build python2.7 python3 python3-pip liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache && \
     rm -rf /var/lib/apt/lists/*
 
 # needed for 20.04 support until we migrate to py3
