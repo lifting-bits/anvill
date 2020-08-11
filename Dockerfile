@@ -1,4 +1,4 @@
-ARG LLVM_VERSION=1000
+ARG LLVM_VERSION=800
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
@@ -11,7 +11,12 @@ FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
 # Additional runtime dependencies go here
 FROM ${BUILD_BASE} as base
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends libtinfo5 && \
+    if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
+        apt-get install -qqy --no-install-recommends libtinfo6 ; \
+    else \
+        apt-get install -qqy --no-install-recommends libtinfo5 ; \
+    fi && \
+    apt-get install -qqy --no-install-recommends libz3-4 && \
     rm -rf /var/lib/apt/lists/*
 
 # Build-time dependencies go here
