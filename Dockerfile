@@ -10,6 +10,7 @@ FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
 
 # Additional runtime dependencies go here
 FROM ${BUILD_BASE} as base
+ARG UBUNTU_VERSION
 RUN apt-get update && \
     if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
         apt-get install -qqy --no-install-recommends libtinfo6 ; \
