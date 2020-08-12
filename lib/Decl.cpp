@@ -207,7 +207,8 @@ llvm::json::Object FunctionDecl::SerializeToJSON(
 
   if (address) {
     json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("address"), this->address});
+        llvm::json::Object::KV{llvm::json::ObjectKey("address"),
+                               static_cast<int64_t>(this->address)});
   }
 
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),

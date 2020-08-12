@@ -19,10 +19,10 @@ import sys
 from .exc import *
 from .os import *
 from .type import *
+from .dwarf_type import *
 
 try:
   from elftools.dwarf.descriptions import (describe_DWARF_expr, set_global_machine_arch, describe_form_class)
-  from .dwarf_type import *
 
 except ImportError:
   print("pyelftools not installed (pip install pyelftools)!")
@@ -33,6 +33,7 @@ def _is_ELF_file(path):
     magic_bytes = f.read(4)
     return magic_bytes == b'\x7fELF'
   return False
+
 
 class DWVariable(object):
   """Represents the variables from dwarf info"""
@@ -71,7 +72,6 @@ class DWVariable(object):
   @property
   def type(self):
     return self._type
-
 
 class DWFunction(object):
   """Represents a generic function from dwarf info"""
@@ -145,19 +145,20 @@ class DWARFCore(object):
       if self._dwarf_info is None:
         return
     
-      # Load die to the die cache
+      # Load DIE to the die cache
       for cu in self._dwarf_info.iter_CUs():
         top_die = cu.get_top_DIE()
         DWARFCache._dw_cu_cache[cu.cu_offset] = DWCompileUnit(top_die)
         for die in cu.iter_DIEs():
           DWARFCache._offset_to_die[die.offset] = die
 
-      self._load_types()    
+      self._load_types()
       self._load_subprograms()
       self._load_globalvars()
     except ImportError:
       pass
 
+  # Process DIE to get the information
   def _process_dies(self, die, fn):
     fn(die)
     for child in die.iter_children():

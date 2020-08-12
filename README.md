@@ -33,8 +33,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | [CMake](https://cmake.org/) | 3.2+ |
 | [Google Flags](https://github.com/google/glog) | Latest |
 | [Google Log](https://github.com/google/glog) | Latest |
-| [LLVM](http://llvm.org/) | 9.0+|
-| [Clang](http://clang.llvm.org/) | 9.0+ |
+| [LLVM](http://llvm.org/) | 8.0+|
+| [Clang](http://clang.llvm.org/) | 8.0+ |
 | [Intel XED](https://github.com/intelxed/xed) | Latest |
 | [Python](https://www.python.org/) | 3.5.1+ |
 | [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |

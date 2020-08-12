@@ -30,7 +30,7 @@ setuptools.setup(
     license="AGPL 3",
     py_modules=[
         "anvill.__init__", "anvill.arch", "anvill.binja",
-        "anvill.dwarf", "anvill.exc", "anvill.function",
-        "anvill.ida", "anvill.loc", "anvill.mem",
-        "anvill.os", "anvill.program", "anvill.type",
+        "anvill.dwarf", "anvill.dwarf_type", "anvill.exc",
+        "anvill.function", "anvill.ida", "anvill.loc",
+        "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
         "anvill.var"])
