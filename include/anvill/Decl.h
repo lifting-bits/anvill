@@ -17,17 +17,17 @@
 
 #pragma once
 
+#include <llvm/IR/CallingConv.h>
+
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include <llvm/IR/CallingConv.h>
-
 #if __has_include(<llvm/Support/JSON.h>)
-# include <llvm/Support/JSON.h>
-# define ANVILL_WITH_JSON(...) __VA_ARGS__
+#  include <llvm/Support/JSON.h>
+#  define ANVILL_WITH_JSON(...) __VA_ARGS__
 #else
-# define ANVILL_WITH_JSON(...)
+#  define ANVILL_WITH_JSON(...)
 #endif
 
 #include <remill/Arch/Arch.h>
@@ -73,15 +73,15 @@ struct ValueDecl {
   // Type of this value.
   llvm::Type *type{nullptr};
 
-  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
-      const llvm::DataLayout &dl) const;)
+  ANVILL_WITH_JSON(
+      llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 };
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
 
-  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
-      const llvm::DataLayout &dl) const;)
+  ANVILL_WITH_JSON(
+      llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 };
 
 struct GlobalVarDecl {
@@ -89,8 +89,8 @@ struct GlobalVarDecl {
   uint64_t address{0};
 
   // Declare this global variable in an LLVM module.
-  llvm::GlobalVariable *DeclareInModule(
-      const std::string &name, llvm::Module &, bool allow_unowned=false) const;
+  llvm::GlobalVariable *DeclareInModule(const std::string &name, llvm::Module &,
+                                        bool allow_unowned = false) const;
 
  private:
   friend class Program;
@@ -166,26 +166,24 @@ struct FunctionDecl {
   uint64_t num_bytes_in_redzone{0};
 
   // Declare this function in an LLVM module.
-  llvm::Function *DeclareInModule(
-      const std::string &name, llvm::Module &, bool allow_unowned=false) const;
+  llvm::Function *DeclareInModule(const std::string &name, llvm::Module &,
+                                  bool allow_unowned = false) const;
 
   // Create a call to this function with name `name` from within a basic block
   // in a lifted bitcode function. Returns the new value of the memory pointer.
-  llvm::Value *CallFromLiftedBlock(
-      const std::string &name,
-      const remill::IntrinsicTable &intrinsics,
-      llvm::BasicBlock *block,
-      llvm::Value *state_ptr,
-      llvm::Value *mem_ptr,
-      bool allow_unowned=false) const;
+  llvm::Value *CallFromLiftedBlock(const std::string &name,
+                                   const remill::IntrinsicTable &intrinsics,
+                                   llvm::BasicBlock *block,
+                                   llvm::Value *state_ptr, llvm::Value *mem_ptr,
+                                   bool allow_unowned = false) const;
 
   // Serialize this function decl to JSON.
-  ANVILL_WITH_JSON(llvm::json::Object SerializeToJSON(
-      const llvm::DataLayout &dl) const;)
+  ANVILL_WITH_JSON(
+      llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 
   // Create a function declaration from an LLVM function.
-  static llvm::Expected<FunctionDecl> Create(
-      llvm::Function &func, const remill::Arch::ArchPtr &arch);
+  static llvm::Expected<FunctionDecl> Create(llvm::Function &func,
+                                             const remill::Arch::ArchPtr &arch);
 
  private:
   friend class Program;

@@ -15,16 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -142,37 +139,36 @@ class X86_64_SysV : public CallingConvention {
                                 llvm::Function &func) override;
 
  private:
-  llvm::Error BindParameters(llvm::Function &function,
-                             bool injected_sret,
+  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
                              std::vector<ParameterDecl> &param_decls);
 
-  llvm::Error BindReturnValues(llvm::Function &function,
-                               bool &injected_sret,
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
                                std::vector<ValueDecl> &ret_decls);
 
   const std::vector<RegisterConstraint> &parameter_register_constraints;
   const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateX86_64_SysV(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateX86_64_SysV(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new X86_64_SysV(arch));
 }
 
 X86_64_SysV::X86_64_SysV(const remill::Arch *arch)
     : CallingConvention(llvm::CallingConv::X86_64_SysV, arch),
       parameter_register_constraints(SelectX86Constraint(
-          arch->arch_name, kParamRegConstraints,
-          kAVXParamRegConstraints, kAVX512ParamRegConstraints)),
+          arch->arch_name, kParamRegConstraints, kAVXParamRegConstraints,
+          kAVX512ParamRegConstraints)),
       return_register_constraints(SelectX86Constraint(
-          arch->arch_name, kReturnRegConstraints,
-          kAVXReturnRegConstraints, kAVX512ReturnRegConstraints)) {}
+          arch->arch_name, kReturnRegConstraints, kAVXReturnRegConstraints,
+          kAVX512ReturnRegConstraints)) {}
 
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
 llvm::Error X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
                                            llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -204,9 +200,9 @@ llvm::Error X86_64_SysV::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error X86_64_SysV::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                              std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
@@ -230,8 +226,7 @@ llvm::Error X86_64_SysV::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -246,8 +241,7 @@ llvm::Error X86_64_SysV::BindReturnValues(
   }
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
@@ -426,8 +420,7 @@ llvm::Error X86_64_SysV::BindParameters(
 
     // Try to allocate from a register. If a register is not available then
     // allocate from the stack.
-    if (auto allocation =
-            alloc_param.TryRegisterAllocate(*param_type)) {
+    if (auto allocation = alloc_param.TryRegisterAllocate(*param_type)) {
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
@@ -450,7 +443,8 @@ llvm::Error X86_64_SysV::BindParameters(
 
       // The parameter was spread across multiple registers.
       } else if (!param_name.empty()) {
-        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size);
+             ++i) {
           parameter_declarations[prev_size + i].name =
               param_name + std::to_string(i);
         }

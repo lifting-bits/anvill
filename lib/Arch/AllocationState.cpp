@@ -17,15 +17,13 @@
 
 #include "AllocationState.h"
 
+#include <glog/logging.h>
+#include <llvm/IR/Attributes.h>
+#include <remill/Arch/Arch.h>
+
 #include <algorithm>
 
 #include "anvill/Decl.h"
-
-#include <glog/logging.h>
-
-#include <remill/Arch/Arch.h>
-
-#include <llvm/IR/Attributes.h>
 
 namespace anvill {
 namespace {
@@ -34,28 +32,22 @@ namespace {
 static uint64_t SizeConstraintToSize(const SizeConstraint &sc) {
   switch (sc) {
     case kMaxBit512:
-    case kMinBit512:
-      return 512;
+    case kMinBit512: return 512;
     case kMaxBit256:
-    case kMinBit256:
-      return 256;
+    case kMinBit256: return 256;
     case kMaxBit128:
-    case kMinBit128:
-      return 128;
+    case kMinBit128: return 128;
     case kMaxBit80:
-    case kMinBit80:
-      return 80;
+    case kMinBit80: return 80;
     case kMaxBit64:
-    case kMinBit64:
-      return 64;
+    case kMinBit64: return 64;
     case kMaxBit32:
-    case kMinBit32:
-      return 32;
+    case kMinBit32: return 32;
     case kMaxBit16:
-    case kMinBit16:
-      return 16;
+    case kMinBit16: return 16;
     case kMaxBit8:
       return 8;
+
       // kMinBit8 is a duplicate so it is not included here.
     default: {
       LOG(FATAL) << "Could not handle size constraint";
@@ -67,8 +59,9 @@ static uint64_t SizeConstraintToSize(const SizeConstraint &sc) {
 static const std::string kEmptyRegName;
 
 // Get the name of the smallest possible variant that still fits size.
-static const std::string &GetSmallestVariantName(
-    const std::vector<VariantConstraint> &variants, uint64_t size) {
+static const std::string &
+GetSmallestVariantName(const std::vector<VariantConstraint> &variants,
+                       uint64_t size) {
   for (const auto &vc : variants) {
     if (SizeConstraintToSize(vc.size_constraint) >= size) {
       return vc.register_name;
@@ -133,9 +126,7 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
       } else if (width <= 512) {
         size_constraint = kMinBit512;
       } else {
-        LOG(FATAL)
-            << "Integer too big: "
-            << remill::LLVMThingToString(derived);
+        LOG(FATAL) << "Integer too big: " << remill::LLVMThingToString(derived);
       }
       break;
     }
@@ -175,9 +166,9 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
       break;
 
     default:
-      LOG(FATAL)
-          << "Could not assign type and size constraints for type"
-          << remill::LLVMThingToString(&type);
+      LOG(FATAL) << "Could not assign type and size constraints for type"
+                 << remill::LLVMThingToString(&type);
+
       // TODO(aty): Handle other types like X86_MMXTyID, etc.
       break;
   }
@@ -185,19 +176,17 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
   return {size_constraint, type_constraint};
 }
 
-llvm::Optional<std::vector<ValueDecl>> AllocationState::TryRegisterAllocate(
-    llvm::Type &type) {
+llvm::Optional<std::vector<ValueDecl>>
+AllocationState::TryRegisterAllocate(llvm::Type &type) {
   if (type.isStructTy() || type.isArrayTy() || type.isVectorTy()) {
-    return TryCompositeRegisterAllocate(
-        llvm::cast<llvm::CompositeType>(type));
+    return TryCompositeRegisterAllocate(llvm::cast<llvm::CompositeType>(type));
   } else {
     return TryBasicRegisterAllocate(type, llvm::None);
   }
 }
 
 llvm::Optional<std::vector<ValueDecl>>
-AllocationState::TryCompositeRegisterAllocate(
-    llvm::CompositeType &type) {
+AllocationState::TryCompositeRegisterAllocate(llvm::CompositeType &type) {
   CHECK(type.isStructTy() || type.isArrayTy() || type.isVectorTy());
   std::vector<ValueDecl> ret;
   if (auto st = llvm::dyn_cast<llvm::StructType>(&type)) {
@@ -249,6 +238,7 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
 
   auto has_free_regs = false;
   for (size_t i = 0; i < constraints.size(); i++) {
+
     // Assume for now that the type constraints are uniform across variants.
     // Skip if register is already reserved, or filled, or if types don't match.
     TypeConstraint tc = constraints[i].variants.front().type_constraint;
@@ -275,7 +265,8 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
         reserved[i] = true;
       }
 
-      const auto &reg_name = GetSmallestVariantName(constraints[i].variants, fill[i]);
+      const auto &reg_name =
+          GetSmallestVariantName(constraints[i].variants, fill[i]);
       if (reg_name.empty()) {
         return llvm::None;
       }
@@ -292,7 +283,7 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
   // On some architectures, we're allowed to split types in two. Often the
   // easiest way to handle this is to convert a basic type into a wide composite
   // type.
-  if (has_free_regs  && config.type_splitter) {
+  if (has_free_regs && config.type_splitter) {
     if (auto split_type = config.type_splitter(&type);
         split_type && split_type != &type) {
       return TryRegisterAllocate(*split_type);
@@ -314,6 +305,7 @@ AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
       auto t = llvm::cast<llvm::IntegerType>(elem_type);
 
       if (conv->getIdentity() == llvm::CallingConv::X86_64_SysV) {
+
         // Special case for x86_64
         if (auto inner = ProcessIntVecX86_64SysV(elem_type, vec_size,
                                                  t->getBitWidth())) {
@@ -322,6 +314,7 @@ AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
           return llvm::None;
         }
       } else {
+
         // Generally, try to pack the registers for a vector.
         const auto prev_pack = config.can_pack_multiple_values_together;
         config.can_pack_multiple_values_together = true;
@@ -401,8 +394,7 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           config.can_pack_multiple_values_together = prev_pack;
           return ret;
         }
-        default:
-          break;
+        default: break;
       }
       break;
 
@@ -420,8 +412,7 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           config.can_pack_multiple_values_together = prev_pack;
           return ret;
         }
-        default:
-          break;
+        default: break;
       }
       break;
 
@@ -447,8 +438,7 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           config.can_pack_multiple_values_together = prev_pack;
           return ret;
         }
-        default:
-          break;
+        default: break;
       }
       break;
 
@@ -470,15 +460,11 @@ llvm::Optional<std::vector<ValueDecl>> AllocationState::ProcessIntVecX86_64SysV(
           config.can_pack_multiple_values_together = prev_pack;
           return ret;
         }
-        default:
-          break;
+        default: break;
       }
       break;
 
-    default:
-      LOG(FATAL)
-          << "Invalid bit width: " << bit_width;
-      break;
+    default: LOG(FATAL) << "Invalid bit width: " << bit_width; break;
   }
   return llvm::None;
 }
@@ -520,7 +506,8 @@ llvm::Error AllocationState::CoalescePacking(
     auto st = llvm::StructType::create(*arch->context, ar);
     ValueDecl v;
     const auto size = arch->DataLayout().getTypeAllocSizeInBits(st);
-    const auto &reg_name = GetSmallestVariantName(constraints[i].variants, size);
+    const auto &reg_name =
+        GetSmallestVariantName(constraints[i].variants, size);
     if (reg_name.empty()) {
       return llvm::createStringError(
           std::errc::invalid_argument,

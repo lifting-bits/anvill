@@ -17,13 +17,12 @@
 
 #pragma once
 
+#include <llvm/IR/Attributes.h>
+#include <remill/BC/Util.h>
+
 #include <vector>
 
 #include "Arch.h"
-
-#include <remill/BC/Util.h>
-
-#include <llvm/IR/Attributes.h>
 
 namespace remill {
 
@@ -54,25 +53,25 @@ struct AllocationState {
 
   llvm::Optional<std::vector<ValueDecl>> TryRegisterAllocate(llvm::Type &type);
 
-  llvm::Optional<std::vector<anvill::ValueDecl>> TryCompositeRegisterAllocate(
-      llvm::CompositeType &type);
+  llvm::Optional<std::vector<anvill::ValueDecl>>
+  TryCompositeRegisterAllocate(llvm::CompositeType &type);
 
-  llvm::Optional<std::vector<ValueDecl>> TryBasicRegisterAllocate(
-      llvm::Type &type, llvm::Optional<SizeAndType> hint);
+  llvm::Optional<std::vector<ValueDecl>>
+  TryBasicRegisterAllocate(llvm::Type &type, llvm::Optional<SizeAndType> hint);
 
-  llvm::Optional<std::vector<anvill::ValueDecl>> TryVectorRegisterAllocate(
-      llvm::VectorType &type);
+  llvm::Optional<std::vector<anvill::ValueDecl>>
+  TryVectorRegisterAllocate(llvm::VectorType &type);
 
   bool IsFilled(size_t i);
 
   uint64_t RemainingSpace(size_t i);
 
-  llvm::Optional<std::vector<anvill::ValueDecl>> ProcessIntVecX86_64SysV(
-      llvm::Type *elem_type, unsigned int vec_size, unsigned int bit_width);
+  llvm::Optional<std::vector<anvill::ValueDecl>>
+  ProcessIntVecX86_64SysV(llvm::Type *elem_type, unsigned int vec_size,
+                          unsigned int bit_width);
 
-  llvm::Error CoalescePacking(
-      const std::vector<anvill::ValueDecl> &vector,
-      std::vector<anvill::ValueDecl> &packed_values);
+  llvm::Error CoalescePacking(const std::vector<anvill::ValueDecl> &vector,
+                              std::vector<anvill::ValueDecl> &packed_values);
 
   const std::vector<RegisterConstraint> &constraints;
   const remill::Arch *arch;

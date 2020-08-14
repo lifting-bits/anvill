@@ -18,29 +18,27 @@
 #include "anvill/Analyze.h"
 
 #include <glog/logging.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Operator.h>
+#include <llvm/IR/Type.h>
+#include <llvm/Transforms/Utils/Local.h>
+#include <remill/BC/Compat/ScalarTransforms.h>
+#include <remill/BC/Optimizer.h>
+#include <remill/BC/Util.h>
 
 #include <map>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Operator.h>
-#include <llvm/IR/Type.h>
-#include <llvm/Transforms/Utils/Local.h>
-
-#include <remill/BC/Compat/ScalarTransforms.h>
-#include <remill/BC/Optimizer.h>
-#include <remill/BC/Util.h>
 
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
@@ -66,7 +64,7 @@ void XrefExprFolder::Reset(void) {
 
   // Drop the error.
   if (error) {
-    llvm::handleAllErrors(std::move(error), [] (llvm::ErrorInfoBase &) {});
+    llvm::handleAllErrors(std::move(error), [](llvm::ErrorInfoBase &) {});
   }
 }
 
@@ -78,9 +76,8 @@ uint64_t XrefExprFolder::Visit(llvm::Value *v) {
     return VisitInst(i);
 
   } else {
-    auto err = llvm::createStringError(
-        std::errc::address_not_available,
-        "Could not fold value");
+    auto err = llvm::createStringError(std::errc::address_not_available,
+                                       "Could not fold value");
     if (error) {
       error = llvm::joinErrors(std::move(error), std::move(err));
     } else {
@@ -96,8 +93,7 @@ uint64_t XrefExprFolder::VisitInst(llvm::Instruction *ce) {
   }
 
   switch (ce->getOpcode()) {
-    case llvm::Instruction::GetElementPtr:
-      return VisitGEP(ce);
+    case llvm::Instruction::GetElementPtr: return VisitGEP(ce);
     case llvm::Instruction::Add:
       return VisitAdd(ce->getOperand(0), ce->getOperand(1));
     case llvm::Instruction::Sub:
@@ -110,8 +106,7 @@ uint64_t XrefExprFolder::VisitInst(llvm::Instruction *ce) {
       return VisitOr(ce->getOperand(0), ce->getOperand(1));
     case llvm::Instruction::Xor:
       return VisitXor(ce->getOperand(0), ce->getOperand(1));
-    case llvm::Instruction::ICmp:
-      return VisitICmp(ce);
+    case llvm::Instruction::ICmp: return VisitICmp(ce);
     case llvm::Instruction::ZExt:
       return VisitZExt(ce->getOperand(0), ce->getType());
     case llvm::Instruction::SExt:
@@ -129,16 +124,13 @@ uint64_t XrefExprFolder::VisitInst(llvm::Instruction *ce) {
       return VisitAShr(ce->getOperand(0), ce->getOperand(1));
     case llvm::Instruction::IntToPtr:
     case llvm::Instruction::PtrToInt:
-    case llvm::Instruction::BitCast:
-      return Visit(ce->getOperand(0));
-    default:
-      break;
+    case llvm::Instruction::BitCast: return Visit(ce->getOperand(0));
+    default: break;
   }
 
-  error = llvm::createStringError(
-      std::errc::address_not_available,
-      "Could not fold instruction: %s",
-      remill::LLVMThingToString(ce).c_str());
+  error = llvm::createStringError(std::errc::address_not_available,
+                                  "Could not fold instruction: %s",
+                                  remill::LLVMThingToString(ce).c_str());
   return 0;
 }
 
@@ -196,10 +188,10 @@ uint64_t XrefExprFolder::VisitConst(llvm::Constant *c) {
             func->getName().str().c_str());
         error = llvm::joinErrors(std::move(error), std::move(err));
       } else {
-        auto err = llvm::createStringError(
-            std::errc::address_not_available,
-            "Could not resolve address of function: %s",
-            func->getName().str().c_str());
+        auto err =
+            llvm::createStringError(std::errc::address_not_available,
+                                    "Could not resolve address of function: %s",
+                                    func->getName().str().c_str());
         error = std::move(err);
       }
       return 0;
@@ -209,8 +201,7 @@ uint64_t XrefExprFolder::VisitConst(llvm::Constant *c) {
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(c); ce) {
     switch (ce->getOpcode()) {
-      case llvm::Instruction::GetElementPtr:
-        return VisitGEP(ce);
+      case llvm::Instruction::GetElementPtr: return VisitGEP(ce);
       case llvm::Instruction::Add:
         return VisitAdd(ce->getOperand(0), ce->getOperand(1));
       case llvm::Instruction::Sub:
@@ -223,8 +214,7 @@ uint64_t XrefExprFolder::VisitConst(llvm::Constant *c) {
         return VisitOr(ce->getOperand(0), ce->getOperand(1));
       case llvm::Instruction::Xor:
         return VisitXor(ce->getOperand(0), ce->getOperand(1));
-      case llvm::Instruction::ICmp:
-        return VisitICmp(ce);
+      case llvm::Instruction::ICmp: return VisitICmp(ce);
       case llvm::Instruction::ZExt:
         return VisitZExt(ce->getOperand(0), ce->getType());
       case llvm::Instruction::SExt:
@@ -242,17 +232,14 @@ uint64_t XrefExprFolder::VisitConst(llvm::Constant *c) {
         return VisitAShr(ce->getOperand(0), ce->getOperand(1));
       case llvm::Instruction::IntToPtr:
       case llvm::Instruction::PtrToInt:
-      case llvm::Instruction::BitCast:
-        return VisitConst(ce->getOperand(0));
-      default:
-        break;
+      case llvm::Instruction::BitCast: return VisitConst(ce->getOperand(0));
+      default: break;
     }
   }
 
-  auto err = llvm::createStringError(
-      std::errc::address_not_available,
-      "Could not fold constant expression: %s",
-      remill::LLVMThingToString(c).c_str());
+  auto err = llvm::createStringError(std::errc::address_not_available,
+                                     "Could not fold constant expression: %s",
+                                     remill::LLVMThingToString(c).c_str());
   if (error) {
     error = llvm::joinErrors(std::move(error), std::move(err));
   } else {
@@ -268,9 +255,9 @@ uint64_t XrefExprFolder::VisitGEP(llvm::Value *val) {
   if (gep->accumulateConstantOffset(dl, ap)) {
     return ap.getZExtValue();
   } else {
-    auto err = llvm::createStringError(
-        std::errc::address_not_available,
-        "Non-constant getelementptr index sequence");
+    auto err =
+        llvm::createStringError(std::errc::address_not_available,
+                                "Non-constant getelementptr index sequence");
     if (error) {
       error = llvm::joinErrors(std::move(error), std::move(err));
     } else {
@@ -393,8 +380,7 @@ uint64_t XrefExprFolder::VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op) {
 }
 
 int64_t XrefExprFolder::Signed(uint64_t val, llvm::Value *op) {
-  switch (const uint64_t size = op->getType()->getPrimitiveSizeInBits();
-          size) {
+  switch (const uint64_t size = op->getType()->getPrimitiveSizeInBits(); size) {
     case 1:
       if (val & 1) {
         return -1;
@@ -414,8 +400,8 @@ int64_t XrefExprFolder::Signed(uint64_t val, llvm::Value *op) {
 
 uint64_t XrefExprFolder::VisitICmp(llvm::Instruction *inst) {
   const auto icmp = llvm::dyn_cast<llvm::ICmpInst>(inst);
-  return VisitICmp(
-      icmp->getPredicate(), icmp->getOperand(0), icmp->getOperand(1));
+  return VisitICmp(icmp->getPredicate(), icmp->getOperand(0),
+                   icmp->getOperand(1));
 }
 
 uint64_t XrefExprFolder::VisitICmp(llvm::ConstantExpr *ce) {
@@ -428,18 +414,12 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
   const uint64_t rhs = Visit(rhs_op);
   Reset();
   switch (pred) {
-    case llvm::CmpInst::ICMP_EQ:
-      return lhs == rhs;
-    case llvm::CmpInst::ICMP_NE:
-      return lhs != rhs;
-    case llvm::CmpInst::ICMP_UGT:
-      return lhs > rhs;
-    case llvm::CmpInst::ICMP_UGE:
-      return lhs >= rhs;
-    case llvm::CmpInst::ICMP_ULT:
-      return lhs < rhs;
-    case llvm::CmpInst::ICMP_ULE:
-      return lhs <= rhs;
+    case llvm::CmpInst::ICMP_EQ: return lhs == rhs;
+    case llvm::CmpInst::ICMP_NE: return lhs != rhs;
+    case llvm::CmpInst::ICMP_UGT: return lhs > rhs;
+    case llvm::CmpInst::ICMP_UGE: return lhs >= rhs;
+    case llvm::CmpInst::ICMP_ULT: return lhs < rhs;
+    case llvm::CmpInst::ICMP_ULE: return lhs <= rhs;
     case llvm::CmpInst::ICMP_SGT:
       return Signed(lhs, lhs_op) > Signed(rhs, rhs_op);
     case llvm::CmpInst::ICMP_SGE:
@@ -451,8 +431,7 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
     default: {
       auto err = llvm::createStringError(
           std::errc::address_not_available,
-          "Unsupported predicate in expression: %u",
-          pred);
+          "Unsupported predicate in expression: %u", pred);
       if (error) {
         error = llvm::joinErrors(std::move(error), std::move(err));
       } else {
@@ -463,8 +442,8 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
   }
 }
 
-uint64_t XrefExprFolder::VisitSelect(
-    llvm::Value *cond, llvm::Value *if_true, llvm::Value *if_false) {
+uint64_t XrefExprFolder::VisitSelect(llvm::Value *cond, llvm::Value *if_true,
+                                     llvm::Value *if_false) {
   const auto sel = Visit(cond);
   if (error) {
     return 0;
@@ -507,13 +486,13 @@ uint64_t XrefExprFolder::VisitTrunc(llvm::Value *op, llvm::Type *type) {
   return (ea & mask);
 }
 
-std::pair<bool, uint64_t> XrefExprFolder::TryResolveGlobal(
-    llvm::GlobalValue *gv) {
+std::pair<bool, uint64_t>
+XrefExprFolder::TryResolveGlobal(llvm::GlobalValue *gv) {
   std::pair<bool, uint64_t> ret = {false, 0};
 
   program.ForEachAddressOfName(
       gv->getName().str(),
-      [&ret] (uint64_t ea, const FunctionDecl *, const GlobalVarDecl *) {
+      [&ret](uint64_t ea, const FunctionDecl *, const GlobalVarDecl *) {
         ret.first = true;
         ret.second = ea;
         return false;
@@ -677,8 +656,7 @@ static void FindPossibleCrossReferences(
           const auto ea = folder.Visit(ce);
           if (folder.error) {
             llvm::handleAllErrors(
-                std::move(folder.error),
-                [=] (llvm::ErrorInfoBase &eib) {
+                std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
                   LOG(ERROR)
                       << "Unable to handle possible cross-reference to "
                       << std::hex << ea << std::dec << ": " << eib.message();
@@ -699,9 +677,8 @@ static void FindPossibleCrossReferences(
           next_work_list.push_back(user_ce);
 
         } else {
-          LOG(ERROR)
-              << "Unexpected user of cross-reference: "
-              << remill::LLVMThingToString(user);
+          LOG(ERROR) << "Unexpected user of cross-reference: "
+                     << remill::LLVMThingToString(user);
         }
       }
     }
@@ -740,8 +717,8 @@ static void RecoverStackMemoryAccesses(
   for (auto [use, ea] : sp_fixups) {
     llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!inst) {
-      LOG(ERROR)
-          << "Non-inst user: " << remill::LLVMThingToString(use->getUser());
+      LOG(ERROR) << "Non-inst user: "
+                 << remill::LLVMThingToString(use->getUser());
       continue;
     }
 
@@ -751,9 +728,9 @@ static void RecoverStackMemoryAccesses(
     auto &cell = frame.cells.back();
 
     if (32 == ptr_size) {
-      cell.address_const = static_cast<uint64_t>(
-          static_cast<int64_t>(static_cast<int32_t>(ea)) +
-          static_cast<int64_t>(kStackBias));
+      cell.address_const =
+          static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(ea)) +
+                                static_cast<int64_t>(kStackBias));
     } else {
       cell.address_const = static_cast<uint64_t>(
           static_cast<int64_t>(ea) + static_cast<int64_t>(kStackBias));
@@ -771,7 +748,7 @@ static void RecoverStackMemoryAccesses(
 
   // Order cells to prefer wider types over smaller types, or wider aligned
   // types over lesser aligned types.
-  auto order_cells = [&dl] (const Cell &a, const Cell &b) -> bool {
+  auto order_cells = [&dl](const Cell &a, const Cell &b) -> bool {
     if (a.address_const < b.address_const) {
       return true;
     } else if (a.address_const > b.address_const) {
@@ -807,14 +784,15 @@ static void RecoverStackMemoryAccesses(
   std::vector<llvm::Type *> types;
 
   for (auto &[func, frame] : frames) {
+
     // Sort the cells, grouped by bytes, ordering larger cells
     std::sort(frame.cells.begin(), frame.cells.end(), order_cells);
 
     auto last_size = dl.getPointerSize(0);
-    llvm::Type *last_type = llvm::IntegerType::get(
-        context, dl.getPointerSizeInBits(0));
+    llvm::Type *last_type =
+        llvm::IntegerType::get(context, dl.getPointerSizeInBits(0));
 
-    auto fill_up_to = [=, &types] (uint64_t running_addr, uint64_t ea) {
+    auto fill_up_to = [=, &types](uint64_t running_addr, uint64_t ea) {
       while (last_size && (running_addr + last_size) <= ea) {
         types.push_back(last_type);
         running_addr += last_size;
@@ -884,8 +862,8 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   std::vector<std::pair<llvm::Use *, uint64_t>> sp_fixups;
   std::vector<std::pair<llvm::Use *, uint64_t>> ci_fixups;
 
-  FindPossibleCrossReferences(
-      program, module, "__anvill_sp", fixups, maybe_fixups, sp_fixups);
+  FindPossibleCrossReferences(program, module, "__anvill_sp", fixups,
+                              maybe_fixups, sp_fixups);
 
   LOG(ERROR) << "fixups.size()=" << fixups.size();
   LOG(ERROR) << "maybe_fixups.size()=" << maybe_fixups.size();
@@ -1064,19 +1042,19 @@ static void FindMemoryReferences(
           cell.is_load = true;
           cell.type = GetDownstreamType(call_inst);
 
-        // Stores.
+// Stores.
         } else if (name.startswith("__remill_write_memory_")) {
           cell.is_store = true;
           cell.type = GetUpstreamType(call_inst->getArgOperand(2));
 
-        // Compare-and-swap.
+// Compare-and-swap.
         } else if (name.startswith("__remill_compare_exchange_")) {
           cell.is_load = true;
           cell.is_store = true;
           cell.is_atomic = true;
           cell.type = GetUpstreamType(call_inst->getArgOperand(3));
 
-        // Fetch-and-update.
+// Fetch-and-update.
         } else if (name.startswith("__remill_fetch_and_")) {
           cell.is_load = true;
           cell.is_store = true;
@@ -1084,13 +1062,13 @@ static void FindMemoryReferences(
           cell.type = GetUpstreamTypeFromPointer(
               call_inst->getArgOperand(2));
 
-        // Loads from memory mapped I/O.
+// Loads from memory mapped I/O.
         } else if (name.startswith("__remill_read_io_port_")) {
           cell.is_load = true;
           cell.is_volatile = true;
           cell.type = GetDownstreamType(call_inst);
 
-        // Stores to memory mapped I/O.
+// Stores to memory mapped I/O.
         } else if (name.startswith("__remill_write_io_port_")) {
           cell.is_store = true;
           cell.is_volatile = true;
@@ -1102,12 +1080,12 @@ static void FindMemoryReferences(
 
         address_val = call_inst->getArgOperand(1);
 
-      // Integer to pointer cast.
+// Integer to pointer cast.
       } else if (auto ptr_inst = llvm::dyn_cast<llvm::IntToPtrInst>(&inst)) {
         address_val = ptr_inst->getOperand(0);
         cell.type = ptr_inst->getType()->getPointerElementType();
 
-      // Bitcast.
+// Bitcast.
       } else if (auto bitcast_inst = llvm::dyn_cast<llvm::BitCastInst>(&inst)) {
         if (bitcast_inst->getType()->isPointerTy()) {
           address_val = bitcast_inst->stripPointerCasts();
@@ -1117,7 +1095,7 @@ static void FindMemoryReferences(
           continue;
         }
 
-      // TODO(pag): GEPs, others?
+// TODO(pag): GEPs, others?
       } else {
         continue;
       }
@@ -1440,7 +1418,7 @@ static void RecoverStackMemoryAccesses(
       types.push_back(llvm::ArrayType::get(i8_type, padding_bytes));
       running_addr = cell.address_const;
 
-      // NOTE(pag): This assumes downward stack growth.
+// NOTE(pag): This assumes downward stack growth.
     } else if (running_addr > cell.address_const) {
       LOG(ERROR)
           << "SKIPPING " << std::hex << " " << cell.address_const << std::dec
@@ -1528,14 +1506,14 @@ size_t DeclareMissingGlobals(
         ++cell_it;
         continue;
 
-        // Next cell is adjacent to this cell, extend us.
+// Next cell is adjacent to this cell, extend us.
       } else if (cell_it->address_const == next_addr) {
         next_addr += next_addr + cell_it->size;
         types.push_back(cell_it->type);
         ++cell_it;
         continue;
 
-        // There is a gap, we have the end of a global variable.
+// There is a gap, we have the end of a global variable.
       } else {
         break;
       }
@@ -1598,7 +1576,7 @@ static void RecoverGlobalVariableAccesses(
         use.set(ir.CreatePtrToInt(
             nearby[cell.address_const], cell.address_val->getType()));
 
-        // Go try to find the one containing this cell.
+// Go try to find the one containing this cell.
       } else {
         uint64_t min_scan = 0;
         if (cell.address_const > max_var_size) {
@@ -1679,6 +1657,7 @@ static bool TransformPattern_PTI_Add(
 
       auto ci = llvm::dyn_cast<llvm::ConstantInt>(disp);
       if (!ci) {
+
         // TODO(pag): Some kind of pattern matching, e.g. look for things like
         //            a * ci_size for array indexing, perhaps.
         continue;

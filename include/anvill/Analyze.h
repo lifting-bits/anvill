@@ -17,9 +17,9 @@
 
 #pragma once
 
-#include <cstdint>
-
 #include <remill/BC/Compat/Error.h>
+
+#include <cstdint>
 
 namespace llvm {
 class Constant;
@@ -91,8 +91,8 @@ class XrefExprFolder {
   uint64_t VisitICmp(llvm::Instruction *inst);
   uint64_t VisitICmp(llvm::ConstantExpr *ce);
   uint64_t VisitICmp(unsigned pred, llvm::Value *lhs_op, llvm::Value *rhs_op);
-  uint64_t VisitSelect(
-      llvm::Value *cond, llvm::Value *if_true, llvm::Value *if_false);
+  uint64_t VisitSelect(llvm::Value *cond, llvm::Value *if_true,
+                       llvm::Value *if_false);
   uint64_t VisitZExt(llvm::Value *op, llvm::Type *type);
   uint64_t VisitSExt(llvm::Value *op, llvm::Type *type);
   uint64_t VisitTrunc(llvm::Value *op, llvm::Type *type);
