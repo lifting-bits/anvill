@@ -54,6 +54,7 @@ static void SetVersion(void) {
 
 #if __has_include(<llvm/Support/JSON.h>)
 
+#  include <gflags/gflags.h>
 #  include <glog/logging.h>
 #  include <llvm/IR/LLVMContext.h>
 #  include <llvm/IR/Module.h>
