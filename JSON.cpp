@@ -24,54 +24,49 @@
 
 #if __has_include(<llvm/Support/JSON.h>)
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#  include <gflags/gflags.h>
+#  include <glog/logging.h>
+#  include <llvm/IR/LLVMContext.h>
+#  include <llvm/IR/Module.h>
+#  include <llvm/Support/JSON.h>
+#  include <llvm/Support/MemoryBuffer.h>
+#  include <remill/Arch/Arch.h>
+#  include <remill/Arch/Name.h>
+#  include <remill/BC/Compat/Error.h>
+#  include <remill/BC/IntrinsicTable.h>
+#  include <remill/BC/Lifter.h>
+#  include <remill/BC/Util.h>
+#  include <remill/OS/OS.h>
 
-#include <llvm/IR/Module.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/Support/JSON.h>
-#include <llvm/Support/MemoryBuffer.h>
-
-#include <remill/Arch/Arch.h>
-#include <remill/Arch/Name.h>
-#include <remill/BC/Compat/Error.h>
-#include <remill/BC/IntrinsicTable.h>
-#include <remill/BC/Lifter.h>
-#include <remill/BC/Util.h>
-#include <remill/OS/OS.h>
-
-#include "anvill/Analyze.h"
-#include "anvill/Decl.h"
-#include "anvill/Optimize.h"
-#include "anvill/Lift.h"
-#include "anvill/Program.h"
-#include "anvill/TypeParser.h"
+#  include "anvill/Analyze.h"
+#  include "anvill/Decl.h"
+#  include "anvill/Lift.h"
+#  include "anvill/Optimize.h"
+#  include "anvill/Program.h"
+#  include "anvill/TypeParser.h"
 
 DECLARE_string(arch);
 DECLARE_string(os);
 
 DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
 DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
-DEFINE_string(bc_out, "", "Path to file where the LLVM bitcode should be "
-                          "saved.");
+DEFINE_string(bc_out, "",
+              "Path to file where the LLVM bitcode should be "
+              "saved.");
 
 namespace {
 
 // Parse the location of a value. This applies to both parameters and
 // return values.
-static bool ParseValue(
-    const remill::Arch *arch,
-    anvill::ValueDecl &decl,
-    llvm::json::Object *obj,
-    const char *desc) {
+static bool ParseValue(const remill::Arch *arch, anvill::ValueDecl &decl,
+                       llvm::json::Object *obj, const char *desc) {
 
   auto maybe_reg = obj->getString("register");
   if (maybe_reg) {
     decl.reg = arch->RegisterByName(maybe_reg->str());
     if (!decl.reg) {
-      LOG(ERROR)
-          << "Unable to locate register '" << maybe_reg->str()
-          << "' used for storing " << desc << ".";
+      LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
+                 << "' used for storing " << desc << ".";
       return false;
     }
   }
@@ -81,9 +76,8 @@ static bool ParseValue(
     if (maybe_reg) {
       decl.mem_reg = arch->RegisterByName(maybe_reg->str());
       if (!decl.mem_reg) {
-        LOG(ERROR)
-            << "Unable to locate memory base register '"
-            << maybe_reg->str() << "' used for storing " << desc << ".";
+        LOG(ERROR) << "Unable to locate memory base register '"
+                   << maybe_reg->str() << "' used for storing " << desc << ".";
         return false;
       }
     }
@@ -95,9 +89,8 @@ static bool ParseValue(
   }
 
   if (decl.reg && decl.mem_reg) {
-    LOG(ERROR)
-        << "A " << desc << " cannot be resident in both a register "
-        << "and a memory location.";
+    LOG(ERROR) << "A " << desc << " cannot be resident in both a register "
+               << "and a memory location.";
     return false;
 
   } else if (!decl.reg && !decl.mem_reg) {
@@ -116,31 +109,26 @@ static bool ParseValue(
 // reflective of what you would see if you compiled C/C++ source code to
 // LLVM bitcode, and inspected the type of the corresponding parameter in
 // the bitcode.
-static bool ParseParameter(
-    const remill::Arch *arch,
-    llvm::LLVMContext &context,
-    anvill::ParameterDecl &decl,
-    llvm::json::Object *obj) {
+static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
+                           anvill::ParameterDecl &decl,
+                           llvm::json::Object *obj) {
 
   auto maybe_name = obj->getString("name");
   if (maybe_name) {
     decl.name = maybe_name->str();
   } else {
-    LOG(WARNING)
-        << "Missing function parameter name.";
+    LOG(WARNING) << "Missing function parameter name.";
   }
 
   auto maybe_type_str = obj->getString("type");
   if (!maybe_type_str) {
-    LOG(ERROR)
-        << "Missing 'type' field in function parameter.";
+    LOG(ERROR) << "Missing 'type' field in function parameter.";
     return false;
   }
 
   auto maybe_type = anvill::ParseType(context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
-    LOG(ERROR)
-        << remill::GetErrorString(maybe_type);
+    LOG(ERROR) << remill::GetErrorString(maybe_type);
     return false;
   }
 
@@ -149,23 +137,19 @@ static bool ParseParameter(
 }
 
 // Parse a return value from the JSON spec.
-static bool ParseReturnValue(
-    const remill::Arch *arch,
-    llvm::LLVMContext &context,
-    anvill::ValueDecl &decl,
-    llvm::json::Object *obj) {
+static bool ParseReturnValue(const remill::Arch *arch,
+                             llvm::LLVMContext &context,
+                             anvill::ValueDecl &decl, llvm::json::Object *obj) {
 
   auto maybe_type_str = obj->getString("type");
   if (!maybe_type_str) {
-    LOG(ERROR)
-        << "Missing 'type' field in function return value.";
+    LOG(ERROR) << "Missing 'type' field in function return value.";
     return false;
   }
 
   auto maybe_type = anvill::ParseType(context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
-    LOG(ERROR)
-        << remill::GetErrorString(maybe_type);
+    LOG(ERROR) << remill::GetErrorString(maybe_type);
     return false;
   }
 
@@ -176,18 +160,14 @@ static bool ParseReturnValue(
 // Try to unserialize function info from a JSON specification. These
 // are really function prototypes / declarations, and not any isntruction
 // data (that is separate, if present).
-static bool ParseFunction(
-    const remill::Arch *arch,
-    llvm::LLVMContext &context,
-    anvill::Program &program,
-    llvm::json::Object *obj) {
+static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
+                          anvill::Program &program, llvm::json::Object *obj) {
 
   anvill::FunctionDecl decl;
 
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
-    LOG(ERROR)
-        << "Missing function address in specification";
+    LOG(ERROR) << "Missing function address in specification";
     return false;
   }
 
@@ -202,10 +182,9 @@ static bool ParseFunction(
           return false;
         }
       } else {
-        LOG(ERROR)
-            << "Non-object value in 'parameters' array of "
-            << "function at address '" << std::hex
-            << decl.address << std::dec << "'";
+        LOG(ERROR) << "Non-object value in 'parameters' array of "
+                   << "function at address '" << std::hex << decl.address
+                   << std::dec << "'";
         return false;
       }
     }
@@ -217,10 +196,9 @@ static bool ParseFunction(
       return false;
     }
   } else {
-    LOG(ERROR)
-        << "Non-present or non-object 'return_address' in function "
-        << "specification at '" << std::hex << decl.address << std::dec
-        << "'";
+    LOG(ERROR) << "Non-present or non-object 'return_address' in function "
+               << "specification at '" << std::hex << decl.address << std::dec
+               << "'";
     return false;
   }
 
@@ -232,11 +210,10 @@ static bool ParseFunction(
     if (maybe_reg) {
       decl.return_stack_pointer = arch->RegisterByName(maybe_reg->str());
       if (!decl.return_stack_pointer) {
-        LOG(ERROR)
-            << "Unable to locate register '" << maybe_reg->str()
-            << "' used computing the exit value of the "
-            << "stack pointer in function specification at '" << std::hex
-            << decl.address << std::dec << "'";
+        LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
+                   << "' used computing the exit value of the "
+                   << "stack pointer in function specification at '" << std::hex
+                   << decl.address << std::dec << "'";
         return false;
       }
     } else {
@@ -254,8 +231,7 @@ static bool ParseFunction(
   } else {
     LOG(ERROR)
         << "Non-present or non-object 'return_stack_pointer' in function "
-        << "specification at '" << std::hex << decl.address << std::dec
-        << "'";
+        << "specification at '" << std::hex << decl.address << std::dec << "'";
     return false;
   }
 
@@ -267,10 +243,9 @@ static bool ParseFunction(
           return false;
         }
       } else {
-        LOG(ERROR)
-            << "Non-object value in 'return_values' array of "
-            << "function at address '" << std::hex
-            << decl.address << std::dec << "'";
+        LOG(ERROR) << "Non-object value in 'return_values' array of "
+                   << "function at address '" << std::hex << decl.address
+                   << std::dec << "'";
         return false;
       }
     }
@@ -290,8 +265,7 @@ static bool ParseFunction(
 
   auto err = program.DeclareFunction(decl);
   if (remill::IsError(err)) {
-    LOG(ERROR)
-        << remill::GetErrorString(err);
+    LOG(ERROR) << remill::GetErrorString(err);
     return false;
   }
 
@@ -299,16 +273,13 @@ static bool ParseFunction(
 }
 
 // Try to unserialize variable information.
-static bool ParseVariable(const remill::Arch *arch,
-                          llvm::LLVMContext &context,
-                          anvill::Program &program,
-                          llvm::json::Object *obj) {
+static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
+                          anvill::Program &program, llvm::json::Object *obj) {
   anvill::GlobalVarDecl decl;
 
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
-    LOG(ERROR)
-        << "Missing global variable address in specification";
+    LOG(ERROR) << "Missing global variable address in specification";
     return false;
   }
 
@@ -316,23 +287,20 @@ static bool ParseVariable(const remill::Arch *arch,
 
   auto maybe_type_str = obj->getString("type");
   if (!maybe_type_str) {
-    LOG(ERROR)
-        << "Missing 'type' field in global variable.";
+    LOG(ERROR) << "Missing 'type' field in global variable.";
     return false;
   }
 
   auto maybe_type = anvill::ParseType(context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
-    LOG(ERROR)
-        << remill::GetErrorString(maybe_type);
+    LOG(ERROR) << remill::GetErrorString(maybe_type);
     return false;
   }
 
   decl.type = remill::GetReference(maybe_type);
   auto err = program.DeclareVariable(decl);
   if (remill::IsError(err)) {
-    LOG(ERROR)
-        << remill::GetErrorString(err);
+    LOG(ERROR) << remill::GetErrorString(err);
     return false;
   }
 
@@ -340,13 +308,11 @@ static bool ParseVariable(const remill::Arch *arch,
 }
 
 // Parse a memory range.
-static bool ParseRange(anvill::Program &program,
-                       llvm::json::Object *obj) {
+static bool ParseRange(anvill::Program &program, llvm::json::Object *obj) {
 
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
-    LOG(ERROR)
-        << "Missing address in memory range specification";
+    LOG(ERROR) << "Missing address in memory range specification";
     return false;
   }
 
@@ -365,19 +331,17 @@ static bool ParseRange(anvill::Program &program,
 
   auto maybe_bytes = obj->getString("data");
   if (!maybe_bytes) {
-    LOG(ERROR)
-        << "Missing byte string in memory range specification "
-        << "at address '" << std::hex << range.address
-        << std::dec << '.';
+    LOG(ERROR) << "Missing byte string in memory range specification "
+               << "at address '" << std::hex << range.address << std::dec
+               << '.';
     return false;
   }
 
   const llvm::StringRef &bytes = *maybe_bytes;
   if (bytes.size() % 2) {
-    LOG(ERROR)
-        << "Length of byte string in memory range specification "
-        << "at address '" << std::hex << range.address
-        << std::dec << "' must have an even number of characters.";
+    LOG(ERROR) << "Length of byte string in memory range specification "
+               << "at address '" << std::hex << range.address << std::dec
+               << "' must have an even number of characters.";
     return false;
   }
 
@@ -391,10 +355,9 @@ static bool ParseRange(anvill::Program &program,
     auto byte_val = strtol(nibbles, &parsed_to, 16);
 
     if (parsed_to != &(nibbles[2])) {
-      LOG(ERROR)
-          << "Invalid hex byte value '" << nibbles << "' in memory "
-          << "range specification at address '" << std::hex
-          << range.address << std::dec << "'.";
+      LOG(ERROR) << "Invalid hex byte value '" << nibbles << "' in memory "
+                 << "range specification at address '" << std::hex
+                 << range.address << std::dec << "'.";
       return false;
     }
 
@@ -406,8 +369,7 @@ static bool ParseRange(anvill::Program &program,
 
   auto err = program.MapRange(range);
   if (remill::IsError(err)) {
-    LOG(ERROR)
-        << remill::GetErrorString(err);
+    LOG(ERROR) << remill::GetErrorString(err);
     return false;
   }
 
@@ -437,11 +399,8 @@ static bool ParseRange(anvill::Program &program,
 //    - Starting address. No alignment restrictions apply.
 //    - Permissions (is_readable, is_writeable, is_executable).
 //    - Data (hex-encoded byte string).
-static bool ParseSpec(
-    const remill::Arch *arch,
-    llvm::LLVMContext &context,
-    anvill::Program &program,
-    llvm::json::Object *spec) {
+static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
+                      anvill::Program &program, llvm::json::Object *spec) {
 
   auto num_funcs = 0;
   if (auto funcs = spec->getArray("functions")) {
@@ -453,16 +412,14 @@ static bool ParseSpec(
           ++num_funcs;
         }
       } else {
-        LOG(ERROR)
-            << "Non-JSON object in 'functions' array of spec file '"
-            << FLAGS_spec << "'";
+        LOG(ERROR) << "Non-JSON object in 'functions' array of spec file '"
+                   << FLAGS_spec << "'";
         return false;
       }
     }
   } else if (spec->find("functions") != spec->end()) {
-    LOG(ERROR)
-        << "Non-JSON array value for 'functions' in spec file '"
-        << FLAGS_spec << "'";
+    LOG(ERROR) << "Non-JSON array value for 'functions' in spec file '"
+               << FLAGS_spec << "'";
     return false;
   }
 
@@ -473,16 +430,14 @@ static bool ParseSpec(
           return false;
         }
       } else {
-        LOG(ERROR)
-            << "Non-JSON object in 'variables' array of spec file '"
-            << FLAGS_spec << "'";
+        LOG(ERROR) << "Non-JSON object in 'variables' array of spec file '"
+                   << FLAGS_spec << "'";
         return false;
       }
     }
   } else if (spec->find("variables") != spec->end()) {
-    LOG(ERROR)
-        << "Non-JSON array value for 'variables' in spec file '"
-        << FLAGS_spec << "'";
+    LOG(ERROR) << "Non-JSON array value for 'variables' in spec file '"
+               << FLAGS_spec << "'";
     return false;
   }
 
@@ -493,16 +448,14 @@ static bool ParseSpec(
           return false;
         }
       } else {
-        LOG(ERROR)
-            << "Non-JSON object in 'bytes' array of spec file '"
-            << FLAGS_spec << "'";
+        LOG(ERROR) << "Non-JSON object in 'bytes' array of spec file '"
+                   << FLAGS_spec << "'";
         return false;
       }
     }
   } else if (spec->find("memory") != spec->end()) {
-    LOG(ERROR)
-        << "Non-JSON array value for 'memory' in spec file '"
-        << FLAGS_spec << "'";
+    LOG(ERROR) << "Non-JSON array value for 'memory' in spec file '"
+               << FLAGS_spec << "'";
     return false;
   }
 
@@ -510,18 +463,17 @@ static bool ParseSpec(
     for (llvm::json::Value &maybe_ea_name : *symbols) {
       if (auto ea_name = maybe_ea_name.getAsArray(); ea_name) {
         if (ea_name->size() != 2) {
-          LOG(ERROR)
-              << "Symbol entry doesn't have two values in spec file '"
-              << FLAGS_spec << "'";
+          LOG(ERROR) << "Symbol entry doesn't have two values in spec file '"
+                     << FLAGS_spec << "'";
           return false;
         }
-        auto &maybe_ea = ea_name->operator [](0);
-        auto &maybe_name = ea_name->operator [](1);
+        auto &maybe_ea = ea_name->operator[](0);
+        auto &maybe_name = ea_name->operator[](1);
 
         if (auto ea = maybe_ea.getAsInteger(); ea) {
           if (auto name = maybe_name.getAsString(); name) {
-            program.AddNameToAddress(
-                name->str(), static_cast<uint64_t>(ea.getValue()));
+            program.AddNameToAddress(name->str(),
+                                     static_cast<uint64_t>(ea.getValue()));
           } else {
             LOG(ERROR)
                 << "Second value in symbol entry must be a string in spec file '"
@@ -542,9 +494,8 @@ static bool ParseSpec(
       }
     }
   } else if (spec->find("symbols") != spec->end()) {
-    LOG(ERROR)
-        << "Non-JSON array value for 'symbols' in spec file '"
-        << FLAGS_spec << "'";
+    LOG(ERROR) << "Non-JSON array value for 'symbols' in spec file '"
+               << FLAGS_spec << "'";
     return false;
   }
 
@@ -569,26 +520,24 @@ int main(int argc, char *argv[]) {
 
   auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_spec);
   if (remill::IsError(maybe_buff)) {
-    LOG(ERROR)
-        << "Unable to read JSON spec file '" << FLAGS_spec << "': "
-        << remill::GetErrorString(maybe_buff);
+    LOG(ERROR) << "Unable to read JSON spec file '" << FLAGS_spec
+               << "': " << remill::GetErrorString(maybe_buff);
     return EXIT_FAILURE;
   }
 
   const auto &buff = remill::GetReference(maybe_buff);
   auto maybe_json = llvm::json::parse(buff->getBuffer());
   if (remill::IsError(maybe_json)) {
-    LOG(ERROR)
-        << "Unable to parse JSON spec file '" << FLAGS_spec << "': "
-        << remill::GetErrorString(maybe_json);
+    LOG(ERROR) << "Unable to parse JSON spec file '" << FLAGS_spec
+               << "': " << remill::GetErrorString(maybe_json);
     return EXIT_FAILURE;
   }
 
   auto &json = remill::GetReference(maybe_json);
   const auto spec = json.getAsObject();
   if (!spec) {
-    LOG(ERROR)
-        << "JSON spec file '" << FLAGS_spec << "' must contain a single object.";
+    LOG(ERROR) << "JSON spec file '" << FLAGS_spec
+               << "' must contain a single object.";
     return EXIT_FAILURE;
   }
 
@@ -631,13 +580,12 @@ int main(int argc, char *argv[]) {
   std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
   std::unordered_map<uint64_t, llvm::Function *> lift_targets;
 
-  auto trace_manager = anvill::TraceManager::Create(
-      *semantics, program);
+  auto trace_manager = anvill::TraceManager::Create(*semantics, program);
 
   remill::InstructionLifter inst_lifter(arch, intrinsics);
   remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
 
-  program.ForEachFunction([&] (const anvill::FunctionDecl *decl) {
+  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
     auto byte = program.FindByte(decl->address);
     if (byte.IsExecutable()) {
       trace_lifter.Lift(byte.Address());
@@ -649,7 +597,7 @@ int main(int argc, char *argv[]) {
   // that we actually lifted.
   anvill::OptimizeModule(arch.get(), program, *semantics);
 
-  program.ForEachVariable([&] (const anvill::GlobalVarDecl *decl) {
+  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     std::stringstream ss;
     ss << "data_" << std::hex << decl->address;
     global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
@@ -657,21 +605,20 @@ int main(int argc, char *argv[]) {
   });
 
   anvill::RecoverMemoryAccesses(program, *semantics);
-//  anvill::OptimizeModule(arch.get(), program, dest_module);
+
+  //  anvill::OptimizeModule(arch.get(), program, dest_module);
 
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
     if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
-      LOG(ERROR)
-          << "Could not save LLVM IR to " << FLAGS_ir_out;
+      LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
     if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
-      LOG(ERROR)
-          << "Could not save LLVM bitcode to " << FLAGS_bc_out;
+      LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
     }
   }

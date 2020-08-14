@@ -17,12 +17,12 @@
 
 #pragma once
 
+#include <remill/BC/Compat/Error.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string_view>
-
-#include <remill/BC/Compat/Error.h>
 
 namespace anvill {
 
@@ -73,7 +73,7 @@ struct Byte {
     return data ? IsUndefinedImpl() : true;
   }
 
-  inline bool SetUndefined(bool is_undef=true) const {
+  inline bool SetUndefined(bool is_undef = true) const {
     if (data) {
       return SetUndefinedImpl(is_undef);
     } else {
@@ -87,8 +87,7 @@ struct Byte {
     } else {
       return llvm::createStringError(
           std::make_error_code(std::errc::bad_address),
-          "Cannot read value of invalid byte at address '%lx'",
-          addr);
+          "Cannot read value of invalid byte at address '%lx'", addr);
     }
   }
 
@@ -109,7 +108,7 @@ struct Byte {
   explicit inline Byte(uint64_t addr_, Data *data_, Meta *meta_)
       : addr(addr_),
         data(data_),
-        meta(meta_){}
+        meta(meta_) {}
 
   uint64_t addr{0};
   Data *data{nullptr};
@@ -140,9 +139,8 @@ struct ByteSequence {
  private:
   friend class Program;
 
-  explicit inline ByteSequence(
-      uint64_t addr_, Byte::Data *first_data_, Byte::Meta *first_meta_,
-      size_t size_)
+  explicit inline ByteSequence(uint64_t addr_, Byte::Data *first_data_,
+                               Byte::Meta *first_meta_, size_t size_)
       : address(addr_),
         first_data(first_data_),
         first_meta(first_meta_),
@@ -209,16 +207,15 @@ class Program {
   //
   // This function will check for error conditions and report them
   // as appropriate.
-  llvm::Expected<FunctionDecl *> DeclareFunction(
-      const FunctionDecl &decl_template,
-      bool force=false) const;
+  llvm::Expected<FunctionDecl *>
+  DeclareFunction(const FunctionDecl &decl_template, bool force = false) const;
 
   // Internal iterator over all functions.
   //
   // NOTE(pag): New functions *can* be declared while this method
   //            is actively iterating.
-  void ForEachFunction(
-      std::function<bool(const FunctionDecl *)> callback) const;
+  void
+  ForEachFunction(std::function<bool(const FunctionDecl *)> callback) const;
 
   // Search for a specific function by its address.
   const FunctionDecl *FindFunction(uint64_t address) const;
@@ -239,18 +236,20 @@ class Program {
   void ForEachNameOfAddress(
       uint64_t address,
       std::function<bool(const std::string &, const FunctionDecl *,
-                         const GlobalVarDecl *)> cb) const;
+                         const GlobalVarDecl *)>
+          cb) const;
 
   // Apply a function `cb` to each address of the named symbol `name`.
   void ForEachAddressOfName(
       const std::string &name,
-      std::function<bool(uint64_t, const FunctionDecl *,
-                         const GlobalVarDecl *)> cb) const;
+      std::function<bool(uint64_t, const FunctionDecl *, const GlobalVarDecl *)>
+          cb) const;
 
   // Apply a function `cb` to each address/name pair.
   void ForEachNamedAddress(
       std::function<bool(uint64_t, const std::string &, const FunctionDecl *,
-                         const GlobalVarDecl *)> cb) const;
+                         const GlobalVarDecl *)>
+          cb) const;
 
   // Declare a variable in this view. This takes in a variable
   // declaration that will act as a sort of "template" for the
@@ -266,15 +265,14 @@ class Program {
   //
   // This function will check for error conditions and report them
   // as appropriate.
-  llvm::Error DeclareVariable(
-      const GlobalVarDecl &decl_template) const;
+  llvm::Error DeclareVariable(const GlobalVarDecl &decl_template) const;
 
   // Internal iterator over all vars.
   //
   // NOTE(pag): New variables *can* be declared while this method
   //            is actively iterating.
-  void ForEachVariable(
-      std::function<bool(const GlobalVarDecl *)> callback) const;
+  void
+  ForEachVariable(std::function<bool(const GlobalVarDecl *)> callback) const;
 
   // Search for a specific variable by its address.
   const GlobalVarDecl *FindVariable(uint64_t address) const;

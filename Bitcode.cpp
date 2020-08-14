@@ -15,15 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <algorithm>
-#include <bitset>
-#include <iostream>
-#include <sstream>
-#include <string>
-
+#include <anvill/Decl.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
@@ -32,13 +26,16 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/raw_ostream.h>
-
 #include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
-#include <remill/Arch/Name.h>
 
-#include <anvill/Decl.h>
+#include <algorithm>
+#include <bitset>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 #if __has_include(<llvm/Support/JSON.h>)
 
@@ -79,6 +76,7 @@ int main(int argc, char *argv[]) {
 
   const auto &dl = module->getDataLayout();
   for (auto &function : *module) {
+
     // Skip llvm debug intrinsics
     if (function.getIntrinsicID()) {
       continue;
@@ -86,8 +84,7 @@ int main(int argc, char *argv[]) {
 
     auto maybe_func = anvill::FunctionDecl::Create(function, arch);
     if (remill::IsError(maybe_func)) {
-      LOG(ERROR)
-          << remill::GetErrorString(maybe_func);
+      LOG(ERROR) << remill::GetErrorString(maybe_func);
     } else {
       auto &func = remill::GetReference(maybe_func);
       funcs_json.push_back(func.SerializeToJSON(dl));

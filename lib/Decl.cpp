@@ -17,38 +17,35 @@
 
 #include "anvill/Decl.h"
 
+#include <anvill/Lift.h>
+#include <anvill/TypePrinter.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-
 #include <llvm/ADT/StringRef.h>
-
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/Instructions.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-#include <llvm/Demangle/Demangle.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
-
-#include <anvill/Lift.h>
-#include <anvill/TypePrinter.h>
 
 #include "Arch/Arch.h"
 
 namespace anvill {
 
 // Declare this global variable in an LLVM module.
-llvm::GlobalVariable *GlobalVarDecl::DeclareInModule(
-    const std::string &name, llvm::Module &target_module,
-    bool allow_unowned) const {
+llvm::GlobalVariable *
+GlobalVarDecl::DeclareInModule(const std::string &name,
+                               llvm::Module &target_module,
+                               bool allow_unowned) const {
   if (!allow_unowned && !owner) {
     return nullptr;
   }
@@ -61,16 +58,15 @@ llvm::GlobalVariable *GlobalVarDecl::DeclareInModule(
     return existing_var;
   }
 
-  return new llvm::GlobalVariable(
-      target_module, var_type, false,
-      llvm::GlobalValue::ExternalLinkage,
-      nullptr, name);
+  return new llvm::GlobalVariable(target_module, var_type, false,
+                                  llvm::GlobalValue::ExternalLinkage, nullptr,
+                                  name);
 }
 
 // Declare this function in an LLVM module.
-llvm::Function *FunctionDecl::DeclareInModule(
-    const std::string &name, llvm::Module &target_module,
-    bool allow_unowned) const {
+llvm::Function *FunctionDecl::DeclareInModule(const std::string &name,
+                                              llvm::Module &target_module,
+                                              bool allow_unowned) const {
   if (!allow_unowned && !owner) {
     return nullptr;
   }
@@ -91,8 +87,7 @@ llvm::Function *FunctionDecl::DeclareInModule(
       << remill::LLVMThingToString(func_type);
 
   llvm::Function *func = llvm::Function::Create(
-      func_type, llvm::GlobalValue::ExternalLinkage,
-      name, &target_module);
+      func_type, llvm::GlobalValue::ExternalLinkage, name, &target_module);
   DCHECK_EQ(func->getName().str(), name);
 
   func->addFnAttr(llvm::Attribute::NoInline);
@@ -150,13 +145,13 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr = LoadLiftedValue(
-      return_address, intrinsics, block, state_ptr, mem_ptr);
+  auto ret_addr =
+      LoadLiftedValue(return_address, intrinsics, block, state_ptr, mem_ptr);
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val = LoadLiftedValue(
-        param_decl, intrinsics, block, state_ptr, mem_ptr);
+    const auto val =
+        LoadLiftedValue(param_decl, intrinsics, block, state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }
@@ -168,9 +163,8 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 
   // There is a single return value, store it to the lifted state.
   if (returns.size() == 1) {
-    mem_ptr = StoreNativeValue(
-        ret_val, returns.front(), intrinsics, block,
-        state_ptr, mem_ptr);
+    mem_ptr = StoreNativeValue(ret_val, returns.front(), intrinsics, block,
+                               state_ptr, mem_ptr);
 
   // There are possibly multiple return values (or zero). Unpack the
   // return value (it will be a struct type) into its components and
@@ -180,9 +174,8 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
     for (const auto &ret_decl : returns) {
       unsigned indexes[] = {index};
       auto elem_val = ir.CreateExtractValue(ret_val, indexes);
-      mem_ptr = StoreNativeValue(
-          elem_val, ret_decl, intrinsics, block,
-          state_ptr, mem_ptr);
+      mem_ptr = StoreNativeValue(elem_val, ret_decl, intrinsics, block,
+                                 state_ptr, mem_ptr);
       index += 1;
     }
   }
@@ -200,14 +193,15 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 }
 
 #if __has_include(<llvm/Support/JSON.h>)
+
 // Serialize a FunctionDecl to JSON
-llvm::json::Object FunctionDecl::SerializeToJSON(
-    const llvm::DataLayout &dl) const {
+llvm::json::Object
+FunctionDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
   llvm::json::Object json;
 
   if (address) {
-    json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("address"), this->address});
+    json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
+                                       this->address});
   }
 
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
@@ -252,16 +246,17 @@ llvm::json::Object FunctionDecl::SerializeToJSON(
       llvm::json::ObjectKey("return_address"),
       llvm::json::Value(return_address.SerializeToJSON(dl))});
 
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("calling_convention"),
-      llvm::json::Value(calling_convention)});
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("calling_convention"),
+                             llvm::json::Value(calling_convention)});
 
   return json;
 }
 
 // Serialize a ParameterDecl to JSON
-llvm::json::Object ParameterDecl::SerializeToJSON(
-    const llvm::DataLayout &dl) const {
+llvm::json::Object
+ParameterDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
+
   // Get the serialization for the ValueDecl
   llvm::json::Object param_json = this->ValueDecl::SerializeToJSON(dl);
 
@@ -273,29 +268,30 @@ llvm::json::Object ParameterDecl::SerializeToJSON(
 }
 
 // Serialize a ValueDecl to JSON
-llvm::json::Object ValueDecl::SerializeToJSON(
-    const llvm::DataLayout &dl) const {
+llvm::json::Object
+ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
   llvm::json::Object value_json;
 
   if (reg) {
+
     // The value is in a register
-    value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
-                                             reg->name});
+    value_json.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("register"), reg->name});
   } else if (mem_reg) {
+
     // The value is in memory
     llvm::json::Object memory_json;
     memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
                                               mem_reg->name});
-    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("offset"),
-                                              mem_offset});
+    memory_json.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("offset"), mem_offset});
 
     // Wrap the memory_json structure in a memory block
     value_json.insert(
         llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
                                llvm::json::Value(std::move(memory_json))});
   } else {
-    LOG(FATAL)
-        << "Trying to serialize a value that has not been allocated";
+    LOG(FATAL) << "Trying to serialize a value that has not been allocated";
   }
 
   value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
@@ -306,8 +302,8 @@ llvm::json::Object ValueDecl::SerializeToJSON(
 #endif
 
 // Create a Function Declaration from an `llvm::Function`.
-llvm::Expected<FunctionDecl> FunctionDecl::Create(
-    llvm::Function &func, const remill::Arch::ArchPtr &arch) {
+llvm::Expected<FunctionDecl>
+FunctionDecl::Create(llvm::Function &func, const remill::Arch::ArchPtr &arch) {
 
   FunctionDecl decl;
   decl.arch = arch.get();

@@ -53,7 +53,7 @@ namespace anvill {
 //    integer_type: 'b' | 'B' | 'h' | 'H' | 'i' | 'I' | 'l' | 'L' | 'M'
 //    float_type: 'f' | 'd' | 'D'
 //
-llvm::Expected<llvm::Type *>
-ParseType(llvm::LLVMContext &context, llvm::StringRef spec);
+llvm::Expected<llvm::Type *> ParseType(llvm::LLVMContext &context,
+                                       llvm::StringRef spec);
 
 }  // namespace anvill

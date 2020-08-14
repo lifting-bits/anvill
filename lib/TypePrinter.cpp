@@ -16,59 +16,43 @@
  */
 
 #include <anvill/TypePrinter.h>
-
-#include <unordered_map>
-#include <sstream>
-
 #include <glog/logging.h>
-
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
-
 #include <remill/BC/Util.h>
+
+#include <sstream>
+#include <unordered_map>
 
 namespace anvill {
 namespace {
 
 // Translates an llvm::Type to a type that conforms to the spec in
 // TypeParser.cpp
-static void TranslateTypeInternal(
-    llvm::Type &type, std::stringstream &ss,
-    std::unordered_map<llvm::StructType *, size_t> &ids,
-    const llvm::DataLayout &dl) {
+static void
+TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
+                      std::unordered_map<llvm::StructType *, size_t> &ids,
+                      const llvm::DataLayout &dl) {
   switch (type.getTypeID()) {
-    case llvm::Type::VoidTyID:
-      ss << 'v';
-      break;
+    case llvm::Type::VoidTyID: ss << 'v'; break;
 
-    case llvm::Type::HalfTyID:
-      ss << 'e';
-      break;
+    case llvm::Type::HalfTyID: ss << 'e'; break;
 
-    case llvm::Type::FloatTyID:
-      ss << 'f';
-      break;
+    case llvm::Type::FloatTyID: ss << 'f'; break;
 
-    case llvm::Type::DoubleTyID:
-      ss << 'd';
-      break;
+    case llvm::Type::DoubleTyID: ss << 'd'; break;
 
-    case llvm::Type::FP128TyID:
-      ss << 'Q';
-      break;
+    case llvm::Type::FP128TyID: ss << 'Q'; break;
 
-    case llvm::Type::X86_FP80TyID:
-      ss << 'D';
-      break;
+    case llvm::Type::X86_FP80TyID: ss << 'D'; break;
 
-    case llvm::Type::X86_MMXTyID:
-      ss << 'M';
-      break;
+    case llvm::Type::X86_MMXTyID: ss << 'M'; break;
 
 
     case llvm::Type::IntegerTyID: {
       const auto derived = llvm::cast<llvm::IntegerType>(&type);
+
       // TODO(aty): Try to distinguish between uint and int. This is a bit
       //            complicated because LLVM doesn't make this distinction in
       //            its types. It does however, make a distinction between the
@@ -140,6 +124,7 @@ static void TranslateTypeInternal(
 
     case llvm::Type::StructTyID: {
       auto struct_ptr = llvm::cast<llvm::StructType>(&type);
+
       // If we're already serialized this structure type, or if we're inside
       // of the structure type, then use a back reference to avoid infinite
       // recursion.
@@ -172,7 +157,6 @@ static void TranslateTypeInternal(
           // TODO(pag): Investigate this possibility. Does this occur for
           //            bitfields?
           } else if (expected_offset > offset) {
-
           }
 
           const auto el_ty = struct_ptr->getElementType(i);
@@ -228,14 +212,15 @@ static void TranslateTypeInternal(
     }
 
     default: {
+
       // Approximate the type by making an array of bytes of a similar size. If
       // the type has padding due to alignment then we fake a structure and
       // split out the padding from the main data.
       const auto type_size = dl.getTypeStoreSize(&type);
       const auto aligned_size = dl.getTypeAllocSize(&type);
       if (aligned_size > type_size) {
-        ss << "{[Bx" << type_size << "][Bx"
-           << (aligned_size - type_size) << "]}";
+        ss << "{[Bx" << type_size << "][Bx" << (aligned_size - type_size)
+           << "]}";
       } else {
         ss << "[Bx" << type_size << ']';
       }
