@@ -21,7 +21,4 @@ namespace llvm {
 class LLVMContext;
 class Type;
 }  // namespace llvm
-namespace anvill {
-
-
-}  // namespace anvill
+namespace anvill {}  // namespace anvill

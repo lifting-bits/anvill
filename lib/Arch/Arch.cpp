@@ -17,17 +17,15 @@
 
 #include "Arch.h"
 
+#include <anvill/Decl.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IntrinsicInst.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
-
-#include <anvill/Decl.h>
 
 namespace remill {
 class Arch;
@@ -85,22 +83,21 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
 
     // Fallthrough for unsupported architectures
     case remill::kArchAArch64LittleEndian:
-    default:
-      break;
+    default: break;
   }
 
   const auto arch_name = remill::GetArchName(arch->arch_name);
   const auto os_name = remill::GetOSName(arch->os_name);
   return llvm::createStringError(
       std::make_error_code(std::errc::invalid_argument),
-      "Unsupported architecture/OS pair: %s and %s",
-      arch_name.c_str(), os_name.c_str());
+      "Unsupported architecture/OS pair: %s and %s", arch_name.c_str(),
+      os_name.c_str());
 }
 
 // Still need the arch to be passed in so we can create the calling convention
 llvm::Expected<std::unique_ptr<CallingConvention>>
-CallingConvention::CreateCCFromCCID(
-    const llvm::CallingConv::ID cc_id, const remill::Arch *arch) {
+CallingConvention::CreateCCFromCCID(const llvm::CallingConv::ID cc_id,
+                                    const remill::Arch *arch) {
   switch (cc_id) {
     case llvm::CallingConv::C:
       if (arch->IsX86()) {
@@ -144,14 +141,12 @@ CallingConvention::CreateCCFromCCID(
         break;
       }
 
-    default:
-      break;
+    default: break;
   }
 
   return llvm::createStringError(
       std::make_error_code(std::errc::invalid_argument),
-      "Unsupported calling convention ID %u",
-      static_cast<unsigned>(cc_id));
+      "Unsupported calling convention ID %u", static_cast<unsigned>(cc_id));
 }
 
 // Try to recover parameter names using debug information. Otherwise, name the
@@ -211,12 +206,12 @@ std::vector<std::string> TryRecoverParamNames(const llvm::Function &function) {
 
 // Return a vector of register constraints, augmented to to support additional
 // registers made available in AVX or AVX512.
-std::vector<RegisterConstraint> ApplyX86Ext(
-    const std::vector<RegisterConstraint> &constraints,
-    remill::ArchName arch_name) {
+std::vector<RegisterConstraint>
+ApplyX86Ext(const std::vector<RegisterConstraint> &constraints,
+            remill::ArchName arch_name) {
 
-  const auto is_avx = remill::kArchAMD64_AVX == arch_name ||
-                      remill::kArchX86_AVX == arch_name;
+  const auto is_avx =
+      remill::kArchAMD64_AVX == arch_name || remill::kArchX86_AVX == arch_name;
 
   const auto is_avx512 = remill::kArchAMD64_AVX512 == arch_name ||
                          remill::kArchX86_AVX512 == arch_name;
@@ -229,7 +224,8 @@ std::vector<RegisterConstraint> ApplyX86Ext(
         c.variants.front().register_name.rfind("XMM", 0) == 0) {
 
       // Assuming the name of the register is of the form XMM_
-      const auto reg_number = std::to_string(c.variants.front().register_name.back());
+      const auto reg_number =
+          std::to_string(c.variants.front().register_name.back());
       if (is_avx) {
         ret.push_back(RegisterConstraint({
             VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
@@ -248,6 +244,7 @@ std::vector<RegisterConstraint> ApplyX86Ext(
       }
 
     } else {
+
       // Just copy the constraint if it doesn't contain an interesting register
       ret.push_back(c);
     }
@@ -256,20 +253,17 @@ std::vector<RegisterConstraint> ApplyX86Ext(
 }
 
 // Select and return one of `basic`, `avx`, or `avx512` given `arch_name`.
-const std::vector<RegisterConstraint> &SelectX86Constraint(
-    remill::ArchName arch_name,
-    const std::vector<RegisterConstraint> &basic,
-    const std::vector<RegisterConstraint> &avx,
-    const std::vector<RegisterConstraint> &avx512) {
+const std::vector<RegisterConstraint> &
+SelectX86Constraint(remill::ArchName arch_name,
+                    const std::vector<RegisterConstraint> &basic,
+                    const std::vector<RegisterConstraint> &avx,
+                    const std::vector<RegisterConstraint> &avx512) {
   switch (arch_name) {
     case remill::kArchX86:
-    case remill::kArchAMD64:
-      return basic;
+    case remill::kArchAMD64: return basic;
     case remill::kArchX86_AVX:
-    case remill::kArchAMD64_AVX:
-      return avx;
-    default:
-      return avx512;
+    case remill::kArchAMD64_AVX: return avx;
+    default: return avx512;
   }
 }
 

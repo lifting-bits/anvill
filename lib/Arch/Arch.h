@@ -17,12 +17,11 @@
 
 #pragma once
 
+#include <llvm/IR/CallingConv.h>
+#include <remill/BC/Compat/Error.h>
+
 #include <string>
 #include <vector>
-
-#include <llvm/IR/CallingConv.h>
-
-#include <remill/BC/Compat/Error.h>
 
 namespace llvm {
 class Function;
@@ -49,7 +48,8 @@ enum SizeConstraint : unsigned {
   kBit256 = (1 << 6),
   kBit512 = (1 << 7),
 
-  kMaxBit512 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMaxBit512 =
+      kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit256 = kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit128 = kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
   kMaxBit80 = kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
@@ -65,7 +65,8 @@ enum SizeConstraint : unsigned {
   kMinBit64 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64,
   kMinBit32 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32,
   kMinBit16 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16,
-  kMinBit8 = kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
+  kMinBit8 =
+      kBit512 | kBit256 | kBit128 | kBit80 | kBit64 | kBit32 | kBit16 | kBit8,
 };
 
 enum TypeConstraint : unsigned {
@@ -103,9 +104,7 @@ struct RegisterConstraint {
 };
 
 struct SizeAndType {
-  SizeAndType(SizeConstraint _sc, TypeConstraint _tc)
-      : sc(_sc),
-        tc(_tc) {}
+  SizeAndType(SizeConstraint _sc, TypeConstraint _tc) : sc(_sc), tc(_tc) {}
 
   SizeConstraint sc;
   TypeConstraint tc;
@@ -115,16 +114,16 @@ std::vector<std::string> TryRecoverParamNames(const llvm::Function &function);
 
 // Return a vector of register constraints, augmented to to support additional
 // registers made available in AVX or AVX512.
-std::vector<RegisterConstraint> ApplyX86Ext(
-    const std::vector<RegisterConstraint> &constraints,
-    remill::ArchName arch_name);
+std::vector<RegisterConstraint>
+ApplyX86Ext(const std::vector<RegisterConstraint> &constraints,
+            remill::ArchName arch_name);
 
 // Select and return one of `basic`, `avx`, or `avx512` given `arch_name`.
-const std::vector<RegisterConstraint> &SelectX86Constraint(
-    remill::ArchName arch_name,
-    const std::vector<RegisterConstraint> &basic,
-    const std::vector<RegisterConstraint> &avx,
-    const std::vector<RegisterConstraint> &avx512);
+const std::vector<RegisterConstraint> &
+SelectX86Constraint(remill::ArchName arch_name,
+                    const std::vector<RegisterConstraint> &basic,
+                    const std::vector<RegisterConstraint> &avx,
+                    const std::vector<RegisterConstraint> &avx512);
 
 class CallingConvention {
  public:
@@ -134,11 +133,11 @@ class CallingConvention {
 
   virtual ~CallingConvention(void) = default;
 
-  static llvm::Expected<std::unique_ptr<CallingConvention>> CreateCCFromArch(
-      const remill::Arch *arch);
+  static llvm::Expected<std::unique_ptr<CallingConvention>>
+  CreateCCFromArch(const remill::Arch *arch);
 
-  static llvm::Expected<std::unique_ptr<CallingConvention>> CreateCCFromCCID(
-      const llvm::CallingConv::ID, const remill::Arch *arch);
+  static llvm::Expected<std::unique_ptr<CallingConvention>>
+  CreateCCFromCCID(const llvm::CallingConv::ID, const remill::Arch *arch);
 
   virtual llvm::Error AllocateSignature(FunctionDecl &fdecl,
                                         llvm::Function &func) = 0;
@@ -148,22 +147,22 @@ class CallingConvention {
   }
 
  protected:
-  const remill::Arch * const arch;
+  const remill::Arch *const arch;
 
-  static std::unique_ptr<CallingConvention> CreateX86_C(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateX86_C(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateX86_StdCall(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateX86_StdCall(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateX86_FastCall(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateX86_FastCall(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateX86_ThisCall(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateX86_ThisCall(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateX86_64_SysV(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateX86_64_SysV(const remill::Arch *arch);
 
  private:
   const llvm::CallingConv::ID identity;

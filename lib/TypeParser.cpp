@@ -17,15 +17,14 @@
 
 #include "anvill/TypeParser.h"
 
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Type.h>
+#include <remill/BC/Compat/Error.h>
+
 #include <cstddef>
 #include <sstream>
 #include <vector>
-
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Type.h>
-#include <llvm/IR/DerivedTypes.h>
-
-#include <remill/BC/Compat/Error.h>
 
 namespace anvill {
 namespace {
@@ -33,7 +32,7 @@ namespace {
 // Parse some characters out of `spec` starting at index `i`, where
 // the characters are accepted by the predicate `filter`, and store
 // the result in `*out`.
-template<typename Filter, typename T>
+template <typename Filter, typename T>
 static bool Parse(llvm::StringRef spec, size_t &i, Filter filter, T *out) {
   std::stringstream ss;
   auto found = false;
@@ -57,10 +56,10 @@ static bool Parse(llvm::StringRef spec, size_t &i, Filter filter, T *out) {
 // Parse a type specification into an LLVM type. See TypeParser.h
 // for the grammar that generates the language which `ParseType`
 // accepts.
-static llvm::Expected<llvm::Type *> ParseType(
-    llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
-    llvm::SmallPtrSetImpl<llvm::Type* > &size_checked,
-    llvm::StringRef spec, size_t &i) {
+static llvm::Expected<llvm::Type *>
+ParseType(llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
+          llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
+          llvm::StringRef spec, size_t &i) {
 
   llvm::StructType *struct_type = nullptr;
 
@@ -71,8 +70,7 @@ static llvm::Expected<llvm::Type *> ParseType(
       case '{': {
         llvm::SmallVector<llvm::Type *, 4> elem_types;
         for (i += 1; i < spec.size() && spec[i] != '}';) {
-          auto maybe_elem_type = ParseType(
-              context, ids, size_checked, spec, i);
+          auto maybe_elem_type = ParseType(context, ids, size_checked, spec, i);
           if (remill::IsError(maybe_elem_type)) {
             return maybe_elem_type;
           } else {
@@ -310,8 +308,7 @@ static llvm::Expected<llvm::Type *> ParseType(
 
         // Minor sanity checking on the param types.
         for (auto param_type : elem_types) {
-          if (param_type->isVoidTy() ||
-              param_type->isTokenTy() ||
+          if (param_type->isVoidTy() || param_type->isTokenTy() ||
               param_type->isFunctionTy()) {
             return llvm::createStringError(
                 std::make_error_code(std::errc::invalid_argument),
@@ -404,8 +401,8 @@ static llvm::Expected<llvm::Type *> ParseType(
         if (type_id >= ids.size()) {
           return llvm::createStringError(
               std::make_error_code(std::errc::invalid_argument),
-              "Invalid type ID use '%u' in type specification '%s'",
-              type_id, spec.str().c_str());
+              "Invalid type ID use '%u' in type specification '%s'", type_id,
+              spec.str().c_str());
         }
 
         return ids[type_id];
@@ -458,8 +455,8 @@ static llvm::Expected<llvm::Type *> ParseType(
         i += 1;
         return llvm::createStringError(
             std::make_error_code(std::errc::invalid_argument),
-            "Unexpected character '%c' in type specification '%s'",
-            spec[i - 1], spec.str().c_str());
+            "Unexpected character '%c' in type specification '%s'", spec[i - 1],
+            spec.str().c_str());
     }
   }
   return nullptr;
@@ -467,8 +464,8 @@ static llvm::Expected<llvm::Type *> ParseType(
 
 }  // namespace
 
-llvm::Expected<llvm::Type *>
-ParseType(llvm::LLVMContext &context, llvm::StringRef spec) {
+llvm::Expected<llvm::Type *> ParseType(llvm::LLVMContext &context,
+                                       llvm::StringRef spec) {
   std::vector<llvm::Type *> ids;
   size_t i = 0;
   llvm::SmallPtrSet<llvm::Type *, 8> size_checked;

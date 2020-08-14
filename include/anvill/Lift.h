@@ -17,9 +17,9 @@
 
 #pragma once
 
-#include <memory>
-
 #include <remill/BC/Lifter.h>
+
+#include <memory>
 
 namespace llvm {
 class Module;
@@ -38,28 +38,23 @@ class TraceManager : public remill::TraceManager {
  public:
   virtual ~TraceManager(void);
 
-  static std::unique_ptr<TraceManager> Create(
-      llvm::Module &semantics_module, const Program &);
+  static std::unique_ptr<TraceManager> Create(llvm::Module &semantics_module,
+                                              const Program &);
 };
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
-llvm::Value *LoadLiftedValue(
-    const ValueDecl &decl,
-    const remill::IntrinsicTable &intrinsics,
-    llvm::BasicBlock *in_block,
-    llvm::Value *state_ptr,
-    llvm::Value *mem_ptr);
+llvm::Value *LoadLiftedValue(const ValueDecl &decl,
+                             const remill::IntrinsicTable &intrinsics,
+                             llvm::BasicBlock *in_block, llvm::Value *state_ptr,
+                             llvm::Value *mem_ptr);
 
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated
 // with `decl`.
-llvm::Value *StoreNativeValue(
-    llvm::Value *native_val,
-    const ValueDecl &decl,
-    const remill::IntrinsicTable &intrinsics,
-    llvm::BasicBlock *in_block,
-    llvm::Value *state_ptr,
-    llvm::Value *mem_ptr);
+llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const remill::IntrinsicTable &intrinsics,
+                              llvm::BasicBlock *in_block,
+                              llvm::Value *state_ptr, llvm::Value *mem_ptr);
 
 }  // namespace anvill

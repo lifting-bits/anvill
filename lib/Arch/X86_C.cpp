@@ -15,16 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -94,33 +91,33 @@ class X86_C : public CallingConvention {
   llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
                              std::vector<ParameterDecl> &param_decls);
 
-  llvm::Error BindReturnValues(llvm::Function &function,
-                               bool &injected_sret,
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
                                std::vector<ValueDecl> &ret_decls);
 
   const std::vector<RegisterConstraint> &parameter_register_constraints;
   const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateX86_C(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateX86_C(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new X86_C(arch));
 }
 
 X86_C::X86_C(const remill::Arch *arch)
     : CallingConvention(llvm::CallingConv::C, arch),
       parameter_register_constraints(SelectX86Constraint(
-          arch->arch_name, kParamRegConstraints,
-          kAVXParamRegConstraints, kAVX512ParamRegConstraints)),
+          arch->arch_name, kParamRegConstraints, kAVXParamRegConstraints,
+          kAVX512ParamRegConstraints)),
       return_register_constraints(SelectX86Constraint(
-          arch->arch_name, kReturnRegConstraints,
-          kAVXReturnRegConstraints, kAVX512ReturnRegConstraints)) {}
+          arch->arch_name, kReturnRegConstraints, kAVXReturnRegConstraints,
+          kAVX512ReturnRegConstraints)) {}
 
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
 llvm::Error X86_C::AllocateSignature(FunctionDecl &fdecl,
                                      llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -160,9 +157,9 @@ llvm::Error X86_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error X86_C::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+X86_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                        std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
@@ -186,8 +183,7 @@ llvm::Error X86_C::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -203,13 +199,13 @@ llvm::Error X86_C::BindReturnValues(
 
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
       const auto int32_ty = llvm::Type::getInt32Ty(int_ty->getContext());
       const auto bit_width = int_ty->getBitWidth();
+
       // Put into EAX.
       if (bit_width <= 32) {
         ret_values.emplace_back();
@@ -329,9 +325,9 @@ llvm::Error X86_C::BindReturnValues(
   }
 }
 
-llvm::Error X86_C::BindParameters(
-    llvm::Function &function, bool injected_sret,
-    std::vector<ParameterDecl> &parameter_declarations) {
+llvm::Error
+X86_C::BindParameters(llvm::Function &function, bool injected_sret,
+                      std::vector<ParameterDecl> &parameter_declarations) {
 
   auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
