@@ -11,8 +11,7 @@
 #
 #   PRE_CONFIGURE_FILE (REQUIRED)
 #   -- The path to the file that'll be configured.
-#
-#   POST_CONFIGURE_FILE (REQUIRED)
+# #   POST_CONFIGURE_FILE (REQUIRED)
 #   -- The path to the configured PRE_CONFIGURE_FILE.
 #
 #   GIT_STATE_FILE (OPTIONAL)
@@ -269,7 +268,7 @@ endfunction()
 #              check the state of git before every build. If the state has
 #              changed, then a file is configured.
 function(SetupGitMonitoring)
-    add_custom_target(check_git
+    add_custom_target(check_git_${PROJECT_NAME}
         ALL
         DEPENDS ${PRE_CONFIGURE_FILE}
         BYPRODUCTS
