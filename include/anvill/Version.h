@@ -1,4 +1,5 @@
 #pragma once
+
 // Copyright (C) 2020 Trail of Bits
 // Based on: https://github.com/andrew-hardin/cmake-git-version-tracking/blob/master/better-example/git.h
 // Which is (C) 2020 Andrew Hardin
@@ -27,20 +28,18 @@
 
 #include <string>
 
-namespace anvill
-{
-  namespace Version
-  {
+namespace anvill {
+namespace Version {
 
-    bool HasVersionData();
-    bool HasUncommittedChanges();
-    std::string GetAuthorName();
-    std::string GetAuthorEmail();
-    std::string GetCommitHash();
-    std::string GetCommitDate();
-    std::string GetCommitSubject();
-    std::string GetCommitBody();
-    std::string GetVersionString();
+bool HasVersionData();
+bool HasUncommittedChanges();
+std::string GetAuthorName();
+std::string GetAuthorEmail();
+std::string GetCommitHash();
+std::string GetCommitDate();
+std::string GetCommitSubject();
+std::string GetCommitBody();
+std::string GetVersionString();
 
-  } // namespace Version
-} // namespace anvill
+}  // namespace Version
+}  // namespace anvill

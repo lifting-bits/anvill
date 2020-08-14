@@ -15,16 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -95,37 +92,37 @@ class X86_FastCall : public CallingConvention {
                                 llvm::Function &func) override;
 
  private:
-  llvm::ErrorOr<unsigned> BindParameters(
-      llvm::Function &function, bool injected_sret,
-      std::vector<ParameterDecl> &param_decls);
+  llvm::ErrorOr<unsigned>
+  BindParameters(llvm::Function &function, bool injected_sret,
+                 std::vector<ParameterDecl> &param_decls);
 
-  llvm::Error BindReturnValues(llvm::Function &function,
-                               bool &injected_sret,
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
                                std::vector<ValueDecl> &ret_decls);
 
   const std::vector<RegisterConstraint> &parameter_register_constraints;
   const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateX86_FastCall(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateX86_FastCall(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new X86_FastCall(arch));
 }
 
 X86_FastCall::X86_FastCall(const remill::Arch *arch)
     : CallingConvention(llvm::CallingConv::X86_FastCall, arch),
       parameter_register_constraints(SelectX86Constraint(
-          arch->arch_name, kParamRegConstraints,
-          kAVXParamRegConstraints, kAVX512ParamRegConstraints)),
+          arch->arch_name, kParamRegConstraints, kAVXParamRegConstraints,
+          kAVX512ParamRegConstraints)),
       return_register_constraints(SelectX86Constraint(
-          arch->arch_name, kReturnRegConstraints,
-          kAVXReturnRegConstraints, kAVX512ReturnRegConstraints)) {}
+          arch->arch_name, kReturnRegConstraints, kAVXReturnRegConstraints,
+          kAVX512ReturnRegConstraints)) {}
 
 // Allocates the elements of the function signature of func to memory or
 // registers. This includes parameters/arguments, return values, and the return
 // stack pointer.
 llvm::Error X86_FastCall::AllocateSignature(FunctionDecl &fdecl,
-                                           llvm::Function &func) {
+                                            llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -137,9 +134,8 @@ llvm::Error X86_FastCall::AllocateSignature(FunctionDecl &fdecl,
 
   auto maybe_rspo = BindParameters(func, injected_sret, fdecl.params);
   if (remill::IsError(maybe_rspo)) {
-    return llvm::createStringError(
-        std::errc::invalid_argument, "%s",
-        remill::GetErrorString(maybe_rspo).c_str());
+    return llvm::createStringError(std::errc::invalid_argument, "%s",
+                                   remill::GetErrorString(maybe_rspo).c_str());
   }
 
   fdecl.return_stack_pointer_offset = remill::GetReference(maybe_rspo);
@@ -151,9 +147,9 @@ llvm::Error X86_FastCall::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error X86_FastCall::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+X86_FastCall::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                               std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
@@ -177,8 +173,7 @@ llvm::Error X86_FastCall::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -194,13 +189,13 @@ llvm::Error X86_FastCall::BindReturnValues(
 
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
       const auto int32_ty = llvm::Type::getInt32Ty(int_ty->getContext());
       const auto bit_width = int_ty->getBitWidth();
+
       // Put into EAX.
       if (bit_width <= 32) {
         ret_values.emplace_back();
