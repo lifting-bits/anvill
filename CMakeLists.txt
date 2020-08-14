@@ -1,4 +1,3 @@
-
 # Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -199,12 +198,6 @@ add_custom_target(install_anvill_python
   python/anvill/program.py
   python/anvill/type.py
   python/anvill/var.py)
-
-add_custom_command(
-    TARGET install_anvill_python POST_BUILD
-    COMMAND which python2 && python2 setup.py install --force --user --prefix=
-    COMMENT "Installing Anvill Python 2.7 API"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_custom_command(
     TARGET install_anvill_python POST_BUILD
