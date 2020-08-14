@@ -15,12 +15,42 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <gflags/gflags.h>
+
 #include <cstdint>
 #include <ios>
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
+
+#include "anvill/Version.h"
+
+static void SetVersion(void) {
+  std::stringstream ss;
+  auto vs = anvill::Version::GetVersionString();
+  if (0 == vs.size()) {
+    vs = "unknown";
+  }
+
+  ss << vs << "\n";
+  if (!anvill::Version::HasVersionData()) {
+    ss << "No extended version information found!\n";
+  } else {
+    ss << "Commit Hash: " << anvill::Version::GetCommitHash() << "\n";
+    ss << "Commit Date: " << anvill::Version::GetCommitDate() << "\n";
+    ss << "Last commit by: " << anvill::Version::GetAuthorName() << " ["
+       << anvill::Version::GetAuthorEmail() << "]\n";
+    ss << "Commit Subject: [" << anvill::Version::GetCommitSubject() << "]\n";
+    ss << "\n";
+    if (anvill::Version::HasUncommittedChanges()) {
+      ss << "Uncommitted changes were present during build.\n";
+    } else {
+      ss << "All changes were committed prior to building.\n";
+    }
+  }
+  google::SetVersionString(ss.str());
+}
 
 #if __has_include(<llvm/Support/JSON.h>)
 
@@ -92,7 +122,6 @@ static bool ParseValue(const remill::Arch *arch, anvill::ValueDecl &decl,
     LOG(ERROR) << "A " << desc << " cannot be resident in both a register "
                << "and a memory location.";
     return false;
-
   } else if (!decl.reg && !decl.mem_reg) {
     LOG(ERROR)
         << "A " << desc << " must be resident in either a register or "
@@ -505,6 +534,7 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
 }  // namespace
 
 int main(int argc, char *argv[]) {
+  SetVersion();
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
 
@@ -627,7 +657,9 @@ int main(int argc, char *argv[]) {
 }
 
 #else
-int main(int, char *[]) {
+int main(int argc, char *argv[]) {
+  SetVersion();
+  google::ParseCommandLineFlags(&argc, &argv, true);
   std::cerr << "LLVM JSON API is not available in this version of LLVM\n";
   return EXIT_FAILURE;
 }

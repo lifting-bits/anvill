@@ -201,7 +201,7 @@ FunctionDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
 
   if (address) {
     json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
-                                       this->address});
+                                       static_cast<int64_t>(this->address)});
   }
 
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
