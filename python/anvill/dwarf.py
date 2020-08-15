@@ -19,10 +19,10 @@ import sys
 from .exc import *
 from .os import *
 from .type import *
+from .dwarf_type import *
 
 try:
   from elftools.dwarf.descriptions import (describe_DWARF_expr, set_global_machine_arch, describe_form_class)
-  from .dwarf_type import *
 
 except ImportError:
   print("pyelftools not installed (pip install pyelftools)!")
@@ -31,8 +31,7 @@ except ImportError:
 def _is_ELF_file(path):
   with open(path, 'rb') as f:
     magic_bytes = f.read(4)
-    return magic_bytes[0] == '\x7f' and magic_bytes[1] == 'E' and \
-           magic_bytes[2] == 'L' and magic_bytes[3] == 'F'
+    return magic_bytes == b'\x7fELF'
   return False
 
 
