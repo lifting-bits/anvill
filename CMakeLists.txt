@@ -27,76 +27,16 @@ macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
 endmacro()
 
-# warnings and compiler settings
-if(NOT DEFINED WIN32)
-  set(PROJECT_CXXFLAGS
-    ${GLOBAL_CXXFLAGS} -Wconversion -pedantic
-    -Wno-unreachable-code-return
-  )
-endif()
-
 #
 # libraries
 #
 
 # remill
-if(NOT TARGET remill)
-  if("${PLATFORM_NAME}" STREQUAL "windows")
-    set(REMILL_FINDPACKAGE_HINTS HINTS "${CMAKE_INSTALL_PREFIX}/remill/lib")
-  endif()
-
-  find_package(remill REQUIRED ${REMILL_FINDPACKAGE_HINTS})
+if("${PLATFORM_NAME}" STREQUAL "windows")
+  set(REMILL_FINDPACKAGE_HINTS HINTS "${CMAKE_INSTALL_PREFIX}/remill/lib")
 endif()
 
-# llvm
-find_package(LLVM REQUIRED CONFIG HINTS ${FINDPACKAGE_LLVM_HINTS})
-
-string(REPLACE "." ";" LLVM_VERSION_LIST ${LLVM_PACKAGE_VERSION})
-list(GET LLVM_VERSION_LIST 0 LLVM_MAJOR_VERSION)
-list(GET LLVM_VERSION_LIST 1 LLVM_MINOR_VERSION)
-set(REMILL_LLVM_VERSION "${LLVM_MAJOR_VERSION}.${LLVM_MINOR_VERSION}")
-
-set(LLVM_LIBRARIES
-  LLVMCore LLVMAnalysis LLVMSupport LLVMipo LLVMIRReader
-  LLVMBitReader LLVMBitWriter LLVMTransformUtils LLVMScalarOpts
-  LLVMLTO
-)
-list(APPEND PROJECT_LIBRARIES ${LLVM_LIBRARIES})
-list(APPEND PROJECT_DEFINITIONS ${LLVM_DEFINITIONS})
-list(APPEND PROJECT_INCLUDEDIRECTORIES ${LLVM_INCLUDE_DIRS})
-
-# google log module
-find_package(glog REQUIRED)
-list(APPEND PROJECT_LIBRARIES glog::glog)
-
-# gflags
-find_package(gflags REQUIRED)
-list(APPEND PROJECT_LIBRARIES gflags)
-
-# xed
-find_package(XED REQUIRED)
-list(APPEND PROJECT_LIBRARIES ${XED_LIBRARIES})
-list(APPEND PROJECT_INCLUDEDIRECTORIES ${XED_INCLUDE_DIRS})
-
-# z3
-if (LLVM_Z3_INSTALL_DIR)
-  find_package(Z3 4.7.1)
-  set(need_z3 TRUE)
-elseif(DEFINED ENV{TRAILOFBITS_LIBRARIES})
-  set(LLVM_Z3_INSTALL_DIR "$ENV{TRAILOFBITS_LIBRARIES}/z3")
-  set(need_z3 TRUE)
-else()
-  set(need_z3 FALSE)
-endif()
-
-if(need_z3)
-  find_package(Z3 4.7.1)
-  if (NOT Z3_FOUND)
-    message(WARNING "Z3 >= 4.7.1 has not been found in LLVM_Z3_INSTALL_DIR: ${LLVM_Z3_INSTALL_DIR}.")
-  endif()
-  list(APPEND PROJECT_LIBRARIES Z3)
-endif()
-
+find_package(remill REQUIRED ${REMILL_FINDPACKAGE_HINTS})
 
 #
 # target settings
@@ -142,17 +82,11 @@ add_library(${ANVILL} STATIC
     include/anvill/Analyze.h
     lib/Analyze.cpp)
 
-target_compile_definitions(${ANVILL} PUBLIC
-    ${PROJECT_DEFINITIONS})
-
-target_compile_options(${ANVILL} PUBLIC
-    ${PROJECT_CXXFLAGS})
-
 target_include_directories(${ANVILL} PUBLIC
-   "${CMAKE_CURRENT_SOURCE_DIR}/include"
-   ${PROJECT_INCLUDEDIRECTORIES})
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    ${PROJECT_INCLUDEDIRECTORIES})
 
-target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion ${PROJECT_LIBRARIES})
+target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion)
 
 target_public_headers(${ANVILL}
     include/anvill/Analyze.h
@@ -163,8 +97,7 @@ target_public_headers(${ANVILL}
     include/anvill/Type.h
     include/anvill/TypeParser.h
     include/anvill/TypePrinter.h
-    include/anvill/Version.h
-  )
+    include/anvill/Version.h)
 
 #
 # tool target settings
@@ -181,23 +114,22 @@ set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
 add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
-
 add_custom_target(install_anvill_python
-  DEPENDS
-  setup.py
-  python/anvill/__init__.py
-  python/anvill/arch.py
-  python/anvill/binja.py
-  python/anvill/dwarf.py
-  python/anvill/exc.py
-  python/anvill/function.py
-  python/anvill/ida.py
-  python/anvill/loc.py
-  python/anvill/mem.py
-  python/anvill/os.py
-  python/anvill/program.py
-  python/anvill/type.py
-  python/anvill/var.py)
+    DEPENDS
+    setup.py
+    python/anvill/__init__.py
+    python/anvill/arch.py
+    python/anvill/binja.py
+    python/anvill/dwarf.py
+    python/anvill/exc.py
+    python/anvill/function.py
+    python/anvill/ida.py
+    python/anvill/loc.py
+    python/anvill/mem.py
+    python/anvill/os.py
+    python/anvill/program.py
+    python/anvill/type.py
+    python/anvill/var.py)
 
 add_custom_command(
     TARGET install_anvill_python POST_BUILD

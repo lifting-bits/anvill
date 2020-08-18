@@ -36,7 +36,7 @@ RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 g
 RUN update-alternatives --install /usr/bin/python2 python2 /usr/bin/python2.7 1
 
 
-COPY --from=remill /opt/trailofbits/remill /opt/trailofbits/remill
+COPY --from=remill /opt/trailofbits /opt/trailofbits
 
 
 # Source code build
