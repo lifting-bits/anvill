@@ -47,8 +47,8 @@ WORKDIR /anvill
 COPY . ./
 
 ENV PATH="${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
-ENV CC="${LIBRARIES}/llvm/bin/clang"
-ENV CXX="${LIBRARIES}/llvm/bin/clang++"
+ENV CC="/usr/bin/clang"
+ENV CXX="/usr/bin/clang++"
 ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
 
 RUN mkdir -p build && cd build && \
