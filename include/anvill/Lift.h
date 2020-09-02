@@ -24,9 +24,11 @@
 namespace llvm {
 class Module;
 }  // namespace llvm
+
 namespace remill {
 class IntrinsicTable;
 }  // namespace remill
+
 namespace anvill {
 
 class Program;

@@ -70,7 +70,7 @@ static void SetVersion(void) {
 
 #  include "anvill/Analyze.h"
 #  include "anvill/Decl.h"
-#  include "anvill/Lift.h"
+#  include "anvill/Lift2.h"
 #  include "anvill/Optimize.h"
 #  include "anvill/Program.h"
 #  include "anvill/TypeParser.h"
@@ -585,11 +585,9 @@ int main(int argc, char *argv[]) {
     os_str = maybe_os->str();
   }
 
-  const auto arch_name = remill::GetArchName(arch_str);
-  const auto os_name = remill::GetOSName(os_str);
-
   llvm::LLVMContext context;
-  const auto arch = remill::Arch::Build(&context, os_name, arch_name);
+  auto arch = remill::Arch::Build(&context, remill::GetOSName(os_str),
+                                  remill::GetArchName(arch_str));
   if (!arch) {
     return EXIT_FAILURE;
   }
@@ -599,44 +597,63 @@ int main(int argc, char *argv[]) {
   //            of the state structure and its named registers is
   //            by analyzing a module, and this is done in `PrepareModule`,
   //            which is called by `LoadArchSemantics`.
-  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch));
-  remill::IntrinsicTable intrinsics(semantics);
+  auto semantics = remill::LoadArchSemantics(arch);
+
+  // remill::IntrinsicTable intrinsics(semantics);
 
   anvill::Program program;
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
 
-  std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
-  std::unordered_map<uint64_t, llvm::Function *> lift_targets;
+  // std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
+  // std::unordered_map<uint64_t, llvm::Function *> lift_targets;
 
-  auto trace_manager = anvill::TraceManager::Create(*semantics, program);
+  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
 
-  remill::InstructionLifter inst_lifter(arch, intrinsics);
-  remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
+  // auto trace_manager = anvill::TraceManager::Create(*semantics, program);
 
-  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-    auto byte = program.FindByte(decl->address);
-    if (byte.IsExecutable()) {
-      trace_lifter.Lift(byte.Address());
-    }
-    return true;
-  });
+  // remill::InstructionLifter inst_lifter(arch, intrinsics);
+  // remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
+
+  // program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
+  //   auto byte = program.FindByte(decl->address);
+  //   if (byte.IsExecutable()) {
+  //     trace_lifter.Lift(byte.Address());
+  //   }
+  //   return true;
+  // });
 
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
   anvill::OptimizeModule(arch.get(), program, *semantics);
 
-  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    std::stringstream ss;
-    ss << "data_" << std::hex << decl->address;
-    global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
-    return true;
-  });
+  // program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
+  //   std::stringstream ss;
+  //   ss << "data_" << std::hex << decl->address;
+  //   global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
+  //   return true;
+  // });
 
-  anvill::RecoverMemoryAccesses(program, *semantics);
+  RecoverMemoryAccesses(program, *semantics);
 
-  //  anvill::OptimizeModule(arch.get(), program, dest_module);
+  auto dest_module = std::make_unique<llvm::Module>(FLAGS_spec, context);
+  dest_module->setTargetTriple(semantics->getTargetTriple());
+  dest_module->setDataLayout(semantics->getDataLayout());
+
+  // program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+  //                                 const anvill::FunctionDecl *fdecl,
+  //                                 const anvill::GlobalVarDecl *vdecl) {
+  //   if (fdecl) {
+  //     auto src = semantics->getFunction(name);
+  //     auto dst = fdecl->DeclareInModule(name, *dest_module);
+  //     remill::CloneFunctionInto(src, dst);
+  //   }
+
+  //   return true;
+  // });
+
+  // anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   int ret = EXIT_SUCCESS;
 

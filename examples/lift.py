@@ -21,8 +21,9 @@ def main():
 
     p = anvill.get_program(args.bin_in)
     for addr, name in p.functions:
-        p.add_symbol(addr, name)
+        # p.add_symbol(addr, name)
         p.add_function_definition(addr, False)
+
     open(args.spec_out, "w").write(p.proto())
 
 if __name__ == "__main__":

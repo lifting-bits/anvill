@@ -135,6 +135,9 @@ add_library(${ANVILL} STATIC
     
     include/anvill/Lift.h
     lib/Lift.cpp
+
+    include/anvill/Lift2.h
+    lib/Lift2.cpp
     
     include/anvill/Optimize.h
     lib/Optimize.cpp

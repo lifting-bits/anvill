@@ -380,6 +380,9 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   llvm::legacy::PassManager mpm;
   mpm.add(llvm::createFunctionInliningPass(250));
+
+  // mpm.add(llvm::createGlobalOptimizerPass());
+  // mpm.add(llvm::createGlobalDCEPass());
   mpm.run(module);
 
   llvm::legacy::FunctionPassManager fpm(&module);
