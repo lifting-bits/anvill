@@ -17,9 +17,14 @@
 
 #include <anvill/TypePrinter.h>
 #include <glog/logging.h>
+
+// clang-format off
+#include <remill/BC/Compat/CTypes.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+// clang-format on
+
 #include <remill/BC/Util.h>
 
 #include <sstream>
