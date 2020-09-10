@@ -40,8 +40,7 @@ FunctionLifter::FunctionLifter(const remill::Arch *_arch,
       intrinsics(remill::IntrinsicTable(&_module)),
       inst_lifter(remill::InstructionLifter(_arch, &intrinsics)) {}
 
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr,
-                                                   llvm::Function *func) {
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr) {
   auto &block = addr_to_block[addr];
   if (block) {
     return block;
@@ -49,136 +48,194 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr,
 
   std::stringstream ss;
   ss << "inst_" << std::hex << addr << std::dec;
-  block = llvm::BasicBlock::Create(ctx, ss.str(), func);
+  block = llvm::BasicBlock::Create(ctx, ss.str());
 
   return block;
 }
 
-remill::Instruction FunctionLifter::DecodeInstruction(const uint64_t addr) {
+remill::Instruction *FunctionLifter::DecodeInstruction(const uint64_t addr) {
+  auto &inst = addr_to_inst[addr];
+  if (inst.IsValid()) {
+    return &inst;
+  }
   // Read
   auto bytes = program.FindBytes(addr, arch->MaxInstructionSize());
   CHECK(bytes) << "Failed reading instruction at address: " << std::hex << addr
                << std::dec;
   // Decode
-  remill::Instruction inst;
   CHECK(arch->DecodeInstruction(addr, bytes.ToString(), inst))
       << "Failed decoding instruction at address: " << std::hex << addr
       << std::dec;
 
-  return inst;
+  return &inst;
+}
+
+llvm::BasicBlock *FunctionLifter::LiftInstruction(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  if (!block->empty()) {
+    return block;
+  }
+
+  switch (inst_lifter.LiftIntoBlock(*inst, block)) {
+    case remill::kLiftedInvalidInstruction:
+      LOG(FATAL) << "Invalid instruction: " << inst->Serialize();
+      break;
+
+    case remill::kLiftedUnsupportedInstruction:
+      LOG(FATAL) << "Unsupported instruction: " << inst->Serialize();
+      break;
+
+    default: break;
+  }
+
+  return block;
+}
+
+void FunctionLifter::VisitInvalid(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  remill::AddTerminatingTailCall(block, intrinsics.error);
+}
+
+void FunctionLifter::VisitError(remill::Instruction *inst) {
+  VisitInvalid(inst);
+}
+
+void FunctionLifter::VisitNormal(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  llvm::BranchInst::Create(GetOrCreateBlock(inst->next_pc), block);
+}
+
+void FunctionLifter::VisitNoOp(remill::Instruction *inst) {
+  VisitNormal(inst);
+}
+
+void FunctionLifter::VisitDirectJump(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  auto target = inst->branch_taken_pc;
+  if (addr_to_func.count(target)) {
+    // Tail calls
+    remill::AddTerminatingTailCall(block, GetOrDeclareFunction(target));
+  } else {
+    // Regular jumps
+    llvm::BranchInst::Create(GetOrCreateBlock(target), block);
+  }
+}
+
+void FunctionLifter::VisitIndirectJump(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  remill::AddTerminatingTailCall(block, intrinsics.jump);
+}
+
+void FunctionLifter::VisitFunctionReturn(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
+}
+
+void FunctionLifter::VisitDirectFunctionCall(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  remill::AddCall(block, GetOrDeclareFunction(inst->branch_taken_pc));
+  llvm::BranchInst::Create(GetOrCreateBlock(inst->next_pc), block);
+}
+
+void FunctionLifter::VisitIndirectFunctionCall(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  remill::AddCall(block, intrinsics.function_call);
+  llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
+}
+
+void FunctionLifter::VisitConditionalBranch(remill::Instruction *inst) {
+  auto block = GetOrCreateBlock(inst->pc);
+  CHECK(!block->empty());
+  auto if_true = GetOrCreateBlock(inst->branch_taken_pc);
+  auto if_false = GetOrCreateBlock(inst->branch_not_taken_pc);
+  auto cond = remill::LoadBranchTaken(block);
+  llvm::BranchInst::Create(if_true, if_false, cond, block);
+}
+
+void FunctionLifter::VisitInstruction(remill::Instruction *inst) {
+  switch (inst->category) {
+    case remill::Instruction::kCategoryInvalid: VisitInvalid(inst); break;
+    case remill::Instruction::kCategoryError: VisitError(inst); break;
+    case remill::Instruction::kCategoryNormal: VisitNormal(inst); break;
+    case remill::Instruction::kCategoryNoOp: VisitNoOp(inst); break;
+    case remill::Instruction::kCategoryDirectJump: VisitDirectJump(inst); break;
+    case remill::Instruction::kCategoryIndirectJump:
+      VisitIndirectJump(inst);
+      break;
+    case remill::Instruction::kCategoryFunctionReturn:
+      VisitFunctionReturn(inst);
+      break;
+    case remill::Instruction::kCategoryDirectFunctionCall:
+      VisitDirectFunctionCall(inst);
+      break;
+    case remill::Instruction::kCategoryIndirectFunctionCall:
+      VisitIndirectFunctionCall(inst);
+      break;
+    case remill::Instruction::kCategoryConditionalBranch:
+      VisitConditionalBranch(inst);
+      break;
+    case remill::Instruction::kCategoryAsyncHyperCall:
+    case remill::Instruction::kCategoryConditionalAsyncHyperCall:
+      LOG(FATAL) << "Unimplemented handlers";
+      break;
+  }
 }
 
 llvm::Function *FunctionLifter::LiftFunction(const uint64_t func_addr) {
-  if (!addr_to_func.count(func_addr)) {
-    LOG(WARNING) << "No declared function at address: " << std::hex << func_addr
-                 << std::dec;
-    return nullptr;
-  }
-
+  CHECK(addr_to_func.count(func_addr)) << "No declared function at address "
+                                       << std::hex << func_addr << std::dec;
   auto &func = addr_to_func[func_addr];
-  if (!func->empty()) {
-    LOG(WARNING) << "Asking to re-lift function: " << func->getName().str()
-                 << "; returning current function instead";
-    return func;
-  }
-
-  DLOG(INFO) << "Lifting function: " << func->getName().str();
+  CHECK(func->empty()) << "Function " << func->getName().str()
+                       << " is already defined";
   // Get `__remill_basic_block` into `func`
   remill::CloneBlockFunctionInto(func);
-  // Lifting function attributes
-  func->removeFnAttr(llvm::Attribute::NoReturn);
-  func->removeFnAttr(llvm::Attribute::NoUnwind);
-  func->setVisibility(llvm::GlobalValue::DefaultVisibility);
-  func->setLinkage(llvm::GlobalValue::ExternalLinkage);
-  // Inlining function attributes
-  func->removeFnAttr(llvm::Attribute::AlwaysInline);
-  func->removeFnAttr(llvm::Attribute::InlineHint);
-  func->addFnAttr(llvm::Attribute::NoInline);
+  llvm::BranchInst::Create(GetOrCreateBlock(func_addr), &func->getEntryBlock());
   // Recursively decode and lift
   std::set<uint64_t> worklist({func_addr});
   while (!worklist.empty()) {
     auto inst_addr = *worklist.begin();
     worklist.erase(inst_addr);
     // Check if we already lifted `inst_addr`
-    auto block = GetOrCreateBlock(inst_addr, func);
+    auto block = GetOrCreateBlock(inst_addr);
     if (!block->empty()) {
       continue;
     }
+    // Insert `block` into `func`
+    block->insertInto(func);
     // Decode
     auto inst = DecodeInstruction(inst_addr);
     // Lift into `block`
-    DLOG(INFO) << "Lifting instruction: " << inst.Serialize();
-    switch (inst_lifter.LiftIntoBlock(inst, block)) {
-      case remill::kLiftedInstruction: {
-      } break;
-
-      case remill::kLiftedInvalidInstruction:
-        LOG(FATAL) << "Asking to lift invalid instruction: "
-                   << inst.Serialize();
-        break;
-
-      case remill::kLiftedUnsupportedInstruction:
-        LOG(FATAL) << "Asking to lift unsupported instruction: "
-                   << inst.Serialize();
-        break;
-    }
-    // // Add successors of `inst` to the worklist
-    llvm::IRBuilder<> ir(block);
-    switch (inst.category) {
-      case remill::Instruction::kCategoryInvalid: {
-        LOG(FATAL) << "Asking to add successors of invalid instruction";
-      } break;
-
+    LiftInstruction(inst);
+    // Add terminators to `block`
+    VisitInstruction(inst);
+    // Add successors of `inst` to the worklist
+    switch (inst->category) {
+      default: break;
       case remill::Instruction::kCategoryNormal:
-      case remill::Instruction::kCategoryNoOp: {
-        auto next_pc = inst.next_pc;
-        worklist.insert(next_pc);
-        ir.CreateBr(GetOrCreateBlock(next_pc, func));
-      } break;
-
-      case remill::Instruction::kCategoryError: break;
+      case remill::Instruction::kCategoryNoOp:
+      case remill::Instruction::kCategoryDirectFunctionCall:
+        worklist.insert(inst->next_pc);
+        break;
 
       case remill::Instruction::kCategoryDirectJump: {
-        auto next_pc = inst.branch_taken_pc;
-        worklist.insert(next_pc);
-        ir.CreateBr(GetOrCreateBlock(next_pc, func));
+        // Ignore tail calls
+        auto target = inst->branch_taken_pc;
+        if (!addr_to_func.count(target)) {
+          worklist.insert(target);
+        }
       } break;
 
-      case remill::Instruction::kCategoryIndirectJump: {
-        remill::AddTerminatingTailCall(block, intrinsics.jump);
-      } break;
-
-      case remill::Instruction::kCategoryFunctionReturn: {
-        ir.CreateRet(remill::LoadMemoryPointer(block));
-      } break;
-
-      case remill::Instruction::kCategoryDirectFunctionCall: {
-        remill::AddCall(block, GetOrDeclareFunction(inst.branch_taken_pc));
-        auto next_pc = inst.next_pc;
-        worklist.insert(next_pc);
-        ir.CreateBr(GetOrCreateBlock(next_pc, func));
-      } break;
-
-      case remill::Instruction::kCategoryIndirectFunctionCall: {
-        remill::AddCall(block, intrinsics.function_call);
-        auto next_pc = inst.next_pc;
-        worklist.insert(next_pc);
-        ir.CreateBr(GetOrCreateBlock(next_pc, func));
-      } break;
-
-      case remill::Instruction::kCategoryConditionalBranch: {
-        auto true_pc = inst.branch_taken_pc;
-        auto false_pc = inst.branch_not_taken_pc;
-        worklist.insert(true_pc);
-        worklist.insert(false_pc);
-        ir.CreateCondBr(remill::LoadBranchTaken(block),
-                        GetOrCreateBlock(true_pc, func),
-                        GetOrCreateBlock(false_pc, func));
-      } break;
-
-      default: {
-        LOG(FATAL) << "Unsupported instruction successor";
-      } break;
+      case remill::Instruction::kCategoryConditionalBranch:
+        worklist.insert(inst->branch_taken_pc);
+        worklist.insert(inst->branch_not_taken_pc);
+        break;
     }
   }
 
@@ -198,7 +255,26 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const uint64_t addr) {
   return func;
 }
 
-bool FunctionLifter::DefineLiftedFunctions() {
+llvm::Function *FunctionLifter::GetOrDefineFunction(const uint64_t addr) {
+  auto &func = addr_to_func[addr];
+  if (func && !func->empty()) {
+    LOG(WARNING) << "Asking to re-lift function: " << func->getName().str()
+                 << "; returning current function instead";
+    return func;
+  }
+  // Lift
+  func = LiftFunction(addr);
+  // Inlining function attributes
+  func->removeFnAttr(llvm::Attribute::NoInline);
+  func->addFnAttr(llvm::Attribute::InlineHint);
+  func->addFnAttr(llvm::Attribute::AlwaysInline);
+  return func;
+}
+
+bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
+                        llvm::Module &module) {
+  DLOG(INFO) << "LiftCodeIntoModule";
+  // Initialize cleanup optimizations
   llvm::legacy::FunctionPassManager fpm(&module);
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createPromoteMemoryToRegisterPass());
@@ -206,41 +282,23 @@ bool FunctionLifter::DefineLiftedFunctions() {
   fpm.add(llvm::createDeadStoreEliminationPass());
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.doInitialization();
-
-  for (auto [addr, func] : addr_to_func) {
-    if (!func->empty()) {
-      LOG(WARNING) << "Asking to re-lift function: " << func->getName().str()
-                   << "; returning current function instead";
-      continue;
-    }
-
-    auto lifted_func = LiftFunction(addr);
-    if (!lifted_func) {
-      LOG(ERROR) << "Could not lift function at " << std::hex << addr
-                 << std::dec;
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
-                        llvm::Module &module) {
-  DLOG(INFO) << "LiftCodeIntoModule";
+  // Create our lifter
   FunctionLifter lifter(arch, program, module);
   // Forward declare all lifted functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    auto func = lifter.GetOrDeclareFunction(decl->address);
-    // Set function as external so it doesn't get optimized away
-    func->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    lifter.GetOrDeclareFunction(decl->address);
     return true;
   });
-
-  if (!lifter.DefineLiftedFunctions()) {
-    return false;
-  }
-
+  // Lift functions
+  program.ForEachFunction([&](const FunctionDecl *decl) {
+    auto func = lifter.GetOrDefineFunction(decl->address);
+    fpm.run(*func);
+    return true;
+  });
+  // Verify the module
+  CHECK(remill::VerifyModule(&module));
+  // Done
+  fpm.doFinalization();
   return true;
 }
 

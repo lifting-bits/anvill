@@ -46,20 +46,34 @@ class FunctionLifter {
   llvm::LLVMContext &ctx;
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
-
-  std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+  // Result maps
+  std::unordered_map<uint64_t, remill::Instruction> addr_to_inst;
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
-
-  remill::Instruction DecodeInstruction(const uint64_t addr);
+  std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+  // Helper
+  llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
+  // Visitors used to add terminators to instruction basic blocks
+  void VisitInvalid(remill::Instruction *inst);
+  void VisitError(remill::Instruction *inst);
+  void VisitNormal(remill::Instruction *inst);
+  void VisitNoOp(remill::Instruction *inst);
+  void VisitDirectJump(remill::Instruction *inst);
+  void VisitIndirectJump(remill::Instruction *inst);
+  void VisitFunctionReturn(remill::Instruction *inst);
+  void VisitDirectFunctionCall(remill::Instruction *inst);
+  void VisitIndirectFunctionCall(remill::Instruction *inst);
+  void VisitConditionalBranch(remill::Instruction *inst);
+  void VisitInstruction(remill::Instruction *inst);
+  remill::Instruction *DecodeInstruction(const uint64_t addr);
+  llvm::BasicBlock *LiftInstruction(remill::Instruction *inst);
   llvm::Function *LiftFunction(const uint64_t addr);
-  llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr, llvm::Function *func);
 
  public:
   FunctionLifter(const remill::Arch *arch, const Program &program,
                  llvm::Module &module);
 
   llvm::Function *GetOrDeclareFunction(const uint64_t addr);
-  bool DefineLiftedFunctions();
+  llvm::Function *GetOrDefineFunction(const uint64_t addr);
 };
 
 bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
