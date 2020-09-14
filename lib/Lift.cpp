@@ -25,8 +25,6 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/BC/Util.h>
 
-#include <set>
-
 #include "anvill/Decl.h"
 #include "anvill/MCToIRLifter.h"
 #include "anvill/Program.h"
@@ -35,7 +33,7 @@ namespace anvill {
 
 namespace {
 
-std::string CreateFunctionName(uint64_t addr) {
+static std::string CreateFunctionName(uint64_t addr) {
   std::stringstream ss;
   ss << "sub_" << std::hex << addr;
   return ss.str();

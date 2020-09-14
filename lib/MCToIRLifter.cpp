@@ -18,16 +18,12 @@
 #include "anvill/MCToIRLifter.h"
 
 #include <glog/logging.h>
-#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Utils.h>
-#include <llvm/Transforms/Utils/Cloning.h>
+#include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
 #include <set>
 
-#include "anvill/Decl.h"
 #include "anvill/Program.h"
 
 namespace {
@@ -42,8 +38,8 @@ std::string CreateFunctionName(uint64_t addr) {
 
 namespace anvill {
 
-MCToIRLifter::MCToIRLifter(const remill::Arch *_arch,
-                               const Program &_program, llvm::Module &_module)
+MCToIRLifter::MCToIRLifter(const remill::Arch *_arch, const Program &_program,
+                           llvm::Module &_module)
     : arch(_arch),
       program(_program),
       module(_module),
