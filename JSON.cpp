@@ -626,7 +626,7 @@ int main(int argc, char *argv[]) {
 
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
-  // anvill::OptimizeModule(arch.get(), program, *semantics);
+  anvill::OptimizeModule(arch.get(), program, *semantics);
 
   // program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
   //   std::stringstream ss;
@@ -641,30 +641,28 @@ int main(int argc, char *argv[]) {
   dest_module->setTargetTriple(semantics->getTargetTriple());
   dest_module->setDataLayout(semantics->getDataLayout());
 
-  // program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-  //                                 const anvill::FunctionDecl *fdecl,
-  //                                 const anvill::GlobalVarDecl *vdecl) {
-  //   if (fdecl) {
-  //     auto src = semantics->getFunction(name);
-  //     auto dst = fdecl->DeclareInModule(name, *dest_module);
-  //     remill::CloneFunctionInto(src, dst);
-  //   }
+  program.ForEachFunction([&](const anvill::FunctionDecl *fdecl) {
+    std::stringstream ss;
+    ss << "sub_" << std::hex << fdecl->address << std::dec;
+    auto src = semantics->getFunction(ss.str());
+    auto dst = fdecl->DeclareInModule(ss.str(), *dest_module);
+    remill::CloneFunctionInto(src, dst);
 
-  //   return true;
-  // });
+    return true;
+  });
 
   anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
+    if (!remill::StoreModuleIRToFile(dest_module.get(), FLAGS_ir_out, true)) {
       LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
+    if (!remill::StoreModuleToFile(dest_module.get(), FLAGS_bc_out, true)) {
       LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
     }
