@@ -17,24 +17,32 @@
 
 #pragma once
 
-#include <remill/Arch/Instruction.h>
-#include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Lifter.h>
 
-#include <unordered_map>
+#include <memory>
 
 namespace llvm {
 class Module;
 }  // namespace llvm
 
 namespace remill {
-class Arch;
+class IntrinsicTable;
 }  // namespace remill
 
 namespace anvill {
 
 class Program;
 struct ValueDecl;
+
+// Manages lifting of machine code functions from the input
+// program.
+class TraceManager : public remill::TraceManager {
+ public:
+  virtual ~TraceManager(void);
+
+  static std::unique_ptr<TraceManager> Create(llvm::Module &semantics_module,
+                                              const Program &);
+};
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
@@ -50,8 +58,5 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
-
-bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
-                        llvm::Module &module);
 
 }  // namespace anvill

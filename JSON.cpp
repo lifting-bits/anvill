@@ -70,7 +70,7 @@ static void SetVersion(void) {
 
 #  include "anvill/Analyze.h"
 #  include "anvill/Decl.h"
-#  include "anvill/Lift2.h"
+#  include "anvill/Lift.h"
 #  include "anvill/Optimize.h"
 #  include "anvill/Program.h"
 #  include "anvill/TypeParser.h"
@@ -599,41 +599,23 @@ int main(int argc, char *argv[]) {
   //            which is called by `LoadArchSemantics`.
   auto semantics = remill::LoadArchSemantics(arch);
 
-  // remill::IntrinsicTable intrinsics(semantics);
-
   anvill::Program program;
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
 
-  // std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
-  // std::unordered_map<uint64_t, llvm::Function *> lift_targets;
-
   anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
-
-  // auto trace_manager = anvill::TraceManager::Create(*semantics, program);
-
-  // remill::InstructionLifter inst_lifter(arch, intrinsics);
-  // remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
-
-  // program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-  //   auto byte = program.FindByte(decl->address);
-  //   if (byte.IsExecutable()) {
-  //     trace_lifter.Lift(byte.Address());
-  //   }
-  //   return true;
-  // });
 
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
   anvill::OptimizeModule(arch.get(), program, *semantics);
 
-  // program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-  //   std::stringstream ss;
-  //   ss << "data_" << std::hex << decl->address;
-  //   global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
-  //   return true;
-  // });
+  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
+    std::stringstream ss;
+    ss << "data_" << std::hex << decl->address;
+    decl->DeclareInModule(ss.str(), *semantics);
+    return true;
+  });
 
   RecoverMemoryAccesses(program, *semantics);
 

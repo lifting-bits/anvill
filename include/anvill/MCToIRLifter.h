@@ -38,7 +38,7 @@ namespace anvill {
 
 class Program;
 
-class FunctionLifter {
+class MCToIRLifter {
  private:
   const remill::Arch *arch;
   const Program &program;
@@ -69,14 +69,11 @@ class FunctionLifter {
   llvm::Function *LiftFunction(const uint64_t addr);
 
  public:
-  FunctionLifter(const remill::Arch *arch, const Program &program,
+  MCToIRLifter(const remill::Arch *arch, const Program &program,
                  llvm::Module &module);
 
   llvm::Function *GetOrDeclareFunction(const uint64_t addr);
   llvm::Function *GetOrDefineFunction(const uint64_t addr);
 };
-
-bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
-                        llvm::Module &module);
 
 }  // namespace anvill

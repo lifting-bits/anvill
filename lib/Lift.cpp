@@ -15,28 +15,31 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Lift.h>
+#include "anvill/Lift.h"
+
 #include <glog/logging.h>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include <remill/Arch/Arch.h>
-#include <remill/BC/ABI.h>
-#include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
-#include <unordered_map>
+#include <set>
 
 #include "anvill/Decl.h"
+#include "anvill/MCToIRLifter.h"
 #include "anvill/Program.h"
 
 namespace anvill {
 
 namespace {
+
+std::string CreateFunctionName(uint64_t addr) {
+  std::stringstream ss;
+  ss << "sub_" << std::hex << addr;
+  return ss.str();
+}
 
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
 static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
@@ -101,7 +104,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
         return ir.CreateBitCast(src, dest_ptr_type);
       }
 
-    // Convert the pointer to an integer.
+      // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
@@ -144,137 +147,16 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
   return nullptr;
 }
 
-}  // namespace
-
-// Produce one or more instructions in `in_block` to load and return
-// the lifted value associated with `decl`.
-llvm::Value *LoadLiftedValue(const ValueDecl &decl,
-                             const remill::IntrinsicTable &intrinsics,
-                             llvm::BasicBlock *in_block, llvm::Value *state_ptr,
-                             llvm::Value *mem_ptr) {
-
-  auto func = in_block->getParent();
-  auto module = func->getParent();
-
-  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
-
-  // Load it out of a register.
-  if (decl.reg) {
-    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
-    llvm::IRBuilder<> ir(in_block);
-    auto reg = ir.CreateLoad(ptr_to_reg);
-    if (auto adapted_val = AdaptToType(ir, reg, decl.type); adapted_val) {
-      return adapted_val;
-    } else {
-      return ir.CreateLoad(
-          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
+// Clear out LLVM variable names. They're usually not helpful.
+static void ClearVariableNames(llvm::Function *func) {
+  for (auto &block : *func) {
+    block.setName("");
+    for (auto &inst : block) {
+      if (inst.hasName()) {
+        inst.setName("");
+      }
     }
-
-  // Load it out of memory.
-  } else if (decl.mem_reg) {
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
-    llvm::IRBuilder<> ir(in_block);
-    const auto addr = ir.CreateAdd(
-        ir.CreateLoad(ptr_to_reg),
-        llvm::ConstantInt::get(decl.mem_reg->type,
-                               static_cast<uint64_t>(decl.mem_offset), true));
-    return llvm::dyn_cast<llvm::Instruction>(
-        remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
-
-  } else {
-    return llvm::UndefValue::get(decl.type);
   }
-}
-
-// Produce one or more instructions in `in_block` to store the
-// native value `native_val` into the lifted state associated
-// with `decl`.
-llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
-                              const remill::IntrinsicTable &intrinsics,
-                              llvm::BasicBlock *in_block,
-                              llvm::Value *state_ptr, llvm::Value *mem_ptr) {
-
-  auto func = in_block->getParent();
-  auto module = func->getParent();
-
-  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
-  CHECK_EQ(native_val->getType(), decl.type);
-
-  // Store it to a register.
-  if (decl.reg) {
-    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
-    llvm::IRBuilder<> ir(in_block);
-    if (decl.type != decl.reg->type) {
-      ir.CreateStore(llvm::Constant::getNullValue(decl.reg->type), ptr_to_reg);
-    }
-
-    if (auto adapted_val = AdaptToType(ir, native_val, decl.reg->type);
-        adapted_val) {
-      ir.CreateStore(adapted_val, ptr_to_reg);
-
-    } else {
-      ir.CreateStore(
-          native_val,
-          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
-    }
-
-    return mem_ptr;
-
-  // Store it to memory.
-  } else if (decl.mem_reg) {
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
-
-    llvm::IRBuilder<> ir(in_block);
-    const auto addr = ir.CreateAdd(
-        ir.CreateLoad(ptr_to_reg),
-        llvm::ConstantInt::get(decl.mem_reg->type,
-                               static_cast<uint64_t>(decl.mem_offset), true));
-    return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
-                                 addr);
-
-  } else {
-    return llvm::UndefValue::get(mem_ptr->getType());
-  }
-}
-
-namespace {
-
-// Create an adaptor function that converts lifted state to native state.
-// This function is marked as always-inline so that when a lifted function
-// calls this function, it ends up doing so in a way that, post-optimization,
-// ends up calling the higher-level function.
-static llvm::Function *
-CreateLiftedToNativeStateFunction(const std::string &name,
-                                  const remill::IntrinsicTable &intrinsics,
-                                  const anvill::FunctionDecl *decl) {
-
-  std::stringstream ss;
-  ss << name << ".anvill.lifted_to_native";
-  auto lifted_name = ss.str();
-  auto module = intrinsics.error->getParent();
-  auto adaptor = remill::DeclareLiftedFunction(module, lifted_name);
-
-  if (!adaptor->isDeclaration()) {
-    return adaptor;  // Already defined.
-  }
-
-  // Declare all registers in that function. Makes life easier.
-  remill::CloneBlockFunctionInto(adaptor);
-
-  auto block = &(adaptor->getEntryBlock());
-  auto state_ptr = remill::LoadStatePointer(block);
-  auto mem_ptr = remill::LoadMemoryPointer(block);
-  auto new_mem_ptr =
-      decl->CallFromLiftedBlock(name, intrinsics, block, state_ptr, mem_ptr);
-
-  llvm::IRBuilder<> ir(block);
-  ir.CreateRet(new_mem_ptr);
-
-  adaptor->addFnAttr(llvm::Attribute::InlineHint);
-  adaptor->addFnAttr(llvm::Attribute::AlwaysInline);
-  adaptor->setLinkage(llvm::GlobalValue::PrivateLinkage);
-
-  return adaptor;
 }
 
 // A function that ensures that the memory pointer escapes, and thus none of
@@ -292,183 +174,32 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
                                 "__anvill_memory_escape", module);
 }
 
-// Clear out LLVM variable names. They're usually not helpful.
-static void ClearVariableNames(llvm::Function *func) {
-  for (auto &block : *func) {
-    block.setName("");
-    for (auto &inst : block) {
-      if (inst.hasName()) {
-        inst.setName("");
-      }
-    }
-  }
-}
-
-// Manager of lifted traces. This interacts with Remill's
-// `TraceLifter` class, which performs a recursive-descent
-// decoding of instructions.
-class TraceManagerImpl final : public TraceManager {
- public:
-  virtual ~TraceManagerImpl(void) = default;
-
-  TraceManagerImpl(llvm::Module &semantics_module, const Program &program_)
-      : intrinsics(&semantics_module),
-        program(program_),
-        memory_escape(GetMemoryEscapeFunc(intrinsics)) {}
-
-  // Use something that won't conflict with our default naming of
-  // unnamed `FunctionDecl`s so that we avoid some declaration vs.
-  // definition conflicts in Remill's TraceLifter.
-  std::string TraceName(uint64_t addr) final {
-    std::stringstream ss;
-    ss << "sub_" << std::hex << addr << ".lifted";
-    return ss.str();
-  }
-
-  // Get the first name associated with `addr`, or return a default name.
-  std::string FunctionName(uint64_t addr) {
-    std::stringstream ss;
-    ss << "sub_" << std::hex << addr;
-    auto name = ss.str();
-
-    // Go try to find a name from our symbol table.
-    program.ForEachNameOfAddress(
-        addr,
-        [=, &name](const std::string &found_name,
-                   const FunctionDecl *found_decl, const GlobalVarDecl *) {
-          if (found_decl) {
-            name = found_name;
-            return false;
-          } else {
-            return true;
-          }
-        });
-
-    return name;
-  }
-
-  // Called when we have lifted, i.e. defined the contents, of a new trace.
-  // The derived class is expected to do something useful with this.
-  void SetLiftedTraceDefinition(uint64_t addr,
-                                llvm::Function *lifted_func) final;
-
-  // Get a definition for a lifted trace.
-  llvm::Function *GetLiftedTraceDefinition(uint64_t addr) final {
-    auto trace_it = trace_defs.find(addr);
-    if (trace_it != trace_defs.end()) {
-      return trace_it->second;
-    }
-
-    auto decl = program.FindFunction(addr);
-    if (!decl) {
-      return nullptr;
-    }
-
-    auto byte = program.FindByte(addr);
-    if (byte) {
-      return nullptr;
-    }
-
-    // We don't have the code for this function mapped in, so we
-    // want to make sure we never try to lift it.
-    return CreateLiftedToNativeStateFunction(FunctionName(addr), intrinsics,
-                                             decl);
-  }
-
-  // Try to read an executable byte of memory. Returns `true` of the byte
-  // at address `addr` is executable and readable, and updates the byte
-  // pointed to by `byte` with the read value.
-  bool TryReadExecutableByte(uint64_t addr, uint8_t *byte) final;
-
- private:
-  TraceManagerImpl(void) = delete;
-
-  const remill::IntrinsicTable intrinsics;
-  const Program &program;
-
-  // Trace declarations are our lifted-to-native entrypoints.
-  std::unordered_map<uint64_t, llvm::Function *> trace_decls;
-  std::unordered_map<uint64_t, llvm::Function *> trace_defs;
-
-  // Our native-to-lifted representations.
-  std::unordered_map<uint64_t, llvm::Function *> decompiled_funcs;
-
-  // Function that we call so that the `Memory *` can escape.
-  llvm::Function *memory_escape;
-};
-
-// Try to read an executable byte of memory. Returns `true` of the byte
-// at address `addr` is executable, and updates the byte pointed to by
-// `byte` with the read value.
-bool TraceManagerImpl::TryReadExecutableByte(uint64_t addr, uint8_t *byte) {
-  if (auto addr_byte = program.FindByte(addr)) {
-    if (addr_byte.IsExecutable()) {
-      auto val = addr_byte.Value();
-      if (!val) {
-        return false;
-      }
-      *byte = *val;
-      return true;
-    }
-  }
-  return false;
-}
-
-// Called when we have lifted, i.e. defined the contents, of a new trace.
-// The derived class is expected to do something useful with this.
-void TraceManagerImpl::SetLiftedTraceDefinition(uint64_t addr,
-                                                llvm::Function *lifted_func) {
-
+static void DefineABIFunction(const FunctionDecl *decl,
+                              llvm::Function *lifted_func) {
+  // Set inlining attributes for lifted function
   lifted_func->removeFnAttr(llvm::Attribute::NoInline);
   lifted_func->addFnAttr(llvm::Attribute::InlineHint);
   lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
-
-  // Keep track of all defined traces.
-  trace_defs[addr] = lifted_func;
-
-  const auto decl = program.FindFunction(addr);
-
-  // If this isn't a high-level function that we know about,
-  // then add it to the set of trace declarations.
-  if (!decl) {
-    LOG(ERROR) << "Missing FunctionDecl for " << std::hex << addr << std::dec;
-    trace_decls[addr] = lifted_func;
-    lifted_func->setLinkage(llvm::GlobalValue::LinkOnceAnyLinkage);
-    return;
-  }
-
+  // Get module and context from the lifted function
   auto module = lifted_func->getParent();
-  auto &context = module->getContext();
-
-  const auto func = decl->DeclareInModule(FunctionName(addr), *module);
-  decompiled_funcs[addr] = func;
-
-  if (!func->isDeclaration()) {
-    LOG(ERROR) << "Function associated with FunctionDecl at " << std::hex
-               << addr << std::dec << " already defined";
-    return;
-  }
-
-  const auto arch = decl->arch;
-  CHECK_EQ(arch->context, &context);
-
-  // We have the decompiled function, or at least, a prefix of it,
-  // so we'll invent a state structure and a stack frame and we'll
-  // call the lifted function with that. The lifted function will
-  // get inlined into this function.
-
-  auto block = llvm::BasicBlock::Create(context, "", func);
+  auto &ctx = module->getContext();
+  // Declare ABI-level function
+  auto func = decl->DeclareInModule(CreateFunctionName(decl->address), *module);
+  // Get arch from the ABI-level function
+  auto arch = decl->arch;
+  CHECK_EQ(arch->context, &ctx);
+  // Create a state structure and a stack frame in the ABI-level function
+  // and we'll call the lifted function with that. The lifted function
+  // will get inlined into this function.
+  auto block = llvm::BasicBlock::Create(ctx, "", func);
   llvm::IRBuilder<> ir(block);
-
-  // Invent a memory pointer.
-  const auto mem_ptr_type = remill::MemoryPointerType(module);
+  // Create a memory pointer.
+  auto mem_ptr_type = remill::MemoryPointerType(module);
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
-
   // Stack-allocate a state pointer.
-  const auto state_ptr_type = remill::StatePointerType(module);
-  const auto state_type = state_ptr_type->getElementType();
-  const auto state_ptr = ir.CreateAlloca(state_type);
-
+  auto state_ptr_type = remill::StatePointerType(module);
+  auto state_type = state_ptr_type->getElementType();
+  auto state_ptr = ir.CreateAlloca(state_type);
   // Get or create globals for all top-level registers. The idea here is that
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
@@ -488,36 +219,35 @@ void TraceManagerImpl::SetLiftedTraceDefinition(uint64_t addr,
       ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
     }
   });
-
   // Store the program counter into the state.
-  const auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
-  const auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
+  auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
+  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
 
   auto base_pc = module->getGlobalVariable("__anvill_pc");
   if (!base_pc) {
     base_pc = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(context), false,
+        *module, llvm::Type::getInt8Ty(ctx), false,
         llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_pc");
   }
 
-  const auto pc = llvm::ConstantExpr::getAdd(
+  auto pc = llvm::ConstantExpr::getAdd(
       llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
       llvm::ConstantInt::get(pc_reg->type, decl->address, false));
   ir.SetInsertPoint(block);
   ir.CreateStore(pc, pc_reg_ptr);
 
   // Initialize the stack pointer.
-  const auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  const auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
+  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
+  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
 
   auto base_sp = module->getGlobalVariable("__anvill_sp");
   if (!base_sp) {
     base_sp = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(context), false,
+        *module, llvm::Type::getInt8Ty(ctx), false,
         llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_sp");
   }
 
-  const auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
+  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
   ir.SetInsertPoint(block);
   ir.CreateStore(sp, sp_reg_ptr);
 
@@ -525,12 +255,13 @@ void TraceManagerImpl::SetLiftedTraceDefinition(uint64_t addr,
   auto base_ra = module->getGlobalVariable("__anvill_ra");
   if (!base_ra) {
     base_ra = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(context), false,
+        *module, llvm::Type::getInt8Ty(ctx), false,
         llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_ra");
   }
 
-  const auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
+  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
 
+  remill::IntrinsicTable intrinsics(module);
   mem_ptr = StoreNativeValue(ret_addr, decl->return_address, intrinsics, block,
                              state_ptr, mem_ptr);
 
@@ -570,6 +301,7 @@ void TraceManagerImpl::SetLiftedTraceDefinition(uint64_t addr,
     }
   }
 
+  auto memory_escape = GetMemoryEscapeFunc(intrinsics);
   llvm::Value *escape_args[] = {mem_ptr};
   ir.CreateCall(memory_escape, escape_args);
 
@@ -598,16 +330,127 @@ void TraceManagerImpl::SetLiftedTraceDefinition(uint64_t addr,
 
   ClearVariableNames(func);
 }
-
 }  // namespace
 
-TraceManager::~TraceManager(void) {}
+// Produce one or more instructions in `in_block` to store the
+// native value `native_val` into the lifted state associated
+// with `decl`.
+llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const remill::IntrinsicTable &intrinsics,
+                              llvm::BasicBlock *in_block,
+                              llvm::Value *state_ptr, llvm::Value *mem_ptr) {
 
-std::unique_ptr<TraceManager>
-TraceManager::Create(llvm::Module &semantics_module,
-                     const anvill::Program &program) {
-  return std::unique_ptr<TraceManager>(
-      new TraceManagerImpl(semantics_module, program));
+  auto func = in_block->getParent();
+  auto module = func->getParent();
+
+  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
+  CHECK_EQ(native_val->getType(), decl.type);
+
+  // Store it to a register.
+  if (decl.reg) {
+    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
+    llvm::IRBuilder<> ir(in_block);
+    if (decl.type != decl.reg->type) {
+      ir.CreateStore(llvm::Constant::getNullValue(decl.reg->type), ptr_to_reg);
+    }
+
+    if (auto adapted_val = AdaptToType(ir, native_val, decl.reg->type);
+        adapted_val) {
+      ir.CreateStore(adapted_val, ptr_to_reg);
+
+    } else {
+      ir.CreateStore(
+          native_val,
+          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
+    }
+
+    return mem_ptr;
+
+    // Store it to memory.
+  } else if (decl.mem_reg) {
+    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
+
+    llvm::IRBuilder<> ir(in_block);
+    const auto addr = ir.CreateAdd(
+        ir.CreateLoad(ptr_to_reg),
+        llvm::ConstantInt::get(decl.mem_reg->type,
+                               static_cast<uint64_t>(decl.mem_offset), true));
+    return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
+                                 addr);
+
+  } else {
+    return llvm::UndefValue::get(mem_ptr->getType());
+  }
+}
+
+llvm::Value *LoadLiftedValue(const ValueDecl &decl,
+                             const remill::IntrinsicTable &intrinsics,
+                             llvm::BasicBlock *in_block, llvm::Value *state_ptr,
+                             llvm::Value *mem_ptr) {
+
+  auto func = in_block->getParent();
+  auto module = func->getParent();
+
+  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
+
+  // Load it out of a register.
+  if (decl.reg) {
+    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
+    llvm::IRBuilder<> ir(in_block);
+    auto reg = ir.CreateLoad(ptr_to_reg);
+    if (auto adapted_val = AdaptToType(ir, reg, decl.type); adapted_val) {
+      return adapted_val;
+    } else {
+      return ir.CreateLoad(
+          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
+    }
+
+    // Load it out of memory.
+  } else if (decl.mem_reg) {
+    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
+    llvm::IRBuilder<> ir(in_block);
+    const auto addr = ir.CreateAdd(
+        ir.CreateLoad(ptr_to_reg),
+        llvm::ConstantInt::get(decl.mem_reg->type,
+                               static_cast<uint64_t>(decl.mem_offset), true));
+    return llvm::dyn_cast<llvm::Instruction>(
+        remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
+
+  } else {
+    return llvm::UndefValue::get(decl.type);
+  }
+}
+
+bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
+                        llvm::Module &module) {
+  DLOG(INFO) << "LiftCodeIntoModule";
+  // Initialize cleanup optimizations
+  llvm::legacy::FunctionPassManager fpm(&module);
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createPromoteMemoryToRegisterPass());
+  fpm.add(llvm::createReassociatePass());
+  fpm.add(llvm::createDeadStoreEliminationPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.doInitialization();
+  // Create our lifter
+  MCToIRLifter lifter(arch, program, module);
+  // Forward declare lifted functions
+  program.ForEachFunction([&](const FunctionDecl *decl) {
+    lifter.GetOrDeclareFunction(decl->address);
+    return true;
+  });
+  // Lift functions
+  program.ForEachFunction([&](const FunctionDecl *decl) {
+    auto func = lifter.GetOrDefineFunction(decl->address);
+    fpm.run(*func);
+    DefineABIFunction(decl, func);
+    return true;
+  });
+  // Verify the module
+  CHECK(remill::VerifyModule(&module));
+  // Done
+  fpm.doFinalization();
+  return true;
 }
 
 }  // namespace anvill
