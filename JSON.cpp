@@ -608,7 +608,7 @@ int main(int argc, char *argv[]) {
 
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
-  anvill::OptimizeModule(arch.get(), program, *semantics);
+  // anvill::OptimizeModule(arch.get(), program, *semantics);
 
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     std::stringstream ss;

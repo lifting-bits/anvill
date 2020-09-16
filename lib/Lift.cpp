@@ -163,13 +163,70 @@ static llvm::Function *
 GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
   auto module = intrinsics.error->getParent();
   auto &context = module->getContext();
+
+  auto name = "__anvill_memory_escape";
+  if (auto func = module->getFunction(name)) {
+    return func;
+  }
+
   llvm::Type *params[] = {
       remill::NthArgument(intrinsics.error, remill::kMemoryPointerArgNum)
           ->getType()};
   auto type =
       llvm::FunctionType::get(llvm::Type::getVoidTy(context), params, false);
-  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage,
-                                "__anvill_memory_escape", module);
+  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, name,
+                                module);
+}
+
+// Create an adaptor function that converts lifted state to native state.
+// This function is marked as always-inline so that when a lifted function
+// calls this function, it ends up doing so in a way that, post-optimization,
+// ends up calling the higher-level function.
+static llvm::Function *
+CreateLiftedToABIAdaptor(const std::string &name,
+                         const remill::IntrinsicTable &intrinsics,
+                         const anvill::FunctionDecl *decl) {
+
+  std::stringstream ss;
+  ss << name << ".anvill.lifted_to_native";
+  auto lifted_name = ss.str();
+  auto module = intrinsics.error->getParent();
+  auto adaptor = remill::DeclareLiftedFunction(module, lifted_name);
+
+  if (!adaptor->isDeclaration()) {
+    return adaptor;  // Already defined.
+  }
+
+  // Declare all registers in that function. Makes life easier.
+  remill::CloneBlockFunctionInto(adaptor);
+
+  auto block = &(adaptor->getEntryBlock());
+  auto state_ptr = remill::LoadStatePointer(block);
+  auto mem_ptr = remill::LoadMemoryPointer(block);
+  auto new_mem_ptr =
+      decl->CallFromLiftedBlock(name, intrinsics, block, state_ptr, mem_ptr);
+
+  llvm::IRBuilder<> ir(block);
+  ir.CreateRet(new_mem_ptr);
+
+  adaptor->removeFnAttr(llvm::Attribute::NoInline);
+  adaptor->addFnAttr(llvm::Attribute::InlineHint);
+  adaptor->addFnAttr(llvm::Attribute::AlwaysInline);
+  adaptor->setLinkage(llvm::GlobalValue::PrivateLinkage);
+
+  return adaptor;
+}
+
+static void ReplaceLiftedCalls(const FunctionDecl *decl,
+                               llvm::Function *lifted_func) {
+  // Create adaptor function
+  remill::IntrinsicTable intrinsics(lifted_func->getParent());
+  auto name = CreateFunctionName(decl->address);
+  auto adaptor = CreateLiftedToABIAdaptor(name, intrinsics, decl);
+  // Replace calls
+  for (auto call : remill::CallersOf(lifted_func)) {
+    call->setCalledFunction(adaptor);
+  }
 }
 
 static void DefineABIFunction(const FunctionDecl *decl,
@@ -315,7 +372,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
   std::vector<llvm::CallInst *> calls_to_inline;
   for (auto &block : *func) {
     for (auto &inst : block) {
-      if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
+      if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
         calls_to_inline.push_back(call_inst);
       }
     }
@@ -439,7 +496,18 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   });
   // Lift functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    auto func = lifter.GetOrDefineFunction(decl->address);
+    lifter.GetOrDefineFunction(decl->address);
+    return true;
+  });
+  // Replace calls to lifted functions with calls to ABI-level functions
+  program.ForEachFunction([&](const FunctionDecl *decl) {
+    auto func = lifter.GetOrDeclareFunction(decl->address);
+    ReplaceLiftedCalls(decl, func);
+    return true;
+  });
+  // Define ABI-level functions
+  program.ForEachFunction([&](const FunctionDecl *decl) {
+    auto func = lifter.GetOrDeclareFunction(decl->address);
     fpm.run(*func);
     DefineABIFunction(decl, func);
     return true;
