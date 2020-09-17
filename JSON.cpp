@@ -56,10 +56,14 @@ static void SetVersion(void) {
 
 #  include <gflags/gflags.h>
 #  include <glog/logging.h>
+// clang-format off
+#  include <remill/BC/Compat/CTypes.h>
 #  include <llvm/IR/LLVMContext.h>
 #  include <llvm/IR/Module.h>
 #  include <llvm/Support/JSON.h>
 #  include <llvm/Support/MemoryBuffer.h>
+// clang-format on
+
 #  include <remill/Arch/Arch.h>
 #  include <remill/Arch/Name.h>
 #  include <remill/BC/Compat/Error.h>

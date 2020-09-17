@@ -26,8 +26,7 @@ ARG LIBRARIES
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    if [ "$(uname -m)" = "x86_64" ]; then apt-get install -qqy gcc-multilib g++-multilib; fi && \
-    apt-get install -qqy ninja-build python2.7 python3 python3-pip liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache && \
+    apt-get install -qqy ninja-build python2.7 python3 python3-pip liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
     rm -rf /var/lib/apt/lists/*
 
 # needed for 20.04 support until we migrate to py3
@@ -36,7 +35,7 @@ RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 g
 RUN update-alternatives --install /usr/bin/python2 python2 /usr/bin/python2.7 1
 
 
-COPY --from=remill /opt/trailofbits/remill /opt/trailofbits/remill
+COPY --from=remill /opt/trailofbits /opt/trailofbits
 
 
 # Source code build
@@ -47,8 +46,8 @@ WORKDIR /anvill
 COPY . ./
 
 ENV PATH="${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
-ENV CC="${LIBRARIES}/llvm/bin/clang"
-ENV CXX="${LIBRARIES}/llvm/bin/clang++"
+ENV CC="/usr/bin/clang"
+ENV CXX="/usr/bin/clang++"
 ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
 
 RUN mkdir -p build && cd build && \

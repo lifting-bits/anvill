@@ -17,6 +17,9 @@
 
 #include <anvill/Lift.h>
 #include <glog/logging.h>
+
+// clang-format off
+#include <remill/BC/Compat/CTypes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -24,6 +27,8 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+// clang-format on
+
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>

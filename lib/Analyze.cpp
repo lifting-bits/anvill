@@ -18,6 +18,9 @@
 #include "anvill/Analyze.h"
 
 #include <glog/logging.h>
+
+// clang-format off
+#include <remill/BC/Compat/CTypes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -30,6 +33,8 @@
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Transforms/Utils/Local.h>
+// clang-format on
+
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Optimizer.h>
 #include <remill/BC/Util.h>
