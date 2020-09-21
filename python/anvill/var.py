@@ -15,29 +15,29 @@
 
 
 class Variable(object):
-  """Represents a generic global variable."""
+    """Represents a generic global variable."""
 
-  __slots__ = ('_arch', '_address', '_type')
+    __slots__ = ("_arch", "_address", "_type")
 
-  def __init__(self, arch, address, type_):
-    self._arch = arch
-    self._address = address
-    self._type = type_
+    def __init__(self, arch, address, type_):
+        self._arch = arch
+        self._address = address
+        self._type = type_
 
-  def address(self):
-    return self._address
+    def address(self):
+        return self._address
 
-  def type(self):
-    return self._type
+    def type(self):
+        return self._type
 
-  def visit(self, program, is_definition):
-    raise NotImplementedError()
+    def visit(self, program, is_definition):
+        raise NotImplementedError()
 
-  def is_declaration(self):
-    raise NotImplementedError()
+    def is_declaration(self):
+        raise NotImplementedError()
 
-  def proto(self):
-    proto = {}
-    proto["address"] = self.address()
-    proto["type"] = self.type().proto(self._arch)
-    return proto
+    def proto(self):
+        proto = {}
+        proto["address"] = self.address()
+        proto["type"] = self.type().proto(self._arch)
+        return proto
