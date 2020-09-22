@@ -81,8 +81,10 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
         break;
       }
 
-    // Fallthrough for unsupported architectures
     case remill::kArchAArch64LittleEndian:
+      return CreateAArch64_C(arch);
+
+    // Fallthrough for unsupported architectures
     default: break;
   }
 
