@@ -133,7 +133,7 @@ struct FunctionDecl {
   // of the entry state of the function. For example, in amd64, it would be
   // typical for the exit return stack pointer to be defined as `RSP + 8`, i.e.
   // equivalent to the entry stack pointer, plus 8 bytes, due to the `ret`
-  // having popped off the return address. In a callee-cleanup
+  // having popped off the return address.
   const remill::Register *return_stack_pointer{nullptr};
   int64_t return_stack_pointer_offset{0};
 
