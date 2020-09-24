@@ -606,29 +606,41 @@ int main(int argc, char *argv[]) {
 
   anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
 
-  // Optimize the module, but with a particular focus on only the functions
-  // that we actually lifted.
-  // anvill::OptimizeModule(arch.get(), program, *semantics);
-
-  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    std::stringstream ss;
-    ss << "data_" << std::hex << decl->address;
-    decl->DeclareInModule(ss.str(), *semantics);
-    return true;
-  });
-
   RecoverMemoryAccesses(program, *semantics);
 
+  // Create an output module `dest_module`
   auto dest_module = std::make_unique<llvm::Module>(FLAGS_spec, context);
   dest_module->setTargetTriple(semantics->getTargetTriple());
   dest_module->setDataLayout(semantics->getDataLayout());
 
-  program.ForEachFunction([&](const anvill::FunctionDecl *fdecl) {
+  // Clone functions from `semantics` to `dest_module`.
+  // Necessary global variables will be cloned too.
+  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
     std::stringstream ss;
-    ss << "sub_" << std::hex << fdecl->address << std::dec;
+    ss << "sub_" << std::hex << decl->address << std::dec;
     auto src = semantics->getFunction(ss.str());
-    auto dst = fdecl->DeclareInModule(ss.str(), *dest_module);
+    auto dst = decl->DeclareInModule(ss.str(), *dest_module);
     remill::CloneFunctionInto(src, dst);
+    return true;
+  });
+
+  // Apply symbol names to functions if we have the names.
+  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+                                  const anvill::FunctionDecl *fdecl,
+                                  const anvill::GlobalVarDecl *vdecl) {
+    std::stringstream ss;
+    llvm::Value *gval = nullptr;
+    if (vdecl) {
+      ss << "data_" << std::hex << vdecl->address << std::dec;
+      gval = vdecl->DeclareInModule(ss.str(), *dest_module);
+    } else if (fdecl) {
+      ss << "sub_" << std::hex << fdecl->address << std::dec;
+      gval = fdecl->DeclareInModule(ss.str(), *dest_module);
+    } else {
+      return true;
+    }
+
+    gval->setName(name);
 
     return true;
   });

@@ -489,6 +489,13 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   fpm.doInitialization();
   // Create our lifter
   MCToIRLifter lifter(arch, program, module);
+  // Declare global variables
+  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
+    std::stringstream ss;
+    ss << "data_" << std::hex << decl->address << std::dec;
+    decl->DeclareInModule(ss.str(), module);
+    return true;
+  });
   // Forward declare lifted functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
     lifter.GetOrDeclareFunction(decl->address);
