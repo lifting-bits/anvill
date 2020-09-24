@@ -20,9 +20,22 @@ def main():
     args, _ = arg_parser.parse_known_args()
 
     p = anvill.get_program(args.bin_in)
-    for addr, name in p.functions:
-        # p.add_symbol(addr, name)
-        p.add_function_definition(addr, False)
+    s = set()
+    
+    def add_callees(ea):
+        f = p.get_function(ea)
+        if f not in s:
+            s.add(f)
+            for c in f._bn_func.callees:
+                add_callees(c.start)
+            
+    for ea, name in p.functions:
+        if name == "main":
+            add_callees(ea)
+    
+    for f in s:
+        p.add_symbol(f.address(), f.name())
+        p.add_function_definition(f.address(), False)
 
     open(args.spec_out, "w").write(p.proto())
 
