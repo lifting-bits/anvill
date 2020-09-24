@@ -15,33 +15,34 @@
 
 
 class AnvillException(Exception):
-  pass
+    pass
 
 
 class UnhandledArchitectureType(AnvillException):
-  pass
+    pass
 
 
 class UnhandledTypeException(AnvillException):
-  def __init__(self, msg, ty):
-    super(UnhandledTypeException, self).__init__(msg)
-    self.type = ty
+    def __init__(self, msg, ty):
+        super(UnhandledTypeException, self).__init__(msg)
+        self.type = ty
 
 
 class UnhandledOSException(AnvillException):
-  pass
+    pass
 
 
 class InvalidFunctionException(AnvillException):
-  pass
+    pass
 
 
 class InvalidVariableException(AnvillException):
-  pass
+    pass
 
 
 class InvalidLocationException(AnvillException):
-  pass
+    pass
+
 
 class ParseException(AnvillException):
-  pass
+    pass

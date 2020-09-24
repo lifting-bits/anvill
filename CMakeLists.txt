@@ -26,13 +26,8 @@ macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
 endmacro()
 
-# warnings and compiler settings
-if(NOT DEFINED WIN32)
-  set(PROJECT_CXXFLAGS
-    ${GLOBAL_CXXFLAGS} -Wconversion -pedantic
-    -Wno-unreachable-code-return
-  )
-endif()
+option(ANVILL_INSTALL_PYTHON2_LIBS "Install Python 2 libraries")
+option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries" ON)
 
 #
 # libraries
@@ -56,6 +51,7 @@ add_subdirectory(lib/Version)
 add_library(${ANVILL} STATIC
     include/anvill/Type.h
 
+    lib/Arch/AArch64_C.cpp
     lib/Arch/X86_C.cpp
     lib/Arch/X86_FastCall.cpp
     lib/Arch/X86_StdCall.cpp
@@ -92,17 +88,11 @@ add_library(${ANVILL} STATIC
     include/anvill/Analyze.h
     lib/Analyze.cpp)
 
-target_compile_definitions(${ANVILL} PUBLIC
-    ${PROJECT_DEFINITIONS})
-
-target_compile_options(${ANVILL} PUBLIC
-    ${PROJECT_CXXFLAGS})
-
 target_include_directories(${ANVILL} PUBLIC
-   "${CMAKE_CURRENT_SOURCE_DIR}/include"
-   ${PROJECT_INCLUDEDIRECTORIES})
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    ${PROJECT_INCLUDEDIRECTORIES})
 
-target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion ${PROJECT_LIBRARIES})
+target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion)
 
 target_public_headers(${ANVILL}
     include/anvill/Analyze.h
@@ -113,8 +103,7 @@ target_public_headers(${ANVILL}
     include/anvill/Type.h
     include/anvill/TypeParser.h
     include/anvill/TypePrinter.h
-    include/anvill/Version.h
-  )
+    include/anvill/Version.h)
 
 #
 # tool target settings
@@ -131,32 +120,50 @@ set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
 add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
+set(ANVILL_PYTHON_SOURCES
+    setup.py
+    python/anvill/__init__.py
+    python/anvill/arch.py
+    python/anvill/binja.py
+    python/anvill/dwarf.py
+    python/anvill/exc.py
+    python/anvill/function.py
+    python/anvill/ida.py
+    python/anvill/loc.py
+    python/anvill/mem.py
+    python/anvill/os.py
+    python/anvill/program.py
+    python/anvill/type.py
+    python/anvill/var.py)
 
-add_custom_target(install_anvill_python
-  DEPENDS
-  setup.py
-  python/anvill/__init__.py
-  python/anvill/arch.py
-  python/anvill/binja.py
-  python/anvill/dwarf.py
-  python/anvill/exc.py
-  python/anvill/function.py
-  python/anvill/ida.py
-  python/anvill/loc.py
-  python/anvill/mem.py
-  python/anvill/os.py
-  python/anvill/program.py
-  python/anvill/type.py
-  python/anvill/var.py)
 
-add_custom_command(
-    TARGET install_anvill_python POST_BUILD
-    COMMAND which python3 && python3 setup.py install --force --user --prefix=
-    COMMENT "Installing Anvill Python 3 API"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+if(ANVILL_INSTALL_PYTHON2_LIBS)
+  add_custom_target(install_anvill_python2
+    DEPENDS ${ANVILL_PYTHON_SOURCES})
+    
+  add_custom_command(
+      TARGET install_anvill_python2 POST_BUILD
+      COMMAND which python2 && python2 setup.py install --force --user --prefix=
+      COMMENT "Installing Anvill Python 2 API"
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_dependencies(${ANVILL}
-  install_anvill_python)
+  add_dependencies(${ANVILL}
+    install_anvill_python2)
+endif()
+
+if(ANVILL_INSTALL_PYTHON3_LIBS)
+  add_custom_target(install_anvill_python3
+    DEPENDS ${ANVILL_PYTHON_SOURCES})
+
+  add_custom_command(
+      TARGET install_anvill_python3 POST_BUILD
+      COMMAND which python3 && python3 setup.py install --force --user --prefix=
+      COMMENT "Installing Anvill Python 3 API"
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+  add_dependencies(${ANVILL}
+    install_anvill_python3)
+endif()
 
 #
 # install settings

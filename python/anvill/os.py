@@ -15,55 +15,55 @@
 
 
 class OS(object):
-  def name(self):
-    raise NotImplementedError()
+    def name(self):
+        raise NotImplementedError()
 
 
 class LinuxOS(OS):
-  def name(self):
-    return "linux"
-  
-  def default_calling_convention(self, arch):
-    arch_name = arch.name()
-    if arch_name == "x86":
-      return 0  # cdecl
-    elif arch_name == "amd64":
-      return 78  # X86_64_SysV
-    else:
-      return 0  # cdecl
+    def name(self):
+        return "linux"
+
+    def default_calling_convention(self, arch):
+        arch_name = arch.name()
+        if arch_name == "x86":
+            return 0  # cdecl
+        elif arch_name == "amd64":
+            return 78  # X86_64_SysV
+        else:
+            return 0  # cdecl
 
 
 class MacOS(OS):
-  def name(self):
-    return "macos"
-  
-  def default_calling_convention(self, arch):
-    arch_name = arch.name()
-    if arch_name == "x86":
-      return 0  # cdecl
-    elif arch_name == "amd64":
-      return 78  # X86_64_SysV
-    else:
-      return 0  # cdecl
+    def name(self):
+        return "macos"
+
+    def default_calling_convention(self, arch):
+        arch_name = arch.name()
+        if arch_name == "x86":
+            return 0  # cdecl
+        elif arch_name == "amd64":
+            return 78  # X86_64_SysV
+        else:
+            return 0  # cdecl
 
 
 class WindowsOS(OS):
-  def name(self):
-    return "windows"
-  
-  def default_calling_convention(self, arch):
-    arch_name = arch.name()
-    if arch_name == "x86":
-      return 64  # stdcall
-    elif arch_name == "amd64":
-      return 79  # Win64
-    else:
-      return 0  # cdecl
+    def name(self):
+        return "windows"
+
+    def default_calling_convention(self, arch):
+        arch_name = arch.name()
+        if arch_name == "x86":
+            return 64  # stdcall
+        elif arch_name == "amd64":
+            return 79  # Win64
+        else:
+            return 0  # cdecl
 
 
 class SolarisOS(OS):
-  def name(self):
-    return "solaris"
-  
-  def default_calling_convention(self, arch):
-    return 0
+    def name(self):
+        return "solaris"
+
+    def default_calling_convention(self, arch):
+        return 0
