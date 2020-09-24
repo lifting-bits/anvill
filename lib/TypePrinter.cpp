@@ -23,6 +23,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
+
 // clang-format on
 
 #include <remill/BC/Util.h>

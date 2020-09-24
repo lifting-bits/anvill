@@ -69,6 +69,7 @@ remill::Instruction *MCToIRLifter::DecodeInstruction(const uint64_t addr) {
   auto bytes = program.FindBytes(addr, arch->MaxInstructionSize());
   CHECK(bytes) << "Failed reading instruction at address: " << std::hex << addr
                << std::dec;
+
   // Decode
   CHECK(arch->DecodeInstruction(addr, bytes.ToString(), inst))
       << "Failed decoding instruction at address: " << std::hex << addr
@@ -123,9 +124,11 @@ void MCToIRLifter::VisitDirectJump(remill::Instruction *inst) {
   CHECK(!block->empty());
   auto target = inst->branch_taken_pc;
   if (addr_to_func.count(target)) {
+
     // Tail calls
     remill::AddTerminatingTailCall(block, GetOrDeclareFunction(target));
   } else {
+
     // Regular jumps
     llvm::BranchInst::Create(GetOrCreateBlock(target), block);
   }
@@ -201,14 +204,17 @@ llvm::Function *MCToIRLifter::LiftFunction(const uint64_t func_addr) {
   auto &func = addr_to_func[func_addr];
   CHECK(func->empty()) << "Function " << func->getName().str()
                        << " is already lifted";
+
   // Get `__remill_basic_block` into `func`
   remill::CloneBlockFunctionInto(func);
   llvm::BranchInst::Create(GetOrCreateBlock(func_addr), &func->getEntryBlock());
+
   // Recursively decode and lift
   std::set<uint64_t> worklist({func_addr});
   while (!worklist.empty()) {
     auto inst_addr = *worklist.begin();
     worklist.erase(inst_addr);
+
     // Check if we already lifted `inst_addr`
     auto block = GetOrCreateBlock(inst_addr);
     if (!block->empty()) {
@@ -216,12 +222,16 @@ llvm::Function *MCToIRLifter::LiftFunction(const uint64_t func_addr) {
     }
     // Insert `block` into `func`
     block->insertInto(func);
+
     // Decode
     auto inst = DecodeInstruction(inst_addr);
+
     // Lift into `block`
     LiftInstruction(inst);
+
     // Add terminators to `block`
     VisitInstruction(inst);
+
     // Add successors of `inst` to the worklist
     switch (inst->category) {
       default: break;
@@ -232,6 +242,7 @@ llvm::Function *MCToIRLifter::LiftFunction(const uint64_t func_addr) {
         break;
 
       case remill::Instruction::kCategoryDirectJump: {
+
         // Ignore tail calls
         auto target = inst->branch_taken_pc;
         if (!addr_to_func.count(target)) {

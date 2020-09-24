@@ -33,6 +33,7 @@
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Transforms/Utils/Local.h>
+
 // clang-format on
 
 #include <remill/BC/Compat/ScalarTransforms.h>

@@ -35,6 +35,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
+
 // clang-format on
 
 #include <remill/BC/ABI.h>
@@ -391,9 +392,8 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   std::vector<llvm::Function *> funcs_to_remove;
   for (auto &func : module) {
-    if (!func.hasNUsesOrMore(1) &&
-        (func.getName().startswith("__remill_") ||
-         !func.hasValidDeclarationLinkage())) {
+    if (!func.hasNUsesOrMore(1) && (func.getName().startswith("__remill_") ||
+                                    !func.hasValidDeclarationLinkage())) {
       funcs_to_remove.push_back(&func);
     }
   }
@@ -496,6 +496,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
                             changed_funcs);
     ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64",
                             changed_funcs);
+
     //  ReplaceConstMemoryReads(
     //      program, module, "__remill_read_memory_f80", changed_funcs,
     //      fp80_type);

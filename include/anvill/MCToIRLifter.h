@@ -46,12 +46,15 @@ class MCToIRLifter {
   llvm::LLVMContext &ctx;
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
+
   // Result maps
   std::unordered_map<uint64_t, remill::Instruction> addr_to_inst;
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+
   // Helper
   llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
+
   // Visitors used to add terminators to instruction basic blocks
   void VisitInvalid(remill::Instruction *inst);
   void VisitError(remill::Instruction *inst);
@@ -70,7 +73,7 @@ class MCToIRLifter {
 
  public:
   MCToIRLifter(const remill::Arch *arch, const Program &program,
-                 llvm::Module &module);
+               llvm::Module &module);
 
   llvm::Function *GetOrDeclareFunction(const uint64_t addr);
   llvm::Function *GetOrDefineFunction(const uint64_t addr);

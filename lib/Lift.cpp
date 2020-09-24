@@ -102,7 +102,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
         return ir.CreateBitCast(src, dest_ptr_type);
       }
 
-      // Convert the pointer to an integer.
+    // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
@@ -219,10 +219,12 @@ CreateLiftedToABIAdaptor(const std::string &name,
 
 static void ReplaceLiftedCalls(const FunctionDecl *decl,
                                llvm::Function *lifted_func) {
+
   // Create adaptor function
   remill::IntrinsicTable intrinsics(lifted_func->getParent());
   auto name = CreateFunctionName(decl->address);
   auto adaptor = CreateLiftedToABIAdaptor(name, intrinsics, decl);
+
   // Replace calls
   for (auto call : remill::CallersOf(lifted_func)) {
     call->setCalledFunction(adaptor);
@@ -231,30 +233,38 @@ static void ReplaceLiftedCalls(const FunctionDecl *decl,
 
 static void DefineABIFunction(const FunctionDecl *decl,
                               llvm::Function *lifted_func) {
+
   // Set inlining attributes for lifted function
   lifted_func->removeFnAttr(llvm::Attribute::NoInline);
   lifted_func->addFnAttr(llvm::Attribute::InlineHint);
   lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
+
   // Get module and context from the lifted function
   auto module = lifted_func->getParent();
   auto &ctx = module->getContext();
+
   // Declare ABI-level function
   auto func = decl->DeclareInModule(CreateFunctionName(decl->address), *module);
+
   // Get arch from the ABI-level function
   auto arch = decl->arch;
   CHECK_EQ(arch->context, &ctx);
+
   // Create a state structure and a stack frame in the ABI-level function
   // and we'll call the lifted function with that. The lifted function
   // will get inlined into this function.
   auto block = llvm::BasicBlock::Create(ctx, "", func);
   llvm::IRBuilder<> ir(block);
+
   // Create a memory pointer.
   auto mem_ptr_type = remill::MemoryPointerType(module);
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
+
   // Stack-allocate a state pointer.
   auto state_ptr_type = remill::StatePointerType(module);
   auto state_type = state_ptr_type->getElementType();
   auto state_ptr = ir.CreateAlloca(state_type);
+
   // Get or create globals for all top-level registers. The idea here is that
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
@@ -274,6 +284,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
       ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
     }
   });
+
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
   auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
@@ -421,7 +432,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     return mem_ptr;
 
-    // Store it to memory.
+  // Store it to memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
@@ -460,7 +471,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
           ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
     }
 
-    // Load it out of memory.
+  // Load it out of memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
@@ -479,6 +490,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
 bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
+
   // Initialize cleanup optimizations
   llvm::legacy::FunctionPassManager fpm(&module);
   fpm.add(llvm::createCFGSimplificationPass());
@@ -487,8 +499,10 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   fpm.add(llvm::createDeadStoreEliminationPass());
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.doInitialization();
+
   // Create our lifter
   MCToIRLifter lifter(arch, program, module);
+
   // Declare global variables
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     std::stringstream ss;
@@ -496,22 +510,26 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
     decl->DeclareInModule(ss.str(), module);
     return true;
   });
+
   // Forward declare lifted functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
     lifter.GetOrDeclareFunction(decl->address);
     return true;
   });
+
   // Lift functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
     lifter.GetOrDefineFunction(decl->address);
     return true;
   });
+
   // Replace calls to lifted functions with calls to ABI-level functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
     auto func = lifter.GetOrDeclareFunction(decl->address);
     ReplaceLiftedCalls(decl, func);
     return true;
   });
+
   // Define ABI-level functions
   program.ForEachFunction([&](const FunctionDecl *decl) {
     auto func = lifter.GetOrDeclareFunction(decl->address);
@@ -519,8 +537,10 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
     DefineABIFunction(decl, func);
     return true;
   });
+
   // Verify the module
   CHECK(remill::VerifyModule(&module));
+
   // Done
   fpm.doFinalization();
   return true;

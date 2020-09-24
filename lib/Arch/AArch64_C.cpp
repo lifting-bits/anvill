@@ -14,139 +14,104 @@
  * limitations under the License.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
 
 static const std::vector<RegisterConstraint> kParamRegConstraints = {
-    RegisterConstraint({
-      VariantConstraint("W0", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X0", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W1", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X1", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W2", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X2", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W3", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X3", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W4", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X4", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W5", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X5", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W6", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X6", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W7", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X7", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W0", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X0", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W1", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X1", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W2", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X2", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W3", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X3", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W4", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X4", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W5", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X5", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W6", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X6", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W7", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X7", kTypeIntegral, kMaxBit64)}),
 
-    RegisterConstraint({
-      VariantConstraint("H0", kTypeFloat, kMaxBit16),
-      VariantConstraint("S0", kTypeFloat, kMaxBit32),
-      VariantConstraint("D0", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H1", kTypeFloat, kMaxBit16),
-      VariantConstraint("S1", kTypeFloat, kMaxBit32),
-      VariantConstraint("D1", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H2", kTypeFloat, kMaxBit16),
-      VariantConstraint("S2", kTypeFloat, kMaxBit32),
-      VariantConstraint("D2", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H3", kTypeFloat, kMaxBit16),
-      VariantConstraint("S3", kTypeFloat, kMaxBit32),
-      VariantConstraint("D3", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H4", kTypeFloat, kMaxBit16),
-      VariantConstraint("S4", kTypeFloat, kMaxBit32),
-      VariantConstraint("D4", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H5", kTypeFloat, kMaxBit16),
-      VariantConstraint("S5", kTypeFloat, kMaxBit32),
-      VariantConstraint("D5", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H6", kTypeFloat, kMaxBit16),
-      VariantConstraint("S6", kTypeFloat, kMaxBit32),
-      VariantConstraint("D6", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H7", kTypeFloat, kMaxBit16),
-      VariantConstraint("S7", kTypeFloat, kMaxBit32),
-      VariantConstraint("D7", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H0", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S0", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D0", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H1", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S1", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D1", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H2", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S2", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D2", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H3", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S3", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D3", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H4", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S4", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D4", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H5", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S5", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D5", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H6", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S6", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D6", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H7", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S7", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D7", kTypeFloat, kMaxBit64)}),
 };
 
 // TODO(pag): Probably totally broken.
 static const std::vector<RegisterConstraint> kReturnRegConstraints = {
-    RegisterConstraint({
-      VariantConstraint("W0", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X0", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W1", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X1", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W2", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X2", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W3", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X3", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W4", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X4", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W5", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X5", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W6", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X6", kTypeIntegral, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("W7", kTypeIntegral, kMaxBit32),
-      VariantConstraint("X7", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W0", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X0", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W1", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X1", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W2", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X2", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W3", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X3", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W4", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X4", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W5", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X5", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W6", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X6", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("W7", kTypeIntegral, kMaxBit32),
+                        VariantConstraint("X7", kTypeIntegral, kMaxBit64)}),
 
-    RegisterConstraint({
-      VariantConstraint("H0", kTypeFloat, kMaxBit16),
-      VariantConstraint("S0", kTypeFloat, kMaxBit32),
-      VariantConstraint("D0", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H1", kTypeFloat, kMaxBit16),
-      VariantConstraint("S1", kTypeFloat, kMaxBit32),
-      VariantConstraint("D1", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H2", kTypeFloat, kMaxBit16),
-      VariantConstraint("S2", kTypeFloat, kMaxBit32),
-      VariantConstraint("D2", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H3", kTypeFloat, kMaxBit16),
-      VariantConstraint("S3", kTypeFloat, kMaxBit32),
-      VariantConstraint("D3", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H4", kTypeFloat, kMaxBit16),
-      VariantConstraint("S4", kTypeFloat, kMaxBit32),
-      VariantConstraint("D4", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H5", kTypeFloat, kMaxBit16),
-      VariantConstraint("S5", kTypeFloat, kMaxBit32),
-      VariantConstraint("D5", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H6", kTypeFloat, kMaxBit16),
-      VariantConstraint("S6", kTypeFloat, kMaxBit32),
-      VariantConstraint("D6", kTypeFloat, kMaxBit64)}),
-    RegisterConstraint({
-      VariantConstraint("H7", kTypeFloat, kMaxBit16),
-      VariantConstraint("S7", kTypeFloat, kMaxBit32),
-      VariantConstraint("D7", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H0", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S0", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D0", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H1", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S1", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D1", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H2", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S2", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D2", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H3", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S3", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D3", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H4", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S4", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D4", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H5", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S5", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D5", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H6", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S6", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D6", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("H7", kTypeFloat, kMaxBit16),
+                        VariantConstraint("S7", kTypeFloat, kMaxBit32),
+                        VariantConstraint("D7", kTypeFloat, kMaxBit64)}),
 };
 
 // Used to split things like `i64`s into multiple `i32`s.
@@ -171,26 +136,25 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
 // This is the only calling convention for 64-bit ARMv8 code.
 class AArch64_C : public CallingConvention {
  public:
-   explicit AArch64_C(const remill::Arch *arch);
-   virtual ~AArch64_C(void) = default;
+  explicit AArch64_C(const remill::Arch *arch);
+  virtual ~AArch64_C(void) = default;
 
-   llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                 llvm::Function &func) override;
+  llvm::Error AllocateSignature(FunctionDecl &fdecl,
+                                llvm::Function &func) override;
 
-  private:
-   llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
-                              std::vector<ParameterDecl> &param_decls);
+ private:
+  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
+                             std::vector<ParameterDecl> &param_decls);
 
-   llvm::Error BindReturnValues(llvm::Function &function,
-                                bool &injected_sret,
-                                std::vector<ValueDecl> &ret_decls);
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
+                               std::vector<ValueDecl> &ret_decls);
 
-   const std::vector<RegisterConstraint> &parameter_register_constraints;
-   const std::vector<RegisterConstraint> &return_register_constraints;
+  const std::vector<RegisterConstraint> &parameter_register_constraints;
+  const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateAArch64_C(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateAArch64_C(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new AArch64_C(arch));
 }
 
@@ -204,6 +168,7 @@ AArch64_C::AArch64_C(const remill::Arch *arch)
 // stack pointer.
 llvm::Error AArch64_C::AllocateSignature(FunctionDecl &fdecl,
                                          llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -227,9 +192,9 @@ llvm::Error AArch64_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error AArch64_C::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                            std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
@@ -250,8 +215,7 @@ llvm::Error AArch64_C::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -267,8 +231,7 @@ llvm::Error AArch64_C::BindReturnValues(
   }
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
@@ -291,7 +254,8 @@ llvm::Error AArch64_C::BindReturnValues(
       // Split the integer across `X7:X0`. Experimentally, the largest
       // returnable integer is 512 bits in size, any larger and RVO is used.
       } else if (bit_width <= 512) {
-        const char *ret_names[] = {"X0", "X1", "X2", "X3", "X4", "X5", "X6", "X7"};
+        const char *ret_names[] = {"X0", "X1", "X2", "X3",
+                                   "X4", "X5", "X6", "X7"};
         for (auto i = 0u; i < 8 && (64 * i) < bit_width; ++i) {
           ret_values.emplace_back();
           auto &value_declaration = ret_values.back();
@@ -305,8 +269,8 @@ llvm::Error AArch64_C::BindReturnValues(
       } else {
         ret_values.emplace_back();
         auto &value_declaration = ret_values.back();
-        value_declaration.type = llvm::PointerType::get(
-            value_declaration.type, 0);
+        value_declaration.type =
+            llvm::PointerType::get(value_declaration.type, 0);
         value_declaration.reg = arch->RegisterByName("X8");
         return llvm::Error::success();
       }
@@ -374,8 +338,7 @@ llvm::Error AArch64_C::BindReturnValues(
       }
     }
 
-    default:
-      break;
+    default: break;
   }
 
   return llvm::createStringError(
@@ -385,9 +348,9 @@ llvm::Error AArch64_C::BindReturnValues(
       function.getName().str().c_str());
 }
 
-llvm::Error AArch64_C::BindParameters(
-    llvm::Function &function, bool injected_sret,
-    std::vector<ParameterDecl> &parameter_declarations) {
+llvm::Error
+AArch64_C::BindParameters(llvm::Function &function, bool injected_sret,
+                          std::vector<ParameterDecl> &parameter_declarations) {
   CHECK(!injected_sret)
       << "Injected struct returns are not supported on SPARC targets";
 
@@ -432,7 +395,8 @@ llvm::Error AArch64_C::BindParameters(
 
       // The parameter was spread across multiple registers.
       } else if (!param_name.empty()) {
-        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size);
+             ++i) {
           parameter_declarations[prev_size + i].name =
               param_name + std::to_string(i);
         }
