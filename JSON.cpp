@@ -56,12 +56,14 @@ static void SetVersion(void) {
 
 #  include <gflags/gflags.h>
 #  include <glog/logging.h>
+
 // clang-format off
 #  include <remill/BC/Compat/CTypes.h>
 #  include <llvm/IR/LLVMContext.h>
 #  include <llvm/IR/Module.h>
 #  include <llvm/Support/JSON.h>
 #  include <llvm/Support/MemoryBuffer.h>
+
 // clang-format on
 
 #  include <remill/Arch/Arch.h>
@@ -589,69 +591,75 @@ int main(int argc, char *argv[]) {
     os_str = maybe_os->str();
   }
 
-  const auto arch_name = remill::GetArchName(arch_str);
-  const auto os_name = remill::GetOSName(os_str);
-
   llvm::LLVMContext context;
-  const auto arch = remill::Arch::Build(&context, os_name, arch_name);
+  auto arch = remill::Arch::Build(&context, remill::GetOSName(os_str),
+                                  remill::GetArchName(arch_str));
   if (!arch) {
     return EXIT_FAILURE;
   }
 
-  // NOTE(pag): This needs to come first, unfortunately, as the
-  //            only way for `arch` to learn about the organization
-  //            of the state structure and its named registers is
-  //            by analyzing a module, and this is done in `PrepareModule`,
-  //            which is called by `LoadArchSemantics`.
-  std::unique_ptr<llvm::Module> semantics(remill::LoadArchSemantics(arch));
-  remill::IntrinsicTable intrinsics(semantics);
+  auto semantics = remill::LoadArchSemantics(arch);
 
   anvill::Program program;
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
 
-  std::unordered_map<uint64_t, llvm::GlobalVariable *> global_vars;
-  std::unordered_map<uint64_t, llvm::Function *> lift_targets;
+  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
 
-  auto trace_manager = anvill::TraceManager::Create(*semantics, program);
+  RecoverMemoryAccesses(program, *semantics);
 
-  remill::InstructionLifter inst_lifter(arch, intrinsics);
-  remill::TraceLifter trace_lifter(inst_lifter, *trace_manager);
+  // Create an output module `dest_module`
+  auto dest_module = std::make_unique<llvm::Module>(FLAGS_spec, context);
+  dest_module->setTargetTriple(semantics->getTargetTriple());
+  dest_module->setDataLayout(semantics->getDataLayout());
 
+  // Clone functions from `semantics` to `dest_module`.
+  // Necessary global variables will be cloned too.
   program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-    auto byte = program.FindByte(decl->address);
-    if (byte.IsExecutable()) {
-      trace_lifter.Lift(byte.Address());
-    }
-    return true;
-  });
-
-  // Optimize the module, but with a particular focus on only the functions
-  // that we actually lifted.
-  anvill::OptimizeModule(arch.get(), program, *semantics);
-
-  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     std::stringstream ss;
-    ss << "data_" << std::hex << decl->address;
-    global_vars[decl->address] = decl->DeclareInModule(ss.str(), *semantics);
+    ss << "sub_" << std::hex << decl->address << std::dec;
+    auto src = semantics->getFunction(ss.str());
+    auto dst = decl->DeclareInModule(ss.str(), *dest_module);
+    remill::CloneFunctionInto(src, dst);
     return true;
   });
 
-  anvill::RecoverMemoryAccesses(program, *semantics);
+  // Apply symbol names to functions if we have the names.
+  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+                                  const anvill::FunctionDecl *fdecl,
+                                  const anvill::GlobalVarDecl *vdecl) {
+    std::stringstream ss;
+    llvm::Value *gval = nullptr;
+    if (vdecl) {
+      ss << "data_" << std::hex << vdecl->address << std::dec;
+      gval = dest_module->getGlobalVariable(ss.str());
+    } else if (fdecl) {
+      ss << "sub_" << std::hex << fdecl->address << std::dec;
+      gval = dest_module->getFunction(ss.str());
+    } else {
+      return true;
+    }
 
-  //  anvill::OptimizeModule(arch.get(), program, dest_module);
+    if (gval) {
+      gval->setName(name);
+    }
+
+    return true;
+  });
+
+  anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
+    if (!remill::StoreModuleIRToFile(dest_module.get(), FLAGS_ir_out, true)) {
       LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
+    if (!remill::StoreModuleToFile(dest_module.get(), FLAGS_bc_out, true)) {
       LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
     }

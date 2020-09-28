@@ -35,6 +35,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
+
 // clang-format on
 
 #include <remill/BC/ABI.h>
@@ -105,6 +106,18 @@ RemoveUnusedCalls(llvm::Module &module, const char *func_name,
   }
 }
 
+static void RemoveFunction(llvm::Function *func) {
+  if (!func->hasNUsesOrMore(1)) {
+    func->eraseFromParent();
+  } else {
+    auto ret_type = func->getReturnType();
+    if (!ret_type->isVoidTy()) {
+      func->replaceAllUsesWith(llvm::UndefValue::get(func->getType()));
+      func->eraseFromParent();
+    }
+  }
+}
+
 // Remove calls to memory read functions that have undefined
 // addresses.
 static void
@@ -135,6 +148,8 @@ RemoveUndefMemoryReads(llvm::Module &module, const char *func_name,
 
     call_inst->eraseFromParent();
   }
+
+  RemoveFunction(func);
 }
 
 // Remove calls to memory write functions that have undefined addresses
@@ -171,6 +186,8 @@ RemoveUndefMemoryWrites(llvm::Module &module, const char *func_name,
     changed_funcs.insert(in_func);
     call_inst->eraseFromParent();
   }
+
+  RemoveFunction(func);
 }
 
 // Look for reads of constant memory locations, and replace
@@ -360,7 +377,9 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     if (!gv.hasNUsesOrMore(1)) {
       vars_to_remove.push_back(&gv);
     } else if (gv.getName().startswith("ISEL_") ||
-               gv.getName().startswith("COND_")) {
+               gv.getName().startswith("COND_") ||
+               gv.getName().startswith("__anvill_reg") ||
+               gv.getName().startswith("DR")) {
       gv.setInitializer(nullptr);
       gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));
       vars_to_remove.push_back(&gv);
@@ -383,8 +402,17 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     func->eraseFromParent();
   }
 
+  if (auto memory_escape = module.getFunction("__anvill_memory_escape")) {
+    for (auto call : remill::CallersOf(memory_escape)) {
+      call->eraseFromParent();
+    }
+    memory_escape->eraseFromParent();
+  }
+
   llvm::legacy::PassManager mpm;
   mpm.add(llvm::createFunctionInliningPass(250));
+  mpm.add(llvm::createGlobalOptimizerPass());
+  mpm.add(llvm::createGlobalDCEPass());
   mpm.run(module);
 
   llvm::legacy::FunctionPassManager fpm(&module);
@@ -427,29 +455,26 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   do {
 
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_32", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_64", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_f32", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_f64", changed_funcs);
-    //    RemoveUndefMemoryReads(module, "__remill_read_memory_f80", changed_funcs);
-    //
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_8", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_16", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_32", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_64", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_f32", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_f64", changed_funcs);
-    //    RemoveUndefMemoryWrites(module, "__remill_write_memory_f80", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_32", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_64", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_f32", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_f64", changed_funcs);
+    RemoveUndefMemoryReads(module, "__remill_read_memory_f80", changed_funcs);
 
-    (void) RemoveUndefMemoryReads;
-    (void) RemoveUndefMemoryWrites;
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_8", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_16", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_32", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_64", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_f32", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_f64", changed_funcs);
+    RemoveUndefMemoryWrites(module, "__remill_write_memory_f80", changed_funcs);
 
-    //    llvm::legacy::FunctionPassManager pm(&module);
-    //    pm.add(llvm::createDeadCodeEliminationPass());
-    //    pm.add(llvm::createSROAPass());
-    //    pm.add(llvm::createPromoteMemoryToRegisterPass());
+    llvm::legacy::FunctionPassManager pm(&module);
+    pm.add(llvm::createDeadCodeEliminationPass());
+    pm.add(llvm::createSROAPass());
+    pm.add(llvm::createPromoteMemoryToRegisterPass());
 
     fpm.doInitialization();
     for (auto func : changed_funcs) {
@@ -459,21 +484,29 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
     changed_funcs.clear();
 
-    (void) ReplaceConstMemoryReads;
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_8",
+                            changed_funcs);
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_16",
+                            changed_funcs);
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_32",
+                            changed_funcs);
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_64",
+                            changed_funcs);
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f32",
+                            changed_funcs);
+    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64",
+                            changed_funcs);
 
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_8", changed_funcs);
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_16", changed_funcs);
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_32", changed_funcs);
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_64", changed_funcs);
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f32", changed_funcs);
-    //    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64", changed_funcs);
-    //    ReplaceConstMemoryReads(
-    //        program, module, "__remill_read_memory_f80", changed_funcs,
-    //        fp80_type);
-
+    //  ReplaceConstMemoryReads(
+    //      program, module, "__remill_read_memory_f80", changed_funcs,
+    //      fp80_type);
   } while (!changed_funcs.empty());
 
   RemoveUnneededInlineAsm(program, module);
+
+  mpm.run(module);
+
+  CHECK(remill::VerifyModule(&module));
 }
 
 }  // namespace anvill

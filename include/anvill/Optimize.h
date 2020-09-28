@@ -19,10 +19,11 @@
 
 namespace llvm {
 class Module;
-}  // namespace llvm
+}
 namespace remill {
 class Arch;
-}  // namespace remill
+}
+
 namespace anvill {
 
 class Program;

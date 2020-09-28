@@ -78,7 +78,10 @@ add_library(${ANVILL} STATIC
     
     include/anvill/Lift.h
     lib/Lift.cpp
-    
+
+    include/anvill/MCToIRLifter.h
+    lib/MCToIRLifter.cpp
+  
     include/anvill/Optimize.h
     lib/Optimize.cpp
     
@@ -120,6 +123,7 @@ target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 set(ANVILL_PYTHON_SOURCES
     setup.py
     python/anvill/__init__.py
+    python/anvill/__main__.py
     python/anvill/arch.py
     python/anvill/binja.py
     python/anvill/dwarf.py

@@ -29,7 +29,7 @@ setuptools.setup(
     url="https://github.com/lifting-bits/anvill",
     license="AGPL 3",
     py_modules=[
-        "anvill.__init__", "anvill.arch", "anvill.binja",
+        "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja",
         "anvill.dwarf", "anvill.dwarf_type", "anvill.exc",
         "anvill.function", "anvill.ida", "anvill.loc",
         "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
