@@ -598,11 +598,6 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  // NOTE(pag): This needs to come first, unfortunately, as the
-  //            only way for `arch` to learn about the organization
-  //            of the state structure and its named registers is
-  //            by analyzing a module, and this is done in `PrepareModule`,
-  //            which is called by `LoadArchSemantics`.
   auto semantics = remill::LoadArchSemantics(arch);
 
   anvill::Program program;
@@ -638,15 +633,17 @@ int main(int argc, char *argv[]) {
     llvm::Value *gval = nullptr;
     if (vdecl) {
       ss << "data_" << std::hex << vdecl->address << std::dec;
-      gval = vdecl->DeclareInModule(ss.str(), *dest_module);
+      gval = dest_module->getGlobalVariable(ss.str());
     } else if (fdecl) {
       ss << "sub_" << std::hex << fdecl->address << std::dec;
-      gval = fdecl->DeclareInModule(ss.str(), *dest_module);
+      gval = dest_module->getFunction(ss.str());
     } else {
       return true;
     }
 
-    gval->setName(name);
+    if (gval) {
+      gval->setName(name);
+    }
 
     return true;
   });
