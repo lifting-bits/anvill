@@ -133,6 +133,13 @@ set(ANVILL_PYTHON_SOURCES
     python/anvill/type.py
     python/anvill/var.py)
 
+if(NOT DEFINED ENV{VIRTUAL_ENV})
+  # NOT a venv install, specify --user and --prefix
+  set(extra_install_flags "--force --user --prefix=")
+else()
+  #virtual env; install normally
+  set(extra_install_flags "")
+endif()
 
 if(ANVILL_INSTALL_PYTHON2_LIBS)
   add_custom_target(install_anvill_python2
@@ -140,7 +147,7 @@ if(ANVILL_INSTALL_PYTHON2_LIBS)
     
   add_custom_command(
       TARGET install_anvill_python2 POST_BUILD
-      COMMAND which python2 && python2 setup.py install --force --user --prefix=
+      COMMAND which python2 && python2 setup.py install ${extra_install_flags}
       COMMENT "Installing Anvill Python 2 API"
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -154,7 +161,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
 
   add_custom_command(
       TARGET install_anvill_python3 POST_BUILD
-      COMMAND which python3 && python3 setup.py install --force --user --prefix=
+      COMMAND which python3 && python3 setup.py install ${extra_install_flags}
       COMMENT "Installing Anvill Python 3 API"
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 

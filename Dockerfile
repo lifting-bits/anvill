@@ -26,7 +26,7 @@ ARG LIBRARIES
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python2.7 python3 python3-pip liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
+    apt-get install -qqy ninja-build python2.7 python3 python3-pip python3-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
     rm -rf /var/lib/apt/lists/*
 
 # needed for 20.04 support until we migrate to py3
@@ -45,10 +45,15 @@ ARG LIBRARIES
 WORKDIR /anvill
 COPY . ./
 
-ENV PATH="${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
 ENV CC="/usr/bin/clang"
 ENV CXX="/usr/bin/clang++"
 ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
+ENV VIRTUAL_ENV=/opt/trailofbits/anvill/python
+ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
+
+# create a virtualenv in /opt/trailofbits/anvill
+RUN mkdir /opt/trailofbits/anvill && \
+    python3 -m venv ${VIRTUAL_ENV}
 
 RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
@@ -57,6 +62,9 @@ RUN mkdir -p build && cd build && \
 FROM base as dist
 ARG LLVM_VERSION
 
+RUN apt-get update && \
+    apt-get install -qqy python2.7 python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
