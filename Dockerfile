@@ -62,9 +62,14 @@ RUN mkdir -p build && cd build && \
 FROM base as dist
 ARG LLVM_VERSION
 
-RUN apt-get update && \
-    apt-get install -qqy python2.7 python3 python3-pip python3-venv && \
-    rm -rf /var/lib/apt/lists/*
+# The below is commented out since neither binja
+# nor IDA would be available in the dist container
+# so it makes no sense to also add Python -- can't test the Python API
+# without either of those. 
+# If the situation changes, this can be uncommented to also install Python in the dist image
+#RUN apt-get update && \
+#    apt-get install -qqy python3 python3-pip python3-venv && \
+#    rm -rf /var/lib/apt/lists/*
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
