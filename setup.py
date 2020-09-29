@@ -28,7 +28,6 @@ setuptools.setup(
     author_email="peter@trailofbits.com",
     url="https://github.com/lifting-bits/anvill",
     license="AGPL 3",
-    install_requires=["python-magic"],
     py_modules=[
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja",
         "anvill.dwarf", "anvill.dwarf_type", "anvill.exc",
