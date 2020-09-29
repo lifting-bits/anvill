@@ -31,11 +31,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | ---- | ------- |
 | [Git](https://git-scm.com/) | Latest |
 | [CMake](https://cmake.org/) | 3.2+ |
-| [Google Flags](https://github.com/google/glog) | Latest |
-| [Google Log](https://github.com/google/glog) | Latest |
-| [LLVM](http://llvm.org/) | 8.0+|
-| [Clang](http://clang.llvm.org/) | 8.0+ |
-| [Intel XED](https://github.com/intelxed/xed) | Latest |
+| [Clang](http://clang.llvm.org/) | 8.0+|
+| [Remill](https://github.com/lifting-bits/remill) | Latest |
 | [Python](https://www.python.org/) | 3.5.1+ |
 | [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |
 | [Binary Ninja](https://binary.ninja/) | Latest |
@@ -59,25 +56,26 @@ sudo apt-get install \
      libtinfo-dev \
      lsb-release \
      zlib1g-dev \
-     ccache
+     ccache \
+     cmake
 
 # Ubuntu 14.04, 16.04
 sudo apt-get install realpath
 ```
 
-The next step is to clone the Remill repository. We then clone the Anvill repository into the tools subdirectory of Remill. This is kind of like how Clang and LLVM are distributed separately, and the Clang source code needs to be put into LLVM's tools directory.
+Assuming we have [Remill](https://github.com/lifting-bits/remill) properly installed the following steps provide an a fresh build of Anvill.
 
 ```shell
-git clone https://github.com/lifting-bits/remill.git
-cd remill/tools/
+# clone anvill repository
 git clone https://github.com/lifting-bits/anvill.git
-```
-
-Finally, we build Remill along with Anvill. This script will create another directory, `remill-build`, in the current working directory. All remaining dependencies needed by Remill will be built in the `remill-build` directory.
-
-```shell
-cd ../../
-./remill/scripts/build.sh
+# create a build dir
+mkdir anvill-build && cd anvill-build
+# configure
+CC=clang cmake ../anvill 
+# build
+make -j 5
+# install
+sudo make install
 ```
 
 Anvill's python plugins provide functionality needed to generate a JSON specification that contains information about the contents of a binary.
@@ -89,7 +87,7 @@ Given that we have either of the above, we can try out Anvill's machine code lif
 # First make sure we have the required python packages
 pip3 install pyelftools
 # Next we generate a JSON specification from a binary
-python3 ./remill/tools/anvill/examples/lift.py --bin_in my_binary --spec_out spec.json
+python3 -m anvill --bin_in my_binary --spec_out spec.json
 # Finally we produce LLVM bitcode from a JSON specification
 ./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
 ```
