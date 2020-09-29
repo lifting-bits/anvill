@@ -63,7 +63,7 @@ sudo apt-get install \
 sudo apt-get install realpath
 ```
 
-Assuming we have [Remill](https://github.com/lifting-bits/remill) properly installed the following steps provide an a fresh build of Anvill.
+Assuming we have [Remill](https://github.com/lifting-bits/remill) properly installed the following steps provide a fresh build of Anvill.
 
 ```shell
 # clone anvill repository
