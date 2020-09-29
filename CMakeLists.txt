@@ -193,3 +193,14 @@ configure_file(
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
     DESTINATION "${install_folder}/lib/cmake/anvill"
 )
+
+#
+# tests
+#
+
+enable_testing()
+
+add_test(NAME test_roundtrip
+  COMMAND scripts/roundtrip.py $<TARGET_FILE:${DECOMPILE_JSON}> tests/tools/decomp/ ${CMAKE_C_COMPILER}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
