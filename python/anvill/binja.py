@@ -355,24 +355,24 @@ class BNFunction(Function):
                 ea += 1
 
 
-def load_binary(path):
-    import magic
+# def load_binary(path):
+#     import magic
 
-    file_type = magic.from_file(path)
-    if "ELF" in file_type:
-        bv_type = bn.BinaryViewType["ELF"]
-    elif "PE32" in file_type:
-        bv_type = bn.BinaryViewType["PE"]
-    elif "Mach-O" in file_type:
-        bv_type = bn.BinaryViewType["Mach-O"]
-    else:
-        bv_type = bn.BinaryViewType["Raw"]
+#     file_type = magic.from_file(path)
+#     if "ELF" in file_type:
+#         bv_type = bn.BinaryViewType["ELF"]
+#     elif "PE32" in file_type:
+#         bv_type = bn.BinaryViewType["PE"]
+#     elif "Mach-O" in file_type:
+#         bv_type = bn.BinaryViewType["Mach-O"]
+#     else:
+#         bv_type = bn.BinaryViewType["Raw"]
 
-    # print 'Loading binary in binja... ', path
-    bv = bv_type.open(path)
-    bv.add_analysis_option("linearsweep")
-    bv.update_analysis_and_wait()
-    return bv
+#     # print 'Loading binary in binja... ', path
+#     bv = bv_type.open(path)
+#     bv.add_analysis_option("linearsweep")
+#     bv.update_analysis_and_wait()
+#     return bv
 
 
 class BNProgram(Program):
@@ -382,7 +382,7 @@ class BNProgram(Program):
             self._path = self._bv.file.filename
         else:
             self._path = path_or_bv
-            self._bv = load_binary(self._path)
+            self._bv = bn.BinaryViewType.get_view_of_file(self._path)
         self._dwarf = DWARFCore(self._path)
         super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 

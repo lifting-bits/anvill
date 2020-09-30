@@ -19,49 +19,54 @@ import argparse
 
 from .binja import get_program
 
+
 def main():
     arg_parser = argparse.ArgumentParser()
-    
-    arg_parser.add_argument(
-        '--bin_in',
-        help='Path to input binary.',
-        required=True)
-    
-    arg_parser.add_argument(
-        '--spec_out',
-        help='Path to output JSON specification.',
-        required=True)
+
+    arg_parser.add_argument("--bin_in", help="Path to input binary.", required=True)
 
     arg_parser.add_argument(
-        '--entry_point',
-        type=lambda x: int(x, 0),
-        help='Output functions only reachable from given entry point.')
-    
+        "--spec_out", help="Path to output JSON specification.", required=True
+    )
+
+    arg_parser.add_argument(
+        "--entry_point",
+        type=str,
+        help="Output functions only reachable from given entry point.",
+    )
+
     args, _ = arg_parser.parse_known_args()
 
     p = get_program(args.bin_in)
     s = set()
-    
+    ep = None
+
+    if args.entry_point is not None:
+        try:
+            ep = int(args.entry_point, 0)
+        except ValueError:
+            ep = args.entry_point
+
     def add_callees(ea):
         f = p.get_function(ea)
         if f not in s:
             s.add(f)
             for c in f._bn_func.callees:
                 add_callees(c.start)
-            
-    for ea, _ in p.functions:
-        if args.entry_point:
-            if ea == args.entry_point:
-                add_callees(ea)
-                break
-        else:
+
+    for ea, name in p.functions:
+        if not ep:
             s.add(p.get_function(ea))
-    
+        elif ep == (ea if isinstance(ep, int) else name):
+            add_callees(ea)
+            break
+
     for f in s:
         p.add_symbol(f.address(), f.name())
         p.add_function_definition(f.address(), False)
 
     open(args.spec_out, "w").write(p.proto())
 
+
 if __name__ == "__main__":
-  exit(main())
+    exit(main())
