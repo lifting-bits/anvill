@@ -28,7 +28,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -qqy ninja-build python2.7 python3 python3-pip python3-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
     rm -rf /var/lib/apt/lists/*
-
 # needed for 20.04 support until we migrate to py3
 RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 get-pip.py
 
@@ -48,12 +47,11 @@ COPY . ./
 ENV CC="/usr/bin/clang"
 ENV CXX="/usr/bin/clang++"
 ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
-ENV VIRTUAL_ENV=/opt/trailofbits/anvill/python
+ENV VIRTUAL_ENV=/opt/trailofbits/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
 
-# create a virtualenv in /opt/trailofbits/anvill
-RUN mkdir /opt/trailofbits/anvill && \
-    python3 -m venv ${VIRTUAL_ENV}
+# create a virtualenv in /opt/trailofbits/venv
+RUN python3 -m venv ${VIRTUAL_ENV}
 
 RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
@@ -61,11 +59,14 @@ RUN mkdir -p build && cd build && \
 
 FROM base as dist
 ARG LLVM_VERSION
+ENV VIRTUAL_ENV=/opt/trailofbits/venv \
+    PATH="${VIRTUAL_ENV}/bin:/opt/trailofbits/anvill/bin:${PATH}" \
+    LLVM_VERSION=llvm${LLVM_VERSION}
 
 # The below is commented out since neither binja
 # nor IDA would be available in the dist container
 # so it makes no sense to also add Python -- can't test the Python API
-# without either of those. 
+# without either of those.
 # If the situation changes, this can be uncommented to also install Python in the dist image
 #RUN apt-get update && \
 #    apt-get install -qqy python3 python3-pip python3-venv && \
@@ -76,6 +77,5 @@ WORKDIR /anvill/local
 COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh
 COPY --from=remill /opt/trailofbits/remill /opt/trailofbits/remill
 COPY --from=build /opt/trailofbits/anvill /opt/trailofbits/anvill
-ENV LLVM_VERSION=llvm${LLVM_VERSION} \
-    PATH="/opt/trailofbits/anvill/bin:${PATH}"
+COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 ENTRYPOINT ["/opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh"]
