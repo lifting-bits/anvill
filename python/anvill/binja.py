@@ -354,27 +354,6 @@ class BNFunction(Function):
                     _collect_code_xrefs_from_insn(self._bv, insn, ref_eas)
                 ea += 1
 
-
-# def load_binary(path):
-#     import magic
-
-#     file_type = magic.from_file(path)
-#     if "ELF" in file_type:
-#         bv_type = bn.BinaryViewType["ELF"]
-#     elif "PE32" in file_type:
-#         bv_type = bn.BinaryViewType["PE"]
-#     elif "Mach-O" in file_type:
-#         bv_type = bn.BinaryViewType["Mach-O"]
-#     else:
-#         bv_type = bn.BinaryViewType["Raw"]
-
-#     # print 'Loading binary in binja... ', path
-#     bv = bv_type.open(path)
-#     bv.add_analysis_option("linearsweep")
-#     bv.update_analysis_and_wait()
-#     return bv
-
-
 class BNProgram(Program):
     def __init__(self, path_or_bv):
         if isinstance(path_or_bv, bn.BinaryView):
