@@ -57,11 +57,17 @@ RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
     cmake --build . --target install
 
+RUN ctest
+
 FROM base as dist
 ARG LLVM_VERSION
 ENV VIRTUAL_ENV=/opt/trailofbits/venv \
     PATH="${VIRTUAL_ENV}/bin:/opt/trailofbits/anvill/bin:${PATH}" \
     LLVM_VERSION=llvm${LLVM_VERSION}
+
+RUN apt-get update && \
+    apt-get install -qqy python3 python3-venv && \
+    rm -rf /var/lib/apt/lists/*
 
 # The below is commented out since neither binja
 # nor IDA would be available in the dist container

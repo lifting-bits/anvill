@@ -192,6 +192,19 @@ install(
     TARGETS ${DECOMPILE_JSON}
     RUNTIME DESTINATION "${install_folder}/bin")
 
+set(ROUNDTRIP_TEST
+  scripts/roundtrip.py
+)
+install(
+    FILES ${ROUNDTRIP_TEST}
+    DESTINATION "${install_folder}/share")
+
+FILE(GLOB ROUNDTRIP_TEST_FILES "${PROJECT_SOURCE_DIR}/tests/*.c")
+
+install(
+    FILES ${ROUNDTRIP_TEST_FILES}
+    DESTINATION "${install_folder}/share/tests")
+
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
@@ -208,6 +221,6 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
 enable_testing()
 
 add_test(NAME test_roundtrip
-  COMMAND scripts/roundtrip.py $<TARGET_FILE:${DECOMPILE_JSON}> tests/tools/decomp/ ${CMAKE_C_COMPILER}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMAND ${PROJECT_SOURCE_DIR}/scripts/roundtrip.py $<TARGET_FILE:${DECOMPILE_JSON}> ${PROJECT_SOURCE_DIR}/tests ${CMAKE_C_COMPILER}
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )
