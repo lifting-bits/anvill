@@ -44,7 +44,7 @@ from .dwarf import *
 
 def _guess_os():
     """Try to guess the current OS"""
-    abi_name = ida_nalt.get_abi_name()
+    abi_name = ida_typeinf.get_abi_name()
     if "OSX" == abi_name:
         return "macos"
 
