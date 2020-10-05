@@ -22,6 +22,8 @@ import tempfile
 import os
 import sys
 
+global RUN_ALL_TESTS
+RUN_ALL_TESTS=False
 
 class RunError(Exception):
     def __init__(self, msg):
@@ -33,6 +35,7 @@ class RunError(Exception):
 
 def run_cmd(cmd, timeout):
     try:
+        sys.stdout.write(f"Running: {cmd}\n")
         p = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
@@ -93,29 +96,31 @@ def decompile(self, decompiler, input, output, timeout):
     return p
 
 
-def roundtrip(self, specifier, decompiler, filename, clang, timeout):
+def roundtrip(self, specifier, decompiler, filename, testname, clang, timeout):
+    if not RUN_ALL_TESTS and "_WIP_" in testname:
+        raise unittest.SkipTest(f"The test is marked as a WIP (work in progress): [{testname}]")
+
     with tempfile.TemporaryDirectory() as tempdir:
-        out1 = os.path.join(tempdir, "out1")
-        compile(self, clang, filename, out1, timeout)
+        compiled = os.path.join(tempdir, f"{testname}_compiled")
+        compile(self, clang, filename, compiled, timeout)
 
         # capture binary run outputs
-        cp1 = run_cmd([out1], timeout)
+        compiled_output = run_cmd([compiled], timeout)
 
-        rt_json = os.path.join(tempdir, "rt.json")
-        specify(self, specifier, out1, rt_json, timeout)
+        rt_json = os.path.join(tempdir, f"{testname}_rt.json")
+        specify(self, specifier, compiled, rt_json, timeout)
 
-        rt_bc = os.path.join(tempdir, "rt.bc")
+        rt_bc = os.path.join(tempdir, f"{testname}_rt.bc")
         decompile(self, decompiler, rt_json, rt_bc, timeout)
 
-        out2 = os.path.join(tempdir, "out2")
-        compile(self, clang, rt_bc, out2, timeout, ["-Wno-everything"])
-
+        rebuilt = os.path.join(tempdir, f"{testname}_rebuilt")
+        compile(self, clang, rt_bc, rebuilt, timeout, ["-Wno-everything"]) 
         # capture outputs of binary after roundtrip
-        cp2 = run_cmd([out2], timeout)
+        rebuilt_output = run_cmd([rebuilt], timeout)
 
-        self.assertEqual(cp1.stderr, cp2.stderr, "Different stderr")
-        self.assertEqual(cp1.stdout, cp2.stdout, "Different stdout")
-        self.assertEqual(cp1.returncode, cp2.returncode, "Different return code")
+        self.assertEqual(compiled_output.stderr, rebuilt_output.stderr, "Different stderr")
+        self.assertEqual(compiled_output.stdout, rebuilt_output.stdout, "Different stdout")
+        self.assertEqual(compiled_output.returncode, rebuilt_output.returncode, "Different return code")
 
 
 class TestRoundtrip(unittest.TestCase):
@@ -128,19 +133,23 @@ if __name__ == "__main__":
     parser.add_argument("tests", help="path to test directory")
     parser.add_argument("clang", help="path to clang")
     parser.add_argument("-t", "--timeout", help="set timeout in seconds", type=int)
+    parser.add_argument("--all", default=False, action="store_true", help="Run WIP tests in addition to regular tests")
 
     args = parser.parse_args()
 
-    def test_generator(path):
+    if args.all:
+        RUN_ALL_TESTS = True
+
+    def test_generator(path, test_name):
         def test(self):
             specifier = ["python3", "-m", "anvill"]
-            roundtrip(self, specifier, args.anvill, path, args.clang, args.timeout)
+            roundtrip(self, specifier, args.anvill, path, test_name, args.clang, args.timeout)
 
         return test
 
     for item in os.scandir(args.tests):
         test_name = "test_%s" % os.path.splitext(item.name)[0]
-        test = test_generator(item.path)
+        test = test_generator(item.path, test_name)
         setattr(TestRoundtrip, test_name, test)
 
-    unittest.main(argv=[sys.argv[0]])
+    unittest.main(argv=[sys.argv[0], "-v"])

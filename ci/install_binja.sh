@@ -4,6 +4,12 @@ set -euo pipefail
 
 # Decrypt any CI secrets
 function decrypt {
+    if [[ -f ${1} ]]
+    then
+      echo "Skipping ${1}; already decrypted"
+      return 0
+    fi
+
     if [[ -f ${1}.gpg ]]
     then
         echo "Decrypting file: ${1}.gpg"
