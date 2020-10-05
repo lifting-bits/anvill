@@ -174,7 +174,7 @@ def _convert_binja_type(tinfo, cache):
             ret.add_parameter_type(_convert_binja_type(var.type, cache))
 
         if tinfo.has_variable_arguments:
-            ret.set_is_vararg()
+            ret.set_is_variadic()
 
         return ret
 
