@@ -43,7 +43,7 @@ jobs:
         docker run --rm -v $(pwd):/anvill/local \
           --entrypoint /bin/bash \
           docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest \
-          -c "cd /anvill/local/ci && ./install_binja.sh &>/dev/null && ./install_clang.sh && ./run_tests.sh"
+          -c "cd /anvill/local/ci && ./install_binja.sh && ./install_clang.sh && ./run_tests.sh"
       env:
         BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
     - name: Push Image for LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
