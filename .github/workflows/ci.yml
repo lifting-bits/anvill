@@ -40,7 +40,7 @@ jobs:
           -spec ./examples/ret0.json \
           -bc_out ./ret0.bc \
           -ir_out ret0.ir
-        docker run --rm -v $(pwd):/anvill/local \
+        docker run -e BINJA_DECODE_KEY --rm -v $(pwd):/anvill/local \
           --entrypoint /bin/bash \
           docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest \
           -c "cd /anvill/local/ci && ./install_binja.sh && ./install_clang.sh && ./run_tests.sh"
