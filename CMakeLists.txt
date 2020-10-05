@@ -193,8 +193,8 @@ install(
     RUNTIME DESTINATION "${install_folder}/bin")
 
 set(ROUNDTRIP_TEST
-  scripts/roundtrip.py
-)
+    scripts/roundtrip.py)
+
 install(
     FILES ${ROUNDTRIP_TEST}
     DESTINATION "${install_folder}/share")
@@ -217,6 +217,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
 #
 # tests
 #
+# Note: the Binary Ninja or IDA Python API must exist to run tests.
 
 enable_testing()
 
