@@ -35,7 +35,17 @@ jobs:
         docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
     - name: Test LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       run: |
-        docker run --rm -v $(pwd):/anvill/local docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec ./examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
+        docker run --rm -v $(pwd):/anvill/local \
+          docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest \
+          -spec ./examples/ret0.json \
+          -bc_out ./ret0.bc \
+          -ir_out ret0.ir
+        docker run -e BINJA_DECODE_KEY --rm -v $(pwd):/anvill/local \
+          --entrypoint /bin/bash \
+          docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest \
+          -c "cd /anvill/local/ci && ./install_binja.sh && ./install_clang.sh && ./run_tests.sh"
+      env:
+        BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
     - name: Push Image for LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       if: github.event_name == 'push' && github.ref == 'refs/heads/master'
       run: |

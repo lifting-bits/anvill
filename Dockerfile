@@ -60,8 +60,13 @@ RUN mkdir -p build && cd build && \
 FROM base as dist
 ARG LLVM_VERSION
 ENV VIRTUAL_ENV=/opt/trailofbits/venv \
-    PATH="${VIRTUAL_ENV}/bin:/opt/trailofbits/anvill/bin:${PATH}" \
+    PATH="/opt/trailofbits/venv/bin:/opt/trailofbits/anvill/bin:${PATH}" \
     LLVM_VERSION=llvm${LLVM_VERSION}
+
+RUN apt-get update && \
+    apt-get install -qqy unzip python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/* && \
+    python3 -m pip install pip python-magic
 
 # The below is commented out since neither binja
 # nor IDA would be available in the dist container
