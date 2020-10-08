@@ -49,61 +49,61 @@ set(ANVILL anvill-${REMILL_LLVM_VERSION})
 add_subdirectory(lib/Version)
 
 add_library(${ANVILL} STATIC
-    include/anvill/Type.h
+  include/anvill/Type.h
 
-    lib/Arch/AArch64_C.cpp
-    lib/Arch/X86_C.cpp
-    lib/Arch/X86_FastCall.cpp
-    lib/Arch/X86_StdCall.cpp
-    lib/Arch/X86_ThisCall.cpp
-    lib/Arch/X86_64_SysV.cpp
-    
-    lib/Arch/AllocationState.h
-    lib/Arch/AllocationState.cpp
-    
-    lib/Arch/Arch.h
-    lib/Arch/Arch.cpp
-    
-    include/anvill/TypeParser.h
-    lib/TypeParser.cpp
-    
-    include/anvill/TypePrinter.h
-    lib/TypePrinter.cpp
-    
-    include/anvill/Program.h
-    lib/Program.cpp
-    
-    include/anvill/Decl.h
-    lib/Decl.cpp
-    
-    include/anvill/Lift.h
-    lib/Lift.cpp
-
-    include/anvill/MCToIRLifter.h
-    lib/MCToIRLifter.cpp
+  lib/Arch/AArch64_C.cpp
+  lib/Arch/X86_C.cpp
+  lib/Arch/X86_FastCall.cpp
+  lib/Arch/X86_StdCall.cpp
+  lib/Arch/X86_ThisCall.cpp
+  lib/Arch/X86_64_SysV.cpp
   
-    include/anvill/Optimize.h
-    lib/Optimize.cpp
-    
-    include/anvill/Analyze.h
-    lib/Analyze.cpp)
+  lib/Arch/AllocationState.h
+  lib/Arch/AllocationState.cpp
+  
+  lib/Arch/Arch.h
+  lib/Arch/Arch.cpp
+  
+  include/anvill/TypeParser.h
+  lib/TypeParser.cpp
+  
+  include/anvill/TypePrinter.h
+  lib/TypePrinter.cpp
+  
+  include/anvill/Program.h
+  lib/Program.cpp
+  
+  include/anvill/Decl.h
+  lib/Decl.cpp
+  
+  include/anvill/Lift.h
+  lib/Lift.cpp
+
+  include/anvill/MCToIRLifter.h
+  lib/MCToIRLifter.cpp
+
+  include/anvill/Optimize.h
+  lib/Optimize.cpp
+  
+  include/anvill/Analyze.h
+  lib/Analyze.cpp)
 
 target_include_directories(${ANVILL} PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    ${PROJECT_INCLUDEDIRECTORIES})
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  ${PROJECT_INCLUDEDIRECTORIES})
 
 target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion)
 
 target_public_headers(${ANVILL}
-    include/anvill/Analyze.h
-    include/anvill/Decl.h
-    include/anvill/Lift.h
-    include/anvill/Optimize.h
-    include/anvill/Program.h
-    include/anvill/Type.h
-    include/anvill/TypeParser.h
-    include/anvill/TypePrinter.h
-    include/anvill/Version.h)
+  include/anvill/Analyze.h
+  include/anvill/Decl.h
+  include/anvill/Lift.h
+  include/anvill/Optimize.h
+  include/anvill/Program.h
+  include/anvill/Type.h
+  include/anvill/TypeParser.h
+  include/anvill/TypePrinter.h
+  include/anvill/Version.h)
 
 #
 # tool target settings
@@ -121,28 +121,25 @@ add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
 set(ANVILL_PYTHON_SOURCES
-    setup.py
-    python/anvill/__init__.py
-    python/anvill/__main__.py
-    python/anvill/arch.py
-    python/anvill/binja.py
-    python/anvill/dwarf.py
-    python/anvill/exc.py
-    python/anvill/function.py
-    python/anvill/ida.py
-    python/anvill/loc.py
-    python/anvill/mem.py
-    python/anvill/os.py
-    python/anvill/program.py
-    python/anvill/type.py
-    python/anvill/var.py)
+  setup.py
+  python/anvill/__init__.py
+  python/anvill/__main__.py
+  python/anvill/arch.py
+  python/anvill/binja.py
+  python/anvill/dwarf.py
+  python/anvill/exc.py
+  python/anvill/function.py
+  python/anvill/ida.py
+  python/anvill/loc.py
+  python/anvill/mem.py
+  python/anvill/os.py
+  python/anvill/program.py
+  python/anvill/type.py
+  python/anvill/var.py)
 
 if(NOT DEFINED ENV{VIRTUAL_ENV})
   # NOT a venv install, specify --user and --prefix
-  set(extra_install_flags "--force --user --prefix=")
-else()
-  #virtual env; install normally
-  set(extra_install_flags "")
+  set(extra_install_flags --force --user --prefix=)
 endif()
 
 if(ANVILL_INSTALL_PYTHON2_LIBS)
@@ -150,10 +147,10 @@ if(ANVILL_INSTALL_PYTHON2_LIBS)
     DEPENDS ${ANVILL_PYTHON_SOURCES})
     
   add_custom_command(
-      TARGET install_anvill_python2 POST_BUILD
-      COMMAND which python2 && python2 setup.py install ${extra_install_flags}
-      COMMENT "Installing Anvill Python 2 API"
-      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    TARGET install_anvill_python2 POST_BUILD
+    COMMAND which python2 && python2 setup.py install ${extra_install_flags}
+    COMMENT "Installing Anvill Python 2 API"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
   add_dependencies(${ANVILL}
     install_anvill_python2)
@@ -164,10 +161,10 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     DEPENDS ${ANVILL_PYTHON_SOURCES})
 
   add_custom_command(
-      TARGET install_anvill_python3 POST_BUILD
-      COMMAND which python3 && python3 setup.py install ${extra_install_flags}
-      COMMENT "Installing Anvill Python 3 API"
-      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    TARGET install_anvill_python3 POST_BUILD
+    COMMAND which python3 && python3 setup.py install ${extra_install_flags}
+    COMMENT "Installing Anvill Python 3 API"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
   add_dependencies(${ANVILL}
     install_anvill_python3)
@@ -184,26 +181,34 @@ else()
 endif()
 
 install(
-    TARGETS ${ANVILL}
-    LIBRARY DESTINATION "${install_folder}/lib"
-    PUBLIC_HEADER DESTINATION "${install_folder}/include/anvill")
+  TARGETS ${ANVILL}
+  LIBRARY DESTINATION "${install_folder}/lib"
+  PUBLIC_HEADER DESTINATION "${install_folder}/include/anvill")
 
 install(
-    TARGETS ${DECOMPILE_JSON}
-    RUNTIME DESTINATION "${install_folder}/bin")
+  TARGETS ${DECOMPILE_JSON}
+  RUNTIME DESTINATION "${install_folder}/bin")
 
 set(ROUNDTRIP_TEST
-    scripts/roundtrip.py)
+  scripts/roundtrip.py)
 
 install(
-    FILES ${ROUNDTRIP_TEST}
-    DESTINATION "${install_folder}/share")
+  FILES ${ROUNDTRIP_TEST}
+  DESTINATION "${install_folder}/share")
 
-FILE(GLOB ROUNDTRIP_TEST_FILES "${PROJECT_SOURCE_DIR}/tests/*.c")
+set(ROUNDTRIP_TEST_FILES 
+  tests/assert.c
+  tests/bitops.c
+  tests/cast.c
+  tests/funcptr.c
+  tests/nullptr.c
+  tests/ret0.c
+  tests/zeroinit.c
+)
 
 install(
-    FILES ${ROUNDTRIP_TEST_FILES}
-    DESTINATION "${install_folder}/share/tests")
+  FILES ${ROUNDTRIP_TEST_FILES}
+  DESTINATION "${install_folder}/share/tests")
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
@@ -211,7 +216,7 @@ configure_file(
 )
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
-    DESTINATION "${install_folder}/lib/cmake/anvill"
+  DESTINATION "${install_folder}/lib/cmake/anvill"
 )
 
 #

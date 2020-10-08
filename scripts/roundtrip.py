@@ -22,9 +22,6 @@ import tempfile
 import os
 import sys
 
-global RUN_ALL_TESTS
-RUN_ALL_TESTS=False
-
 class RunError(Exception):
     def __init__(self, msg):
         self.msg = msg
@@ -35,7 +32,7 @@ class RunError(Exception):
 
 def run_cmd(cmd, timeout):
     try:
-        sys.stdout.write(f"Running: {cmd}\n")
+        sys.stdout.write("Running: %s\n" % ' '.join(cmd))
         p = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
@@ -97,9 +94,6 @@ def decompile(self, decompiler, input, output, timeout):
 
 
 def roundtrip(self, specifier, decompiler, filename, testname, clang, timeout):
-    if not RUN_ALL_TESTS and "_WIP_" in testname:
-        raise unittest.SkipTest(f"The test is marked as a WIP (work in progress): [{testname}]")
-
     with tempfile.TemporaryDirectory() as tempdir:
         compiled = os.path.join(tempdir, f"{testname}_compiled")
         compile(self, clang, filename, compiled, timeout)
@@ -133,12 +127,8 @@ if __name__ == "__main__":
     parser.add_argument("tests", help="path to test directory")
     parser.add_argument("clang", help="path to clang")
     parser.add_argument("-t", "--timeout", help="set timeout in seconds", type=int)
-    parser.add_argument("--all", default=False, action="store_true", help="Run WIP tests in addition to regular tests")
 
     args = parser.parse_args()
-
-    if args.all:
-        RUN_ALL_TESTS = True
 
     def test_generator(path, test_name):
         def test(self):
