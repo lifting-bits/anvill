@@ -126,7 +126,6 @@ set(ANVILL_PYTHON_SOURCES
   python/anvill/__main__.py
   python/anvill/arch.py
   python/anvill/binja.py
-  python/anvill/dwarf.py
   python/anvill/exc.py
   python/anvill/function.py
   python/anvill/ida.py
