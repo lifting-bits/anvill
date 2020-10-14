@@ -31,7 +31,6 @@ setuptools.setup(
     install_requires=["pyelftools"],
     py_modules=[
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja",
-        "anvill.dwarf", "anvill.dwarf_type", "anvill.exc",
-        "anvill.function", "anvill.ida", "anvill.loc",
+        "anvill.exc", "anvill.function", "anvill.ida", "anvill.loc",
         "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
         "anvill.var"])
