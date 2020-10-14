@@ -52,7 +52,7 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-#if 1|| __has_include(<llvm/Support/JSON.h>)
+#if __has_include(<llvm/Support/JSON.h>)
 
 #  include <gflags/gflags.h>
 #  include <glog/logging.h>
