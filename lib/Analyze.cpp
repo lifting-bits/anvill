@@ -648,7 +648,8 @@ static void FindPossibleCrossReferences(
       next_work_list.emplace_back(&use, gv, true);
     }
   } else {
-    LOG(FATAL) << "Couldn't find " << gv_name;
+    LOG(ERROR) << "Couldn't find " << gv_name;
+    return;
   }
 
   XrefExprFolder folder(program, module);
