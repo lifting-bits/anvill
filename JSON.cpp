@@ -52,7 +52,7 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-#if __has_include(<llvm/Support/JSON.h>)
+#if 1|| __has_include(<llvm/Support/JSON.h>)
 
 #  include <gflags/gflags.h>
 #  include <glog/logging.h>
@@ -607,8 +607,6 @@ int main(int argc, char *argv[]) {
 
   anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
 
-  RecoverMemoryAccesses(program, *semantics);
-
   // Create an output module `dest_module`
   auto dest_module = std::make_unique<llvm::Module>(FLAGS_spec, context);
   dest_module->setTargetTriple(semantics->getTargetTriple());
@@ -620,10 +618,11 @@ int main(int argc, char *argv[]) {
     std::stringstream ss;
     ss << "sub_" << std::hex << decl->address << std::dec;
     auto src = semantics->getFunction(ss.str());
-    auto dst = decl->DeclareInModule(ss.str(), *dest_module);
-    remill::CloneFunctionInto(src, dst);
+    remill::MoveFunctionIntoModule(src, dest_module.get());
     return true;
   });
+
+  anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   // Apply symbol names to functions if we have the names.
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
@@ -647,8 +646,6 @@ int main(int argc, char *argv[]) {
 
     return true;
   });
-
-  anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   int ret = EXIT_SUCCESS;
 

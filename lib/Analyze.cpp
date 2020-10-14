@@ -42,8 +42,10 @@
 
 #include <map>
 #include <set>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "anvill/Decl.h"
@@ -69,9 +71,7 @@ void XrefExprFolder::Reset(void) {
   bits_and = 0;
 
   // Drop the error.
-  if (error) {
-    llvm::handleAllErrors(std::move(error), [](llvm::ErrorInfoBase &) {});
-  }
+  llvm::handleAllErrors(std::move(error), [](llvm::ErrorInfoBase &) {});
 }
 
 uint64_t XrefExprFolder::Visit(llvm::Value *v) {
@@ -640,52 +640,62 @@ static void FindPossibleCrossReferences(
     std::vector<std::pair<llvm::Use *, Byte>> &maybe_fixups,
     std::vector<std::pair<llvm::Use *, uint64_t>> &imm_fixups) {
 
-  std::vector<llvm::Value *> work_list;
-  std::vector<llvm::Value *> next_work_list;
+  std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> work_list;
+  std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> next_work_list;
 
   if (auto gv = module.getGlobalVariable(gv_name); gv) {
-    next_work_list.push_back(gv);
+    for (auto &use : gv->uses()) {
+      next_work_list.emplace_back(&use, gv, true);
+    }
   } else {
-    LOG(ERROR) << "Couldn't find " << gv_name;
+    LOG(FATAL) << "Couldn't find " << gv_name;
   }
 
   XrefExprFolder folder(program, module);
+  std::unordered_set<llvm::Use *> seen;
+
   while (!next_work_list.empty()) {
+
     next_work_list.swap(work_list);
     next_work_list.clear();
 
-    for (auto ce : work_list) {
-      for (auto &use : ce->uses()) {
-        const auto user = use.getUser();
-        if (llvm::isa<llvm::Instruction>(user)) {
-          folder.Reset();
-          const auto ea = folder.Visit(ce);
-          if (folder.error) {
-            llvm::handleAllErrors(
-                std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
-                  LOG(ERROR)
-                      << "Unable to handle possible cross-reference to "
-                      << std::hex << ea << std::dec << ": " << eib.message();
-                });
-            continue;
+    for (auto [use_, val_, report_failure_] : work_list) {
+      llvm::Use * const use = use_;
+      llvm::Value * const val = val_;
+      const bool report_failure = report_failure_;
 
-          } else if (auto byte = program.FindByte(ea); byte) {
-            if (folder.is_pointer) {
-              ptr_fixups.emplace_back(&use, byte);
-            } else {
-              maybe_fixups.emplace_back(&use, byte);
-            }
-          } else {
-            imm_fixups.emplace_back(&use, ea);
-          }
+      if (seen.count(use)) {
+        continue;
+      }
+      seen.insert(use);
 
-        } else if (auto user_ce = llvm::dyn_cast<llvm::ConstantExpr>(user)) {
-          next_work_list.push_back(user_ce);
+      folder.Reset();
+      const auto ea = folder.Visit(val);
+      if (folder.error) {
+        llvm::handleAllErrors(
+            std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
+              LOG_IF(ERROR, report_failure)
+                  << "Unable to handle possible cross-reference to "
+                  << std::hex << ea << std::dec << ": " << eib.message();
+            });
+        continue;
+      }
 
+      if (auto byte = program.FindByte(ea);
+          byte && !folder.is_sp_relative && !folder.is_ra_relative) {
+        if (folder.is_pointer) {
+          ptr_fixups.emplace_back(use, byte);
         } else {
-          LOG(ERROR) << "Unexpected user of cross-reference: "
-                     << remill::LLVMThingToString(user);
+          maybe_fixups.emplace_back(use, byte);
         }
+      } else {
+        imm_fixups.emplace_back(use, ea);
+      }
+
+      // Recursively ascend the usage graph.
+      const auto user = use->getUser();
+      for (auto &use_of_val : user->uses()) {
+        next_work_list.emplace_back(&use_of_val, user, false);
       }
     }
   }
@@ -723,8 +733,8 @@ static void RecoverStackMemoryAccesses(
   for (auto [use, ea] : sp_fixups) {
     llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!inst) {
-      LOG(ERROR) << "Non-inst user: "
-                 << remill::LLVMThingToString(use->getUser());
+      LOG(WARNING) << "Ignoring non-inst user: "
+                   << remill::LLVMThingToString(use->getUser());
       continue;
     }
 
@@ -789,7 +799,8 @@ static void RecoverStackMemoryAccesses(
   // Types within the stack frame for a given function.
   std::vector<llvm::Type *> types;
 
-  for (auto &[func, frame] : frames) {
+  for (auto &[func, frame_] : frames) {
+    StackFrame &frame = frame_;
 
     // Sort the cells, grouped by bytes, ordering larger cells
     std::sort(frame.cells.begin(), frame.cells.end(), order_cells);
@@ -871,9 +882,9 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   FindPossibleCrossReferences(program, module, "__anvill_sp", fixups,
                               maybe_fixups, sp_fixups);
 
-  LOG(WARNING) << "fixups.size()=" << fixups.size();
-  LOG(WARNING) << "maybe_fixups.size()=" << maybe_fixups.size();
-  LOG(WARNING) << "sp_fixups.size()=" << sp_fixups.size();
+  LOG(ERROR) << "fixups.size()=" << fixups.size();
+  LOG(ERROR) << "maybe_fixups.size()=" << maybe_fixups.size();
+  LOG(ERROR) << "sp_fixups.size()=" << sp_fixups.size();
   RecoverStackMemoryAccesses(sp_fixups, module);
 
   fixups.clear();

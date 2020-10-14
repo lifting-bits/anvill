@@ -138,7 +138,7 @@ set(ANVILL_PYTHON_SOURCES
 
 if(NOT DEFINED ENV{VIRTUAL_ENV})
   # NOT a venv install, specify --user and --prefix
-  set(extra_install_flags "--force --user --prefix=")
+  set(extra_install_flags --force --user --prefix=)
 else()
   #virtual env; install normally
   set(extra_install_flags "")
