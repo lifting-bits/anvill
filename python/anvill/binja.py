@@ -22,7 +22,6 @@ from .loc import *
 from .os import *
 from .type import *
 from .program import *
-from .dwarf import *
 
 
 def is_valid_addr(bv, addr):
@@ -362,7 +361,6 @@ class BNProgram(Program):
         else:
             self._path = path_or_bv
             self._bv = bn.BinaryViewType.get_view_of_file(self._path)
-        self._dwarf = DWARFCore(self._path)
         super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
 
     def get_function_impl(self, address):
