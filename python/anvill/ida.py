@@ -39,7 +39,6 @@ from .mem import *
 from .os import *
 from .program import *
 from .type import *
-from .dwarf import *
 
 
 def _guess_os():
@@ -897,10 +896,6 @@ class IDAVariable(Variable):
 class IDAProgram(Program):
     def __init__(self, *args, **kargs):
         super(IDAProgram, self).__init__(kargs["arch"], kargs["os"])
-        try:
-            self._dwarf = DWARFCore(ida_nalt.get_input_file_path())
-        except:
-            self._dwarf = None
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
