@@ -18,61 +18,13 @@
 #include "anvill/MCToIRLifter.h"
 
 #include <glog/logging.h>
-
-#include <llvm/IR/LegacyPassManager.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Utils.h>
-#include <llvm/Transforms/Utils/Cloning.h>
-
-#include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
-
-#include <new>
-#include <set>
-#include <type_traits>
 
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
-#include "anvill/Lift.h"
+#include "anvill/Util.h"
 
 namespace anvill {
-namespace {
-
-// Clear out LLVM variable names. They're usually not helpful.
-static void ClearVariableNames(llvm::Function *func) {
-  for (auto &block : *func) {
-    block.setName("");
-    for (auto &inst : block) {
-      if (inst.hasName()) {
-        inst.setName("");
-      }
-    }
-  }
-}
-
-// A function that ensures that the memory pointer escapes, and thus none of
-// the memory writes at the end of a function are lost.
-static llvm::Function *
-GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
-  auto module = intrinsics.error->getParent();
-  auto &context = module->getContext();
-
-  auto name = "__anvill_memory_escape";
-  if (auto func = module->getFunction(name)) {
-    return func;
-  }
-
-  llvm::Type *params[] = {
-      remill::NthArgument(intrinsics.error, remill::kMemoryPointerArgNum)
-          ->getType()};
-  auto type =
-      llvm::FunctionType::get(llvm::Type::getVoidTy(context), params, false);
-  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, name,
-                                module);
-}
-
-}  // namespace
 
 MCToIRLifter::MCToIRLifter(const remill::Arch *_arch, const Program &_program,
                            llvm::Module &_module)
@@ -176,9 +128,9 @@ void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
   llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
 }
 
-void MCToIRLifter::VisitDirectFunctionCall(
-    const remill::Instruction &inst, remill::Instruction *delayed_inst,
-    llvm::BasicBlock *block) {
+void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
+                                           remill::Instruction *delayed_inst,
+                                           llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
 
@@ -186,27 +138,26 @@ void MCToIRLifter::VisitDirectFunctionCall(
     const auto entry = GetOrDeclareFunction(*decl);
     remill::AddCall(block, entry.lifted_to_native);
   } else {
-    LOG(ERROR)
-        << "Missing declaration for function at " << std::hex
-        << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+    LOG(ERROR) << "Missing declaration for function at " << std::hex
+               << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
     remill::AddCall(block, intrinsics.function_call);
   }
 
   llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
 }
 
-void MCToIRLifter::VisitIndirectFunctionCall(
-    const remill::Instruction &inst, remill::Instruction *delayed_inst,
-    llvm::BasicBlock *block) {
+void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
+                                             remill::Instruction *delayed_inst,
+                                             llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddCall(block, intrinsics.function_call);
   llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
 }
 
-void MCToIRLifter::VisitConditionalBranch(
-    const remill::Instruction &inst, remill::Instruction *delayed_inst,
-    llvm::BasicBlock *block) {
+void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,
+                                          remill::Instruction *delayed_inst,
+                                          llvm::BasicBlock *block) {
 
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
@@ -215,8 +166,7 @@ void MCToIRLifter::VisitConditionalBranch(
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_taken_pc),
-                           taken_block);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_taken_pc), taken_block);
   llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
                            not_taken_block);
 }
@@ -247,9 +197,10 @@ void MCToIRLifter::VisitConditionalAsyncHyperCall(
                            not_taken_block);
 }
 
-void MCToIRLifter::VisitDelayedInstruction(
-    const remill::Instruction &inst, remill::Instruction *delayed_inst,
-    llvm::BasicBlock *block, bool on_taken_path) {
+void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
+                                           remill::Instruction *delayed_inst,
+                                           llvm::BasicBlock *block,
+                                           bool on_taken_path) {
   if (delayed_inst &&
       arch->NextInstructionIsDelayed(inst, *delayed_inst, on_taken_path)) {
     inst_lifter.LiftIntoBlock(*delayed_inst, block, true);
@@ -287,12 +238,8 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
     case remill::Instruction::kCategoryError:
       VisitError(inst, delayed_inst, block);
       break;
-    case remill::Instruction::kCategoryNormal:
-      VisitNormal(inst, block);
-      break;
-    case remill::Instruction::kCategoryNoOp:
-      VisitNoOp(inst, block);
-      break;
+    case remill::Instruction::kCategoryNormal: VisitNormal(inst, block); break;
+    case remill::Instruction::kCategoryNoOp: VisitNoOp(inst, block); break;
     case remill::Instruction::kCategoryDirectJump:
       VisitDirectJump(inst, delayed_inst, block);
       break;
@@ -325,8 +272,7 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
 }
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
-MCToIRLifter::FunctionEntry
-MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
+FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   auto &entry = addr_to_func[decl.address];
   if (entry.lifted) {
     return entry;
@@ -334,11 +280,10 @@ MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 
   const auto base_name = CreateFunctionName(decl.address);
 
-  entry.lifted_to_native = remill::DeclareLiftedFunction(
-      &module, base_name + ".lifted_to_native");
+  entry.lifted_to_native =
+      remill::DeclareLiftedFunction(&module, base_name + ".lifted_to_native");
 
-  entry.lifted = remill::DeclareLiftedFunction(
-      &module, base_name + ".lifted");
+  entry.lifted = remill::DeclareLiftedFunction(&module, base_name + ".lifted");
 
   entry.native_to_lifted = decl.DeclareInModule(base_name, module, true);
   entry.native_to_lifted->removeFnAttr(llvm::Attribute::InlineHint);
@@ -349,225 +294,10 @@ MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   return entry;
 }
 
-// Define the function that marshals native state to lifted state.
-void MCToIRLifter::DefineNativeToLiftedWrapper(
-    const FunctionDecl &decl, const FunctionEntry &entry) {
-  const auto native_func = entry.native_to_lifted;
-  const auto lifted_func = entry.lifted;
-
-  // Set inlining attributes for lifted function
-  lifted_func->removeFnAttr(llvm::Attribute::NoInline);
-  lifted_func->addFnAttr(llvm::Attribute::InlineHint);
-  lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
-
-  // Get module and context from the lifted function
-  auto module = lifted_func->getParent();
-
-  // Declare ABI-level function
-  CHECK(native_func->isDeclaration());
-  native_func->removeFnAttr(llvm::Attribute::InlineHint);
-  native_func->removeFnAttr(llvm::Attribute::AlwaysInline);
-  native_func->addFnAttr(llvm::Attribute::NoInline);
-
-  // Get arch from the ABI-level function
-  CHECK_EQ(arch->context, &ctx);
-
-  // Create a state structure and a stack frame in the ABI-level function
-  // and we'll call the lifted function with that. The lifted function
-  // will get inlined into this function.
-  auto block = llvm::BasicBlock::Create(ctx, "", native_func);
-  llvm::IRBuilder<> ir(block);
-
-  // Create a memory pointer.
-  auto mem_ptr_type = remill::MemoryPointerType(module);
-  llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
-
-  // Stack-allocate a state pointer.
-  auto state_ptr_type = remill::StatePointerType(module);
-  auto state_type = state_ptr_type->getElementType();
-  auto state_ptr = ir.CreateAlloca(state_type);
-
-//  // Get or create globals for all top-level registers. The idea here is that
-//  // the spec could feasibly miss some dependencies, and so after optimization,
-//  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-//  // them appropriately.
-//  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-//    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-//      std::stringstream ss;
-//      ss << "__anvill_reg_" << reg->name;
-//      const auto reg_name = ss.str();
-//      auto reg_global = module->getGlobalVariable(reg_name);
-//      if (!reg_global) {
-//        reg_global = new llvm::GlobalVariable(
-//            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-//            nullptr, reg_name);
-//      }
-//      auto reg_ptr = reg->AddressOf(state_ptr, block);
-//      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-//    }
-//  });
-
-  // Store the program counter into the state.
-  auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
-  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
-
-  auto base_pc = module->getGlobalVariable("__anvill_pc");
-  if (!base_pc) {
-    base_pc = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_pc");
-  }
-
-  auto pc = llvm::ConstantExpr::getAdd(
-      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
-      llvm::ConstantInt::get(pc_reg->type, decl.address, false));
-  ir.SetInsertPoint(block);
-  ir.CreateStore(pc, pc_reg_ptr);
-
-  // Initialize the stack pointer.
-  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
-
-  auto base_sp = module->getGlobalVariable("__anvill_sp");
-  if (!base_sp) {
-    base_sp = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_sp");
-  }
-
-  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
-  ir.SetInsertPoint(block);
-  ir.CreateStore(sp, sp_reg_ptr);
-
-  // Put the function's return address wherever it needs to go.
-  auto base_ra = module->getGlobalVariable("__anvill_ra");
-  if (!base_ra) {
-    base_ra = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_ra");
-  }
-
-  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
-
-  remill::IntrinsicTable intrinsics(module);
-  mem_ptr = StoreNativeValue(ret_addr, decl.return_address, intrinsics, block,
-                             state_ptr, mem_ptr);
-
-  // Store the function parameters either into the state struct
-  // or into memory (likely the stack).
-  auto arg_index = 0u;
-  for (auto &arg : native_func->args()) {
-    const auto &param_decl = decl.params[arg_index++];
-    mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
-                               mem_ptr);
-  }
-
-  llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
-  lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
-  lifted_func_args[remill::kMemoryPointerArgNum] = mem_ptr;
-  lifted_func_args[remill::kPCArgNum] = pc;
-  auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
-  mem_ptr = call_to_lifted_func;
-
-  llvm::Value *ret_val = nullptr;
-
-  if (decl.returns.size() == 1) {
-    ret_val = LoadLiftedValue(decl.returns.front(), intrinsics, block,
-                              state_ptr, mem_ptr);
-    ir.SetInsertPoint(block);
-
-  } else if (1 < decl.returns.size()) {
-    ret_val = llvm::UndefValue::get(native_func->getReturnType());
-    auto index = 0u;
-    for (auto &ret_decl : decl.returns) {
-      auto partial_ret_val =
-          LoadLiftedValue(ret_decl, intrinsics, block, state_ptr, mem_ptr);
-      ir.SetInsertPoint(block);
-      unsigned indexes[] = {index};
-      ret_val = ir.CreateInsertValue(ret_val, partial_ret_val, indexes);
-      index += 1;
-    }
-  }
-
-  auto memory_escape = GetMemoryEscapeFunc(intrinsics);
-  llvm::Value *escape_args[] = {mem_ptr};
-  ir.CreateCall(memory_escape, escape_args);
-
-  if (ret_val) {
-    ir.CreateRet(ret_val);
-  } else {
-    ir.CreateRetVoid();
-  }
-}
-
-// Optimize a function.
-static void OptimizeFunction(llvm::Function *func) {
-  std::vector<llvm::CallInst *> calls_to_inline;
-  for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
-    calls_to_inline.clear();
-
-    for (auto &block : *func) {
-      for (auto &inst : block) {
-        if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
-          if (auto called_func = call_inst->getCalledFunction();
-              called_func &&
-              !called_func->isDeclaration() &&
-              !called_func->hasFnAttribute(llvm::Attribute::NoInline)) {
-            calls_to_inline.push_back(call_inst);
-          }
-        }
-      }
-    }
-
-    for (auto call_inst : calls_to_inline) {
-      llvm::InlineFunctionInfo info;
-      llvm::InlineFunction(call_inst, info);
-    }
-  }
-
-  // Initialize cleanup optimizations
-  llvm::legacy::FunctionPassManager fpm(func->getParent());
-  fpm.add(llvm::createCFGSimplificationPass());
-  fpm.add(llvm::createPromoteMemoryToRegisterPass());
-  fpm.add(llvm::createReassociatePass());
-  fpm.add(llvm::createDeadStoreEliminationPass());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createSROAPass());
-  fpm.doInitialization();
-  fpm.run(*func);
-  fpm.doFinalization();
-
-  ClearVariableNames(func);
-}
-
-// Define a function that marshals lifted state to native state.
-void MCToIRLifter::DefineLiftedToNativeWrapper(
-    const FunctionDecl &decl, const FunctionEntry &entry) {
-  const auto lifted_func = entry.lifted_to_native;
-  CHECK(lifted_func->isDeclaration());
-
-  remill::CloneBlockFunctionInto(lifted_func);
-  lifted_func->removeFnAttr(llvm::Attribute::NoInline);
-  lifted_func->addFnAttr(llvm::Attribute::InlineHint);
-  lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
-  lifted_func->setLinkage(llvm::GlobalValue::InternalLinkage);
-
-  auto mem_ptr = remill::NthArgument(lifted_func, remill::kMemoryPointerArgNum);
-  auto state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
-  auto block = &(lifted_func->getEntryBlock());
-
-  llvm::IRBuilder<> ir(block);
-  auto new_mem_ptr = decl.CallFromLiftedBlock(
-      CreateFunctionName(decl.address), intrinsics, block, state_ptr,
-      mem_ptr, true);
-
-  ir.CreateRet(new_mem_ptr);
-}
-
-llvm::Function *MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
+FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   const auto entry = GetOrDeclareFunction(decl);
   if (!entry.native_to_lifted->isDeclaration()) {
-    return entry.native_to_lifted;
+    return entry;
   }
 
   work_list.clear();
@@ -616,15 +346,14 @@ llvm::Function *MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
     }
 
     // Decode.
-    if (!DecodeInstructionInto(inst_addr, false  /* is_delayed */, &inst)) {
-      LOG(ERROR)
-          << "Could not decode instruction at " << std::hex << inst_addr
-          << " reachable from instruction " << from_addr
-          << " in function at " << decl.address << std::dec;
+    if (!DecodeInstructionInto(inst_addr, false /* is_delayed */, &inst)) {
+      LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
+                 << " reachable from instruction " << from_addr
+                 << " in function at " << decl.address << std::dec;
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;
 
-    // Didn't get a valid instruction.
+      // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;
@@ -634,11 +363,7 @@ llvm::Function *MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
     }
   }
 
-  DefineNativeToLiftedWrapper(decl, entry);
-  DefineLiftedToNativeWrapper(decl, entry);
-
-  OptimizeFunction(entry.native_to_lifted);
-  return entry.native_to_lifted;
+  return entry;
 }
 
 }  // namespace anvill

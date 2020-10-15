@@ -23,7 +23,6 @@
 
 #include <set>
 #include <unordered_map>
-#include <utility>
 
 namespace llvm {
 class BasicBlock;
@@ -40,6 +39,27 @@ namespace anvill {
 
 class Program;
 struct FunctionDecl;
+
+struct FunctionEntry {
+  // Lifted functions contain the remill semantics for the instructions
+  // inside of a binary function.
+  llvm::Function *lifted;
+
+  // Wrapper function that converts lifted state, as represented by the
+  // Remill `State` structure, to "native" or high-level state, as
+  // represented by logical function arguments and return values.
+  //
+  // Before optimization, `lifted` functions call `lifted_to_native`
+  // functions.
+  llvm::Function *lifted_to_native;
+
+  // Wrapper function that converts "native" or high-level state, as
+  // represented by logical function arguments and return values, into
+  // lifted state, as represented by the Remill `State` structure.
+  //
+  // Before optimization, the `native_to_lifted` calls the `lifted` function.
+  llvm::Function *native_to_lifted;
+};
 
 class MCToIRLifter {
  private:
@@ -59,27 +79,6 @@ class MCToIRLifter {
 
   // Result maps
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
-
-  struct FunctionEntry {
-    // Lifted functions contain the remill semantics for the instructions
-    // inside of a binary function.
-    llvm::Function *lifted;
-
-    // Wrapper function that converts lifted state, as represented by the
-    // Remill `State` structure, to "native" or high-level state, as
-    // represented by logical function arguments and return values.
-    //
-    // Before optimization, `lifted` functions call `lifted_to_native`
-    // functions.
-    llvm::Function *lifted_to_native;
-
-    // Wrapper function that converts "native" or high-level state, as
-    // represented by logical function arguments and return values, into
-    // lifted state, as represented by the Remill `State` structure.
-    //
-    // Before optimization, the `native_to_lifted` calls the `lifted` function.
-    llvm::Function *native_to_lifted;
-  };
 
   // Maps program counters to function entries.
   std::unordered_map<uint64_t, FunctionEntry> addr_to_func;
@@ -136,21 +135,13 @@ class MCToIRLifter {
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out);
 
-  // Define the function that marshals native state to lifted state.
-  void DefineNativeToLiftedWrapper(
-      const FunctionDecl &decl, const FunctionEntry &entry);
-
-  // Define a function that marshals lifted state to native state.
-  void DefineLiftedToNativeWrapper(
-      const FunctionDecl &decl, const FunctionEntry &entry);
-
  public:
   MCToIRLifter(const remill::Arch *arch, const Program &program,
                llvm::Module &module);
 
 
-  // Lift the function decl `decl` and return an `llvm::Function *`.
-  llvm::Function *LiftFunction(const FunctionDecl &decl);
+  // Lift the function decl `decl` and return an `FunctionEntry`.
+  FunctionEntry LiftFunction(const FunctionDecl &decl);
 };
 
 }  // namespace anvill

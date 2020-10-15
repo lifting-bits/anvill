@@ -50,6 +50,7 @@
 #include "anvill/Decl.h"
 #include "anvill/Lift.h"
 #include "anvill/Program.h"
+#include "anvill/Util.h"
 
 namespace anvill {
 namespace {
@@ -972,6 +973,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   mpm.add(llvm::createFunctionInliningPass(250));
   mpm.add(llvm::createGlobalOptimizerPass());
   mpm.add(llvm::createGlobalDCEPass());
+  mpm.add(llvm::createStripDeadDebugInfoPass());
   mpm.run(module);
 
   llvm::legacy::FunctionPassManager fpm(&module);
