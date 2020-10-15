@@ -839,7 +839,7 @@ def _get_calling_convention(arch, os, ftd):
             return 0, is_variadic
         elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
             return 0, True
-        elif ftc.cc & ida_typeinf.CM_CC_THISCALL:
+        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
@@ -852,7 +852,7 @@ def _get_calling_convention(arch, os, ftd):
             return default_cc, is_variadic
         elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
             return default_cc, True
-        elif ftc.cc & ida_typeinf.CM_CC_THISCALL:
+        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
