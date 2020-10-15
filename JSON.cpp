@@ -80,6 +80,7 @@ static void SetVersion(void) {
 #  include "anvill/Optimize.h"
 #  include "anvill/Program.h"
 #  include "anvill/TypeParser.h"
+#  include "anvill/Util.h"
 
 DECLARE_string(arch);
 DECLARE_string(os);
