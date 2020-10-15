@@ -21,7 +21,9 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Lifter.h>
 
+#include <set>
 #include <unordered_map>
+#include <utility>
 
 namespace llvm {
 class BasicBlock;
@@ -37,6 +39,7 @@ class Arch;
 namespace anvill {
 
 class Program;
+struct FunctionDecl;
 
 class MCToIRLifter {
  private:
@@ -44,39 +47,110 @@ class MCToIRLifter {
   const Program &program;
   llvm::Module &module;
   llvm::LLVMContext &ctx;
+  llvm::Function *lifted_func{nullptr};
+  remill::Instruction *curr_inst{nullptr};
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
 
+  // A work list of instructions to lift. The first entry in the work list
+  // is the instruction PC; the second entry is the PC of how we got to even
+  // ask about the first entry (provenance).
+  std::set<std::pair<uint64_t, uint64_t>> work_list;
+
   // Result maps
-  std::unordered_map<uint64_t, remill::Instruction> addr_to_inst;
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
-  std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+
+  struct FunctionEntry {
+    // Lifted functions contain the remill semantics for the instructions
+    // inside of a binary function.
+    llvm::Function *lifted;
+
+    // Wrapper function that converts lifted state, as represented by the
+    // Remill `State` structure, to "native" or high-level state, as
+    // represented by logical function arguments and return values.
+    //
+    // Before optimization, `lifted` functions call `lifted_to_native`
+    // functions.
+    llvm::Function *lifted_to_native;
+
+    // Wrapper function that converts "native" or high-level state, as
+    // represented by logical function arguments and return values, into
+    // lifted state, as represented by the Remill `State` structure.
+    //
+    // Before optimization, the `native_to_lifted` calls the `lifted` function.
+    llvm::Function *native_to_lifted;
+  };
+
+  // Maps program counters to function entries.
+  std::unordered_map<uint64_t, FunctionEntry> addr_to_func;
+
+  // Declare the function decl `decl` and return an `llvm::Function *`. The
+  // returned function is a "high-level" function.
+  FunctionEntry GetOrDeclareFunction(const FunctionDecl &decl);
 
   // Helper
   llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
 
   // Visitors used to add terminators to instruction basic blocks
-  void VisitInvalid(remill::Instruction *inst);
-  void VisitError(remill::Instruction *inst);
-  void VisitNormal(remill::Instruction *inst);
-  void VisitNoOp(remill::Instruction *inst);
-  void VisitDirectJump(remill::Instruction *inst);
-  void VisitIndirectJump(remill::Instruction *inst);
-  void VisitFunctionReturn(remill::Instruction *inst);
-  void VisitDirectFunctionCall(remill::Instruction *inst);
-  void VisitIndirectFunctionCall(remill::Instruction *inst);
-  void VisitConditionalBranch(remill::Instruction *inst);
-  void VisitInstruction(remill::Instruction *inst);
-  remill::Instruction *DecodeInstruction(const uint64_t addr);
-  llvm::BasicBlock *LiftInstruction(remill::Instruction *inst);
-  llvm::Function *LiftFunction(const uint64_t addr);
+  void VisitInvalid(const remill::Instruction &inst,
+                    llvm::BasicBlock *block);
+  void VisitError(const remill::Instruction &inst,
+                  remill::Instruction *delayed_inst,
+                  llvm::BasicBlock *block);
+  void VisitNormal(const remill::Instruction &inst,
+                   llvm::BasicBlock *block);
+  void VisitNoOp(const remill::Instruction &inst,
+                 llvm::BasicBlock *block);
+  void VisitDirectJump(const remill::Instruction &inst,
+                       remill::Instruction *delayed_inst,
+                       llvm::BasicBlock *block);
+  void VisitIndirectJump(const remill::Instruction &inst,
+                         remill::Instruction *delayed_inst,
+                         llvm::BasicBlock *block);
+  void VisitFunctionReturn(const remill::Instruction &inst,
+                           remill::Instruction *delayed_inst,
+                           llvm::BasicBlock *block);
+  void VisitDirectFunctionCall(const remill::Instruction &inst,
+                               remill::Instruction *delayed_inst,
+                               llvm::BasicBlock *block);
+  void VisitIndirectFunctionCall(const remill::Instruction &inst,
+                                 remill::Instruction *delayed_inst,
+                                 llvm::BasicBlock *block);
+  void VisitConditionalBranch(const remill::Instruction &inst,
+                              remill::Instruction *delayed_inst,
+                              llvm::BasicBlock *block);
+  void VisitAsyncHyperCall(const remill::Instruction &inst,
+                           remill::Instruction *delayed_inst,
+                           llvm::BasicBlock *block);
+  void VisitConditionalAsyncHyperCall(const remill::Instruction &inst,
+                                      remill::Instruction *delayed_inst,
+                                      llvm::BasicBlock *block);
+
+  void VisitDelayedInstruction(const remill::Instruction &inst,
+                               remill::Instruction *delayed_inst,
+                               llvm::BasicBlock *block,
+                               bool on_taken_path);
+
+  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block);
+
+  bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
+                             remill::Instruction *inst_out);
+
+  // Define the function that marshals native state to lifted state.
+  void DefineNativeToLiftedWrapper(
+      const FunctionDecl &decl, const FunctionEntry &entry);
+
+  // Define a function that marshals lifted state to native state.
+  void DefineLiftedToNativeWrapper(
+      const FunctionDecl &decl, const FunctionEntry &entry);
 
  public:
   MCToIRLifter(const remill::Arch *arch, const Program &program,
                llvm::Module &module);
 
-  llvm::Function *GetOrDeclareFunction(const uint64_t addr);
-  llvm::Function *GetOrDefineFunction(const uint64_t addr);
+
+  // Lift the function decl `decl` and return an `llvm::Function *`.
+  llvm::Function *LiftFunction(const FunctionDecl &decl);
 };
 
 }  // namespace anvill

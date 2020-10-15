@@ -36,11 +36,9 @@
 
 namespace anvill {
 
-namespace {
-
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
-static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
-                                llvm::Type *dest_type) {
+llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
+                         llvm::Type *dest_type) {
   const auto src_type = src->getType();
   if (src_type == dest_type) {
     return src;
@@ -143,8 +141,6 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
   // Fall-through, we don't have a supported adaptor.
   return nullptr;
 }
-
-}  // namespace
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.

@@ -53,6 +53,81 @@
 namespace anvill {
 namespace {
 
+// Get a list of all ISELs.
+static std::vector<llvm::GlobalVariable *> FindISELs(llvm::Module &module) {
+  std::vector<llvm::GlobalVariable *> isels;
+  remill::ForEachISel(&module,
+                      [&](llvm::GlobalVariable *isel, llvm::Function *) {
+                        isels.push_back(isel);
+                      });
+  return isels;
+}
+
+// Remove the ISEL variables used for finding the instruction semantics.
+static void PrivatizeISELs(std::vector<llvm::GlobalVariable *> &isels) {
+  for (auto isel : isels) {
+    isel->setInitializer(nullptr);
+    isel->setExternallyInitialized(false);
+    isel->setLinkage(llvm::GlobalValue::PrivateLinkage);
+
+    if (!isel->hasNUsesOrMore(2)) {
+      isel->eraseFromParent();
+    }
+  }
+}
+
+// Replace all uses of a specific intrinsic with an undefined value. We actually
+// don't use LLVM's `undef` values because those can behave unpredictably
+// across different LLVM versions with different optimization levels. Instead,
+// we use a null value (zero, really).
+static void ReplaceUndefIntrinsic(llvm::Function *function) {
+  auto call_insts = remill::CallersOf(function);
+  auto undef_val = llvm::Constant::getNullValue(function->getReturnType());
+  for (auto call_inst : call_insts) {
+    call_inst->replaceAllUsesWith(undef_val);
+    call_inst->removeFromParent();
+    delete call_inst;
+  }
+}
+
+static void RemoveFunction(llvm::Function *func) {
+  if (!func->hasNUsesOrMore(1)) {
+    func->eraseFromParent();
+  } else {
+    auto ret_type = func->getReturnType();
+    if (!ret_type->isVoidTy()) {
+      func->replaceAllUsesWith(llvm::UndefValue::get(func->getType()));
+      func->eraseFromParent();
+    }
+  }
+}
+
+static void RemoveFunction(llvm::Module &module, const char *name) {
+  if (auto func = module.getFunction(name)) {
+    func->setLinkage(llvm::GlobalValue::PrivateLinkage);
+    RemoveFunction(func);
+  }
+}
+
+// Remove calls to the various undefined value intrinsics.
+static void RemoveUndefFuncCalls(llvm::Module &module) {
+  llvm::Function *undef_funcs[] = {
+      module.getFunction("__remill_undefined_8"),
+      module.getFunction("__remill_undefined_16"),
+      module.getFunction("__remill_undefined_32"),
+      module.getFunction("__remill_undefined_64"),
+      module.getFunction("__remill_undefined_f32"),
+      module.getFunction("__remill_undefined_f64"),
+  };
+
+  for (auto undef_func : undef_funcs) {
+    if (undef_func) {
+      ReplaceUndefIntrinsic(undef_func);
+      RemoveFunction(undef_func);
+    }
+  }
+}
+
 // Looks for calls to a function like `__remill_function_return`, and
 // replace its state pointer with a null pointer so that the state
 // pointer never escapes.
@@ -104,18 +179,6 @@ RemoveUnusedCalls(llvm::Module &module, const char *func_name,
     changed_funcs.insert(in_func);
 
     call_inst->eraseFromParent();
-  }
-}
-
-static void RemoveFunction(llvm::Function *func) {
-  if (!func->hasNUsesOrMore(1)) {
-    func->eraseFromParent();
-  } else {
-    auto ret_type = func->getReturnType();
-    if (!ret_type->isVoidTy()) {
-      func->replaceAllUsesWith(llvm::UndefValue::get(func->getType()));
-      func->eraseFromParent();
-    }
   }
 }
 
@@ -846,24 +909,18 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     LOG(FATAL) << remill::GetErrorString(err);
   }
 
-  //  auto &context = module.getContext();
-  //  const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
-
   if (auto used = module.getGlobalVariable("llvm.used"); used) {
+    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
     used->eraseFromParent();
   }
 
-  // Delete the `__remill_intrinsics` so that we can get rid of more
-  // functions.
-  if (auto intrinsic_keeper = module.getFunction("__remill_intrinsics");
-      intrinsic_keeper) {
-    intrinsic_keeper->eraseFromParent();
-  }
+  auto isels = FindISELs(module);
+  LOG(INFO) << "Optimizing module.";
 
-  if (auto mark_as_used = module.getFunction("__remill_mark_as_used");
-      mark_as_used) {
-    mark_as_used->eraseFromParent();
-  }
+  PrivatizeISELs(isels);
+  RemoveFunction(module, "__remill_basic_block");
+  RemoveFunction(module, "__remill_intrinsics");
+  RemoveFunction(module, "__remill_mark_as_used");
 
   std::vector<llvm::GlobalVariable *> vars_to_remove;
   for (auto &gv : module.globals()) {
@@ -1010,6 +1067,8 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   RemoveUnneededInlineAsm(program, module);
 
   mpm.run(module);
+
+  RemoveUndefFuncCalls(module);
 
   CHECK(remill::VerifyModule(&module));
 }

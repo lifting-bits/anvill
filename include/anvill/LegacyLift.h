@@ -20,6 +20,7 @@
 #include <remill/BC/Lifter.h>
 
 #include <memory>
+#include <string>
 
 namespace llvm {
 class Module;
@@ -43,6 +44,10 @@ class TraceManager : public remill::TraceManager {
   static std::unique_ptr<TraceManager> Create(llvm::Module &semantics_module,
                                               const Program &);
 };
+
+// Name of the high-level function at `addr`. This is not the name of the
+// 3-argument Remill version of the function.
+std::string CreateFunctionName(uint64_t addr);
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
