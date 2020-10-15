@@ -86,7 +86,10 @@ add_library(${ANVILL} STATIC
   lib/Optimize.cpp
   
   include/anvill/Analyze.h
-  lib/Analyze.cpp)
+  lib/Analyze.cpp
+  
+  include/anvill/Util.h
+  lib/Util.cpp)
 
 target_include_directories(${ANVILL} PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -103,7 +106,8 @@ target_public_headers(${ANVILL}
   include/anvill/Type.h
   include/anvill/TypeParser.h
   include/anvill/TypePrinter.h
-  include/anvill/Version.h)
+  include/anvill/Version.h
+  include/anvill/Util.h)
 
 #
 # tool target settings
