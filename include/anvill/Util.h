@@ -23,6 +23,7 @@ namespace anvill {
 
 // Creates a `sub_<address>` name from an address
 std::string CreateFunctionName(uint64_t addr);
+
 // Creates a `data_<address>` name from an address
 std::string CreateVariableName(uint64_t addr);
 

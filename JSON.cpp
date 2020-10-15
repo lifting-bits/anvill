@@ -613,14 +613,12 @@ int main(int argc, char *argv[]) {
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
-
     llvm::Value *gval = nullptr;
     if (vdecl) {
       gval = semantics->getGlobalVariable(
           anvill::CreateVariableName(vdecl->address));
     } else if (fdecl) {
-      gval = semantics->getFunction(
-          anvill::CreateFunctionName(fdecl->address));
+      gval = semantics->getFunction(anvill::CreateFunctionName(fdecl->address));
     } else {
       return true;
     }

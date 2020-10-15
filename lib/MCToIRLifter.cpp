@@ -353,7 +353,7 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;
 
-      // Didn't get a valid instruction.
+    // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;

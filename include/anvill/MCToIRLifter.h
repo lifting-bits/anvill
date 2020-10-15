@@ -41,6 +41,7 @@ class Program;
 struct FunctionDecl;
 
 struct FunctionEntry {
+
   // Lifted functions contain the remill semantics for the instructions
   // inside of a binary function.
   llvm::Function *lifted;
@@ -91,15 +92,11 @@ class MCToIRLifter {
   llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
 
   // Visitors used to add terminators to instruction basic blocks
-  void VisitInvalid(const remill::Instruction &inst,
-                    llvm::BasicBlock *block);
+  void VisitInvalid(const remill::Instruction &inst, llvm::BasicBlock *block);
   void VisitError(const remill::Instruction &inst,
-                  remill::Instruction *delayed_inst,
-                  llvm::BasicBlock *block);
-  void VisitNormal(const remill::Instruction &inst,
-                   llvm::BasicBlock *block);
-  void VisitNoOp(const remill::Instruction &inst,
-                 llvm::BasicBlock *block);
+                  remill::Instruction *delayed_inst, llvm::BasicBlock *block);
+  void VisitNormal(const remill::Instruction &inst, llvm::BasicBlock *block);
+  void VisitNoOp(const remill::Instruction &inst, llvm::BasicBlock *block);
   void VisitDirectJump(const remill::Instruction &inst,
                        remill::Instruction *delayed_inst,
                        llvm::BasicBlock *block);
@@ -127,8 +124,7 @@ class MCToIRLifter {
 
   void VisitDelayedInstruction(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
-                               llvm::BasicBlock *block,
-                               bool on_taken_path);
+                               llvm::BasicBlock *block, bool on_taken_path);
 
   void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block);
 

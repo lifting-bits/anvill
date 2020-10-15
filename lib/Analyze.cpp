@@ -661,8 +661,8 @@ static void FindPossibleCrossReferences(
     next_work_list.clear();
 
     for (auto [use_, val_, report_failure_] : work_list) {
-      llvm::Use * const use = use_;
-      llvm::Value * const val = val_;
+      llvm::Use *const use = use_;
+      llvm::Value *const val = val_;
       const bool report_failure = report_failure_;
 
       if (seen.count(use)) {
@@ -676,8 +676,8 @@ static void FindPossibleCrossReferences(
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
               LOG_IF(ERROR, report_failure)
-                  << "Unable to handle possible cross-reference to "
-                  << std::hex << ea << std::dec << ": " << eib.message();
+                  << "Unable to handle possible cross-reference to " << std::hex
+                  << ea << std::dec << ": " << eib.message();
             });
         continue;
       }
@@ -891,4 +891,3 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 }
 
 }  // namespace anvill
-

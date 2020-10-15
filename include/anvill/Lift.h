@@ -17,11 +17,10 @@
 
 #pragma once
 
+#include <llvm/IR/IRBuilder.h>
 #include <remill/Arch/Instruction.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Lifter.h>
-
-#include <llvm/IR/IRBuilder.h>
 
 #include <unordered_map>
 
