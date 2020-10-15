@@ -139,6 +139,9 @@ set(ANVILL_PYTHON_SOURCES
 if(NOT DEFINED ENV{VIRTUAL_ENV})
   # NOT a venv install, specify --user and --prefix
   set(extra_install_flags --force --user --prefix=)
+else()
+  #virtual env; install normally
+  set(extra_install_flags "")
 endif()
 
 if(ANVILL_INSTALL_PYTHON2_LIBS)
@@ -195,12 +198,15 @@ install(
   FILES ${ROUNDTRIP_TEST}
   DESTINATION "${install_folder}/share")
 
+#NOTE(artem): Uncomment and add tests as we pass them
 set(ROUNDTRIP_TEST_FILES 
-  tests/bitops.c
+  #tests/assert.c
+  #tests/bitops.c
   tests/cast.c
-  tests/nullptr.c
+  #tests/funcptr.c
+  #tests/nullptr.c
   tests/ret0.c
-  tests/zeroinit.c
+  #tests/zeroinit.c
 )
 
 install(

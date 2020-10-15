@@ -21,20 +21,33 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Lifter.h>
 
+#include <llvm/IR/IRBuilder.h>
+
 #include <unordered_map>
 
 namespace llvm {
+class BasicBlock;
 class Module;
+class Type;
+class Value;
 }  // namespace llvm
 
 namespace remill {
 class Arch;
+class IntrinsicTable;
 }  // namespace remill
 
 namespace anvill {
 
 class Program;
 struct ValueDecl;
+
+std::string CreateFunctionName(uint64_t addr);
+std::string CreateVariableName(uint64_t addr);
+
+// Adapt `src` to another type (likely an integer type) that is `dest_type`.
+llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
+                         llvm::Type *dest_type);
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
