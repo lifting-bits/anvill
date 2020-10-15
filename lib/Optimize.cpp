@@ -48,6 +48,7 @@
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
+#include "anvill/Lift.h"
 #include "anvill/Program.h"
 
 namespace anvill {
@@ -338,14 +339,10 @@ static void RemoveUnneededInlineAsm(const Program &program,
                                     llvm::Module &module) {
   std::vector<llvm::CallInst *> to_remove;
 
-  program.ForEachNamedAddress([&](uint64_t, const std::string &name,
-                                  const FunctionDecl *decl,
-                                  const GlobalVarDecl *) -> bool {
-    if (!decl) {
-      return true;
-    }
+  program.ForEachFunction([&](const FunctionDecl *decl) -> bool {
 
-    const auto func = decl->DeclareInModule(name, module);
+    const auto func = decl->DeclareInModule(
+        CreateFunctionName(decl->address), module);
     if (func->isDeclaration()) {
       return true;
     }
@@ -442,9 +439,14 @@ static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
 static llvm::Constant *GetAddress(
     const Program &program, llvm::Module &module, uint64_t ea) {
 
+  llvm::Constant *ret = nullptr;
   if (auto func_decl = program.FindFunction(ea); func_decl) {
+    ret = func_decl->DeclareInModule(
+        CreateFunctionName(ea), module, true);
 
   } else if (auto var_decl = program.FindVariable(ea); var_decl) {
+    ret = var_decl->DeclareInModule(
+        CreateVariableName(ea), module, true);
 
   } else if (auto byte = program.FindByte(ea); byte) {
 
@@ -452,6 +454,14 @@ static llvm::Constant *GetAddress(
 
   } else {
     return nullptr;
+  }
+
+  if (ret) {
+    const auto &dl = module.getDataLayout();
+    auto &context = module.getContext();
+    const auto intptr_ty = llvm::Type::getIntNTy(
+        context, dl.getPointerSizeInBits(0));
+    return llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
   }
 
   return nullptr;

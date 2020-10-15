@@ -43,6 +43,7 @@ class Program;
 struct ValueDecl;
 
 std::string CreateFunctionName(uint64_t addr);
+std::string CreateVariableName(uint64_t addr);
 
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
 llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,

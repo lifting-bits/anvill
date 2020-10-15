@@ -615,11 +615,11 @@ int main(int argc, char *argv[]) {
 
     llvm::Value *gval = nullptr;
     if (vdecl) {
-      std::stringstream ss;
-      ss << "data_" << std::hex << vdecl->address;
-      gval = semantics->getGlobalVariable(ss.str());
+      gval = semantics->getGlobalVariable(
+          anvill::CreateVariableName(vdecl->address));
     } else if (fdecl) {
-      gval = semantics->getFunction(anvill::CreateFunctionName(fdecl->address));
+      gval = semantics->getFunction(
+          anvill::CreateFunctionName(fdecl->address));
     } else {
       return true;
     }

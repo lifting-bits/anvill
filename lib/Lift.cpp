@@ -37,6 +37,12 @@ std::string CreateFunctionName(uint64_t addr) {
   return ss.str();
 }
 
+std::string CreateVariableName(uint64_t addr) {
+  std::stringstream ss;
+  ss << "data_" << std::hex << addr;
+  return ss.str();
+}
+
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
 llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
                          llvm::Type *dest_type) {
@@ -241,9 +247,7 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
 
   // Declare global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    std::stringstream ss;
-    ss << "data_" << std::hex << decl->address << std::dec;
-    decl->DeclareInModule(ss.str(), module);
+    decl->DeclareInModule(anvill::CreateVariableName(decl->address), module);
     return true;
   });
 
