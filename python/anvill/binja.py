@@ -447,8 +447,8 @@ def get_program(*args, **kargs):
     if _PROGRAM:
         return _PROGRAM
     assert len(args) == 1
-
-    for arg in args:
-        _PROGRAM = BNProgram(arg)
-
-    return _PROGRAM
+    
+    prog = BNProgram(args[0])
+    if "cache" not in kargs or kargs["cache"]:
+        _PROGRAM = prog
+    return prog

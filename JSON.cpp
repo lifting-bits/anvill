@@ -606,37 +606,20 @@ int main(int argc, char *argv[]) {
   }
 
   anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
-
-  RecoverMemoryAccesses(program, *semantics);
-
-  // Create an output module `dest_module`
-  auto dest_module = std::make_unique<llvm::Module>(FLAGS_spec, context);
-  dest_module->setTargetTriple(semantics->getTargetTriple());
-  dest_module->setDataLayout(semantics->getDataLayout());
-
-  // Clone functions from `semantics` to `dest_module`.
-  // Necessary global variables will be cloned too.
-  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-    std::stringstream ss;
-    ss << "sub_" << std::hex << decl->address << std::dec;
-    auto src = semantics->getFunction(ss.str());
-    auto dst = decl->DeclareInModule(ss.str(), *dest_module);
-    remill::CloneFunctionInto(src, dst);
-    return true;
-  });
+  anvill::OptimizeModule(arch.get(), program, *semantics);
 
   // Apply symbol names to functions if we have the names.
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
-    std::stringstream ss;
+
     llvm::Value *gval = nullptr;
     if (vdecl) {
-      ss << "data_" << std::hex << vdecl->address << std::dec;
-      gval = dest_module->getGlobalVariable(ss.str());
+      gval = semantics->getGlobalVariable(
+          anvill::CreateVariableName(vdecl->address));
     } else if (fdecl) {
-      ss << "sub_" << std::hex << fdecl->address << std::dec;
-      gval = dest_module->getFunction(ss.str());
+      gval = semantics->getFunction(
+          anvill::CreateFunctionName(fdecl->address));
     } else {
       return true;
     }
@@ -648,18 +631,16 @@ int main(int argc, char *argv[]) {
     return true;
   });
 
-  anvill::OptimizeModule(arch.get(), program, *dest_module);
-
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(dest_module.get(), FLAGS_ir_out, true)) {
+    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
       LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(dest_module.get(), FLAGS_bc_out, true)) {
+    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
       LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
     }

@@ -31,17 +31,21 @@
 
 namespace anvill {
 
-namespace {
-
-static std::string CreateFunctionName(uint64_t addr) {
+std::string CreateFunctionName(uint64_t addr) {
   std::stringstream ss;
   ss << "sub_" << std::hex << addr;
   return ss.str();
 }
 
+std::string CreateVariableName(uint64_t addr) {
+  std::stringstream ss;
+  ss << "data_" << std::hex << addr;
+  return ss.str();
+}
+
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
-static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
-                                llvm::Type *dest_type) {
+llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
+                         llvm::Type *dest_type) {
   const auto src_type = src->getType();
   if (src_type == dest_type) {
     return src;
@@ -145,259 +149,6 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
   return nullptr;
 }
 
-// Clear out LLVM variable names. They're usually not helpful.
-static void ClearVariableNames(llvm::Function *func) {
-  for (auto &block : *func) {
-    block.setName("");
-    for (auto &inst : block) {
-      if (inst.hasName()) {
-        inst.setName("");
-      }
-    }
-  }
-}
-
-// A function that ensures that the memory pointer escapes, and thus none of
-// the memory writes at the end of a function are lost.
-static llvm::Function *
-GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
-  auto module = intrinsics.error->getParent();
-  auto &context = module->getContext();
-
-  auto name = "__anvill_memory_escape";
-  if (auto func = module->getFunction(name)) {
-    return func;
-  }
-
-  llvm::Type *params[] = {
-      remill::NthArgument(intrinsics.error, remill::kMemoryPointerArgNum)
-          ->getType()};
-  auto type =
-      llvm::FunctionType::get(llvm::Type::getVoidTy(context), params, false);
-  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, name,
-                                module);
-}
-
-// Create an adaptor function that converts lifted state to native state.
-// This function is marked as always-inline so that when a lifted function
-// calls this function, it ends up doing so in a way that, post-optimization,
-// ends up calling the higher-level function.
-static llvm::Function *
-CreateLiftedToABIAdaptor(const std::string &name,
-                         const remill::IntrinsicTable &intrinsics,
-                         const anvill::FunctionDecl *decl) {
-
-  std::stringstream ss;
-  ss << name << ".anvill.lifted_to_native";
-  auto lifted_name = ss.str();
-  auto module = intrinsics.error->getParent();
-  auto adaptor = remill::DeclareLiftedFunction(module, lifted_name);
-
-  if (!adaptor->isDeclaration()) {
-    return adaptor;  // Already defined.
-  }
-
-  // Declare all registers in that function. Makes life easier.
-  remill::CloneBlockFunctionInto(adaptor);
-
-  auto block = &(adaptor->getEntryBlock());
-  auto state_ptr = remill::LoadStatePointer(block);
-  auto mem_ptr = remill::LoadMemoryPointer(block);
-  auto new_mem_ptr =
-      decl->CallFromLiftedBlock(name, intrinsics, block, state_ptr, mem_ptr);
-
-  llvm::IRBuilder<> ir(block);
-  ir.CreateRet(new_mem_ptr);
-
-  adaptor->removeFnAttr(llvm::Attribute::NoInline);
-  adaptor->addFnAttr(llvm::Attribute::InlineHint);
-  adaptor->addFnAttr(llvm::Attribute::AlwaysInline);
-  adaptor->setLinkage(llvm::GlobalValue::PrivateLinkage);
-
-  return adaptor;
-}
-
-static void ReplaceLiftedCalls(const FunctionDecl *decl,
-                               llvm::Function *lifted_func) {
-
-  // Create adaptor function
-  remill::IntrinsicTable intrinsics(lifted_func->getParent());
-  auto name = CreateFunctionName(decl->address);
-  auto adaptor = CreateLiftedToABIAdaptor(name, intrinsics, decl);
-
-  // Replace calls
-  for (auto call : remill::CallersOf(lifted_func)) {
-    call->setCalledFunction(adaptor);
-  }
-}
-
-static void DefineABIFunction(const FunctionDecl *decl,
-                              llvm::Function *lifted_func) {
-
-  // Set inlining attributes for lifted function
-  lifted_func->removeFnAttr(llvm::Attribute::NoInline);
-  lifted_func->addFnAttr(llvm::Attribute::InlineHint);
-  lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
-
-  // Get module and context from the lifted function
-  auto module = lifted_func->getParent();
-  auto &ctx = module->getContext();
-
-  // Declare ABI-level function
-  auto func = decl->DeclareInModule(CreateFunctionName(decl->address), *module);
-
-  // Get arch from the ABI-level function
-  auto arch = decl->arch;
-  CHECK_EQ(arch->context, &ctx);
-
-  // Create a state structure and a stack frame in the ABI-level function
-  // and we'll call the lifted function with that. The lifted function
-  // will get inlined into this function.
-  auto block = llvm::BasicBlock::Create(ctx, "", func);
-  llvm::IRBuilder<> ir(block);
-
-  // Create a memory pointer.
-  auto mem_ptr_type = remill::MemoryPointerType(module);
-  llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
-
-  // Stack-allocate a state pointer.
-  auto state_ptr_type = remill::StatePointerType(module);
-  auto state_type = state_ptr_type->getElementType();
-  auto state_ptr = ir.CreateAlloca(state_type);
-
-  // Get or create globals for all top-level registers. The idea here is that
-  // the spec could feasibly miss some dependencies, and so after optimization,
-  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-  // them appropriately.
-  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-      std::stringstream ss;
-      ss << "__anvill_reg_" << reg->name;
-      const auto reg_name = ss.str();
-      auto reg_global = module->getGlobalVariable(reg_name);
-      if (!reg_global) {
-        reg_global = new llvm::GlobalVariable(
-            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-            nullptr, reg_name);
-      }
-      auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-    }
-  });
-
-  // Store the program counter into the state.
-  auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
-  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
-
-  auto base_pc = module->getGlobalVariable("__anvill_pc");
-  if (!base_pc) {
-    base_pc = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_pc");
-  }
-
-  auto pc = llvm::ConstantExpr::getAdd(
-      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
-      llvm::ConstantInt::get(pc_reg->type, decl->address, false));
-  ir.SetInsertPoint(block);
-  ir.CreateStore(pc, pc_reg_ptr);
-
-  // Initialize the stack pointer.
-  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
-
-  auto base_sp = module->getGlobalVariable("__anvill_sp");
-  if (!base_sp) {
-    base_sp = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_sp");
-  }
-
-  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
-  ir.SetInsertPoint(block);
-  ir.CreateStore(sp, sp_reg_ptr);
-
-  // Put the function's return address wherever it needs to go.
-  auto base_ra = module->getGlobalVariable("__anvill_ra");
-  if (!base_ra) {
-    base_ra = new llvm::GlobalVariable(
-        *module, llvm::Type::getInt8Ty(ctx), false,
-        llvm::GlobalValue::ExternalLinkage, nullptr, "__anvill_ra");
-  }
-
-  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
-
-  remill::IntrinsicTable intrinsics(module);
-  mem_ptr = StoreNativeValue(ret_addr, decl->return_address, intrinsics, block,
-                             state_ptr, mem_ptr);
-
-  // Store the function parameters either into the state struct
-  // or into memory (likely the stack).
-  auto arg_index = 0u;
-  for (auto &arg : func->args()) {
-    const auto &param_decl = decl->params[arg_index++];
-    mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
-                               mem_ptr);
-  }
-
-  llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
-  lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
-  lifted_func_args[remill::kMemoryPointerArgNum] = mem_ptr;
-  lifted_func_args[remill::kPCArgNum] = pc;
-  auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
-  mem_ptr = call_to_lifted_func;
-
-  llvm::Value *ret_val = nullptr;
-
-  if (decl->returns.size() == 1) {
-    ret_val = LoadLiftedValue(decl->returns.front(), intrinsics, block,
-                              state_ptr, mem_ptr);
-    ir.SetInsertPoint(block);
-
-  } else if (1 < decl->returns.size()) {
-    ret_val = llvm::UndefValue::get(func->getReturnType());
-    auto index = 0u;
-    for (auto &ret_decl : decl->returns) {
-      auto partial_ret_val =
-          LoadLiftedValue(ret_decl, intrinsics, block, state_ptr, mem_ptr);
-      ir.SetInsertPoint(block);
-      unsigned indexes[] = {index};
-      ret_val = ir.CreateInsertValue(ret_val, partial_ret_val, indexes);
-      index += 1;
-    }
-  }
-
-  auto memory_escape = GetMemoryEscapeFunc(intrinsics);
-  llvm::Value *escape_args[] = {mem_ptr};
-  ir.CreateCall(memory_escape, escape_args);
-
-  if (ret_val) {
-    ir.CreateRet(ret_val);
-  } else {
-    ir.CreateRetVoid();
-  }
-
-  llvm::InlineFunctionInfo info;
-  llvm::InlineFunction(call_to_lifted_func, info);
-
-  std::vector<llvm::CallInst *> calls_to_inline;
-  for (auto &block : *func) {
-    for (auto &inst : block) {
-      if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-        calls_to_inline.push_back(call_inst);
-      }
-    }
-  }
-
-  for (auto call_inst : calls_to_inline) {
-    llvm::InlineFunctionInfo info;
-    llvm::InlineFunction(call_inst, info);
-  }
-
-  ClearVariableNames(func);
-}
-}  // namespace
-
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated
 // with `decl`.
@@ -491,58 +242,24 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
 
-  // Initialize cleanup optimizations
-  llvm::legacy::FunctionPassManager fpm(&module);
-  fpm.add(llvm::createCFGSimplificationPass());
-  fpm.add(llvm::createPromoteMemoryToRegisterPass());
-  fpm.add(llvm::createReassociatePass());
-  fpm.add(llvm::createDeadStoreEliminationPass());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.doInitialization();
-
   // Create our lifter
   MCToIRLifter lifter(arch, program, module);
 
-  // Declare global variables
+  // Declare global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    std::stringstream ss;
-    ss << "data_" << std::hex << decl->address << std::dec;
-    decl->DeclareInModule(ss.str(), module);
+    decl->DeclareInModule(anvill::CreateVariableName(decl->address), module);
     return true;
   });
 
-  // Forward declare lifted functions
+  // Lift functions.
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    lifter.GetOrDeclareFunction(decl->address);
-    return true;
-  });
-
-  // Lift functions
-  program.ForEachFunction([&](const FunctionDecl *decl) {
-    lifter.GetOrDefineFunction(decl->address);
-    return true;
-  });
-
-  // Replace calls to lifted functions with calls to ABI-level functions
-  program.ForEachFunction([&](const FunctionDecl *decl) {
-    auto func = lifter.GetOrDeclareFunction(decl->address);
-    ReplaceLiftedCalls(decl, func);
-    return true;
-  });
-
-  // Define ABI-level functions
-  program.ForEachFunction([&](const FunctionDecl *decl) {
-    auto func = lifter.GetOrDeclareFunction(decl->address);
-    fpm.run(*func);
-    DefineABIFunction(decl, func);
+    (void) lifter.LiftFunction(*decl);
     return true;
   });
 
   // Verify the module
   CHECK(remill::VerifyModule(&module));
 
-  // Done
-  fpm.doFinalization();
   return true;
 }
 
