@@ -352,10 +352,6 @@ static void RemoveUnneededInlineAsm(const Program &program,
 // code, etc.
 void OptimizeModule(const remill::Arch *arch, const Program &program,
                     llvm::Module &module) {
-
-  //  auto &context = module.getContext();
-  //  const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
-
   if (auto used = module.getGlobalVariable("llvm.used"); used) {
     used->eraseFromParent();
   }
@@ -378,7 +374,6 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
       vars_to_remove.push_back(&gv);
     } else if (gv.getName().startswith("ISEL_") ||
                gv.getName().startswith("COND_") ||
-               gv.getName().startswith("__anvill_reg") ||
                gv.getName().startswith("DR")) {
       gv.setInitializer(nullptr);
       gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));
@@ -443,6 +438,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   std::unordered_set<llvm::Function *> changed_funcs;
 
   // These improve optimizability.
+  // MuteStateEscape(module, "__remill_jump", changed_funcs);
   MuteStateEscape(module, "__remill_function_return", changed_funcs);
   MuteStateEscape(module, "__remill_error", changed_funcs);
   MuteStateEscape(module, "__remill_missing_block", changed_funcs);
@@ -452,6 +448,9 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   RemoveUnusedCalls(module, "__fpclassifyd", changed_funcs);
   RemoveUnusedCalls(module, "__fpclassifyf", changed_funcs);
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
+
+  //  auto &context = module.getContext();
+  //  const auto fp80_type = llvm::Type::getX86_FP80Ty(context);
 
   do {
 

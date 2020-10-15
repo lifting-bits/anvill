@@ -647,7 +647,7 @@ int main(int argc, char *argv[]) {
 
     return true;
   });
-
+  
   anvill::OptimizeModule(arch.get(), program, *dest_module);
 
   int ret = EXIT_SUCCESS;

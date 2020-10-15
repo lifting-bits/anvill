@@ -244,7 +244,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
   auto &ctx = module->getContext();
 
   // Declare ABI-level function
-  auto func = decl->DeclareInModule(CreateFunctionName(decl->address), *module);
+  auto abi_func = decl->DeclareInModule(CreateFunctionName(decl->address), *module);
 
   // Get arch from the ABI-level function
   auto arch = decl->arch;
@@ -253,7 +253,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
   // Create a state structure and a stack frame in the ABI-level function
   // and we'll call the lifted function with that. The lifted function
   // will get inlined into this function.
-  auto block = llvm::BasicBlock::Create(ctx, "", func);
+  auto block = llvm::BasicBlock::Create(ctx, "", abi_func);
   llvm::IRBuilder<> ir(block);
 
   // Create a memory pointer.
@@ -269,21 +269,21 @@ static void DefineABIFunction(const FunctionDecl *decl,
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
-  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-      std::stringstream ss;
-      ss << "__anvill_reg_" << reg->name;
-      const auto reg_name = ss.str();
-      auto reg_global = module->getGlobalVariable(reg_name);
-      if (!reg_global) {
-        reg_global = new llvm::GlobalVariable(
-            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-            nullptr, reg_name);
-      }
-      auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-    }
-  });
+  // arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+  //   if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+  //     std::stringstream ss;
+  //     ss << "__anvill_reg_" << reg->name;
+  //     const auto reg_name = ss.str();
+  //     auto reg_global = module->getGlobalVariable(reg_name);
+  //     if (!reg_global) {
+  //       reg_global = new llvm::GlobalVariable(
+  //           *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+  //           nullptr, reg_name);
+  //     }
+  //     auto reg_ptr = reg->AddressOf(state_ptr, block);
+  //     ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+  //   }
+  // });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
@@ -334,12 +334,13 @@ static void DefineABIFunction(const FunctionDecl *decl,
   // Store the function parameters either into the state struct
   // or into memory (likely the stack).
   auto arg_index = 0u;
-  for (auto &arg : func->args()) {
+  for (auto &arg : abi_func->args()) {
     const auto &param_decl = decl->params[arg_index++];
     mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
                                mem_ptr);
   }
 
+  // Create a call to ABI to lifted function
   llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
   lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
   lifted_func_args[remill::kMemoryPointerArgNum] = mem_ptr;
@@ -347,15 +348,15 @@ static void DefineABIFunction(const FunctionDecl *decl,
   auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
   mem_ptr = call_to_lifted_func;
 
+  // Retrieve return values from lifted function
   llvm::Value *ret_val = nullptr;
-
   if (decl->returns.size() == 1) {
     ret_val = LoadLiftedValue(decl->returns.front(), intrinsics, block,
                               state_ptr, mem_ptr);
     ir.SetInsertPoint(block);
 
   } else if (1 < decl->returns.size()) {
-    ret_val = llvm::UndefValue::get(func->getReturnType());
+    ret_val = llvm::UndefValue::get(abi_func->getReturnType());
     auto index = 0u;
     for (auto &ret_decl : decl->returns) {
       auto partial_ret_val =
@@ -381,7 +382,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
   llvm::InlineFunction(call_to_lifted_func, info);
 
   std::vector<llvm::CallInst *> calls_to_inline;
-  for (auto &block : *func) {
+  for (auto &block : *abi_func) {
     for (auto &inst : block) {
       if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
         calls_to_inline.push_back(call_inst);
@@ -394,7 +395,7 @@ static void DefineABIFunction(const FunctionDecl *decl,
     llvm::InlineFunction(call_inst, info);
   }
 
-  ClearVariableNames(func);
+  ClearVariableNames(abi_func);
 }
 }  // namespace
 
@@ -464,7 +465,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
     auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
     auto reg = ir.CreateLoad(ptr_to_reg);
-    if (auto adapted_val = AdaptToType(ir, reg, decl.type); adapted_val) {
+    if (auto adapted_val = AdaptToType(ir, reg, decl.type)) {
       return adapted_val;
     } else {
       return ir.CreateLoad(
@@ -529,6 +530,7 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
     ReplaceLiftedCalls(decl, func);
     return true;
   });
+
 
   // Define ABI-level functions
   program.ForEachFunction([&](const FunctionDecl *decl) {

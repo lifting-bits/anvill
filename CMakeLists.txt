@@ -196,10 +196,8 @@ install(
   DESTINATION "${install_folder}/share")
 
 set(ROUNDTRIP_TEST_FILES 
-  tests/assert.c
   tests/bitops.c
   tests/cast.c
-  tests/funcptr.c
   tests/nullptr.c
   tests/ret0.c
   tests/zeroinit.c

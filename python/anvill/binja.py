@@ -168,7 +168,6 @@ def _convert_binja_type(tinfo, cache):
         cache[str(tinfo)] = ret
         ret.set_return_type(_convert_binja_type(tinfo.return_value, cache))
 
-        index = 0
         for var in tinfo.parameters:
             ret.add_parameter_type(_convert_binja_type(var.type, cache))
 
@@ -312,9 +311,8 @@ class CallingConvention(object):
 
 
 class BNFunction(Function):
-    def __init__(self, bv, arch, address, param_list, ret_list, bn_func, func_type):
+    def __init__(self, bn_func, arch, address, param_list, ret_list, func_type):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
-        self._bv = bv
         self._bn_func = bn_func
 
     def name(self):
@@ -324,68 +322,87 @@ class BNFunction(Function):
         if not is_definition:
             return
 
-        memory = program.memory()
+        mem = program.memory()
 
-        seg = [None]
         ref_eas = set()
         ea = self._bn_func.start
-        max_ea = max([x.end for x in self._bn_func.basic_blocks])
-        self._fill_bytes(memory, ea, max_ea, ref_eas)
+        max_ea = self._bn_func.highest_address
+        self._fill_bytes(program._bv, mem, ea, max_ea, ref_eas)
 
         for ref_ea in ref_eas:
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
-    def _fill_bytes(self, memory, start, end, ref_eas):
-        br = bn.BinaryReader(self._bv)
+    def _fill_bytes(self, bv, memory, start, end, ref_eas):
+        br = bn.BinaryReader(bv)
         for bb in self._bn_func.basic_blocks:
-            ea = bb.start
-            while ea < bb.end:
-                seg = self._bv.get_segment_at(ea)
-                can_read = seg.readable
-                can_exec = seg.executable
-                can_write = seg.writable
-
+            for ea in range(bb.start, bb.end):
+                seg = bv.get_segment_at(ea)
                 br.seek(ea)
-                byte = br.read8()
-                memory.map_byte(ea, byte, can_write, can_exec)
+                memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
                 insn = self._bn_func.get_lifted_il_at(ea)
                 if insn:
-                    _collect_code_xrefs_from_insn(self._bv, insn, ref_eas)
-                ea += 1
+                    _collect_code_xrefs_from_insn(bv, insn, ref_eas)
+
+
+class BNVariable(Variable):
+    def __init__(self, bn_var, arch, address, type_):
+        super(BNVariable, self).__init__(arch, address, type_)
+        self._bn_var = bn_var
+
+    def visit(self, program, is_definition, add_refs_as_defs):
+        if not is_definition:
+            return
+
+        if isinstance(self._type, VoidType):
+            return
+        
+        bv = program._bv
+        br = bn.BinaryReader(bv)
+        mem = program.memory()
+        begin = self._address
+        end = begin + self._type.size(self._arch)
+        
+        for ea in range(begin, end):
+            br.seek(ea)
+            seg = bv.get_segment_at(ea)
+            mem.map_byte(ea, br.read8(), seg.writable, seg.executable)
+
 
 class BNProgram(Program):
-    def __init__(self, path_or_bv):
-        if isinstance(path_or_bv, bn.BinaryView):
-            self._bv = path_or_bv
-            self._path = self._bv.file.filename
-        else:
-            self._path = path_or_bv
-            self._bv = bn.BinaryViewType.get_view_of_file(self._path)
+    def __init__(self, path):
+        self._path = path
+        self._bv = bn.BinaryViewType.get_view_of_file(self._path)
         super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
+
+    def get_variable_impl(self, address):
+        """Given an address, return a `Variable` instance, or
+    raise an `InvalidVariableException` exception."""
+        arch = self._arch
+        bn_var = self._bv.get_data_var_at(address)
+        return BNVariable(bn_var, arch, address, get_type(bn_var.type))
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
     raise an `InvalidFunctionException` exception."""
         arch = self._arch
 
-        binja_func = self._bv.get_function_at(address)
-        if not binja_func:
+        bn_func = self._bv.get_function_at(address)
+        if not bn_func:
             func_contains = self._bv.get_functions_containing(address)
             if func_contains and len(func_contains):
-                binja_func = func_contains[0]
+                bn_func = func_contains[0]
 
-        if not binja_func:
+        if not bn_func:
             raise InvalidFunctionException(
                 "No function defined at or containing address {:x}".format(address)
             )
 
-        # print binja_func.name, binja_func.function_type
-        func_type = get_type(binja_func.function_type)
-        calling_conv = CallingConvention(arch, binja_func)
+        func_type = get_type(bn_func.function_type)
+        calling_conv = CallingConvention(arch, bn_func)
 
         index = 0
         param_list = []
-        for var in binja_func.parameter_vars:
+        for var in bn_func.parameter_vars:
             source_type = var.source_type
             var_type = var.type
             arg_type = get_type(var_type)
@@ -420,7 +437,7 @@ class BNProgram(Program):
             index += 1
 
         ret_list = []
-        retTy = get_type(binja_func.return_type)
+        retTy = get_type(bn_func.return_type)
         if not isinstance(retTy, VoidType):
             for reg in calling_conv.return_regs:
                 loc = Location()
@@ -429,7 +446,7 @@ class BNProgram(Program):
                 ret_list.append(loc)
 
         func = BNFunction(
-            self._bv, arch, address, param_list, ret_list, binja_func, func_type
+            bn_func, arch, address, param_list, ret_list, func_type
         )
         return func
 
@@ -437,6 +454,11 @@ class BNProgram(Program):
     def functions(self):
         for func in self._bv.functions:
             yield (func.start, func.name)
+    
+    @property
+    def variables(self):
+        for addr in self._bv.data_vars:
+            yield (addr, self._bv.data_vars[addr])
 
 
 _PROGRAM = None
