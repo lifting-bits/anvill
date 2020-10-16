@@ -25,6 +25,8 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
+
 #include "anvill/Decl.h"
 #include "anvill/MCToIRLifter.h"
 #include "anvill/Program.h"
@@ -97,7 +99,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
         return ir.CreateBitCast(src, dest_ptr_type);
       }
 
-    // Convert the pointer to an integer.
+      // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
@@ -428,7 +430,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     return mem_ptr;
 
-  // Store it to memory.
+    // Store it to memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
@@ -467,7 +469,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
           ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
     }
 
-  // Load it out of memory.
+    // Load it out of memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
@@ -492,9 +494,29 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
 
   // Declare global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    const auto name = anvill::CreateVariableName(decl->address);
+    const auto addr = decl->address;
+    const auto name = anvill::CreateVariableName(addr);
     const auto gvar = decl->DeclareInModule(name, module);
-    gvar->setInitializer(llvm::Constant::getNullValue(gvar->getValueType()));
+    const auto size = decl->type->getPrimitiveSizeInBits();
+    // Read initial value from memory
+    llvm::APInt init_val(size, 0);
+    for (auto i = 0U; i < (size / 8); ++i) {
+      auto byte_val = program.FindByte(addr + i).Value();
+      if (remill::IsError(byte_val)) {
+        LOG(ERROR) << "Unable to read value of byte at " << std::hex << addr + i
+                   << std::dec << ": " << remill::GetErrorString(byte_val);
+        break;
+      } else {
+        init_val <<= 8;
+        init_val |= remill::GetReference(byte_val);
+      }
+    }
+    if (arch->MemoryAccessIsLittleEndian()) {
+      init_val = init_val.byteSwap();
+    }
+    // Set initializer
+    gvar->setInitializer(
+        llvm::Constant::getIntegerValue(gvar->getValueType(), init_val));
     return true;
   });
 
