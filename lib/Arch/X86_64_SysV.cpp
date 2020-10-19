@@ -52,13 +52,13 @@ static const std::vector<RegisterConstraint> kParamRegConstraints = {
         VariantConstraint("RCX", kTypeIntegral, kMaxBit64),
     }),
     RegisterConstraint({
-        VariantConstraint("R8L", kTypeIntegral, kMaxBit8),
+        VariantConstraint("R8B", kTypeIntegral, kMaxBit8),
         VariantConstraint("R8W", kTypeIntegral, kMaxBit16),
         VariantConstraint("R8D", kTypeIntegral, kMaxBit32),
         VariantConstraint("R8", kTypeIntegral, kMaxBit64),
     }),
     RegisterConstraint({
-        VariantConstraint("R9L", kTypeIntegral, kMaxBit8),
+        VariantConstraint("R9B", kTypeIntegral, kMaxBit8),
         VariantConstraint("R9W", kTypeIntegral, kMaxBit16),
         VariantConstraint("R9D", kTypeIntegral, kMaxBit32),
         VariantConstraint("R9", kTypeIntegral, kMaxBit64),
