@@ -395,7 +395,7 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
           std::make_error_code(std::errc::invalid_argument),
           "Type of the return address in function declaration at "
           "'%lx' must match type of the '%s' register",
-          tpl.address, pc_reg_name);
+          tpl.address, pc_reg_name.data());
     }
   } else {
     return llvm::createStringError(
@@ -403,7 +403,7 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
         "Cannot find register information for program counter "
         "register '%s'; has the semantics module for the architecture "
         "associated with the function declaration at '%lx' been loaded?",
-        pc_reg_name, tpl.address);
+        pc_reg_name.data(), tpl.address);
   }
 
   auto err = CheckValueDecl(return_address, context, "return address", tpl);
@@ -455,7 +455,7 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
           std::make_error_code(std::errc::executable_format_error),
           "Could not locate stack pointer register '%s' in architecture "
           "'%s' for function declaration at '%lx'",
-          sp_reg_name, remill::GetArchName(tpl.arch->arch_name).c_str(),
+          sp_reg_name.data(), remill::GetArchName(tpl.arch->arch_name).data(),
           tpl.address);
     }
 

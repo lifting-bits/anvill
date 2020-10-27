@@ -39,6 +39,8 @@
 
 #if __has_include(<llvm/Support/JSON.h>)
 
+#include <llvm/Support/JSON.h>
+
 DECLARE_string(arch);
 DECLARE_string(os);
 DEFINE_string(bc_file, "",
@@ -65,12 +67,12 @@ int main(int argc, char *argv[]) {
   remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
   arch->PrepareModule(remill::LoadArchSemantics(arch.get()));
 
-  std::string arch_name = remill::GetArchName(arch->arch_name);
-  std::string os_name = remill::GetOSName(arch->os_name);
+  auto arch_name = remill::GetArchName(arch->arch_name);
+  auto os_name = remill::GetOSName(arch->os_name);
 
   llvm::json::Object json;
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name});
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name});
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name.data()});
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name.data()});
 
   llvm::json::Array funcs_json;
 

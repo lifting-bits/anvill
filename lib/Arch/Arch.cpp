@@ -91,8 +91,8 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
   const auto os_name = remill::GetOSName(arch->os_name);
   return llvm::createStringError(
       std::make_error_code(std::errc::invalid_argument),
-      "Unsupported architecture/OS pair: %s and %s", arch_name.c_str(),
-      os_name.c_str());
+      "Unsupported architecture/OS pair: %s and %s", arch_name.data(),
+      os_name.data());
 }
 
 // Still need the arch to be passed in so we can create the calling convention

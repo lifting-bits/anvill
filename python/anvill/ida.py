@@ -110,8 +110,9 @@ def _convert_ida_type(tinfo, cache, depth, context):
     if 0 < depth:
         context = TYPE_CONTEXT_NESTED
 
-    if tinfo in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
-        return cache[tinfo]
+    tinfo_str = str(tinfo)
+    if tinfo_str in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
+        return cache[tinfo_str]
 
     # Void type.
     elif tinfo.empty() or tinfo.is_void():
@@ -121,7 +122,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     elif tinfo.is_paf():
         if tinfo.is_ptr():
             ret = PointerType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             ret.set_element_type(
                 _convert_ida_type(tinfo.get_pointed_object(), cache, depth + 1, context)
             )
@@ -129,7 +130,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
         elif tinfo.is_func():
             ret = FunctionType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             ret.set_return_type(
                 _convert_ida_type(tinfo.get_rettype(), cache, depth + 1, context)
             )
@@ -164,7 +165,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
                     )
                 else:
                     ret = PointerType()
-                    cache[tinfo] = ret
+                    cache[tinfo_str] = ret
                     ret.set_element_type(
                         _convert_ida_type(
                             tinfo.get_array_element(), cache, depth + 1, context
@@ -173,7 +174,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
                     return ret
             else:
                 ret = ArrayType()
-                cache[tinfo] = ret
+                cache[tinfo_str] = ret
                 ret.set_element_type(
                     _convert_ida_type(
                         tinfo.get_array_element(), cache, depth + 1, context
@@ -191,7 +192,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     # Vector types.
     elif tinfo.is_sse_type():
         ret = VectorType()
-        cache[tinfo] = ret
+        cache[tinfo_str] = ret
         size = tinfo.get_size()
 
         # TODO(pag): Do better than this.
@@ -204,7 +205,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     elif tinfo.is_sue():
         if tinfo.is_udt():  # Structure or union type.
             ret = tinfo.is_struct() and StructureType() or UnionType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             i = 0
             max_i = tinfo.get_udt_nmembers()
             while i < max_i:
@@ -222,7 +223,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
         elif tinfo.is_enum():
             ret = EnumType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             base_type = ida_typeinf.tinfo_t(tinfo.get_enum_base_type())
             ret.set_underlying_type(_convert_ida_type(base_type, cache, depth, context))
             return ret
@@ -266,12 +267,12 @@ def _convert_ida_type(tinfo, cache, depth, context):
     # NOTE(pag): We return the underlying type because it may be void.
     elif tinfo.is_typeref():
         ret = TypedefType()
-        cache[tinfo] = ret
+        cache[tinfo_str] = ret
         utype = _convert_ida_type(
             ida_typeinf.tinfo_t(tinfo.get_realtype(True)), cache, depth, context
         )
         ret.set_underlying_type(utype)
-        cache[tinfo] = utype
+        cache[tinfo_str] = utype
         return utype
 
     else:

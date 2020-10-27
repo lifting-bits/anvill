@@ -193,11 +193,11 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   llvm::IRBuilder<> ir(block);
 
   // Create a memory pointer.
-  auto mem_ptr_type = remill::MemoryPointerType(module);
+  auto mem_ptr_type = arch->MemoryPointerType();
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate a state pointer.
-  auto state_ptr_type = remill::StatePointerType(module);
+  auto state_ptr_type = arch->StatePointerType();
   auto state_type = state_ptr_type->getElementType();
   auto state_ptr = ir.CreateAlloca(state_type);
 

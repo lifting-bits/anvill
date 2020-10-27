@@ -398,7 +398,7 @@ int64_t XrefExprFolder::Signed(uint64_t val, llvm::Value *op) {
     case 32: return static_cast<int8_t>(val);
     case 64: return static_cast<int64_t>(val);
     default:
-      CHECK_LT(size, 64);
+      CHECK_LT(size, 64u);
       const uint64_t m = 1ull << (size - 1ull);
       return static_cast<int64_t>(((val ^ m) - m));
   }
@@ -465,7 +465,7 @@ uint64_t XrefExprFolder::VisitSelect(llvm::Value *cond, llvm::Value *if_true,
 uint64_t XrefExprFolder::VisitZExt(llvm::Value *op, llvm::Type *type) {
   auto ea = Visit(op);
   const uint64_t src_size = type->getPrimitiveSizeInBits();
-  if (src_size >= 64) {
+  if (src_size >= 64u) {
     return ea;
   } else {
     const auto mask = (1ull << src_size) - 1ull;
@@ -477,8 +477,8 @@ uint64_t XrefExprFolder::VisitSExt(llvm::Value *op, llvm::Type *type) {
   auto ea = Visit(op);
   const auto src_size = op->getType()->getPrimitiveSizeInBits();
   const auto dest_size = type->getPrimitiveSizeInBits();
-  CHECK_LT(src_size, 64);
-  CHECK_LT(dest_size, 64);
+  CHECK_LT(src_size, 64u);
+  CHECK_LT(dest_size, 64u);
   const uint64_t m = 1ull << (src_size - 1ull);
   const uint64_t x = ea & ((1ull << dest_size) - 1ull);
   return ((x ^ m) - m);
@@ -487,7 +487,7 @@ uint64_t XrefExprFolder::VisitSExt(llvm::Value *op, llvm::Type *type) {
 uint64_t XrefExprFolder::VisitTrunc(llvm::Value *op, llvm::Type *type) {
   auto ea = Visit(op);
   const auto dest_size = type->getPrimitiveSizeInBits();
-  CHECK_LT(dest_size, 64);
+  CHECK_LT(dest_size, 64u);
   const auto mask = (1ull << dest_size) - 1ull;
   return (ea & mask);
 }
