@@ -874,33 +874,47 @@ void RecoverMemoryAccesses(
     const Program &program, llvm::Module &module,
     const std::vector<std::pair<llvm::Use *, Byte>> &fixups) {
   for (auto [use, byte] : fixups) {
+    if (!llvm::isa<llvm::Instruction>(use->getUser())) {
+      continue;
+    }
+
     const auto addr = byte.Address();
     const auto used_val = use->get();
     const auto used_type = used_val->getType();
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
       LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val);
+          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
+          << " by "
+          << remill::LLVMThingToString(llvm::dyn_cast<llvm::Value>(use->getUser()));
       continue;
     }
+
+    llvm::Constant *new_val = nullptr;
 
     if (auto func_decl = program.FindFunction(addr)) {
       const auto name = CreateFunctionName(func_decl->address);
       const auto sym = func_decl->DeclareInModule(name, module, true);
-      use->set(llvm::ConstantExpr::getPtrToInt(sym, int_type));
+      new_val = llvm::ConstantExpr::getPtrToInt(sym, int_type);
 
     } else if (auto var_decl = program.FindVariable(addr)) {
       const auto name = CreateVariableName(var_decl->address);
       const auto sym = var_decl->DeclareInModule(name, module, true);
-      use->set(llvm::ConstantExpr::getPtrToInt(sym, int_type));
+      new_val = llvm::ConstantExpr::getPtrToInt(sym, int_type);
 
+    // TODO(pag): Leaving these as integers might be best, as we may go an
+    //            collect them in the optimizer.
     } else {
       LOG(ERROR)
           << "TODO: Found byte address " << std::hex << addr
           << std::dec << " that is mapped to memory but doesn't directly "
           << "resolve to a function or variable";
 
-      use->set(llvm::ConstantInt::get(int_type, addr, false));
+      new_val = llvm::ConstantInt::get(int_type, addr, false);
+    }
+
+    if (new_val != used_val) {
+      use->set(new_val);
     }
   }
 }
@@ -914,10 +928,16 @@ void ReplaceImmediateIntegers(
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
       LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val);
+          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
+          << " by "
+          << remill::LLVMThingToString(llvm::dyn_cast<llvm::Value>(use->getUser()));
       continue;
     }
-    use->set(llvm::ConstantInt::get(int_type, imm_val, false));
+
+    const auto new_val = llvm::ConstantInt::get(int_type, imm_val, false);
+    if (new_val != used_val) {
+      use->set(new_val);
+    }
   }
 }
 

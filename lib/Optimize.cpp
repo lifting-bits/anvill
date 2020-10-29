@@ -359,9 +359,17 @@ static void RemoveUnneededInlineAsm(const Program &program,
           const auto inline_asm =
               llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledOperand());
           if (inline_asm) {
-            if (inline_asm->hasSideEffects() &&
-                call_inst->getType()->isVoidTy() &&
-                inline_asm->getAsmString().empty()) {
+
+            // It looks like a "fake" read from a register.
+            if (!call_inst->hasNUsesOrMore(1) &&
+                !inline_asm->getAsmString().find("# read register ")) {
+              to_remove.push_back(call_inst);
+              prev_is_compiler_barrier = false;
+              prev_barrier = nullptr;
+
+            } else if (inline_asm->hasSideEffects() &&
+                       call_inst->getType()->isVoidTy() &&
+                       inline_asm->getAsmString().empty()) {
 
               if (prev_is_compiler_barrier) {
                 to_remove.push_back(call_inst);
@@ -369,6 +377,7 @@ static void RemoveUnneededInlineAsm(const Program &program,
                 prev_barrier = call_inst;
               }
               prev_is_compiler_barrier = true;
+
             } else {
               prev_is_compiler_barrier = false;
               prev_barrier = nullptr;
@@ -940,7 +949,6 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
       vars_to_remove.push_back(&gv);
     } else if (gv.getName().startswith("ISEL_") ||
                gv.getName().startswith("COND_") ||
-               gv.getName().startswith("__anvill_reg") ||
                gv.getName().startswith("DR")) {
       gv.setInitializer(nullptr);
       gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));

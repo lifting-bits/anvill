@@ -18,6 +18,7 @@
 #include "anvill/Lift.h"
 
 #include <glog/logging.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
@@ -201,25 +202,23 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   auto state_type = state_ptr_type->getElementType();
   auto state_ptr = ir.CreateAlloca(state_type);
 
-  //  // Get or create globals for all top-level registers. The idea here is that
-  //  // the spec could feasibly miss some dependencies, and so after optimization,
-  //  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-  //  // them appropriately.
-  //  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-  //    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-  //      std::stringstream ss;
-  //      ss << "__anvill_reg_" << reg->name;
-  //      const auto reg_name = ss.str();
-  //      auto reg_global = module->getGlobalVariable(reg_name);
-  //      if (!reg_global) {
-  //        reg_global = new llvm::GlobalVariable(
-  //            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-  //            nullptr, reg_name);
-  //      }
-  //      auto reg_ptr = reg->AddressOf(state_ptr, block);
-  //      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-  //    }
-  //  });
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      ss << "# read register " << reg->name;
+
+      llvm::InlineAsm *read_reg = llvm::InlineAsm::get(
+          llvm::FunctionType::get(reg->type, false),
+          ss.str(), "=r", true  /* hasSideEffects */);
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
