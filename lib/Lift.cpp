@@ -373,7 +373,11 @@ static void OptimizeFunction(llvm::Function *func) {
 
     for (auto call_inst : calls_to_inline) {
       llvm::InlineFunctionInfo info;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
       llvm::InlineFunction(call_inst, info);
+#else
+      llvm::InlineFunction(*call_inst, info);
+#endif
     }
   }
 

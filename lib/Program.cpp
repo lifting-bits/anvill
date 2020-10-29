@@ -24,6 +24,7 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Compat/VectorType.h>
 
 #include <algorithm>
 #include <map>
@@ -189,8 +190,8 @@ static size_t EstimateSize(const remill::Arch *arch, llvm::Type *type) {
     case llvm::Type::PointerTyID: return arch->address_size / 8u;
 
     // Build up the vector store in the nearly the same was as we do with arrays.
-    case llvm::Type::VectorTyID: {
-      auto vec_type = llvm::dyn_cast<llvm::VectorType>(type);
+    case llvm::GetFixedVectorTypeId(): {
+      auto vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type);
       const auto num_elems = vec_type->getNumElements();
       const auto elem_type = vec_type->getElementType();
       return num_elems * EstimateSize(arch, elem_type);

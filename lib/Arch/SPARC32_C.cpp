@@ -22,6 +22,7 @@
 
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
+#include <remill/BC/Compat/VectorType.h>
 
 #include "AllocationState.h"
 
@@ -66,7 +67,7 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
     return nullptr;
   }
 
-  auto num_elements = (width + 31) / 32;
+  auto num_elements = (width + 31u) / 32u;
   auto i32_ty = llvm::Type::getInt32Ty(type->getContext());
   return llvm::ArrayType::get(i32_ty, num_elements);
 }
@@ -237,13 +238,12 @@ llvm::Error SPARC32_C::BindReturnValues(
 
     // Try to split the composite type over registers, and fall back on RVO
     // if it's not possible.
-    case llvm::Type::VectorTyID:
+    case llvm::GetFixedVectorTypeId():
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
-      auto comp_ptr = llvm::dyn_cast<llvm::CompositeType>(ret_type);
       AllocationState alloc_ret(return_register_constraints, arch, this);
       alloc_ret.config.type_splitter = IntegerTypeSplitter;
-      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr);
+      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type);
 
       // There is a valid split over registers, so add the mapping
       if (mapping) {

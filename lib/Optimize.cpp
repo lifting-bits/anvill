@@ -317,7 +317,8 @@ ReplaceConstMemoryReads(const Program &program, llvm::Module &module,
         ir.CreateBitCast(mem, llvm::PointerType::get(data_read->getType(), 0));
     ir.CreateStore(data_read, bc);
 
-    llvm::Instruction *as_load = new llvm::LoadInst(mem, "", call_inst);
+    llvm::Instruction *as_load = new llvm::LoadInst(
+        llvm::PointerType::get(mem_type, 0), mem, "", call_inst);
 
     if (fp80_type) {
       as_load =
@@ -350,13 +351,13 @@ static void RemoveUnneededInlineAsm(const Program &program,
 
     to_remove.clear();
 
-    for (auto &block : *func) {
+    for (llvm::BasicBlock &block : *func) {
       auto prev_is_compiler_barrier = false;
       llvm::CallInst *prev_barrier = nullptr;
       for (auto &inst : block) {
         if (llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
           const auto inline_asm =
-              llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledValue());
+              llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledOperand());
           if (inline_asm) {
             if (inline_asm->hasSideEffects() &&
                 call_inst->getType()->isVoidTy() &&
