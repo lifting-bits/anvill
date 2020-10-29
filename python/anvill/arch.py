@@ -941,3 +941,375 @@ class AArch64Arch(Arch):
 
     def pointer_size(self):
         return 8
+
+
+class Sparc32Arch(Arch):
+    """SPARCv8 architecture description (32-bit)."""
+
+    _REG_FAMILY_qX = lambda l: (
+        ("q{}".format(l*4), 0, 16),
+        ("d{}".format(l*2), 0, 8),
+        ("d{}".format(l*2+1), 8, 16),
+        ("f{}".format(l*4), 0, 4),
+        ("f{}".format(l*4+1), 4, 8),
+        ("f{}".format(l*4+2), 8, 12),
+        ("f{}".format(l*4+3), 12, 16),
+    )
+
+    _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
+    _REG_FAMILY_q4 = _REG_FAMILY_qX(1)
+    _REG_FAMILY_q8 = _REG_FAMILY_qX(2)
+    _REG_FAMILY_q12 = _REG_FAMILY_qX(3)
+    _REG_FAMILY_q16 = _REG_FAMILY_qX(4)
+    _REG_FAMILY_q20 = _REG_FAMILY_qX(5)
+    _REG_FAMILY_q24 = _REG_FAMILY_qX(6)
+    _REG_FAMILY_q28 = _REG_FAMILY_qX(7)
+
+    _REG_FAMILY_SP = (("sp", 0, 4), ("o6", 0, 4),)
+    _REG_FAMILY_FP = (("fp", 0, 4), ("i6", 0, 4),)
+
+    _REG_FAMILY = {
+        "g0": (("g0", 0, 4),),
+        "g1": (("g1", 0, 4),),
+        "g2": (("g2", 0, 4),),
+        "g3": (("g3", 0, 4),),
+        "g4": (("g4", 0, 4),),
+        "g5": (("g5", 0, 4),),
+        "g6": (("g6", 0, 4),),
+        "g7": (("g7", 0, 4),),
+
+        "l0": (("l0", 0, 4),),
+        "l1": (("l1", 0, 4),),
+        "l2": (("l2", 0, 4),),
+        "l3": (("l3", 0, 4),),
+        "l4": (("l4", 0, 4),),
+        "l5": (("l5", 0, 4),),
+        "l6": (("l6", 0, 4),),
+        "l7": (("l7", 0, 4),),
+
+        "i0": (("i0", 0, 4),),
+        "i1": (("i1", 0, 4),),
+        "i2": (("i2", 0, 4),),
+        "i3": (("i3", 0, 4),),
+        "i4": (("i4", 0, 4),),
+        "i5": (("i5", 0, 4),),
+        "i6": _REG_FAMILY_FP,
+        "i7": (("i7", 0, 4),),
+
+        "o0": (("o0", 0, 4),),
+        "o1": (("o1", 0, 4),),
+        "o2": (("o2", 0, 4),),
+        "o3": (("o3", 0, 4),),
+        "o4": (("o4", 0, 4),),
+        "o5": (("o5", 0, 4),),
+        "o6": _REG_FAMILY_SP,
+        "o7": (("o7", 0, 4),),
+
+        "sp": _REG_FAMILY_SP,
+        "fp": _REG_FAMILY_FP,
+        "pc": (("pc", 0, 4),),
+        "npc": (("npc", 0, 4),),
+
+        "q0": _REG_FAMILY_q0,
+        "q4": _REG_FAMILY_q4,
+        "q8": _REG_FAMILY_q8,
+        "q12": _REG_FAMILY_q12,
+        "q16": _REG_FAMILY_q16,
+        "q20": _REG_FAMILY_q20,
+        "q24": _REG_FAMILY_q24,
+        "q28": _REG_FAMILY_q28,
+
+        "d0": _REG_FAMILY_q0,
+        "d2": _REG_FAMILY_q0,
+        "d4": _REG_FAMILY_q4,
+        "d6": _REG_FAMILY_q4,
+        "d8": _REG_FAMILY_q8,
+        "d10": _REG_FAMILY_q8,
+        "d12": _REG_FAMILY_q12,
+        "d14": _REG_FAMILY_q12,
+        "d16": _REG_FAMILY_q16,
+        "d18": _REG_FAMILY_q16,
+        "d20": _REG_FAMILY_q20,
+        "d22": _REG_FAMILY_q20,
+        "d24": _REG_FAMILY_q24,
+        "d26": _REG_FAMILY_q24,
+        "d28": _REG_FAMILY_q28,
+        "d30": _REG_FAMILY_q28,
+
+        "f0": _REG_FAMILY_q0,
+        "f1": _REG_FAMILY_q0,
+        "f2": _REG_FAMILY_q0,
+        "f3": _REG_FAMILY_q0,
+        "f4": _REG_FAMILY_q4,
+        "f5": _REG_FAMILY_q4,
+        "f6": _REG_FAMILY_q4,
+        "f7": _REG_FAMILY_q4,
+        "f8": _REG_FAMILY_q8,
+        "f9": _REG_FAMILY_q8,
+        "f10": _REG_FAMILY_q8,
+        "f11": _REG_FAMILY_q8,
+        "f12": _REG_FAMILY_q12,
+        "f13": _REG_FAMILY_q12,
+        "f14": _REG_FAMILY_q12,
+        "f15": _REG_FAMILY_q12,
+        "f16": _REG_FAMILY_q16,
+        "f17": _REG_FAMILY_q16,
+        "f18": _REG_FAMILY_q16,
+        "f19": _REG_FAMILY_q16,
+        "f20": _REG_FAMILY_q20,
+        "f21": _REG_FAMILY_q20,
+        "f22": _REG_FAMILY_q20,
+        "f23": _REG_FAMILY_q20,
+        "f24": _REG_FAMILY_q24,
+        "f25": _REG_FAMILY_q24,
+        "f26": _REG_FAMILY_q24,
+        "f27": _REG_FAMILY_q24,
+        "f28": _REG_FAMILY_q28,
+        "f29": _REG_FAMILY_q28,
+        "f30": _REG_FAMILY_q28,
+        "f31": _REG_FAMILY_q28,
+    }
+
+    def name(self):
+        return "sparc32"
+
+    def program_counter_name(self):
+        return "pc"
+
+    def stack_pointer_name(self):
+        return "o6"
+
+    def return_address_proto(self):
+        return {
+            "register": "o7",
+            "type": "I"
+        }
+
+    def return_stack_pointer_proto(self, num_bytes_popped):
+        return {
+            "register": "o6",
+            "offset": 0,
+            "type": "I"
+        }
+
+    def pointer_size(self):
+        return 4
+
+    def register_family(self, reg_name):
+        if reg_name.startswith('%'):
+            return self._REG_FAMILY[reg_name[1:].lower()]
+        else:
+            return self._REG_FAMILY[reg_name.lower()]
+
+    def register_name(self, reg_name):
+        if reg_name.startswith('%'):
+            return reg_name[1:].lower()
+        else:
+            return reg_name.lower()
+
+
+class Sparc64Arch(Arch):
+    """SPARCv9 architecture description (32-bit)."""
+
+    _REG_FAMILY_qX = lambda l: (
+        ("q{}".format(l*4), 0, 16),
+        ("d{}".format(l*2), 0, 8),
+        ("d{}".format(l*2+1), 8, 16),
+        ("f{}".format(l*4), 0, 4),
+        ("f{}".format(l*4+1), 4, 8),
+        ("f{}".format(l*4+2), 8, 12),
+        ("f{}".format(l*4+3), 12, 16),
+    )
+
+    _REG_FAMILY_qXv9 = lambda l: (
+        ("q{}".format(l*4), 0, 16),
+        ("d{}".format(l*2), 0, 8),
+        ("d{}".format(l*2+1), 8, 16),
+    )
+
+    _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
+    _REG_FAMILY_q4 = _REG_FAMILY_qX(1)
+    _REG_FAMILY_q8 = _REG_FAMILY_qX(2)
+    _REG_FAMILY_q12 = _REG_FAMILY_qX(3)
+    _REG_FAMILY_q16 = _REG_FAMILY_qX(4)
+    _REG_FAMILY_q20 = _REG_FAMILY_qX(5)
+    _REG_FAMILY_q24 = _REG_FAMILY_qX(6)
+    _REG_FAMILY_q28 = _REG_FAMILY_qX(7)
+
+    # On SPARCv9, there are still only 32 `f` registers, but
+    # there are more `d` and `q` registers.
+    _REG_FAMILY_q32 = _REG_FAMILY_qXv9(8)
+    _REG_FAMILY_q36 = _REG_FAMILY_qXv9(9)
+    _REG_FAMILY_q40 = _REG_FAMILY_qXv9(10)
+    _REG_FAMILY_q44 = _REG_FAMILY_qXv9(11)
+    _REG_FAMILY_q48 = _REG_FAMILY_qXv9(12)
+    _REG_FAMILY_q52 = _REG_FAMILY_qXv9(13)
+    _REG_FAMILY_q56 = _REG_FAMILY_qXv9(14)
+    _REG_FAMILY_q60 = _REG_FAMILY_qXv9(15)
+
+    _REG_FAMILY_SP = (("sp", 0, 8), ("o6", 0, 8),)
+    _REG_FAMILY_FP = (("fp", 0, 8), ("i6", 0, 8),)
+
+    _REG_FAMILY = {
+        "g0": (("g0", 0, 8),),
+        "g1": (("g1", 0, 8),),
+        "g2": (("g2", 0, 8),),
+        "g3": (("g3", 0, 8),),
+        "g4": (("g4", 0, 8),),
+        "g5": (("g5", 0, 8),),
+        "g6": (("g6", 0, 8),),
+        "g7": (("g7", 0, 8),),
+
+        "l0": (("l0", 0, 8),),
+        "l1": (("l1", 0, 8),),
+        "l2": (("l2", 0, 8),),
+        "l3": (("l3", 0, 8),),
+        "l4": (("l4", 0, 8),),
+        "l5": (("l5", 0, 8),),
+        "l6": (("l6", 0, 8),),
+        "l7": (("l7", 0, 8),),
+
+        "i0": (("i0", 0, 8),),
+        "i1": (("i1", 0, 8),),
+        "i2": (("i2", 0, 8),),
+        "i3": (("i3", 0, 8),),
+        "i4": (("i4", 0, 8),),
+        "i5": (("i5", 0, 8),),
+        "i6": _REG_FAMILY_FP,
+        "i7": (("i7", 0, 8),),
+
+        "o0": (("o0", 0, 8),),
+        "o1": (("o1", 0, 8),),
+        "o2": (("o2", 0, 8),),
+        "o3": (("o3", 0, 8),),
+        "o4": (("o4", 0, 8),),
+        "o5": (("o5", 0, 8),),
+        "o6": _REG_FAMILY_SP,
+        "o7": (("o7", 0, 8),),
+
+        "sp": _REG_FAMILY_SP,
+        "fp": _REG_FAMILY_FP,
+        "pc": (("pc", 0, 8),),
+        "npc": (("npc", 0, 8),),
+
+        "q0": _REG_FAMILY_q0,
+        "q4": _REG_FAMILY_q4,
+        "q8": _REG_FAMILY_q8,
+        "q12": _REG_FAMILY_q12,
+        "q16": _REG_FAMILY_q16,
+        "q20": _REG_FAMILY_q20,
+        "q24": _REG_FAMILY_q24,
+        "q28": _REG_FAMILY_q28,
+        "q32": _REG_FAMILY_q32,
+        "q36": _REG_FAMILY_q36,
+        "q40": _REG_FAMILY_q40,
+        "q44": _REG_FAMILY_q44,
+        "q48": _REG_FAMILY_q48,
+        "q52": _REG_FAMILY_q52,
+        "q56": _REG_FAMILY_q56,
+        "q60": _REG_FAMILY_q60,
+
+        "d0": _REG_FAMILY_q0,
+        "d2": _REG_FAMILY_q0,
+        "d4": _REG_FAMILY_q4,
+        "d6": _REG_FAMILY_q4,
+        "d8": _REG_FAMILY_q8,
+        "d10": _REG_FAMILY_q8,
+        "d12": _REG_FAMILY_q12,
+        "d14": _REG_FAMILY_q12,
+        "d16": _REG_FAMILY_q16,
+        "d18": _REG_FAMILY_q16,
+        "d20": _REG_FAMILY_q20,
+        "d22": _REG_FAMILY_q20,
+        "d24": _REG_FAMILY_q24,
+        "d26": _REG_FAMILY_q24,
+        "d28": _REG_FAMILY_q28,
+        "d30": _REG_FAMILY_q28,
+
+        "d32": _REG_FAMILY_q32,
+        "d34": _REG_FAMILY_q32,
+        "d36": _REG_FAMILY_q36,
+        "d38": _REG_FAMILY_q36,
+        "d40": _REG_FAMILY_q40,
+        "d42": _REG_FAMILY_q40,
+        "d44": _REG_FAMILY_q44,
+        "d46": _REG_FAMILY_q44,
+        "d48": _REG_FAMILY_q48,
+        "d50": _REG_FAMILY_q48,
+        "d52": _REG_FAMILY_q52,
+        "d54": _REG_FAMILY_q52,
+        "d56": _REG_FAMILY_q56,
+        "d58": _REG_FAMILY_q56,
+        "d60": _REG_FAMILY_q60,
+        "d62": _REG_FAMILY_q60,
+
+        "f0": _REG_FAMILY_q0,
+        "f1": _REG_FAMILY_q0,
+        "f2": _REG_FAMILY_q0,
+        "f3": _REG_FAMILY_q0,
+        "f4": _REG_FAMILY_q4,
+        "f5": _REG_FAMILY_q4,
+        "f6": _REG_FAMILY_q4,
+        "f7": _REG_FAMILY_q4,
+        "f8": _REG_FAMILY_q8,
+        "f9": _REG_FAMILY_q8,
+        "f10": _REG_FAMILY_q8,
+        "f11": _REG_FAMILY_q8,
+        "f12": _REG_FAMILY_q12,
+        "f13": _REG_FAMILY_q12,
+        "f14": _REG_FAMILY_q12,
+        "f15": _REG_FAMILY_q12,
+        "f16": _REG_FAMILY_q16,
+        "f17": _REG_FAMILY_q16,
+        "f18": _REG_FAMILY_q16,
+        "f19": _REG_FAMILY_q16,
+        "f20": _REG_FAMILY_q20,
+        "f21": _REG_FAMILY_q20,
+        "f22": _REG_FAMILY_q20,
+        "f23": _REG_FAMILY_q20,
+        "f24": _REG_FAMILY_q24,
+        "f25": _REG_FAMILY_q24,
+        "f26": _REG_FAMILY_q24,
+        "f27": _REG_FAMILY_q24,
+        "f28": _REG_FAMILY_q28,
+        "f29": _REG_FAMILY_q28,
+        "f30": _REG_FAMILY_q28,
+        "f31": _REG_FAMILY_q28,
+    }
+
+    def name(self):
+        return "sparc64"
+
+    def program_counter_name(self):
+        return "pc"
+
+    def stack_pointer_name(self):
+        return "o6"
+
+    def return_address_proto(self):
+        return {
+            "register": "o7",
+            "type": "L"
+        }
+
+    def return_stack_pointer_proto(self, num_bytes_popped):
+        return {
+            "register": "o6",
+            "offset": 0,
+            "type": "L"
+        }
+
+    def pointer_size(self):
+        return 8
+
+    def register_family(self, reg_name):
+        if reg_name.startswith('%'):
+            return self._REG_FAMILY[reg_name[1:].lower()]
+        else:
+            return self._REG_FAMILY[reg_name.lower()]
+
+    def register_name(self, reg_name):
+        if reg_name.startswith('%'):
+            return reg_name[1:].lower()
+        else:
+            return reg_name.lower()

@@ -83,6 +83,22 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
 
     case remill::kArchAArch64LittleEndian: return CreateAArch64_C(arch);
 
+    case remill::kArchSparc32:
+      if (arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateSPARC32_C(arch);
+      } else {
+        break;
+      }
+
+    case remill::kArchSparc64:
+      if (arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateSPARC64_C(arch);
+      } else {
+        break;
+      }
+
     // Fallthrough for unsupported architectures
     default: break;
   }
@@ -105,6 +121,12 @@ CallingConvention::CreateCCFromCCID(const llvm::CallingConv::ID cc_id,
         return CreateX86_C(arch);
       } else if (arch->IsAMD64()) {
         return CreateX86_64_SysV(arch);
+      } else if (arch->IsAArch64()) {
+        return CreateAArch64_C(arch);
+      } else if (arch->IsSPARC32()) {
+        return CreateSPARC32_C(arch);
+      } else if (arch->IsSPARC64()) {
+        return CreateSPARC64_C(arch);
       }
       break;
 

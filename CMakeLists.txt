@@ -52,6 +52,8 @@ add_library(${ANVILL} STATIC
   include/anvill/Type.h
 
   lib/Arch/AArch64_C.cpp
+  lib/Arch/SPARC32_C.cpp
+  lib/Arch/SPARC64_C.cpp
   lib/Arch/X86_C.cpp
   lib/Arch/X86_FastCall.cpp
   lib/Arch/X86_StdCall.cpp

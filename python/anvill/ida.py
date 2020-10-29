@@ -88,6 +88,12 @@ def _guess_architecture():
             raise UnhandledArchitectureType(
                 "Unrecognized 32-bit ARM architecture: {}".format(inf.procName)
             )
+
+    elif "sparc" in inf.procName:
+        if inf.is_64bit():
+            return "sparc64"
+        else:
+            return "sparc32"
     else:
         raise UnhandledArchitectureType(
             "Unrecognized archictecture: {}".format(inf.procName)
@@ -288,6 +294,10 @@ def _get_arch():
         return X86Arch()
     elif name == "aarch64":
         return AArch64Arch()
+    elif name == "sparc32":
+        return Sparc32Arch()
+    elif name == "sparc64":
+        return Sparc64Arch()
     else:
         raise UnhandledArchitectureType(
             "Missing architecture object type for architecture '{}'".format(name)
