@@ -457,8 +457,10 @@ class BNProgram(Program):
     
     @property
     def variables(self):
-        for addr in self._bv.data_vars:
-            yield (addr, self._bv.data_vars[addr])
+        for addr, var in self._bv.data_vars.items():
+            # filter out functions
+            if len(self._bv.get_functions_at(addr)) == 0:
+                yield (addr, var)
 
 
 _PROGRAM = None
