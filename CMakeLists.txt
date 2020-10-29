@@ -117,13 +117,13 @@ target_public_headers(${ANVILL}
 
 set(DECOMPILE_JSON anvill-decompile-json-${REMILL_LLVM_VERSION})
 
-add_executable(${DECOMPILE_JSON} JSON.cpp)
+add_executable(${DECOMPILE_JSON} bin/JSON.cpp)
 target_link_libraries(${DECOMPILE_JSON} PRIVATE ${ANVILL})
 
 
 set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
 
-add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
+add_executable(${SPECIFY_BITCODE} bin/Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
 set(ANVILL_PYTHON_SOURCES

@@ -50,6 +50,7 @@
 
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
+#include "anvill/Util.h"
 
 namespace anvill {
 
@@ -869,6 +870,57 @@ static void RecoverStackMemoryAccesses(
   }
 }
 
+void RecoverMemoryAccesses(
+    const Program &program, llvm::Module &module,
+    const std::vector<std::pair<llvm::Use *, Byte>> &fixups) {
+  for (auto [use, byte] : fixups) {
+    const auto addr = byte.Address();
+    const auto used_val = use->get();
+    const auto used_type = used_val->getType();
+    const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
+    if (!int_type) {
+      LOG(ERROR)
+          << "Unexpected type of value " << remill::LLVMThingToString(used_val);
+      continue;
+    }
+
+    if (auto func_decl = program.FindFunction(addr)) {
+      const auto name = CreateFunctionName(func_decl->address);
+      const auto sym = func_decl->DeclareInModule(name, module, true);
+      use->set(llvm::ConstantExpr::getPtrToInt(sym, int_type));
+
+    } else if (auto var_decl = program.FindVariable(addr)) {
+      const auto name = CreateVariableName(var_decl->address);
+      const auto sym = var_decl->DeclareInModule(name, module, true);
+      use->set(llvm::ConstantExpr::getPtrToInt(sym, int_type));
+
+    } else {
+      LOG(ERROR)
+          << "TODO: Found byte address " << std::hex << addr
+          << std::dec << " that is mapped to memory but doesn't directly "
+          << "resolve to a function or variable";
+
+      use->set(llvm::ConstantInt::get(int_type, addr, false));
+    }
+  }
+}
+
+void ReplaceImmediateIntegers(
+    const Program &program,
+    const std::vector<std::pair<llvm::Use *, uint64_t>> &ci_fixups) {
+  for (auto [use, imm_val] : ci_fixups) {
+    const auto used_val = use->get();
+    const auto used_type = used_val->getType();
+    const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
+    if (!int_type) {
+      LOG(ERROR)
+          << "Unexpected type of value " << remill::LLVMThingToString(used_val);
+      continue;
+    }
+    use->set(llvm::ConstantInt::get(int_type, imm_val, false));
+  }
+}
+
 }  // namespace
 
 // Recover higher-level memory accesses in the lifted functions declared
@@ -888,6 +940,13 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   fixups.clear();
   maybe_fixups.clear();
   sp_fixups.clear();
+
+  FindPossibleCrossReferences(program, module, "__anvill_pc", fixups,
+                              maybe_fixups, ci_fixups);
+
+  RecoverMemoryAccesses(program, module, fixups);
+  RecoverMemoryAccesses(program, module, maybe_fixups);
+  ReplaceImmediateIntegers(program, ci_fixups);
 }
 
 }  // namespace anvill
