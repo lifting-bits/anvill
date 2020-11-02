@@ -134,7 +134,10 @@ llvm::Error X86_StdCall::AllocateSignature(FunctionDecl &fdecl,
                                    remill::GetErrorString(maybe_rspo).c_str());
   }
 
-  fdecl.return_stack_pointer_offset = remill::GetReference(maybe_rspo);
+  fdecl.return_stack_pointer_offset = 4;
+  if (maybe_rspo) {
+    fdecl.return_stack_pointer_offset = *maybe_rspo;
+  }
   fdecl.return_stack_pointer = arch->RegisterByName("ESP");
   fdecl.return_address.mem_reg = fdecl.return_stack_pointer;
   fdecl.return_address.mem_offset = 0;
