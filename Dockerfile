@@ -12,6 +12,7 @@ FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
 FROM ${BUILD_BASE} as base
 ARG UBUNTU_VERSION
 RUN apt-get update && \
+    cat /etc/lsb-release && \
     if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
         apt-get install -qqy --no-install-recommends libtinfo6 ; \
     else \
@@ -21,7 +22,6 @@ RUN apt-get update && \
 
 # Build-time dependencies go here
 FROM trailofbits/cxx-common:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as deps
-ARG LIBRARIES
 
 ENV DEBIAN_FRONTEND=noninteractive
 
