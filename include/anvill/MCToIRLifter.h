@@ -139,7 +139,6 @@ class MCToIRLifter {
   MCToIRLifter(const remill::Arch *arch, const Program &program,
                llvm::Module &module);
 
-
   // Lift the function decl `decl` and return an `FunctionEntry`.
   FunctionEntry LiftFunction(const FunctionDecl &decl);
 };

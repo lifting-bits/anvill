@@ -143,7 +143,7 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
     remill::AddCall(block, intrinsics.function_call);
   }
 
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc), block);
 }
 
 void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
@@ -152,7 +152,7 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddCall(block, intrinsics.function_call);
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc), block);
 }
 
 void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,
@@ -181,8 +181,6 @@ void MCToIRLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
 void MCToIRLifter::VisitConditionalAsyncHyperCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
-  VisitConditionalBranch(inst, delayed_inst, block);
-
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
