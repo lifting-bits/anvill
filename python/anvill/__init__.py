@@ -1,26 +1,22 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 from .arch import *
-
+import os
 try:
     import ida_idp
     from .ida import *
 except ImportError as e:
     try:
+        print("Trying binja!")
         import binaryninja
+        license_file_path = "~/.binaryninja/license.dat"
+        if os.getenv("BINJA_LICENSE") is not None:
+            license_file_path = os.getenv("BINJA_LICENSE")
+            if not os.path.exists(license_file_path):
+                raise FileNotFoundError(f"Error! Could not find license file at {license_file_path}")
+        # Load license
+        with open(license_file_path, "r") as license_file:
+            binaryninja.core_set_license(license_file.read())
+        print("Importing .binja!")
         from .binja import *
+
     except ImportError as e:
         raise NotImplementedError("Could not find either IDA or Binary Ninja APIs")
