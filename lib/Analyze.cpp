@@ -479,7 +479,7 @@ uint64_t XrefExprFolder::VisitSExt(llvm::Value *op, llvm::Type *type) {
   const auto src_size = op->getType()->getPrimitiveSizeInBits();
   const auto dest_size = type->getPrimitiveSizeInBits();
   CHECK_LT(src_size, 64u);
-  CHECK_LT(dest_size, 64u);
+  CHECK_LE(dest_size, 64u);
   const uint64_t m = 1ull << (src_size - 1ull);
   const uint64_t x = ea & ((1ull << dest_size) - 1ull);
   return ((x ^ m) - m);
