@@ -22,6 +22,15 @@ case ${LLVM_VERSION} in
   ;;
 esac
 
+function install_from_llvm() {
+    echo "Could not install default clang-${V}"
+    echo "Attempting to install it from LLVM apt repo"
+    apt-get install -qqy lsb-release wget software-properties-common &>/dev/null
+    wget https://apt.llvm.org/llvm.sh
+    chmod +x ./llvm.sh
+    ./llvm.sh ${V}
+    rm -f llvm.sh
+}
 
 apt-get update &> /dev/null
-apt-get install -qqy clang-${V} &> /dev/null
+apt-get install -qqy clang-${V} &> /dev/null || install_from_llvm

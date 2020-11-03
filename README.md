@@ -97,7 +97,7 @@ python3 -m anvill --bin_in my_binary --spec_out spec.json
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
 
 ```shell
-ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
+ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=900; \
    docker build . \
    -t anvill-llvm${LLVM}-${DIST}-${ARCH} \
    -f Dockerfile \

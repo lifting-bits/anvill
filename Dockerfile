@@ -51,7 +51,7 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
-RUN python3 -m venv ${VIRTUAL_ENV}
+RUN python3 -V && python3 -m venv ${VIRTUAL_ENV}
 
 RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
