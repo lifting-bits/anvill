@@ -130,7 +130,7 @@ void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
 
 // Figure out the fall-through return address for a function call. There are
 // annoying SPARC-isms to deal with due to their awful ABI choices.
-llvm::Value *MCToIRLifter::LoadFunctionReturnAddress(
+std::pair<uint64_t, llvm::Value *> MCToIRLifter::LoadFunctionReturnAddress(
     const remill::Instruction &inst, llvm::BasicBlock *block) {
 
   static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
@@ -138,7 +138,7 @@ llvm::Value *MCToIRLifter::LoadFunctionReturnAddress(
   auto ret_pc = inst_lifter.LoadRegValue(
       block, state_ptr, remill::kReturnPCVariableName);
   if (!is_sparc) {
-    return ret_pc;
+    return {pc, ret_pc};
   }
 
   auto byte = program.FindByte(pc);
@@ -149,7 +149,7 @@ llvm::Value *MCToIRLifter::LoadFunctionReturnAddress(
     auto maybe_val = byte.Value();
     if (remill::IsError(maybe_val)) {
       (void) remill::GetErrorString(maybe_val);  // Drop the error.
-      return ret_pc;
+      return {pc, ret_pc};
 
     } else {
       bytes[i] = remill::GetReference(maybe_val);
@@ -184,10 +184,11 @@ llvm::Value *MCToIRLifter::LoadFunctionReturnAddress(
         << std::hex << pc << " at " << inst.pc << std::dec;
 
     llvm::IRBuilder<> ir(block);
-    return ir.CreateAdd(ret_pc, llvm::ConstantInt::get(ret_pc->getType(), 4));
+    return {pc + 4u,
+            ir.CreateAdd(ret_pc, llvm::ConstantInt::get(ret_pc->getType(), 4))};
 
   } else {
-    return ret_pc;
+    return {pc, ret_pc};
   }
 }
 
@@ -219,13 +220,13 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
 
 void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
-  auto ret_pc = LoadFunctionReturnAddress(inst, block);
+  auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
   auto next_pc_ptr = inst_lifter.LoadRegAddress(
       block, state_ptr, remill::kNextPCVariableName);
 
   llvm::IRBuilder<> ir(block);
-  ir.CreateStore(ret_pc, next_pc_ptr, false);
-  ir.CreateBr(GetOrCreateBlock(inst.branch_not_taken_pc));
+  ir.CreateStore(ret_pc_val, next_pc_ptr, false);
+  ir.CreateBr(GetOrCreateBlock(ret_pc));
 }
 
 void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,

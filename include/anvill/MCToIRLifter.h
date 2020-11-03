@@ -111,7 +111,8 @@ class MCToIRLifter {
                            remill::Instruction *delayed_inst,
                            llvm::BasicBlock *block);
 
-  llvm::Value *LoadFunctionReturnAddress(const remill::Instruction &inst,
+  std::pair<uint64_t, llvm::Value *>
+  LoadFunctionReturnAddress(const remill::Instruction &inst,
                                      llvm::BasicBlock *block);
 
   void VisitDirectFunctionCall(const remill::Instruction &inst,
