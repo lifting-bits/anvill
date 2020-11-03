@@ -12,6 +12,7 @@ FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
 FROM ${BUILD_BASE} as base
 ARG UBUNTU_VERSION
 RUN apt-get update && \
+    cat /etc/lsb-release && \
     if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
         apt-get install -qqy --no-install-recommends libtinfo6 ; \
     else \
@@ -21,7 +22,6 @@ RUN apt-get update && \
 
 # Build-time dependencies go here
 FROM trailofbits/cxx-common:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as deps
-ARG LIBRARIES
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -51,7 +51,7 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
-RUN python3 -m venv ${VIRTUAL_ENV}
+RUN python3 -V && python3 -m venv ${VIRTUAL_ENV}
 
 RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
