@@ -39,7 +39,7 @@
 
 #if __has_include(<llvm/Support/JSON.h>)
 
-#include <llvm/Support/JSON.h>
+#  include <llvm/Support/JSON.h>
 
 DECLARE_string(arch);
 DECLARE_string(os);
@@ -71,8 +71,10 @@ int main(int argc, char *argv[]) {
   auto os_name = remill::GetOSName(arch->os_name);
 
   llvm::json::Object json;
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name.data()});
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name.data()});
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name.data()});
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("os"), os_name.data()});
 
   llvm::json::Array funcs_json;
 

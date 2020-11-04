@@ -662,8 +662,8 @@ static void FindPossibleCrossReferences(
     next_work_list.clear();
 
     for (auto [use_, val_, report_failure_] : work_list) {
-      llvm::Use * const use = use_;
-      llvm::Value * const val = val_;
+      llvm::Use *const use = use_;
+      llvm::Value *const val = val_;
       const bool report_failure = report_failure_;
 
       if (seen.count(use)) {
@@ -677,8 +677,8 @@ static void FindPossibleCrossReferences(
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
               LOG_IF(ERROR, report_failure)
-                  << "Unable to handle possible cross-reference to "
-                  << std::hex << ea << std::dec << ": " << eib.message();
+                  << "Unable to handle possible cross-reference to " << std::hex
+                  << ea << std::dec << ": " << eib.message();
             });
         continue;
       }
@@ -885,10 +885,9 @@ void RecoverMemoryAccesses(
     const auto used_type = used_val->getType();
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
-      LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
-          << " by "
-          << remill::LLVMThingToString(user);
+      LOG(ERROR) << "Unexpected type of value "
+                 << remill::LLVMThingToString(used_val) << " by "
+                 << remill::LLVMThingToString(user);
       continue;
     }
 
@@ -907,10 +906,9 @@ void RecoverMemoryAccesses(
     // TODO(pag): Leaving these as integers might be best, as we may go an
     //            collect them in the optimizer.
     } else {
-      LOG(ERROR)
-          << "TODO: Found byte address " << std::hex << addr
-          << std::dec << " that is mapped to memory but doesn't directly "
-          << "resolve to a function or variable";
+      LOG(ERROR) << "TODO: Found byte address " << std::hex << addr << std::dec
+                 << " that is mapped to memory but doesn't directly "
+                 << "resolve to a function or variable";
 
       new_val = llvm::ConstantInt::get(int_type, addr, false);
     }
@@ -934,10 +932,10 @@ void ReplaceImmediateIntegers(
     const auto used_type = used_val->getType();
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
-      LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
-          << " by "
-          << remill::LLVMThingToString(llvm::dyn_cast<llvm::Value>(use->getUser()));
+      LOG(ERROR) << "Unexpected type of value "
+                 << remill::LLVMThingToString(used_val) << " by "
+                 << remill::LLVMThingToString(
+                        llvm::dyn_cast<llvm::Value>(use->getUser()));
       continue;
     }
 
@@ -972,8 +970,8 @@ static void RecoverReturnAddressUses(
 
   auto &context = module.getContext();
   auto i32_ty = llvm::Type::getInt32Ty(context);
-  auto ret_addr = llvm::Intrinsic::getDeclaration(
-      &module, llvm::Intrinsic::returnaddress);
+  auto ret_addr =
+      llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::returnaddress);
   llvm::Value *args[] = {llvm::ConstantInt::get(i32_ty, 0)};
 
   for (const auto &[func, uses] : uses_by_func) {
@@ -986,9 +984,9 @@ static void RecoverReturnAddressUses(
       continue;
     }
 
-    auto new_ra = llvm::CallInst::Create(
-        ret_addr, args, llvm::None, llvm::Twine::createNull(),
-        &(entry_block.front()));
+    auto new_ra = llvm::CallInst::Create(ret_addr, args, llvm::None,
+                                         llvm::Twine::createNull(),
+                                         &(entry_block.front()));
 
     for (auto use : uses) {
       use->set(new_ra);
@@ -1026,8 +1024,8 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   fixups.clear();
   ci_fixups.clear();
-  FindPossibleCrossReferences(program, module, "__anvill_ra", fixups,
-                              fixups, ci_fixups);
+  FindPossibleCrossReferences(program, module, "__anvill_ra", fixups, fixups,
+                              ci_fixups);
   for (auto [use, byte] : fixups) {
     ci_fixups.emplace_back(use, byte.Address());
   }
@@ -1036,4 +1034,3 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 }
 
 }  // namespace anvill
-

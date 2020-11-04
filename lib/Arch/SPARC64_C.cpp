@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/VectorType.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -171,26 +168,25 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
 // This is the only calling convention for 32-bit SPARC code.
 class SPARC64_C : public CallingConvention {
  public:
-   explicit SPARC64_C(const remill::Arch *arch);
-   virtual ~SPARC64_C(void) = default;
+  explicit SPARC64_C(const remill::Arch *arch);
+  virtual ~SPARC64_C(void) = default;
 
-   llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                 llvm::Function &func) override;
+  llvm::Error AllocateSignature(FunctionDecl &fdecl,
+                                llvm::Function &func) override;
 
-  private:
-   llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
-                              std::vector<ParameterDecl> &param_decls);
+ private:
+  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
+                             std::vector<ParameterDecl> &param_decls);
 
-   llvm::Error BindReturnValues(llvm::Function &function,
-                                bool &injected_sret,
-                                std::vector<ValueDecl> &ret_decls);
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
+                               std::vector<ValueDecl> &ret_decls);
 
-   const std::vector<RegisterConstraint> &parameter_register_constraints;
-   const std::vector<RegisterConstraint> &return_register_constraints;
+  const std::vector<RegisterConstraint> &parameter_register_constraints;
+  const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateSPARC64_C(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateSPARC64_C(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new SPARC64_C(arch));
 }
 
@@ -204,6 +200,7 @@ SPARC64_C::SPARC64_C(const remill::Arch *arch)
 // stack pointer.
 llvm::Error SPARC64_C::AllocateSignature(FunctionDecl &fdecl,
                                          llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -227,9 +224,9 @@ llvm::Error SPARC64_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error SPARC64_C::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                            std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
@@ -252,8 +249,7 @@ llvm::Error SPARC64_C::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -268,8 +264,7 @@ llvm::Error SPARC64_C::BindReturnValues(
   }
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
@@ -351,8 +346,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       }
     }
 
-    default:
-      break;
+    default: break;
   }
 
   return llvm::createStringError(
@@ -368,9 +362,9 @@ llvm::Error SPARC64_C::BindReturnValues(
 // completely split over the above registers, then greedily split it over the
 // registers. Otherwise, the struct is passed entirely on the stack. If we run
 // our of registers then pass the rest of the arguments on the stack.
-llvm::Error SPARC64_C::BindParameters(
-    llvm::Function &function, bool injected_sret,
-    std::vector<ParameterDecl> &parameter_declarations) {
+llvm::Error
+SPARC64_C::BindParameters(llvm::Function &function, bool injected_sret,
+                          std::vector<ParameterDecl> &parameter_declarations) {
   CHECK(!injected_sret)
       << "Injected struct returns are not supported on SPARC targets";
 
@@ -384,6 +378,7 @@ llvm::Error SPARC64_C::BindParameters(
   // The stack bias for SPARC V9 ABI on solaris is 2047
   // https://docs.oracle.com/cd/E18752_01/html/816-5138/advanced-2.html#advanced-5
   uint64_t stack_offset = 2047;
+
   //uint64_t stack_offset = 2227;
 
   const auto sp_reg = arch->RegisterByName("o6");
@@ -418,7 +413,8 @@ llvm::Error SPARC64_C::BindParameters(
 
       // The parameter was spread across multiple registers.
       } else if (!param_name.empty()) {
-        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size);
+             ++i) {
           parameter_declarations[prev_size + i].name =
               param_name + std::to_string(i);
         }

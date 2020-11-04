@@ -28,8 +28,7 @@ namespace {
 // Unfold constant expressions by expanding them into their relevant
 // instructions inline in the original module. This lets us deal uniformly
 // in terms of instructions.
-static void UnfoldConstantExpressions(llvm::Instruction *inst,
-                                      llvm::Use &use) {
+static void UnfoldConstantExpressions(llvm::Instruction *inst, llvm::Use &use) {
   const auto val = use.get();
   if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
     const auto ce_inst = ce->getAsInstruction();

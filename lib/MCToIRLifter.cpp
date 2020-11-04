@@ -130,13 +130,14 @@ void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
 
 // Figure out the fall-through return address for a function call. There are
 // annoying SPARC-isms to deal with due to their awful ABI choices.
-std::pair<uint64_t, llvm::Value *> MCToIRLifter::LoadFunctionReturnAddress(
-    const remill::Instruction &inst, llvm::BasicBlock *block) {
+std::pair<uint64_t, llvm::Value *>
+MCToIRLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
+                                        llvm::BasicBlock *block) {
 
   static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
   const auto pc = inst.branch_not_taken_pc;
-  auto ret_pc = inst_lifter.LoadRegValue(
-      block, state_ptr, remill::kReturnPCVariableName);
+  auto ret_pc =
+      inst_lifter.LoadRegValue(block, state_ptr, remill::kReturnPCVariableName);
   if (!is_sparc) {
     return {pc, ret_pc};
   }
@@ -159,10 +160,10 @@ std::pair<uint64_t, llvm::Value *> MCToIRLifter::LoadFunctionReturnAddress(
   union Format0a {
     uint32_t flat;
     struct {
-      uint32_t imm22:22;
-      uint32_t op2:3;
-      uint32_t rd:5;
-      uint32_t op:2;
+      uint32_t imm22 : 22;
+      uint32_t op2 : 3;
+      uint32_t rd : 5;
+      uint32_t op : 2;
     } u __attribute__((packed));
   } __attribute__((packed)) enc = {};
   static_assert(sizeof(Format0a) == 4, " ");
@@ -179,9 +180,8 @@ std::pair<uint64_t, llvm::Value *> MCToIRLifter::LoadFunctionReturnAddress(
   // the size of the value to return. See "Programming Note" in v8 manual, B.31,
   // p 137.
   if (!enc.u.op && !enc.u.op2) {
-    LOG(INFO)
-        << "Found structure return of size " << enc.u.imm22 << " to "
-        << std::hex << pc << " at " << inst.pc << std::dec;
+    LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
+              << std::hex << pc << " at " << inst.pc << std::dec;
 
     llvm::IRBuilder<> ir(block);
     return {pc + 4u,
@@ -221,8 +221,8 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
 void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
   auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
-  auto next_pc_ptr = inst_lifter.LoadRegAddress(
-      block, state_ptr, remill::kNextPCVariableName);
+  auto next_pc_ptr =
+      inst_lifter.LoadRegAddress(block, state_ptr, remill::kNextPCVariableName);
 
   llvm::IRBuilder<> ir(block);
   ir.CreateStore(ret_pc_val, next_pc_ptr, false);
@@ -426,7 +426,7 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;
 
-      // Didn't get a valid instruction.
+    // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       remill::AddTerminatingTailCall(block, intrinsics.error);
       continue;
