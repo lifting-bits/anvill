@@ -211,8 +211,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto params = obj->getArray("parameters")) {
     for (llvm::json::Value &maybe_param : *params) {
       if (auto param_obj = maybe_param.getAsObject()) {
-        decl.params.emplace_back();
-        if (!ParseParameter(arch, context, decl.params.back(), param_obj)) {
+        auto &pv = decl.params.emplace_back();
+        if (!ParseParameter(arch, context, pv, param_obj)) {
           return false;
         }
       } else {
@@ -272,8 +272,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto returns = obj->getArray("return_values")) {
     for (llvm::json::Value &maybe_ret : *returns) {
       if (auto ret_obj = maybe_ret.getAsObject()) {
-        decl.returns.emplace_back();
-        if (!ParseReturnValue(arch, context, decl.returns.back(), ret_obj)) {
+        auto &rv = decl.returns.emplace_back();
+        if (!ParseReturnValue(arch, context, rv, ret_obj)) {
           return false;
         }
       } else {

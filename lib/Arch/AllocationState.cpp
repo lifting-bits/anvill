@@ -273,8 +273,7 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
       }
       auto reg = arch->RegisterByName(reg_name);
 
-      ret.emplace_back();
-      auto &vdecl = ret.back();
+      auto &vdecl = ret.emplace_back();
       vdecl.reg = reg;
       vdecl.type = &type;
       return ret;
