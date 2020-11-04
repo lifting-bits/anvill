@@ -239,8 +239,7 @@ llvm::Error SPARC64_C::BindReturnValues(
   // assume the actual return value of the function will be the sret struct
   // pointer.
   if (function.hasStructRetAttr()) {
-    ret_values.emplace_back();
-    auto &value_declaration = ret_values.back();
+    auto &value_declaration = ret_values.emplace_back();
 
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
@@ -278,8 +277,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       const auto bit_width = int_ty->getBitWidth();
 
       if (bit_width <= 64) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("o0");
         value_declaration.type = ret_type;
         return llvm::Error::success();
@@ -289,8 +287,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       } else if (bit_width <= 384) {
         const char *ret_names[] = {"o0", "o1", "o2", "o3", "o4", "o5"};
         for (auto i = 0u; i < 6 && (64 * i) < bit_width; ++i) {
-          ret_values.emplace_back();
-          auto &value_declaration = ret_values.back();
+          auto &value_declaration = ret_values.emplace_back();
           value_declaration.reg = arch->RegisterByName(ret_names[i]);
           value_declaration.type = int32_ty;
         }
@@ -306,8 +303,7 @@ llvm::Error SPARC64_C::BindReturnValues(
 
     // Pointers always fit into `EAX`.
     case llvm::Type::PointerTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("o0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -315,24 +311,21 @@ llvm::Error SPARC64_C::BindReturnValues(
 
     case llvm::Type::HalfTyID:
     case llvm::Type::FloatTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("f0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::DoubleTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("d0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::FP128TyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("q0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -407,8 +400,7 @@ llvm::Error SPARC64_C::BindParameters(
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
-        parameter_declarations.emplace_back();
-        auto &declaration = parameter_declarations.back();
+        auto &declaration = parameter_declarations.emplace_back();
         declaration.type = param_decl.type;
         if (param_decl.reg) {
           declaration.reg = param_decl.reg;
@@ -433,8 +425,7 @@ llvm::Error SPARC64_C::BindParameters(
       }
 
     } else {
-      parameter_declarations.emplace_back();
-      auto &declaration = parameter_declarations.back();
+      auto &declaration = parameter_declarations.emplace_back();
       declaration.type = param_type;
       declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = sp_reg;

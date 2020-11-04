@@ -742,8 +742,7 @@ static void RecoverStackMemoryAccesses(
 
     auto func = inst->getFunction();
     auto &frame = frames[func];
-    frame.cells.emplace_back();
-    auto &cell = frame.cells.back();
+    auto &cell = frame.cells.emplace_back();
 
     if (32 == ptr_size) {
       cell.address_const =
