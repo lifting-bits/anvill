@@ -17,9 +17,42 @@
 
 #include "anvill/Util.h"
 
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+
 #include <sstream>
 
 namespace anvill {
+namespace {
+
+// Unfold constant expressions by expanding them into their relevant
+// instructions inline in the original module. This lets us deal uniformly
+// in terms of instructions.
+static void UnfoldConstantExpressions(llvm::Instruction *inst,
+                                      llvm::Use &use) {
+  const auto val = use.get();
+  if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+    const auto ce_inst = ce->getAsInstruction();
+    ce_inst->insertBefore(inst);
+    ::anvill::UnfoldConstantExpressions(ce_inst);
+    use.set(ce_inst);
+  }
+}
+
+}  // namespace
+
+// Looks for any constant expressions in the operands of `inst` and unfolds
+// them into other instructions in the same block.
+void UnfoldConstantExpressions(llvm::Instruction *inst) {
+  for (auto &use : inst->operands()) {
+    UnfoldConstantExpressions(inst, use);
+  }
+  if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(inst)) {
+    for (llvm::Use &use : call->arg_operands()) {
+      UnfoldConstantExpressions(inst, use);
+    }
+  }
+}
 
 std::string CreateFunctionName(uint64_t addr) {
   std::stringstream ss;
@@ -32,5 +65,4 @@ std::string CreateVariableName(uint64_t addr) {
   ss << "data_" << std::hex << addr;
   return ss.str();
 }
-
 }  // namespace anvill

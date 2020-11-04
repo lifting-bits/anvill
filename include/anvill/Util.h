@@ -19,11 +19,21 @@
 
 #include <string>
 
+namespace llvm {
+
+class Instruction;
+
+}  // namespace llvm
 namespace anvill {
 
 // Creates a `sub_<address>` name from an address
 std::string CreateFunctionName(uint64_t addr);
+
 // Creates a `data_<address>` name from an address
 std::string CreateVariableName(uint64_t addr);
+
+// Looks for any constant expressions in the operands of `inst` and unfolds
+// them into other instructions in the same block.
+void UnfoldConstantExpressions(llvm::Instruction *inst);
 
 }  // namespace anvill
