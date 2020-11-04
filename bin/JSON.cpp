@@ -85,8 +85,8 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-#if __has_include(<llvm/Support/JSON.h>)
-
+//#if __has_include(<llvm/Support/JSON.h>)
+#if 1
 #include <llvm/Support/JSON.h>
 
 namespace {
@@ -170,6 +170,38 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
   return ParseValue(arch, decl, obj, "function parameter");
 }
 
+//
+static bool ParseTypedRegister(const remill::Arch *arch, llvm::LLVMContext &context,
+		anvill::TypedRegisterDecl &decl, llvm::json::Object * obj) {
+
+	  auto maybe_address = obj->getString("address");
+	  if (!maybe_address) {
+		  LOG(ERROR) << "Missing 'address' field in typed register.";
+		  return false;
+	  }
+	  decl.address = maybe_address;
+
+	  auto maybe_type_str = obj->getString("type");
+	  if (!maybe_type_str) {
+	    LOG(ERROR) << "Missing 'type' field in typed register.";
+	    return false;
+	  }
+
+	  auto maybe_value = obj->getString("value");
+	  if (maybe_value) {
+
+	  }
+
+	  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+	  if (remill::IsError(maybe_type)) {
+	    LOG(ERROR) << remill::GetErrorString(maybe_type);
+	    return false;
+	  }
+
+	  decl.type = remill::GetReference(maybe_type);
+	  return ParseValue(arch, decl, obj, "typed register");
+}
+
 // Parse a return value from the JSON spec.
 static bool ParseReturnValue(const remill::Arch *arch,
                              llvm::LLVMContext &context,
@@ -222,6 +254,23 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
         return false;
       }
     }
+  }
+
+  if (auto register_info = obj->getArray("register_info")) {
+	  for (llvm::json::Value &maybe_reg: *register_info) {
+		  if (auto reg_obj = maybe_reg.getAsObject()) {
+			  decl.register_info.emplace_back();
+		  	  //Parse the register info!
+		  	  if (!ParseTypedRegister(arch, context, decl.register_info.back(), reg_obj)) {
+			  	  return false;
+		  	  }
+		  }
+		  else {
+			  LOG(ERROR) << "Non-object value in 'register_info' array of "
+					  << "function at address '" << decl.address
+					  << std::dec << "'";
+		  }
+	  }
   }
 
   // Get the return address location.

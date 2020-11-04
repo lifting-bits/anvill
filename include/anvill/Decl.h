@@ -84,6 +84,15 @@ struct ParameterDecl : public ValueDecl {
       llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 };
 
+struct TypedRegisterDecl : public ValueDecl {
+  std::string name;
+  std::optional<int> value;
+  uint64_t address{0};
+
+  ANVILL_WITH_JSON(
+        llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
+};
+
 struct GlobalVarDecl {
   llvm::Type *type{nullptr};
   uint64_t address{0};
@@ -143,6 +152,9 @@ struct FunctionDecl {
   //            we expect the specification to include `AL` as an explicit
   //            parameter (number of varargs).
   std::vector<ParameterDecl> params;
+
+  // Register information
+  std::vector<TypedRegisterDecl> register_info;
 
   // Return values.
   //
