@@ -358,6 +358,7 @@ class BNFunction(Function):
                     loc.set_type(reg_info[1])
                     if reg_info[2] is not None:
                         loc.set_value(reg_info[2])
+                    loc.set_address(inst.address)
                     self._register_info.append(loc)
 
     def _extract_types_mlil(self, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
