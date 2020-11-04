@@ -26,7 +26,7 @@ ARG LIBRARIES
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python2.7 python3 python3-pip python3-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
+    apt-get install -qqy ninja-build python2.7 python3.8 python3-pip python3.8-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
     rm -rf /var/lib/apt/lists/*
 # needed for 20.04 support until we migrate to py3
 RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py && python2.7 get-pip.py
@@ -51,7 +51,7 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
-RUN python3 -m venv ${VIRTUAL_ENV}
+RUN python3.8 -m venv ${VIRTUAL_ENV}
 
 RUN mkdir -p build && cd build && \
     cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
@@ -64,9 +64,9 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv \
     LLVM_VERSION=llvm${LLVM_VERSION}
 
 RUN apt-get update && \
-    apt-get install -qqy unzip python3 python3-pip python3-venv && \
+    apt-get install -qqy unzip python3.8 python3-pip python3.8-venv && \
     rm -rf /var/lib/apt/lists/* && \
-    python3 -m pip install pip python-magic
+    python3.8 -m pip install pip python-magic
 
 # The below is commented out since neither binja
 # nor IDA would be available in the dist container
@@ -74,7 +74,7 @@ RUN apt-get update && \
 # without either of those.
 # If the situation changes, this can be uncommented to also install Python in the dist image
 #RUN apt-get update && \
-#    apt-get install -qqy python3 python3-pip python3-venv && \
+#    apt-get install -qqy python3.8 python3-pip python3.8-venv && \
 #    rm -rf /var/lib/apt/lists/*
 # Allow for mounting of local folder
 WORKDIR /anvill/local
