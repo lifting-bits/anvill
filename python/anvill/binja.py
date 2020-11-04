@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Optional
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -20,7 +20,6 @@ from binaryninja import LowLevelILInstruction as llinst
 from .arch import *
 from .exc import *
 from .function import *
-from .typed_register import *
 from .loc import *
 from .os import *
 from .type import *
@@ -150,7 +149,19 @@ def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE)
         _collect_code_xrefs_from_insn(bv, opnd, ref_eas, reftype)
 
 
-def _convert_bn_type(tinfo, cache):
+def _convert_bn_llil_type(constant_val: bn.function.RegisterValue, reg_size_bytes: int) \
+        -> Union[PointerType, IntegerType]:
+    """Convert LLIL register type to Anvill type
+    """
+    if constant_val.type == bn.function.RegisterValueType.ConstantPointerValue:
+        ret = PointerType()
+        return ret
+    elif constant_val.type == bn.function.RegisterValueType.ConstantValue:
+        ret = IntegerType(reg_size_bytes, True)
+        return ret
+
+
+def _convert_bn_type(tinfo: bn.types.Type, cache):
     """Convert an bn `Type` instance into a `Type` instance."""
     if str(tinfo) in cache:
         return cache[str(tinfo)]
@@ -313,12 +324,6 @@ class CallingConvention(object):
             yield reg
 
 
-class BNTypedRegister(TypedRegister):
-    def __init__(self, address: int, reg_name: str, reg_type: Type,
-                 value: Optional[int] = None):
-        super(BNTypedRegister, self).__init__(address, reg_name, reg_type, value)
-
-
 class BNFunction(Function):
     def __init__(self, bv, arch, address, param_list, ret_list, bn_func, func_type):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
@@ -346,21 +351,16 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_pointer_information = self._extract_types(inst.operands, inst)
-                if len(register_pointer_information) > 0:
-                    for reg_info in register_pointer_information:
-                        reg_name = reg_info[0].upper()
-                        if isinstance(reg_info[1], int):
-                            reg_type = PointerType()
-                            reg_value = reg_info[1]
-                            self._typed_registers.append(
-                                BNTypedRegister(inst.address, reg_name, reg_type, reg_value))
-                        # Convert BN type to Anvill type
-                        elif isinstance(reg_info[1], bn.VariableSourceType):
-                            reg_type = get_type(reg_info[1])
-                            self._typed_registers.append(BNTypedRegister(inst.address, reg_name, reg_type))
+                register_information = self._extract_types(inst.operands, inst)
+                for reg_info in register_information:
+                    loc = Location()
+                    loc.set_register(reg_info[0].upper())
+                    loc.set_type(reg_info[1])
+                    if reg_info[2] is not None:
+                        loc.set_value(reg_info[2])
+                    self._register_info.append(loc)
 
-    def _extract_types_mlil(self, item_or_list, initial_inst: mlinst) -> List[Tuple[str, bn.VariableSourceType]]:
+    def _extract_types_mlil(self, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of MLIL instructions and variables into a list of tuples
         that associate registers with pointer information if it exists.
@@ -376,10 +376,10 @@ class BNFunction(Function):
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
                 if item_or_list.source_type == bn.VariableSourceType.RegisterVariableSourceType:
                     reg_name = self._bv.arch.get_reg_name(item_or_list.storage)
-                    results.append((reg_name, item_or_list.type))
+                    results.append((reg_name, _convert_bn_type(item_or_list.type, {}), None))
         return results
 
-    def _extract_types(self, item_or_list, initial_inst: llinst):
+    def _extract_types(self, item_or_list, initial_inst: llinst) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of LLIL instructions and associates registers with pointer values
         if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
@@ -396,8 +396,11 @@ class BNFunction(Function):
             # For every register, is it a pointer?
             possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
             if possible_pointer.type == bn.function.RegisterValueType.ConstantPointerValue or \
-                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue:
-                results.append((item_or_list.name, possible_pointer.value))
+                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue or \
+                    possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                val_type = _convert_bn_llil_type(possible_pointer, item_or_list.info.size)
+                results.append((item_or_list.name, val_type, possible_pointer.value))
+
             if initial_inst.mlil is not None:
                 mlil_results = self._extract_types_mlil(initial_inst.mlil, initial_inst.mlil)
                 results += mlil_results

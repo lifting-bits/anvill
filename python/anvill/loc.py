@@ -27,6 +27,7 @@ class Location(object):
         self._mem_offset = 0
         self._name = None
         self._type = None
+        self._value = None
 
     def set_register(self, reg_name):
         assert not self._register
@@ -50,6 +51,9 @@ class Location(object):
     def type(self):
         return self._type
 
+    def set_value(self, value):
+        self._value = value
+
     def proto(self, arch):
         if self._register:
             ret = {"register": self._register}
@@ -69,4 +73,6 @@ class Location(object):
         if self._type is not None:
             ret["type"] = self._type.proto(arch)
 
+        if self._value is not None:
+            ret["value"] = self._value
         return ret
