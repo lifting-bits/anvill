@@ -231,10 +231,7 @@ SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
-  // If there is an sret parameter then it is a special case. For the X86_C ABI,
-  // the sret parameters are guarenteed the be in %eax. In this case, we can
-  // assume the actual return value of the function will be the sret struct
-  // pointer.
+  // If there is an sret parameter then it is a special case.
   if (function.hasStructRetAttr()) {
     auto &value_declaration = ret_values.emplace_back();
 
@@ -356,12 +353,6 @@ SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
       function.getName().str().c_str());
 }
 
-// For X86_64_SysV, the general argument passing behavior is, try to pass the
-// arguments in registers RDI, RSI, RDX, RCX, R8, R9 from integral types and
-// XMM0 - XMM7 for float types. If the argument is a struct but can be
-// completely split over the above registers, then greedily split it over the
-// registers. Otherwise, the struct is passed entirely on the stack. If we run
-// our of registers then pass the rest of the arguments on the stack.
 llvm::Error
 SPARC64_C::BindParameters(llvm::Function &function, bool injected_sret,
                           std::vector<ParameterDecl> &parameter_declarations) {
@@ -375,11 +366,35 @@ SPARC64_C::BindParameters(llvm::Function &function, bool injected_sret,
   AllocationState alloc_param(parameter_register_constraints, arch, this);
   alloc_param.config.type_splitter = IntegerTypeSplitter;
 
-  // The stack bias for SPARC V9 ABI on solaris is 2047
-  // https://docs.oracle.com/cd/E18752_01/html/816-5138/advanced-2.html#advanced-5
-  uint64_t stack_offset = 2047;
 
-  //uint64_t stack_offset = 2227;
+  // NOTE(pag): 2227 was experimentally found with compiler explorer. See the
+  //            comment on `stack_offset` in `SPARC32_C::BindParameters`.
+  //
+  // NOTE(pag): This number may be trickier to handle in the general case. For
+  //            example:
+  //
+  //      #define X unsigned long long
+  //      unsigned a(X a0, X a1, X a2, X a3,
+  //                 X a4, X a5, X a6) {
+  //          return a6;
+  //      }
+  //
+  // Results in the following machine code. Notice the use of `or` to possibly
+  // align the `2223` value:
+  //
+  //      a:
+  //              save %sp, -128, %sp
+  //              add %fp, 2223, %i0
+  //              or %i0, 4, %i0
+  //              ld [%i0], %i0
+  //              ret
+  //              restore
+  //
+  // I am not sure which of 2223 or 2227 is more accurate, or if 2047 (the
+  // stack bias [1] for the SPARCv9 ABI) is a better default.
+  //
+  // [1] https://docs.oracle.com/cd/E18752_01/html/816-5138/advanced-2.html#advanced-5
+  uint64_t stack_offset = 2227;
 
   const auto sp_reg = arch->RegisterByName("o6");
 

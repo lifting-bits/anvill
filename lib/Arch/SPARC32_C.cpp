@@ -137,10 +137,7 @@ SPARC32_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
-  // If there is an sret parameter then it is a special case. For the X86_C ABI,
-  // the sret parameters are guarenteed the be in %eax. In this case, we can
-  // assume the actual return value of the function will be the sret struct
-  // pointer.
+  // If there is an sret parameter then it is a special case
   if (function.hasStructRetAttr()) {
     auto &value_declaration = ret_values.emplace_back();
 
@@ -273,6 +270,25 @@ SPARC32_C::BindParameters(llvm::Function &function, bool injected_sret,
   AllocationState alloc_param(parameter_register_constraints, arch, this);
   alloc_param.config.type_splitter = IntegerTypeSplitter;
 
+  // If we compile the following C code, then the `a6` parameter must be passed
+  // on the stack:
+  //
+  //    unsigned a(unsigned a0, unsigned a1, unsigned a2, unsigned a3,
+  //               unsigned a4, unsigned a5, unsigned a6) {
+  //        return a6;
+  //    }
+  //
+  // We get machine code looking like:
+  //
+  //    a:
+  //            save %sp, -96, %sp
+  //            ld [%fp+92], %i0
+  //            ret
+  //            restore
+  //
+  // The stack pointer, `%sp` aliases `%o6`. The frame pointer, `%fp` aliases
+  // `%i6`. The `save` instruction copies `%sp` into `%fp`, and so the
+  // `[%fp+92]` is actually 92 + the value on entry of the stack pointer, `o6`.
   uint64_t stack_offset = 92;
 
   const auto sp_reg = arch->RegisterByName("o6");
