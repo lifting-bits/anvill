@@ -84,9 +84,7 @@ These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [
 Given that we have either of the above, we can try out Anvill's machine code lifter on a binary of our choice.
 
 ```shell
-# First make sure we have the required python packages
-pip3 install pyelftools
-# Next we generate a JSON specification from a binary
+# First, we generate a JSON specification from a binary
 python3.8 -m anvill --bin_in my_binary --spec_out spec.json
 # Finally we produce LLVM bitcode from a JSON specification
 ./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
