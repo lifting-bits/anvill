@@ -540,6 +540,9 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
 }  // namespace
 
 int main(int argc, char *argv[]) {
+
+  // get version string from git, and put as output to --version
+  // from gflags
   SetVersion();
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -592,6 +595,10 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+
+  // Get a unique pointer to a remill architecture object. The architecture
+  // object knows how to deal with everything for this specific architecture,
+  // such as semantics, register,  etc.
   auto arch = remill::Arch::Build(&context, remill::GetOSName(os_str),
                                   remill::GetArchName(arch_str));
   if (!arch) {
@@ -601,6 +608,10 @@ int main(int argc, char *argv[]) {
   auto semantics = remill::LoadArchSemantics(arch);
 
   anvill::Program program;
+
+  // Parse the spec, which contains as much or as little details about what is
+  // being lifted as the spec generator desired and put it into an
+  // anvill::Program object, which is effectively a representation of the spec
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }

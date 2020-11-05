@@ -490,7 +490,10 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
 
-  // Create our lifter
+  // Create our lifter.
+  // At this point, `module` is just the loaded semantics for
+  // the arcchitecture. The module will be filled in with lifted program code
+  // and data as the lifting process progresses.
   MCToIRLifter lifter(arch, program, module);
 
   // Declare global variables.
