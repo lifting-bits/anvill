@@ -136,12 +136,16 @@ MCToIRLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 
   static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
   const auto pc = inst.branch_not_taken_pc;
+
+  // The semantics for handling a call save the expected return program counter
+  // into a local variable.
   auto ret_pc =
       inst_lifter.LoadRegValue(block, state_ptr, remill::kReturnPCVariableName);
   if (!is_sparc) {
     return {pc, ret_pc};
   }
 
+  // Only bad SPARC ABI choices below this point.
   auto byte = program.FindByte(pc);
 
   uint8_t bytes[4] = {};
@@ -204,6 +208,8 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
   } else {
     LOG(ERROR) << "Missing declaration for function at " << std::hex
                << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+
+    // If we do not have a function declaration, treat this as a call to an unknown address.
     remill::AddCall(block, intrinsics.function_call);
   }
   VisitAfterFunctionCall(inst, block);
@@ -283,20 +289,25 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
                                     llvm::BasicBlock *block) {
   curr_inst = &inst;
 
+  // Reserve space for an instrucion that will go into a delay slot, in case it
+  // is needed. This is an uncommon case, so avoid instantiating a new
+  // Instruction unless it is actually needed. The instruction instantition into
+  // this buffer happens via a placement new call later on.
   std::aligned_storage<sizeof(remill::Instruction),
-                       alignof(remill::Instruction)>
-      delayed_inst_storage;
+                       alignof(remill::Instruction)>::type delayed_inst_storage;
 
   remill::Instruction *delayed_inst = nullptr;
 
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
   // to treat instruction lifting as an operation that can't fail.
-  (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr, false);
+  (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
+                                   false /* is_delayed */);
 
   if (arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
-    if (!DecodeInstructionInto(inst.delayed_pc, true, delayed_inst)) {
+    if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
+                               delayed_inst)) {
       LOG(ERROR) << "Unable to decode or use delayed instruction at "
                  << std::hex << inst.delayed_pc << std::dec << " of "
                  << inst.Serialize();
@@ -304,9 +315,14 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
   }
 
   switch (inst.category) {
+
+    // Invalid means failed to decode.
     case remill::Instruction::kCategoryInvalid:
       VisitInvalid(inst, block);
       break;
+
+    // Error is a valid instruction, but specifies error semantics for the
+    // processor. The canonical example is x86's `UD2` instruction.
     case remill::Instruction::kCategoryError:
       VisitError(inst, delayed_inst, block);
       break;
@@ -350,6 +366,9 @@ FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
     return entry;
   }
 
+  // By default we do not want to deal with function names until the very end of
+  // lifting. Instead, lets assign a temporary name based on the function's
+  // starting address.
   const auto base_name = CreateFunctionName(decl.address);
 
   entry.lifted_to_native =
@@ -368,6 +387,8 @@ FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 
 FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   const auto entry = GetOrDeclareFunction(decl);
+
+  // Check if we already lifted this function. If so, do not re-lift it.
   if (!entry.native_to_lifted->isDeclaration()) {
     return entry;
   }
@@ -376,6 +397,10 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   addr_to_block.clear();
 
   lifted_func = entry.lifted;
+
+  // Every lifted function starts as a clone of __remill_basic_block. That
+  // prototype has multiple arguments (memory pointer, state pointer, program
+  // counter). This exctracts the state pointer.
   state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
   CHECK(lifted_func->isDeclaration());
 
