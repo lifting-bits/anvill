@@ -649,7 +649,6 @@ static void FindPossibleCrossReferences(
       next_work_list.emplace_back(&use, gv, true);
     }
   } else {
-    LOG(ERROR) << "Couldn't find " << gv_name;
     return;
   }
 
