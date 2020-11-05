@@ -33,8 +33,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | [CMake](https://cmake.org/) | 3.2+ |
 | [Clang](http://clang.llvm.org/) | 8.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
-| [Python](https://www.python.org/) | 3.5.1+ |
-| [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |
+| [Python](https://www.python.org/) | 3.8 |
+| [IDA Pro](https://www.hex-rays.com/products/ida) | 7.5+ |
 | [Binary Ninja](https://binary.ninja/) | Latest |
 
 ## Getting and Building the Code
