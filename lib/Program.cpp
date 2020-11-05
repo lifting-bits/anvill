@@ -23,8 +23,8 @@
 #include <llvm/IR/Type.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-#include <remill/BC/Util.h>
 #include <remill/BC/Compat/VectorType.h>
+#include <remill/BC/Util.h>
 
 #include <algorithm>
 #include <map>

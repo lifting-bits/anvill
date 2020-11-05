@@ -479,7 +479,7 @@ uint64_t XrefExprFolder::VisitSExt(llvm::Value *op, llvm::Type *type) {
   const auto src_size = op->getType()->getPrimitiveSizeInBits();
   const auto dest_size = type->getPrimitiveSizeInBits();
   CHECK_LT(src_size, 64u);
-  CHECK_LT(dest_size, 64u);
+  CHECK_LE(dest_size, 64u);
   const uint64_t m = 1ull << (src_size - 1ull);
   const uint64_t x = ea & ((1ull << dest_size) - 1ull);
   return ((x ^ m) - m);
@@ -649,7 +649,6 @@ static void FindPossibleCrossReferences(
       next_work_list.emplace_back(&use, gv, true);
     }
   } else {
-    LOG(ERROR) << "Couldn't find " << gv_name;
     return;
   }
 
@@ -662,8 +661,8 @@ static void FindPossibleCrossReferences(
     next_work_list.clear();
 
     for (auto [use_, val_, report_failure_] : work_list) {
-      llvm::Use * const use = use_;
-      llvm::Value * const val = val_;
+      llvm::Use *const use = use_;
+      llvm::Value *const val = val_;
       const bool report_failure = report_failure_;
 
       if (seen.count(use)) {
@@ -677,8 +676,8 @@ static void FindPossibleCrossReferences(
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
               LOG_IF(ERROR, report_failure)
-                  << "Unable to handle possible cross-reference to "
-                  << std::hex << ea << std::dec << ": " << eib.message();
+                  << "Unable to handle possible cross-reference to " << std::hex
+                  << ea << std::dec << ": " << eib.message();
             });
         continue;
       }
@@ -742,8 +741,7 @@ static void RecoverStackMemoryAccesses(
 
     auto func = inst->getFunction();
     auto &frame = frames[func];
-    frame.cells.emplace_back();
-    auto &cell = frame.cells.back();
+    auto &cell = frame.cells.emplace_back();
 
     if (32 == ptr_size) {
       cell.address_const =
@@ -874,19 +872,21 @@ void RecoverMemoryAccesses(
     const Program &program, llvm::Module &module,
     const std::vector<std::pair<llvm::Use *, Byte>> &fixups) {
   for (auto [use, byte] : fixups) {
-    if (!llvm::isa<llvm::Instruction>(use->getUser())) {
-      continue;
+    const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
+    if (!user) {
+      continue;  // We're not allowed to replace uses inside of constants.
     }
+
+    CHECK(!llvm::isa<llvm::ConstantExpr>(use->getUser()));
 
     const auto addr = byte.Address();
     const auto used_val = use->get();
     const auto used_type = used_val->getType();
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
-      LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
-          << " by "
-          << remill::LLVMThingToString(llvm::dyn_cast<llvm::Value>(use->getUser()));
+      LOG(ERROR) << "Unexpected type of value "
+                 << remill::LLVMThingToString(used_val) << " by "
+                 << remill::LLVMThingToString(user);
       continue;
     }
 
@@ -905,10 +905,9 @@ void RecoverMemoryAccesses(
     // TODO(pag): Leaving these as integers might be best, as we may go an
     //            collect them in the optimizer.
     } else {
-      LOG(ERROR)
-          << "TODO: Found byte address " << std::hex << addr
-          << std::dec << " that is mapped to memory but doesn't directly "
-          << "resolve to a function or variable";
+      LOG(ERROR) << "TODO: Found byte address " << std::hex << addr << std::dec
+                 << " that is mapped to memory but doesn't directly "
+                 << "resolve to a function or variable";
 
       new_val = llvm::ConstantInt::get(int_type, addr, false);
     }
@@ -923,20 +922,73 @@ void ReplaceImmediateIntegers(
     const Program &program,
     const std::vector<std::pair<llvm::Use *, uint64_t>> &ci_fixups) {
   for (auto [use, imm_val] : ci_fixups) {
+    const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
+    if (!user) {
+      continue;  // We're not allowed to replace uses inside of constants.
+    }
+
     const auto used_val = use->get();
     const auto used_type = used_val->getType();
     const auto int_type = llvm::dyn_cast<llvm::IntegerType>(used_type);
     if (!int_type) {
-      LOG(ERROR)
-          << "Unexpected type of value " << remill::LLVMThingToString(used_val)
-          << " by "
-          << remill::LLVMThingToString(llvm::dyn_cast<llvm::Value>(use->getUser()));
+      LOG(ERROR) << "Unexpected type of value "
+                 << remill::LLVMThingToString(used_val) << " by "
+                 << remill::LLVMThingToString(
+                        llvm::dyn_cast<llvm::Value>(use->getUser()));
       continue;
     }
 
     const auto new_val = llvm::ConstantInt::get(int_type, imm_val, false);
     if (new_val != used_val) {
       use->set(new_val);
+    }
+  }
+}
+
+// Convert uses of `__anvill_ra` into uses of the return address intrinsics.
+static void RecoverReturnAddressUses(
+    llvm::Module &module,
+    const std::vector<std::pair<llvm::Use *, uint64_t>> &fixups) {
+  for (auto [use, val] : fixups) {
+    (void) val;
+    if (auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser()); user) {
+      UnfoldConstantExpressions(user);
+    }
+  }
+
+  std::unordered_map<llvm::Function *, std::vector<llvm::Use *>> uses_by_func;
+  if (auto ra = module.getGlobalVariable("__anvill_ra"); ra) {
+    for (auto &use : ra->uses()) {
+      if (auto user = llvm::dyn_cast<llvm::Instruction>(use.getUser()); user) {
+        auto block = user->getParent();
+        auto func = block->getParent();
+        uses_by_func[func].push_back(&use);
+      }
+    }
+  }
+
+  auto &context = module.getContext();
+  auto i32_ty = llvm::Type::getInt32Ty(context);
+  auto ret_addr =
+      llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::returnaddress);
+  llvm::Value *args[] = {llvm::ConstantInt::get(i32_ty, 0)};
+
+  for (const auto &[func, uses] : uses_by_func) {
+    if (func->empty()) {
+      continue;
+    }
+
+    auto &entry_block = func->getEntryBlock();
+    if (entry_block.empty()) {
+      continue;
+    }
+
+    auto new_ra = llvm::CallInst::Create(ret_addr, args, llvm::None,
+                                         llvm::Twine::createNull(),
+                                         &(entry_block.front()));
+
+    for (auto use : uses) {
+      use->set(new_ra);
     }
   }
 }
@@ -967,7 +1019,17 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   RecoverMemoryAccesses(program, module, fixups);
   RecoverMemoryAccesses(program, module, maybe_fixups);
   ReplaceImmediateIntegers(program, ci_fixups);
+
+
+  fixups.clear();
+  ci_fixups.clear();
+  FindPossibleCrossReferences(program, module, "__anvill_ra", fixups, fixups,
+                              ci_fixups);
+  for (auto [use, byte] : fixups) {
+    ci_fixups.emplace_back(use, byte.Address());
+  }
+
+  RecoverReturnAddressUses(module, ci_fixups);
 }
 
 }  // namespace anvill
-

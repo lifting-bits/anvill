@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/VectorType.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -171,26 +168,25 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
 // This is the only calling convention for 32-bit SPARC code.
 class SPARC64_C : public CallingConvention {
  public:
-   explicit SPARC64_C(const remill::Arch *arch);
-   virtual ~SPARC64_C(void) = default;
+  explicit SPARC64_C(const remill::Arch *arch);
+  virtual ~SPARC64_C(void) = default;
 
-   llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                 llvm::Function &func) override;
+  llvm::Error AllocateSignature(FunctionDecl &fdecl,
+                                llvm::Function &func) override;
 
-  private:
-   llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
-                              std::vector<ParameterDecl> &param_decls);
+ private:
+  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
+                             std::vector<ParameterDecl> &param_decls);
 
-   llvm::Error BindReturnValues(llvm::Function &function,
-                                bool &injected_sret,
-                                std::vector<ValueDecl> &ret_decls);
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
+                               std::vector<ValueDecl> &ret_decls);
 
-   const std::vector<RegisterConstraint> &parameter_register_constraints;
-   const std::vector<RegisterConstraint> &return_register_constraints;
+  const std::vector<RegisterConstraint> &parameter_register_constraints;
+  const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateSPARC64_C(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateSPARC64_C(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new SPARC64_C(arch));
 }
 
@@ -204,6 +200,7 @@ SPARC64_C::SPARC64_C(const remill::Arch *arch)
 // stack pointer.
 llvm::Error SPARC64_C::AllocateSignature(FunctionDecl &fdecl,
                                          llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -227,20 +224,16 @@ llvm::Error SPARC64_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error SPARC64_C::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                            std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
-  // If there is an sret parameter then it is a special case. For the X86_C ABI,
-  // the sret parameters are guarenteed the be in %eax. In this case, we can
-  // assume the actual return value of the function will be the sret struct
-  // pointer.
+  // If there is an sret parameter then it is a special case.
   if (function.hasStructRetAttr()) {
-    ret_values.emplace_back();
-    auto &value_declaration = ret_values.back();
+    auto &value_declaration = ret_values.emplace_back();
 
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
@@ -253,8 +246,7 @@ llvm::Error SPARC64_C::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -269,8 +261,7 @@ llvm::Error SPARC64_C::BindReturnValues(
   }
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
@@ -278,8 +269,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       const auto bit_width = int_ty->getBitWidth();
 
       if (bit_width <= 64) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("o0");
         value_declaration.type = ret_type;
         return llvm::Error::success();
@@ -289,8 +279,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       } else if (bit_width <= 384) {
         const char *ret_names[] = {"o0", "o1", "o2", "o3", "o4", "o5"};
         for (auto i = 0u; i < 6 && (64 * i) < bit_width; ++i) {
-          ret_values.emplace_back();
-          auto &value_declaration = ret_values.back();
+          auto &value_declaration = ret_values.emplace_back();
           value_declaration.reg = arch->RegisterByName(ret_names[i]);
           value_declaration.type = int32_ty;
         }
@@ -306,8 +295,7 @@ llvm::Error SPARC64_C::BindReturnValues(
 
     // Pointers always fit into `EAX`.
     case llvm::Type::PointerTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("o0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -315,24 +303,21 @@ llvm::Error SPARC64_C::BindReturnValues(
 
     case llvm::Type::HalfTyID:
     case llvm::Type::FloatTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("f0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::DoubleTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("d0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::FP128TyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("q0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -358,8 +343,7 @@ llvm::Error SPARC64_C::BindReturnValues(
       }
     }
 
-    default:
-      break;
+    default: break;
   }
 
   return llvm::createStringError(
@@ -369,15 +353,9 @@ llvm::Error SPARC64_C::BindReturnValues(
       function.getName().str().c_str());
 }
 
-// For X86_64_SysV, the general argument passing behavior is, try to pass the
-// arguments in registers RDI, RSI, RDX, RCX, R8, R9 from integral types and
-// XMM0 - XMM7 for float types. If the argument is a struct but can be
-// completely split over the above registers, then greedily split it over the
-// registers. Otherwise, the struct is passed entirely on the stack. If we run
-// our of registers then pass the rest of the arguments on the stack.
-llvm::Error SPARC64_C::BindParameters(
-    llvm::Function &function, bool injected_sret,
-    std::vector<ParameterDecl> &parameter_declarations) {
+llvm::Error
+SPARC64_C::BindParameters(llvm::Function &function, bool injected_sret,
+                          std::vector<ParameterDecl> &parameter_declarations) {
   CHECK(!injected_sret)
       << "Injected struct returns are not supported on SPARC targets";
 
@@ -388,10 +366,35 @@ llvm::Error SPARC64_C::BindParameters(
   AllocationState alloc_param(parameter_register_constraints, arch, this);
   alloc_param.config.type_splitter = IntegerTypeSplitter;
 
-  // The stack bias for SPARC V9 ABI on solaris is 2047
-  // https://docs.oracle.com/cd/E18752_01/html/816-5138/advanced-2.html#advanced-5
-  uint64_t stack_offset = 2047;
-  //uint64_t stack_offset = 2227;
+
+  // NOTE(pag): 2227 was experimentally found with compiler explorer. See the
+  //            comment on `stack_offset` in `SPARC32_C::BindParameters`.
+  //
+  // NOTE(pag): This number may be trickier to handle in the general case. For
+  //            example:
+  //
+  //      #define X unsigned long long
+  //      unsigned a(X a0, X a1, X a2, X a3,
+  //                 X a4, X a5, X a6) {
+  //          return a6;
+  //      }
+  //
+  // Results in the following machine code. Notice the use of `or` to possibly
+  // align the `2223` value:
+  //
+  //      a:
+  //              save %sp, -128, %sp
+  //              add %fp, 2223, %i0
+  //              or %i0, 4, %i0
+  //              ld [%i0], %i0
+  //              ret
+  //              restore
+  //
+  // I am not sure which of 2223 or 2227 is more accurate, or if 2047 (the
+  // stack bias [1] for the SPARCv9 ABI) is a better default.
+  //
+  // [1] https://docs.oracle.com/cd/E18752_01/html/816-5138/advanced-2.html#advanced-5
+  uint64_t stack_offset = 2227;
 
   const auto sp_reg = arch->RegisterByName("o6");
 
@@ -407,8 +410,7 @@ llvm::Error SPARC64_C::BindParameters(
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
-        parameter_declarations.emplace_back();
-        auto &declaration = parameter_declarations.back();
+        auto &declaration = parameter_declarations.emplace_back();
         declaration.type = param_decl.type;
         if (param_decl.reg) {
           declaration.reg = param_decl.reg;
@@ -426,15 +428,15 @@ llvm::Error SPARC64_C::BindParameters(
 
       // The parameter was spread across multiple registers.
       } else if (!param_name.empty()) {
-        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size);
+             ++i) {
           parameter_declarations[prev_size + i].name =
               param_name + std::to_string(i);
         }
       }
 
     } else {
-      parameter_declarations.emplace_back();
-      auto &declaration = parameter_declarations.back();
+      auto &declaration = parameter_declarations.emplace_back();
       declaration.type = param_type;
       declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = sp_reg;

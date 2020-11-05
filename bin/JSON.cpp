@@ -32,6 +32,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
+
 // clang-format on
 
 #include <remill/Arch/Arch.h>
@@ -85,9 +86,8 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-//#if __has_include(<llvm/Support/JSON.h>)
-#if 1
-#include <llvm/Support/JSON.h>
+#if __has_include(<llvm/Support/JSON.h>)
+#  include <llvm/Support/JSON.h>
 
 namespace {
 
@@ -247,8 +247,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto params = obj->getArray("parameters")) {
     for (llvm::json::Value &maybe_param : *params) {
       if (auto param_obj = maybe_param.getAsObject()) {
-        decl.params.emplace_back();
-        if (!ParseParameter(arch, context, decl.params.back(), param_obj)) {
+        auto &pv = decl.params.emplace_back();
+        if (!ParseParameter(arch, context, pv, param_obj)) {
           return false;
         }
       } else {
@@ -325,8 +325,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto returns = obj->getArray("return_values")) {
     for (llvm::json::Value &maybe_ret : *returns) {
       if (auto ret_obj = maybe_ret.getAsObject()) {
-        decl.returns.emplace_back();
-        if (!ParseReturnValue(arch, context, decl.returns.back(), ret_obj)) {
+        auto &rv = decl.returns.emplace_back();
+        if (!ParseReturnValue(arch, context, rv, ret_obj)) {
           return false;
         }
       } else {
@@ -592,6 +592,9 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
 }  // namespace
 
 int main(int argc, char *argv[]) {
+
+  // get version string from git, and put as output to --version
+  // from gflags
   SetVersion();
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -644,6 +647,10 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+
+  // Get a unique pointer to a remill architecture object. The architecture
+  // object knows how to deal with everything for this specific architecture,
+  // such as semantics, register,  etc.
   auto arch = remill::Arch::Build(&context, remill::GetOSName(os_str),
                                   remill::GetArchName(arch_str));
   if (!arch) {
@@ -653,6 +660,10 @@ int main(int argc, char *argv[]) {
   auto semantics = remill::LoadArchSemantics(arch);
 
   anvill::Program program;
+
+  // Parse the spec, which contains as much or as little details about what is
+  // being lifted as the spec generator desired and put it into an
+  // anvill::Program object, which is effectively a representation of the spec
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
@@ -664,14 +675,12 @@ int main(int argc, char *argv[]) {
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
-
     llvm::Value *gval = nullptr;
     if (vdecl) {
       gval = semantics->getGlobalVariable(
           anvill::CreateVariableName(vdecl->address));
     } else if (fdecl) {
-      gval = semantics->getFunction(
-          anvill::CreateFunctionName(fdecl->address));
+      gval = semantics->getFunction(anvill::CreateFunctionName(fdecl->address));
     } else {
       return true;
     }

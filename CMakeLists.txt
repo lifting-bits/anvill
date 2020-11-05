@@ -170,7 +170,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
 
   add_custom_command(
     TARGET install_anvill_python3 POST_BUILD
-    COMMAND which python3 && python3 setup.py install ${extra_install_flags}
+    COMMAND which python3.8 && python3.8 setup.py install ${extra_install_flags}
     COMMENT "Installing Anvill Python 3 API"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 

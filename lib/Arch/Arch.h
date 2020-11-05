@@ -167,11 +167,11 @@ class CallingConvention {
   static std::unique_ptr<CallingConvention>
   CreateAArch64_C(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateSPARC32_C(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateSPARC32_C(const remill::Arch *arch);
 
-  static std::unique_ptr<CallingConvention> CreateSPARC64_C(
-      const remill::Arch *arch);
+  static std::unique_ptr<CallingConvention>
+  CreateSPARC64_C(const remill::Arch *arch);
 
  private:
   const llvm::CallingConv::ID identity;

@@ -98,7 +98,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
         return ir.CreateBitCast(src, dest_ptr_type);
       }
 
-      // Convert the pointer to an integer.
+    // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
@@ -211,9 +211,9 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
       std::stringstream ss;
       ss << "# read register " << reg->name;
 
-      llvm::InlineAsm *read_reg = llvm::InlineAsm::get(
-          llvm::FunctionType::get(reg->type, false),
-          ss.str(), "=r", true  /* hasSideEffects */);
+      llvm::InlineAsm *read_reg =
+          llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                               ss.str(), "=r", true /* hasSideEffects */);
 
       const auto reg_ptr = reg->AddressOf(state_ptr, block);
       ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
@@ -431,7 +431,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     return mem_ptr;
 
-    // Store it to memory.
+  // Store it to memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
@@ -470,7 +470,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
           ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
     }
 
-    // Load it out of memory.
+  // Load it out of memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
@@ -490,7 +490,10 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
 
-  // Create our lifter
+  // Create our lifter.
+  // At this point, `module` is just the loaded semantics for
+  // the arcchitecture. The module will be filled in with lifted program code
+  // and data as the lifting process progresses.
   MCToIRLifter lifter(arch, program, module);
 
   // Declare global variables.

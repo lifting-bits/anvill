@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-#include "Arch.h"
-
-#include <glog/logging.h>
-
 #include <anvill/Decl.h>
-
+#include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/VectorType.h>
 
 #include "AllocationState.h"
+#include "Arch.h"
 
 namespace anvill {
 namespace {
@@ -77,26 +74,25 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
 // This is the only calling convention for 32-bit SPARC code.
 class SPARC32_C : public CallingConvention {
  public:
-   explicit SPARC32_C(const remill::Arch *arch);
-   virtual ~SPARC32_C(void) = default;
+  explicit SPARC32_C(const remill::Arch *arch);
+  virtual ~SPARC32_C(void) = default;
 
-   llvm::Error AllocateSignature(FunctionDecl &fdecl,
-                                 llvm::Function &func) override;
+  llvm::Error AllocateSignature(FunctionDecl &fdecl,
+                                llvm::Function &func) override;
 
-  private:
-   llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
-                              std::vector<ParameterDecl> &param_decls);
+ private:
+  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
+                             std::vector<ParameterDecl> &param_decls);
 
-   llvm::Error BindReturnValues(llvm::Function &function,
-                                bool &injected_sret,
-                                std::vector<ValueDecl> &ret_decls);
+  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
+                               std::vector<ValueDecl> &ret_decls);
 
-   const std::vector<RegisterConstraint> &parameter_register_constraints;
-   const std::vector<RegisterConstraint> &return_register_constraints;
+  const std::vector<RegisterConstraint> &parameter_register_constraints;
+  const std::vector<RegisterConstraint> &return_register_constraints;
 };
 
-std::unique_ptr<CallingConvention> CallingConvention::CreateSPARC32_C(
-      const remill::Arch *arch) {
+std::unique_ptr<CallingConvention>
+CallingConvention::CreateSPARC32_C(const remill::Arch *arch) {
   return std::unique_ptr<CallingConvention>(new SPARC32_C(arch));
 }
 
@@ -110,6 +106,7 @@ SPARC32_C::SPARC32_C(const remill::Arch *arch)
 // stack pointer.
 llvm::Error SPARC32_C::AllocateSignature(FunctionDecl &fdecl,
                                          llvm::Function &func) {
+
   // Bind return values first to see if we have injected an sret into the
   // parameter list. Then, bind the parameters. It is important that we bind the
   // return values before the parameters in case we inject an sret.
@@ -133,20 +130,16 @@ llvm::Error SPARC32_C::AllocateSignature(FunctionDecl &fdecl,
   return llvm::Error::success();
 }
 
-llvm::Error SPARC32_C::BindReturnValues(
-    llvm::Function &function, bool &injected_sret,
-    std::vector<anvill::ValueDecl> &ret_values) {
+llvm::Error
+SPARC32_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+                            std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
   injected_sret = false;
 
-  // If there is an sret parameter then it is a special case. For the X86_C ABI,
-  // the sret parameters are guarenteed the be in %eax. In this case, we can
-  // assume the actual return value of the function will be the sret struct
-  // pointer.
+  // If there is an sret parameter then it is a special case
   if (function.hasStructRetAttr()) {
-    ret_values.emplace_back();
-    auto &value_declaration = ret_values.back();
+    auto &value_declaration = ret_values.emplace_back();
 
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
@@ -159,8 +152,7 @@ llvm::Error SPARC32_C::BindReturnValues(
           remill::NthArgument(&function, 1)->getType()->getPointerElementType();
     }
 
-    value_declaration.type = llvm::PointerType::get(
-        value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(
@@ -175,8 +167,7 @@ llvm::Error SPARC32_C::BindReturnValues(
   }
 
   switch (ret_type->getTypeID()) {
-    case llvm::Type::VoidTyID:
-      return llvm::Error::success();
+    case llvm::Type::VoidTyID: return llvm::Error::success();
 
     case llvm::Type::IntegerTyID: {
       const auto *int_ty = llvm::dyn_cast<llvm::IntegerType>(ret_type);
@@ -184,8 +175,7 @@ llvm::Error SPARC32_C::BindReturnValues(
       const auto bit_width = int_ty->getBitWidth();
 
       if (bit_width <= 32) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("o0");
         value_declaration.type = ret_type;
         return llvm::Error::success();
@@ -195,8 +185,7 @@ llvm::Error SPARC32_C::BindReturnValues(
       } else if (bit_width <= 192) {
         const char *ret_names[] = {"o0", "o1", "o2", "o3", "o4", "o5"};
         for (auto i = 0u; i < 6 && (32 * i) < bit_width; ++i) {
-          ret_values.emplace_back();
-          auto &value_declaration = ret_values.back();
+          auto &value_declaration = ret_values.emplace_back();
           value_declaration.reg = arch->RegisterByName(ret_names[i]);
           value_declaration.type = int32_ty;
         }
@@ -210,10 +199,8 @@ llvm::Error SPARC32_C::BindReturnValues(
       }
     }
 
-    // Pointers always fit into `EAX`.
     case llvm::Type::PointerTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("o0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -221,16 +208,14 @@ llvm::Error SPARC32_C::BindReturnValues(
 
     case llvm::Type::HalfTyID:
     case llvm::Type::FloatTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("f0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::DoubleTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("d0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -256,8 +241,7 @@ llvm::Error SPARC32_C::BindReturnValues(
       }
     }
 
-    default:
-      break;
+    default: break;
   }
 
   return llvm::createStringError(
@@ -273,9 +257,9 @@ llvm::Error SPARC32_C::BindReturnValues(
 // completely split over the above registers, then greedily split it over the
 // registers. Otherwise, the struct is passed entirely on the stack. If we run
 // our of registers then pass the rest of the arguments on the stack.
-llvm::Error SPARC32_C::BindParameters(
-    llvm::Function &function, bool injected_sret,
-    std::vector<ParameterDecl> &parameter_declarations) {
+llvm::Error
+SPARC32_C::BindParameters(llvm::Function &function, bool injected_sret,
+                          std::vector<ParameterDecl> &parameter_declarations) {
   CHECK(!injected_sret)
       << "Injected struct returns are not supported on SPARC targets";
 
@@ -286,6 +270,25 @@ llvm::Error SPARC32_C::BindParameters(
   AllocationState alloc_param(parameter_register_constraints, arch, this);
   alloc_param.config.type_splitter = IntegerTypeSplitter;
 
+  // If we compile the following C code, then the `a6` parameter must be passed
+  // on the stack:
+  //
+  //    unsigned a(unsigned a0, unsigned a1, unsigned a2, unsigned a3,
+  //               unsigned a4, unsigned a5, unsigned a6) {
+  //        return a6;
+  //    }
+  //
+  // We get machine code looking like:
+  //
+  //    a:
+  //            save %sp, -96, %sp
+  //            ld [%fp+92], %i0
+  //            ret
+  //            restore
+  //
+  // The stack pointer, `%sp` aliases `%o6`. The frame pointer, `%fp` aliases
+  // `%i6`. The `save` instruction copies `%sp` into `%fp`, and so the
+  // `[%fp+92]` is actually 92 + the value on entry of the stack pointer, `o6`.
   uint64_t stack_offset = 92;
 
   const auto sp_reg = arch->RegisterByName("o6");
@@ -302,8 +305,7 @@ llvm::Error SPARC32_C::BindParameters(
       const auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
-        parameter_declarations.emplace_back();
-        auto &declaration = parameter_declarations.back();
+        auto &declaration = parameter_declarations.emplace_back();
         declaration.type = param_decl.type;
         if (param_decl.reg) {
           declaration.reg = param_decl.reg;
@@ -321,15 +323,15 @@ llvm::Error SPARC32_C::BindParameters(
 
       // The parameter was spread across multiple registers.
       } else if (!param_name.empty()) {
-        for (auto i = 0u; i < (parameter_declarations.size() - prev_size); ++i) {
+        for (auto i = 0u; i < (parameter_declarations.size() - prev_size);
+             ++i) {
           parameter_declarations[prev_size + i].name =
               param_name + std::to_string(i);
         }
       }
 
     } else {
-      parameter_declarations.emplace_back();
-      auto &declaration = parameter_declarations.back();
+      auto &declaration = parameter_declarations.emplace_back();
       declaration.type = param_type;
       declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = sp_reg;
