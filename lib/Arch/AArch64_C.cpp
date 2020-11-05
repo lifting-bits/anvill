@@ -201,8 +201,7 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
   // If there is an sret parameter then it is a special case.
   if (function.hasStructRetAttr()) {
-    ret_values.emplace_back();
-    auto &value_declaration = ret_values.back();
+    auto &value_declaration = ret_values.emplace_back();
 
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
@@ -238,15 +237,13 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
       const auto int32_ty = llvm::Type::getInt32Ty(int_ty->getContext());
       const auto bit_width = int_ty->getBitWidth();
       if (bit_width <= 32) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("X0");
         value_declaration.type = ret_type;
         return llvm::Error::success();
 
       } else if (bit_width <= 64) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("X0");
         value_declaration.type = ret_type;
         return llvm::Error::success();
@@ -257,8 +254,7 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
         const char *ret_names[] = {"X0", "X1", "X2", "X3",
                                    "X4", "X5", "X6", "X7"};
         for (auto i = 0u; i < 8 && (64 * i) < bit_width; ++i) {
-          ret_values.emplace_back();
-          auto &value_declaration = ret_values.back();
+          auto &value_declaration = ret_values.emplace_back();
           value_declaration.reg = arch->RegisterByName(ret_names[i]);
           value_declaration.type = int32_ty;
         }
@@ -267,8 +263,7 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
       // The integer is too big to be split across registers, fall back to
       // return-value optimization.
       } else {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.type =
             llvm::PointerType::get(value_declaration.type, 0);
         value_declaration.reg = arch->RegisterByName("X8");
@@ -278,40 +273,35 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Pointers always fit into `X0`.
     case llvm::Type::PointerTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("X0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::HalfTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("H0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::FloatTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("S0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::DoubleTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("D0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::FP128TyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("Q0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -319,13 +309,12 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Try to split the composite type over registers, and fall back on RVO
     // if it's not possible.
-    case llvm::Type::VectorTyID:
+    case llvm::GetFixedVectorTypeId():
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
-      auto comp_ptr = llvm::dyn_cast<llvm::CompositeType>(ret_type);
       AllocationState alloc_ret(return_register_constraints, arch, this);
       alloc_ret.config.type_splitter = IntegerTypeSplitter;
-      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr);
+      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type);
 
       // There is a valid split over registers, so add the mapping
       if (mapping) {
@@ -376,8 +365,7 @@ AArch64_C::BindParameters(llvm::Function &function, bool injected_sret,
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
-        parameter_declarations.emplace_back();
-        auto &declaration = parameter_declarations.back();
+        auto &declaration = parameter_declarations.emplace_back();
         declaration.type = param_decl.type;
         if (param_decl.reg) {
           declaration.reg = param_decl.reg;
@@ -403,8 +391,7 @@ AArch64_C::BindParameters(llvm::Function &function, bool injected_sret,
       }
 
     } else {
-      parameter_declarations.emplace_back();
-      auto &declaration = parameter_declarations.back();
+      auto &declaration = parameter_declarations.emplace_back();
       declaration.type = param_type;
       declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = sp_reg;

@@ -20,6 +20,7 @@
 
 // clang-format off
 #include <remill/BC/Compat/CTypes.h>
+#include <remill/BC/Compat/VectorType.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
@@ -185,8 +186,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       break;
     }
 
-    case llvm::Type::VectorTyID: {
-      const auto vec_ptr = llvm::cast<llvm::VectorType>(&type);
+    case llvm::GetFixedVectorTypeId(): {
+      const auto vec_ptr = llvm::cast<llvm::FixedVectorType>(&type);
       ss << '<';
       TranslateTypeInternal(*vec_ptr->getElementType(), ss, ids, dl);
       ss << 'x' << vec_ptr->getNumElements() << '>';

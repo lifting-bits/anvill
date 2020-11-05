@@ -20,6 +20,7 @@
 #include <glog/logging.h>
 #include <llvm/IR/Attributes.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/Compat/VectorType.h>
 
 #include <algorithm>
 
@@ -160,7 +161,7 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
       size_constraint = kMinBit80;
       break;
 
-    case llvm::Type::VectorTyID:
+    case llvm::GetFixedVectorTypeId():
       type_constraint = kTypeFloatOrVec;
       size_constraint = kMinBit80;
       break;
@@ -179,15 +180,15 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
 llvm::Optional<std::vector<ValueDecl>>
 AllocationState::TryRegisterAllocate(llvm::Type &type) {
   if (type.isStructTy() || type.isArrayTy() || type.isVectorTy()) {
-    return TryCompositeRegisterAllocate(llvm::cast<llvm::CompositeType>(type));
+    return TryCompositeRegisterAllocate(type);
   } else {
     return TryBasicRegisterAllocate(type, llvm::None);
   }
 }
 
 llvm::Optional<std::vector<ValueDecl>>
-AllocationState::TryCompositeRegisterAllocate(llvm::CompositeType &type) {
-  CHECK(type.isStructTy() || type.isArrayTy() || type.isVectorTy());
+AllocationState::TryCompositeRegisterAllocate(llvm::Type &type) {
+  DCHECK(type.isStructTy() || type.isArrayTy() || type.isVectorTy());
   std::vector<ValueDecl> ret;
   if (auto st = llvm::dyn_cast<llvm::StructType>(&type)) {
     for (unsigned i = 0; i < st->getNumElements(); i++) {
@@ -217,7 +218,7 @@ AllocationState::TryCompositeRegisterAllocate(llvm::CompositeType &type) {
         return llvm::None;
       }
     }
-  } else if (auto vec = llvm::dyn_cast<llvm::VectorType>(&type)) {
+  } else if (auto vec = llvm::dyn_cast<llvm::FixedVectorType>(&type)) {
     if (auto inner = TryVectorRegisterAllocate(*vec); inner) {
       ret.insert(ret.end(), inner->begin(), inner->end());
     }
@@ -272,8 +273,7 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
       }
       auto reg = arch->RegisterByName(reg_name);
 
-      ret.emplace_back();
-      auto &vdecl = ret.back();
+      auto &vdecl = ret.emplace_back();
       vdecl.reg = reg;
       vdecl.type = &type;
       return ret;
@@ -294,12 +294,12 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
 }
 
 llvm::Optional<std::vector<ValueDecl>>
-AllocationState::TryVectorRegisterAllocate(llvm::VectorType &type) {
+AllocationState::TryVectorRegisterAllocate(llvm::FixedVectorType &type) {
   std::vector<ValueDecl> ret;
-  unsigned vec_size = type.getVectorNumElements();
+  unsigned vec_size = type.getNumElements();
+  const auto elem_type = type.getElementType();
 
   for (unsigned i = 0; i < vec_size; i++) {
-    auto elem_type = type.getVectorElementType();
 
     if (elem_type->isIntegerTy()) {
       auto t = llvm::cast<llvm::IntegerType>(elem_type);

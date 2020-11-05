@@ -18,6 +18,7 @@
 #include "anvill/Lift.h"
 
 #include <glog/logging.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
@@ -97,7 +98,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
         return ir.CreateBitCast(src, dest_ptr_type);
       }
 
-      // Convert the pointer to an integer.
+    // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
@@ -193,33 +194,31 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   llvm::IRBuilder<> ir(block);
 
   // Create a memory pointer.
-  auto mem_ptr_type = remill::MemoryPointerType(module);
+  auto mem_ptr_type = arch->MemoryPointerType();
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate a state pointer.
-  auto state_ptr_type = remill::StatePointerType(module);
+  auto state_ptr_type = arch->StatePointerType();
   auto state_type = state_ptr_type->getElementType();
   auto state_ptr = ir.CreateAlloca(state_type);
 
-  //  // Get or create globals for all top-level registers. The idea here is that
-  //  // the spec could feasibly miss some dependencies, and so after optimization,
-  //  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-  //  // them appropriately.
-  //  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-  //    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-  //      std::stringstream ss;
-  //      ss << "__anvill_reg_" << reg->name;
-  //      const auto reg_name = ss.str();
-  //      auto reg_global = module->getGlobalVariable(reg_name);
-  //      if (!reg_global) {
-  //        reg_global = new llvm::GlobalVariable(
-  //            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-  //            nullptr, reg_name);
-  //      }
-  //      auto reg_ptr = reg->AddressOf(state_ptr, block);
-  //      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-  //    }
-  //  });
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      ss << "# read register " << reg->name;
+
+      llvm::InlineAsm *read_reg =
+          llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                               ss.str(), "=r", true /* hasSideEffects */);
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
@@ -373,7 +372,11 @@ static void OptimizeFunction(llvm::Function *func) {
 
     for (auto call_inst : calls_to_inline) {
       llvm::InlineFunctionInfo info;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
       llvm::InlineFunction(call_inst, info);
+#else
+      llvm::InlineFunction(*call_inst, info);
+#endif
     }
   }
 
@@ -428,7 +431,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     return mem_ptr;
 
-    // Store it to memory.
+  // Store it to memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
@@ -467,7 +470,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
           ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
     }
 
-    // Load it out of memory.
+  // Load it out of memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);

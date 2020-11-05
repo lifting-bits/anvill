@@ -52,6 +52,8 @@ add_library(${ANVILL} STATIC
   include/anvill/Type.h
 
   lib/Arch/AArch64_C.cpp
+  lib/Arch/SPARC32_C.cpp
+  lib/Arch/SPARC64_C.cpp
   lib/Arch/X86_C.cpp
   lib/Arch/X86_FastCall.cpp
   lib/Arch/X86_StdCall.cpp
@@ -115,13 +117,13 @@ target_public_headers(${ANVILL}
 
 set(DECOMPILE_JSON anvill-decompile-json-${REMILL_LLVM_VERSION})
 
-add_executable(${DECOMPILE_JSON} JSON.cpp)
+add_executable(${DECOMPILE_JSON} bin/JSON.cpp)
 target_link_libraries(${DECOMPILE_JSON} PRIVATE ${ANVILL})
 
 
 set(SPECIFY_BITCODE anvill-specify-bitcode-${REMILL_LLVM_VERSION})
 
-add_executable(${SPECIFY_BITCODE} Bitcode.cpp)
+add_executable(${SPECIFY_BITCODE} bin/Bitcode.cpp)
 target_link_libraries(${SPECIFY_BITCODE} PRIVATE ${ANVILL})
 
 set(ANVILL_PYTHON_SOURCES
@@ -168,7 +170,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
 
   add_custom_command(
     TARGET install_anvill_python3 POST_BUILD
-    COMMAND which python3 && python3 setup.py install ${extra_install_flags}
+    COMMAND which python3.8 && python3.8 setup.py install ${extra_install_flags}
     COMMENT "Installing Anvill Python 3 API"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
