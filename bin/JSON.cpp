@@ -174,22 +174,26 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 static bool ParseTypedRegister(const remill::Arch *arch, llvm::LLVMContext &context,
 		anvill::TypedRegisterDecl &decl, llvm::json::Object * obj) {
 
-	  auto maybe_address = obj->getString("address");
-	  if (!maybe_address) {
+	  auto maybe_address_str = obj->getString("address");
+	  if (!maybe_address_str) {
 		  LOG(ERROR) << "Missing 'address' field in typed register.";
 		  return false;
 	  }
-	  decl.address = maybe_address;
+	  //TODO Remove this var
+	  std::string maybe_address = *maybe_address_str;
+	  decl.address = std::stoi(maybe_address);
+
+	  auto maybe_value_str = obj->getString("value");
+	  if (maybe_value_str) {
+		  //TODO Remove this var
+		  std::string maybe_value = *maybe_value_str;
+		  decl.value = stoi(maybe_value);
+	  }
 
 	  auto maybe_type_str = obj->getString("type");
 	  if (!maybe_type_str) {
 	    LOG(ERROR) << "Missing 'type' field in typed register.";
 	    return false;
-	  }
-
-	  auto maybe_value = obj->getString("value");
-	  if (maybe_value) {
-
 	  }
 
 	  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
