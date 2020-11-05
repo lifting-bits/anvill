@@ -16,6 +16,7 @@
  */
 
 #include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include <cstdint>
 #include <ios>
@@ -26,24 +27,57 @@
 
 #include "anvill/Version.h"
 
+// clang-format off
+#include <remill/BC/Compat/CTypes.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Support/MemoryBuffer.h>
+
+// clang-format on
+
+#include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
+#include <remill/BC/Compat/Error.h>
+#include <remill/BC/IntrinsicTable.h>
+#include <remill/BC/Lifter.h>
+#include <remill/BC/Util.h>
+#include <remill/OS/OS.h>
+
+#include "anvill/Analyze.h"
+#include "anvill/Decl.h"
+#include "anvill/Lift.h"
+#include "anvill/Optimize.h"
+#include "anvill/Program.h"
+#include "anvill/TypeParser.h"
+#include "anvill/Util.h"
+
+DECLARE_string(arch);
+DECLARE_string(os);
+
+DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
+DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
+DEFINE_string(bc_out, "",
+              "Path to file where the LLVM bitcode should be "
+              "saved.");
+
 static void SetVersion(void) {
   std::stringstream ss;
-  auto vs = anvill::Version::GetVersionString();
+  auto vs = anvill::version::GetVersionString();
   if (0 == vs.size()) {
     vs = "unknown";
   }
 
   ss << vs << "\n";
-  if (!anvill::Version::HasVersionData()) {
+  if (!anvill::version::HasVersionData()) {
     ss << "No extended version information found!\n";
   } else {
-    ss << "Commit Hash: " << anvill::Version::GetCommitHash() << "\n";
-    ss << "Commit Date: " << anvill::Version::GetCommitDate() << "\n";
-    ss << "Last commit by: " << anvill::Version::GetAuthorName() << " ["
-       << anvill::Version::GetAuthorEmail() << "]\n";
-    ss << "Commit Subject: [" << anvill::Version::GetCommitSubject() << "]\n";
+    ss << "Commit Hash: " << anvill::version::GetCommitHash() << "\n";
+    ss << "Commit Date: " << anvill::version::GetCommitDate() << "\n";
+    ss << "Last commit by: " << anvill::version::GetAuthorName() << " ["
+       << anvill::version::GetAuthorEmail() << "]\n";
+    ss << "Commit Subject: [" << anvill::version::GetCommitSubject() << "]\n";
     ss << "\n";
-    if (anvill::Version::HasUncommittedChanges()) {
+    if (anvill::version::HasUncommittedChanges()) {
       ss << "Uncommitted changes were present during build.\n";
     } else {
       ss << "All changes were committed prior to building.\n";
@@ -54,42 +88,7 @@ static void SetVersion(void) {
 
 #if __has_include(<llvm/Support/JSON.h>)
 
-#  include <gflags/gflags.h>
-#  include <glog/logging.h>
-
-// clang-format off
-#  include <remill/BC/Compat/CTypes.h>
-#  include <llvm/IR/LLVMContext.h>
-#  include <llvm/IR/Module.h>
 #  include <llvm/Support/JSON.h>
-#  include <llvm/Support/MemoryBuffer.h>
-
-// clang-format on
-
-#  include <remill/Arch/Arch.h>
-#  include <remill/Arch/Name.h>
-#  include <remill/BC/Compat/Error.h>
-#  include <remill/BC/IntrinsicTable.h>
-#  include <remill/BC/Lifter.h>
-#  include <remill/BC/Util.h>
-#  include <remill/OS/OS.h>
-
-#  include "anvill/Analyze.h"
-#  include "anvill/Decl.h"
-#  include "anvill/Lift.h"
-#  include "anvill/Optimize.h"
-#  include "anvill/Program.h"
-#  include "anvill/TypeParser.h"
-#  include "anvill/Util.h"
-
-DECLARE_string(arch);
-DECLARE_string(os);
-
-DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
-DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
-DEFINE_string(bc_out, "",
-              "Path to file where the LLVM bitcode should be "
-              "saved.");
 
 namespace {
 
@@ -213,8 +212,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto params = obj->getArray("parameters")) {
     for (llvm::json::Value &maybe_param : *params) {
       if (auto param_obj = maybe_param.getAsObject()) {
-        decl.params.emplace_back();
-        if (!ParseParameter(arch, context, decl.params.back(), param_obj)) {
+        auto &pv = decl.params.emplace_back();
+        if (!ParseParameter(arch, context, pv, param_obj)) {
           return false;
         }
       } else {
@@ -274,8 +273,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto returns = obj->getArray("return_values")) {
     for (llvm::json::Value &maybe_ret : *returns) {
       if (auto ret_obj = maybe_ret.getAsObject()) {
-        decl.returns.emplace_back();
-        if (!ParseReturnValue(arch, context, decl.returns.back(), ret_obj)) {
+        auto &rv = decl.returns.emplace_back();
+        if (!ParseReturnValue(arch, context, rv, ret_obj)) {
           return false;
         }
       } else {
@@ -613,14 +612,12 @@ int main(int argc, char *argv[]) {
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
-
     llvm::Value *gval = nullptr;
     if (vdecl) {
       gval = semantics->getGlobalVariable(
           anvill::CreateVariableName(vdecl->address));
     } else if (fdecl) {
-      gval = semantics->getFunction(
-          anvill::CreateFunctionName(fdecl->address));
+      gval = semantics->getFunction(anvill::CreateFunctionName(fdecl->address));
     } else {
       return true;
     }

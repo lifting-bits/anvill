@@ -317,7 +317,8 @@ ReplaceConstMemoryReads(const Program &program, llvm::Module &module,
         ir.CreateBitCast(mem, llvm::PointerType::get(data_read->getType(), 0));
     ir.CreateStore(data_read, bc);
 
-    llvm::Instruction *as_load = new llvm::LoadInst(mem, "", call_inst);
+    llvm::Instruction *as_load = new llvm::LoadInst(
+        llvm::PointerType::get(mem_type, 0), mem, "", call_inst);
 
     if (fp80_type) {
       as_load =
@@ -341,26 +342,33 @@ static void RemoveUnneededInlineAsm(const Program &program,
   std::vector<llvm::CallInst *> to_remove;
 
   program.ForEachFunction([&](const FunctionDecl *decl) -> bool {
-
-    const auto func = decl->DeclareInModule(
-        CreateFunctionName(decl->address), module);
+    const auto func =
+        decl->DeclareInModule(CreateFunctionName(decl->address), module);
     if (func->isDeclaration()) {
       return true;
     }
 
     to_remove.clear();
 
-    for (auto &block : *func) {
+    for (llvm::BasicBlock &block : *func) {
       auto prev_is_compiler_barrier = false;
       llvm::CallInst *prev_barrier = nullptr;
       for (auto &inst : block) {
         if (llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
           const auto inline_asm =
-              llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledValue());
+              llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledOperand());
           if (inline_asm) {
-            if (inline_asm->hasSideEffects() &&
-                call_inst->getType()->isVoidTy() &&
-                inline_asm->getAsmString().empty()) {
+
+            // It looks like a "fake" read from a register.
+            if (!call_inst->hasNUsesOrMore(1) &&
+                !inline_asm->getAsmString().find("# read register ")) {
+              to_remove.push_back(call_inst);
+              prev_is_compiler_barrier = false;
+              prev_barrier = nullptr;
+
+            } else if (inline_asm->hasSideEffects() &&
+                       call_inst->getType()->isVoidTy() &&
+                       inline_asm->getAsmString().empty()) {
 
               if (prev_is_compiler_barrier) {
                 to_remove.push_back(call_inst);
@@ -368,6 +376,7 @@ static void RemoveUnneededInlineAsm(const Program &program,
                 prev_barrier = call_inst;
               }
               prev_is_compiler_barrier = true;
+
             } else {
               prev_is_compiler_barrier = false;
               prev_barrier = nullptr;
@@ -437,17 +446,15 @@ static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
 
 // Try to get an Value representing the address of `ea` as an entity, or return
 // `nullptr`.
-static llvm::Constant *GetAddress(
-    const Program &program, llvm::Module &module, uint64_t ea) {
+static llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
+                                  uint64_t ea) {
 
   llvm::Constant *ret = nullptr;
   if (auto func_decl = program.FindFunction(ea); func_decl) {
-    ret = func_decl->DeclareInModule(
-        CreateFunctionName(ea), module, true);
+    ret = func_decl->DeclareInModule(CreateFunctionName(ea), module, true);
 
   } else if (auto var_decl = program.FindVariable(ea); var_decl) {
-    ret = var_decl->DeclareInModule(
-        CreateVariableName(ea), module, true);
+    ret = var_decl->DeclareInModule(CreateVariableName(ea), module, true);
 
   } else if (auto byte = program.FindByte(ea); byte) {
 
@@ -460,8 +467,8 @@ static llvm::Constant *GetAddress(
   if (ret) {
     const auto &dl = module.getDataLayout();
     auto &context = module.getContext();
-    const auto intptr_ty = llvm::Type::getIntNTy(
-        context, dl.getPointerSizeInBits(0));
+    const auto intptr_ty =
+        llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
     return llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
   }
 
@@ -484,16 +491,14 @@ static llvm::Value *FindPointer(llvm::IRBuilder<> &ir, llvm::Value *addr,
   }
 }
 
-static llvm::Value *GetPointer(
-    const Program &program, llvm::Module &module,
-    llvm::IRBuilder<> &ir, llvm::Value *addr,
-    llvm::Type *elem_type, unsigned addr_space);
+static llvm::Value *GetPointer(const Program &program, llvm::Module &module,
+                               llvm::IRBuilder<> &ir, llvm::Value *addr,
+                               llvm::Type *elem_type, unsigned addr_space);
 
-static llvm::Value *GetIndexedPointer(
-    const Program &program, llvm::Module &module,
-    llvm::IRBuilder<> &ir, llvm::Value *lhs,
-    llvm::Value *rhs, llvm::Type *dest_type,
-    unsigned addr_space) {
+static llvm::Value *
+GetIndexedPointer(const Program &program, llvm::Module &module,
+                  llvm::IRBuilder<> &ir, llvm::Value *lhs, llvm::Value *rhs,
+                  llvm::Type *dest_type, unsigned addr_space) {
 
   auto &context = module.getContext();
   const auto &dl = module.getDataLayout();
@@ -576,9 +581,9 @@ static llvm::Value *GetIndexedPointer(
 
 // Try to get a pointer for the address operand of a remill memory access
 // intrinsic.
-static llvm::Value *GetPointerFromInt(
-    llvm::IRBuilder<> &ir, llvm::Value *addr,
-    llvm::Type *elem_type, unsigned addr_space) {
+static llvm::Value *GetPointerFromInt(llvm::IRBuilder<> &ir, llvm::Value *addr,
+                                      llvm::Type *elem_type,
+                                      unsigned addr_space) {
 
   auto dest_type = llvm::PointerType::get(elem_type, addr_space);
 
@@ -615,10 +620,9 @@ static llvm::Value *GetPointerFromInt(
 
 // Try to get a pointer for the address operand of a remill memory access
 // intrinsic.
-llvm::Value *GetPointer(
-    const Program &program, llvm::Module &module,
-    llvm::IRBuilder<> &ir, llvm::Value *addr, llvm::Type *elem_type,
-    unsigned addr_space) {
+llvm::Value *GetPointer(const Program &program, llvm::Module &module,
+                        llvm::IRBuilder<> &ir, llvm::Value *addr,
+                        llvm::Type *elem_type, unsigned addr_space) {
 
   addr_space = GetPointerAddressSpace(addr, addr_space);
   const auto addr_type = addr->getType();
@@ -629,8 +633,8 @@ llvm::Value *GetPointer(
   // intrinsics.
   if (auto as_itp = llvm::dyn_cast<llvm::IntToPtrInst>(addr); as_itp) {
     llvm::IRBuilder<> sub_ir(as_itp);
-    return GetPointer(program, module, sub_ir, as_itp->getOperand(0),
-                      elem_type, addr_space);
+    return GetPointer(program, module, sub_ir, as_itp->getOperand(0), elem_type,
+                      addr_space);
 
   // It's a `ptrtoint`, but of the wrong type; lets go back and try to use
   // that pointer.
@@ -939,7 +943,6 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
       vars_to_remove.push_back(&gv);
     } else if (gv.getName().startswith("ISEL_") ||
                gv.getName().startswith("COND_") ||
-               gv.getName().startswith("__anvill_reg") ||
                gv.getName().startswith("DR")) {
       gv.setInitializer(nullptr);
       gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));

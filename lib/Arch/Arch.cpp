@@ -83,6 +83,22 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
 
     case remill::kArchAArch64LittleEndian: return CreateAArch64_C(arch);
 
+    case remill::kArchSparc32:
+      if (arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateSPARC32_C(arch);
+      } else {
+        break;
+      }
+
+    case remill::kArchSparc64:
+      if (arch->os_name == remill::kOSLinux ||
+          arch->os_name == remill::kOSSolaris) {
+        return CreateSPARC64_C(arch);
+      } else {
+        break;
+      }
+
     // Fallthrough for unsupported architectures
     default: break;
   }
@@ -91,8 +107,8 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
   const auto os_name = remill::GetOSName(arch->os_name);
   return llvm::createStringError(
       std::make_error_code(std::errc::invalid_argument),
-      "Unsupported architecture/OS pair: %s and %s", arch_name.c_str(),
-      os_name.c_str());
+      "Unsupported architecture/OS pair: %s and %s", arch_name.data(),
+      os_name.data());
 }
 
 // Still need the arch to be passed in so we can create the calling convention
@@ -105,6 +121,12 @@ CallingConvention::CreateCCFromCCID(const llvm::CallingConv::ID cc_id,
         return CreateX86_C(arch);
       } else if (arch->IsAMD64()) {
         return CreateX86_64_SysV(arch);
+      } else if (arch->IsAArch64()) {
+        return CreateAArch64_C(arch);
+      } else if (arch->IsSPARC32()) {
+        return CreateSPARC32_C(arch);
+      } else if (arch->IsSPARC64()) {
+        return CreateSPARC64_C(arch);
       }
       break;
 

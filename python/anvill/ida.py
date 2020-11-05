@@ -88,6 +88,12 @@ def _guess_architecture():
             raise UnhandledArchitectureType(
                 "Unrecognized 32-bit ARM architecture: {}".format(inf.procName)
             )
+
+    elif "sparc" in inf.procName:
+        if inf.is_64bit():
+            return "sparc64"
+        else:
+            return "sparc32"
     else:
         raise UnhandledArchitectureType(
             "Unrecognized archictecture: {}".format(inf.procName)
@@ -109,7 +115,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
     if 0 < depth:
         context = TYPE_CONTEXT_NESTED
-    
+
     tinfo_str = str(tinfo)
     if tinfo_str in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
         return cache[tinfo_str]
@@ -288,6 +294,10 @@ def _get_arch():
         return X86Arch()
     elif name == "aarch64":
         return AArch64Arch()
+    elif name == "sparc32":
+        return Sparc32Arch()
+    elif name == "sparc64":
+        return Sparc64Arch()
     else:
         raise UnhandledArchitectureType(
             "Missing architecture object type for architecture '{}'".format(name)
@@ -834,26 +844,26 @@ def _get_calling_convention(arch, os, ftd):
     default_cc = os.default_calling_convention(arch)
     if arch_name == "x86":
 
-        if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+        if (ftd.cc & ida_typeinf.CM_CC_STDCALL) == ida_typeinf.CM_CC_STDCALL:
             return 64, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+        elif (ftd.cc & ida_typeinf.CM_CC_CDECL) == ida_typeinf.CM_CC_CDECL:
             return 0, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+        elif (ftd.cc & ida_typeinf.CM_CC_ELLIPSIS) == ida_typeinf.CM_CC_ELLIPSIS:
             return 0, True
-        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
+        elif (ftd.cc & ida_typeinf.CM_CC_THISCALL) == ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
 
     # NOTE(pag): Most x86 calling conventions are ignored in 64-bit.
     elif arch_name == "amd64":
-        if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+        if (ftd.cc & ida_typeinf.CM_CC_STDCALL) == ida_typeinf.CM_CC_STDCALL:
             return default_cc, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+        elif (ftd.cc & ida_typeinf.CM_CC_CDECL) == ida_typeinf.CM_CC_CDECL:
             return default_cc, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+        elif (ftd.cc & ida_typeinf.CM_CC_ELLIPSIS) == ida_typeinf.CM_CC_ELLIPSIS:
             return default_cc, True
-        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
+        elif (ftd.cc & ida_typeinf.CM_CC_THISCALL) == ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
@@ -977,11 +987,12 @@ class IDAProgram(Program):
 
         tif = ida_typeinf.tinfo_t()
         if not ida_nalt.get_tinfo(tif, address):
-            raise InvalidFunctionException(
-                "Can't guess type information for function at address {:x}".format(
-                    address
+            if ida_typeinf.GUESS_FUNC_OK != ida_typeinf.guess_tinfo(tif, address):
+                raise InvalidFunctionException(
+                    "Can't guess type information for function at address {:x}".format(
+                        address
+                    )
                 )
-            )
 
         if not tif.is_func():
             raise InvalidFunctionException(

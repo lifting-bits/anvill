@@ -41,6 +41,7 @@ class Program;
 struct FunctionDecl;
 
 struct FunctionEntry {
+
   // Lifted functions contain the remill semantics for the instructions
   // inside of a binary function.
   llvm::Function *lifted;
@@ -68,6 +69,7 @@ class MCToIRLifter {
   llvm::Module &module;
   llvm::LLVMContext &ctx;
   llvm::Function *lifted_func{nullptr};
+  llvm::Value *state_ptr{nullptr};
   remill::Instruction *curr_inst{nullptr};
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
@@ -91,15 +93,11 @@ class MCToIRLifter {
   llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
 
   // Visitors used to add terminators to instruction basic blocks
-  void VisitInvalid(const remill::Instruction &inst,
-                    llvm::BasicBlock *block);
+  void VisitInvalid(const remill::Instruction &inst, llvm::BasicBlock *block);
   void VisitError(const remill::Instruction &inst,
-                  remill::Instruction *delayed_inst,
-                  llvm::BasicBlock *block);
-  void VisitNormal(const remill::Instruction &inst,
-                   llvm::BasicBlock *block);
-  void VisitNoOp(const remill::Instruction &inst,
-                 llvm::BasicBlock *block);
+                  remill::Instruction *delayed_inst, llvm::BasicBlock *block);
+  void VisitNormal(const remill::Instruction &inst, llvm::BasicBlock *block);
+  void VisitNoOp(const remill::Instruction &inst, llvm::BasicBlock *block);
   void VisitDirectJump(const remill::Instruction &inst,
                        remill::Instruction *delayed_inst,
                        llvm::BasicBlock *block);
@@ -109,12 +107,21 @@ class MCToIRLifter {
   void VisitFunctionReturn(const remill::Instruction &inst,
                            remill::Instruction *delayed_inst,
                            llvm::BasicBlock *block);
+
+  std::pair<uint64_t, llvm::Value *>
+  LoadFunctionReturnAddress(const remill::Instruction &inst,
+                            llvm::BasicBlock *block);
+
   void VisitDirectFunctionCall(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block);
   void VisitIndirectFunctionCall(const remill::Instruction &inst,
                                  remill::Instruction *delayed_inst,
                                  llvm::BasicBlock *block);
+
+  void VisitAfterFunctionCall(const remill::Instruction &inst,
+                              llvm::BasicBlock *block);
+
   void VisitConditionalBranch(const remill::Instruction &inst,
                               remill::Instruction *delayed_inst,
                               llvm::BasicBlock *block);
@@ -127,8 +134,7 @@ class MCToIRLifter {
 
   void VisitDelayedInstruction(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
-                               llvm::BasicBlock *block,
-                               bool on_taken_path);
+                               llvm::BasicBlock *block, bool on_taken_path);
 
   void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block);
 
@@ -138,7 +144,6 @@ class MCToIRLifter {
  public:
   MCToIRLifter(const remill::Arch *arch, const Program &program,
                llvm::Module &module);
-
 
   // Lift the function decl `decl` and return an `FunctionEntry`.
   FunctionEntry LiftFunction(const FunctionDecl &decl);

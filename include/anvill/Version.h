@@ -26,20 +26,20 @@
 //  SOFTWARE.
 //
 
-#include <string>
+#include <string_view>
 
 namespace anvill {
-namespace Version {
+namespace version {
 
-bool HasVersionData();
-bool HasUncommittedChanges();
-std::string GetAuthorName();
-std::string GetAuthorEmail();
-std::string GetCommitHash();
-std::string GetCommitDate();
-std::string GetCommitSubject();
-std::string GetCommitBody();
-std::string GetVersionString();
+bool HasVersionData(void);
+bool HasUncommittedChanges(void);
+std::string_view GetAuthorName(void);
+std::string_view GetAuthorEmail(void);
+std::string_view GetCommitHash(void);
+std::string_view GetCommitDate(void);
+std::string_view GetCommitSubject(void);
+std::string_view GetCommitBody(void);
+std::string_view GetVersionString(void);
 
-}  // namespace Version
+}  // namespace version
 }  // namespace anvill

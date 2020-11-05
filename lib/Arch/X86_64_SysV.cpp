@@ -212,8 +212,7 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
   // case, we can assume the actual return value of the function will be the
   // sret struct pointer.
   if (function.hasStructRetAttr()) {
-    ret_values.emplace_back();
-    auto &value_declaration = ret_values.back();
+    auto &value_declaration = ret_values.emplace_back();
 
     // Check both first and second parameter because llvm does that in
     // llvm::Function::hasStructRetAttr()
@@ -250,21 +249,18 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
       // Put into RAX.
       if (bit_width <= 64) {
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("RAX");
         value_declaration.type = ret_type;
         return llvm::Error::success();
 
       // Split over RDX:RAX
       } else if (bit_width <= 128) {
-        ret_values.emplace_back();
-        auto &v0 = ret_values.back();
+        auto &v0 = ret_values.emplace_back();
         v0.reg = arch->RegisterByName("RAX");
         v0.type = int64_ty;
 
-        ret_values.emplace_back();
-        auto &v1 = ret_values.back();
+        auto &v1 = ret_values.emplace_back();
         v1.reg = arch->RegisterByName("RDX");
         v1.type = int64_ty;
 
@@ -272,18 +268,15 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
       // Split over RCX:RDX:RAX.
       } else if (bit_width <= 192) {
-        ret_values.emplace_back();
-        auto &v0 = ret_values.back();
+        auto &v0 = ret_values.emplace_back();
         v0.reg = arch->RegisterByName("RAX");
         v0.type = int64_ty;
 
-        ret_values.emplace_back();
-        auto &v1 = ret_values.back();
+        auto &v1 = ret_values.emplace_back();
         v1.reg = arch->RegisterByName("RDX");
         v1.type = int64_ty;
 
-        ret_values.emplace_back();
-        auto &v2 = ret_values.back();
+        auto &v2 = ret_values.emplace_back();
         v2.reg = arch->RegisterByName("RCX");
         v2.type = int64_ty;
 
@@ -309,8 +302,7 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Pointers always fit into `RAX`.
     case llvm::Type::PointerTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("RAX");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -319,24 +311,21 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
     // Floats and doubles always go in `xmm0`.
     case llvm::Type::FloatTyID:
     case llvm::Type::DoubleTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("XMM0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::X86_MMXTyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("MM0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
     }
 
     case llvm::Type::X86_FP80TyID: {
-      ret_values.emplace_back();
-      auto &value_declaration = ret_values.back();
+      auto &value_declaration = ret_values.emplace_back();
       value_declaration.reg = arch->RegisterByName("ST0");
       value_declaration.type = ret_type;
       return llvm::Error::success();
@@ -344,12 +333,11 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Try to split the composite type over registers, and fall back on RVO
     // if it's not possible.
-    case llvm::Type::VectorTyID:
+    case llvm::GetFixedVectorTypeId():
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
-      auto comp_ptr = llvm::dyn_cast<llvm::CompositeType>(ret_type);
       AllocationState alloc_ret(return_register_constraints, arch, this);
-      auto mapping = alloc_ret.TryRegisterAllocate(*comp_ptr);
+      auto mapping = alloc_ret.TryRegisterAllocate(*ret_type);
 
       // There is a valid split over registers, so add the mapping
       if (mapping) {
@@ -360,8 +348,7 @@ X86_64_SysV::BindReturnValues(llvm::Function &function, bool &injected_sret,
       } else {
         injected_sret = true;
 
-        ret_values.emplace_back();
-        auto &value_declaration = ret_values.back();
+        auto &value_declaration = ret_values.emplace_back();
         value_declaration.reg = arch->RegisterByName("RAX");
         value_declaration.type = llvm::PointerType::get(ret_type, 0);
         return llvm::Error::success();
@@ -402,14 +389,12 @@ llvm::Error X86_64_SysV::BindParameters(
   // the first parameter to the sret struct. The type of said sret parameter
   // will be the return type of the function.
   if (injected_sret) {
-    parameter_declarations.emplace_back();
-    auto &decl = parameter_declarations.back();
+    auto &decl = parameter_declarations.emplace_back();
 
     decl.name = "__struct_ret_ptr";
     decl.type = function.getReturnType();
     decl.reg = arch->RegisterByName("RAX");
     alloc_param.reserved[0] = true;
-    parameter_declarations.push_back(decl);
   }
 
   const auto rsp_reg = arch->RegisterByName("RSP");
@@ -424,8 +409,7 @@ llvm::Error X86_64_SysV::BindParameters(
       auto prev_size = parameter_declarations.size();
 
       for (const auto &param_decl : allocation.getValue()) {
-        parameter_declarations.emplace_back();
-        auto &declaration = parameter_declarations.back();
+        auto &declaration = parameter_declarations.emplace_back();
         declaration.type = param_decl.type;
         if (param_decl.reg) {
           declaration.reg = param_decl.reg;
@@ -451,8 +435,7 @@ llvm::Error X86_64_SysV::BindParameters(
       }
 
     } else {
-      parameter_declarations.emplace_back();
-      auto &declaration = parameter_declarations.back();
+      auto &declaration = parameter_declarations.emplace_back();
       declaration.type = param_type;
       declaration.mem_offset = static_cast<int64_t>(stack_offset);
       declaration.mem_reg = rsp_reg;
