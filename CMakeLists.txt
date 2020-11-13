@@ -190,6 +190,7 @@ endif()
 
 install(
   TARGETS ${ANVILL}
+  ARCHIVE DESTINATION "${install_folder}/lib"
   LIBRARY DESTINATION "${install_folder}/lib"
   PUBLIC_HEADER DESTINATION "${install_folder}/include/anvill")
 
