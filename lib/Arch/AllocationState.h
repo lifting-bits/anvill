@@ -18,6 +18,7 @@
 #pragma once
 
 #include <llvm/IR/Attributes.h>
+#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include <vector>
@@ -54,13 +55,13 @@ struct AllocationState {
   llvm::Optional<std::vector<ValueDecl>> TryRegisterAllocate(llvm::Type &type);
 
   llvm::Optional<std::vector<anvill::ValueDecl>>
-  TryCompositeRegisterAllocate(llvm::CompositeType &type);
+  TryCompositeRegisterAllocate(llvm::Type &type);
 
   llvm::Optional<std::vector<ValueDecl>>
   TryBasicRegisterAllocate(llvm::Type &type, llvm::Optional<SizeAndType> hint);
 
   llvm::Optional<std::vector<anvill::ValueDecl>>
-  TryVectorRegisterAllocate(llvm::VectorType &type);
+  TryVectorRegisterAllocate(llvm::FixedVectorType &type);
 
   bool IsFilled(size_t i);
 

@@ -18,6 +18,7 @@
 #include "anvill/Lift.h"
 
 #include <glog/logging.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
@@ -195,33 +196,31 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   llvm::IRBuilder<> ir(block);
 
   // Create a memory pointer.
-  auto mem_ptr_type = remill::MemoryPointerType(module);
+  auto mem_ptr_type = arch->MemoryPointerType();
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate a state pointer.
-  auto state_ptr_type = remill::StatePointerType(module);
+  auto state_ptr_type = arch->StatePointerType();
   auto state_type = state_ptr_type->getElementType();
   auto state_ptr = ir.CreateAlloca(state_type);
 
-  //  // Get or create globals for all top-level registers. The idea here is that
-  //  // the spec could feasibly miss some dependencies, and so after optimization,
-  //  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-  //  // them appropriately.
-  //  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-  //    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-  //      std::stringstream ss;
-  //      ss << "__anvill_reg_" << reg->name;
-  //      const auto reg_name = ss.str();
-  //      auto reg_global = module->getGlobalVariable(reg_name);
-  //      if (!reg_global) {
-  //        reg_global = new llvm::GlobalVariable(
-  //            *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-  //            nullptr, reg_name);
-  //      }
-  //      auto reg_ptr = reg->AddressOf(state_ptr, block);
-  //      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-  //    }
-  //  });
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      ss << "# read register " << reg->name;
+
+      llvm::InlineAsm *read_reg =
+          llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                               ss.str(), "=r", true /* hasSideEffects */);
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
@@ -375,7 +374,11 @@ static void OptimizeFunction(llvm::Function *func) {
 
     for (auto call_inst : calls_to_inline) {
       llvm::InlineFunctionInfo info;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
       llvm::InlineFunction(call_inst, info);
+#else
+      llvm::InlineFunction(*call_inst, info);
+#endif
     }
   }
 
@@ -489,7 +492,10 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
 
-  // Create our lifter
+  // Create our lifter.
+  // At this point, `module` is just the loaded semantics for
+  // the arcchitecture. The module will be filled in with lifted program code
+  // and data as the lifting process progresses.
   MCToIRLifter lifter(arch, program, module);
 
   // Declare global variables.

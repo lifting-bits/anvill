@@ -33,8 +33,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | [CMake](https://cmake.org/) | 3.2+ |
 | [Clang](http://clang.llvm.org/) | 8.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
-| [Python](https://www.python.org/) | 3.5.1+ |
-| [IDA Pro](https://www.hex-rays.com/products/ida) | 7.1+ |
+| [Python](https://www.python.org/) | 3.8 |
+| [IDA Pro](https://www.hex-rays.com/products/ida) | 7.5+ |
 | [Binary Ninja](https://binary.ninja/) | Latest |
 
 ## Getting and Building the Code
@@ -48,7 +48,7 @@ sudo apt-get upgrade
 
 sudo apt-get install \
      git \
-     python3 \
+     python3.8 \
      python3-pip \
      wget \
      curl \
@@ -84,10 +84,8 @@ These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [
 Given that we have either of the above, we can try out Anvill's machine code lifter on a binary of our choice.
 
 ```shell
-# First make sure we have the required python packages
-pip3 install pyelftools
-# Next we generate a JSON specification from a binary
-python3 -m anvill --bin_in my_binary --spec_out spec.json
+# First, we generate a JSON specification from a binary
+python3.8 -m anvill --bin_in my_binary --spec_out spec.json
 # Finally we produce LLVM bitcode from a JSON specification
 ./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
 ```
@@ -97,11 +95,11 @@ python3 -m anvill --bin_in my_binary --spec_out spec.json
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
 
 ```shell
-ARCH=amd64; DIST=ubuntu20.04; LLVM=900; \
+ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=1100; \
    docker build . \
-   -t anvill-llvm${LLVM}-${DIST}-${ARCH} \
+   -t anvill-llvm${LLVM}-ubuntu${UBUNTU_VERSION}-${ARCH} \
    -f Dockerfile \
-   --build-arg DISTRO_BASE=${DIST} \
+   --build-arg UBUNTU_VERSION=${UBUNTU_VERSION} \
    --build-arg ARCH=${ARCH} \
    --build-arg LLVM_VERSION=${LLVM}
 ```

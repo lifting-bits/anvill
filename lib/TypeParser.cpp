@@ -21,6 +21,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
 #include <remill/BC/Compat/Error.h>
+#include <remill/BC/Compat/VectorType.h>
 
 #include <cstddef>
 #include <sstream>
@@ -209,7 +210,7 @@ ParseType(llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
         }
 
         i += 1;
-        return llvm::VectorType::get(elem_type, num_elems);
+        return llvm::FixedVectorType::get(elem_type, num_elems);
       }
 
       // Parse a pointer type.

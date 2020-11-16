@@ -88,6 +88,12 @@ def _guess_architecture():
             raise UnhandledArchitectureType(
                 "Unrecognized 32-bit ARM architecture: {}".format(inf.procName)
             )
+
+    elif "sparc" in inf.procName:
+        if inf.is_64bit():
+            return "sparc64"
+        else:
+            return "sparc32"
     else:
         raise UnhandledArchitectureType(
             "Unrecognized archictecture: {}".format(inf.procName)
@@ -110,8 +116,9 @@ def _convert_ida_type(tinfo, cache, depth, context):
     if 0 < depth:
         context = TYPE_CONTEXT_NESTED
 
-    if tinfo in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
-        return cache[tinfo]
+    tinfo_str = str(tinfo)
+    if tinfo_str in cache and context in (TYPE_CONTEXT_NESTED, TYPE_CONTEXT_FUNCTION):
+        return cache[tinfo_str]
 
     # Void type.
     elif tinfo.empty() or tinfo.is_void():
@@ -121,7 +128,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     elif tinfo.is_paf():
         if tinfo.is_ptr():
             ret = PointerType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             ret.set_element_type(
                 _convert_ida_type(tinfo.get_pointed_object(), cache, depth + 1, context)
             )
@@ -129,7 +136,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
         elif tinfo.is_func():
             ret = FunctionType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             ret.set_return_type(
                 _convert_ida_type(tinfo.get_rettype(), cache, depth + 1, context)
             )
@@ -164,7 +171,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
                     )
                 else:
                     ret = PointerType()
-                    cache[tinfo] = ret
+                    cache[tinfo_str] = ret
                     ret.set_element_type(
                         _convert_ida_type(
                             tinfo.get_array_element(), cache, depth + 1, context
@@ -173,7 +180,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
                     return ret
             else:
                 ret = ArrayType()
-                cache[tinfo] = ret
+                cache[tinfo_str] = ret
                 ret.set_element_type(
                     _convert_ida_type(
                         tinfo.get_array_element(), cache, depth + 1, context
@@ -191,7 +198,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     # Vector types.
     elif tinfo.is_sse_type():
         ret = VectorType()
-        cache[tinfo] = ret
+        cache[tinfo_str] = ret
         size = tinfo.get_size()
 
         # TODO(pag): Do better than this.
@@ -204,7 +211,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
     elif tinfo.is_sue():
         if tinfo.is_udt():  # Structure or union type.
             ret = tinfo.is_struct() and StructureType() or UnionType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             i = 0
             max_i = tinfo.get_udt_nmembers()
             while i < max_i:
@@ -222,7 +229,7 @@ def _convert_ida_type(tinfo, cache, depth, context):
 
         elif tinfo.is_enum():
             ret = EnumType()
-            cache[tinfo] = ret
+            cache[tinfo_str] = ret
             base_type = ida_typeinf.tinfo_t(tinfo.get_enum_base_type())
             ret.set_underlying_type(_convert_ida_type(base_type, cache, depth, context))
             return ret
@@ -266,12 +273,12 @@ def _convert_ida_type(tinfo, cache, depth, context):
     # NOTE(pag): We return the underlying type because it may be void.
     elif tinfo.is_typeref():
         ret = TypedefType()
-        cache[tinfo] = ret
+        cache[tinfo_str] = ret
         utype = _convert_ida_type(
             ida_typeinf.tinfo_t(tinfo.get_realtype(True)), cache, depth, context
         )
         ret.set_underlying_type(utype)
-        cache[tinfo] = utype
+        cache[tinfo_str] = utype
         return utype
 
     else:
@@ -287,6 +294,10 @@ def _get_arch():
         return X86Arch()
     elif name == "aarch64":
         return AArch64Arch()
+    elif name == "sparc32":
+        return Sparc32Arch()
+    elif name == "sparc64":
+        return Sparc64Arch()
     else:
         raise UnhandledArchitectureType(
             "Missing architecture object type for architecture '{}'".format(name)
@@ -833,26 +844,26 @@ def _get_calling_convention(arch, os, ftd):
     default_cc = os.default_calling_convention(arch)
     if arch_name == "x86":
 
-        if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+        if (ftd.cc & ida_typeinf.CM_CC_STDCALL) == ida_typeinf.CM_CC_STDCALL:
             return 64, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+        elif (ftd.cc & ida_typeinf.CM_CC_CDECL) == ida_typeinf.CM_CC_CDECL:
             return 0, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+        elif (ftd.cc & ida_typeinf.CM_CC_ELLIPSIS) == ida_typeinf.CM_CC_ELLIPSIS:
             return 0, True
-        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
+        elif (ftd.cc & ida_typeinf.CM_CC_THISCALL) == ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
 
     # NOTE(pag): Most x86 calling conventions are ignored in 64-bit.
     elif arch_name == "amd64":
-        if ftd.cc & ida_typeinf.CM_CC_STDCALL:
+        if (ftd.cc & ida_typeinf.CM_CC_STDCALL) == ida_typeinf.CM_CC_STDCALL:
             return default_cc, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_CDECL:
+        elif (ftd.cc & ida_typeinf.CM_CC_CDECL) == ida_typeinf.CM_CC_CDECL:
             return default_cc, is_variadic
-        elif ftd.cc & ida_typeinf.CM_CC_ELLIPSIS:
+        elif (ftd.cc & ida_typeinf.CM_CC_ELLIPSIS) == ida_typeinf.CM_CC_ELLIPSIS:
             return default_cc, True
-        elif ftd.cc & ida_typeinf.CM_CC_THISCALL:
+        elif (ftd.cc & ida_typeinf.CM_CC_THISCALL) == ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
         else:
             return default_cc, is_variadic
@@ -976,11 +987,12 @@ class IDAProgram(Program):
 
         tif = ida_typeinf.tinfo_t()
         if not ida_nalt.get_tinfo(tif, address):
-            raise InvalidFunctionException(
-                "Can't guess type information for function at address {:x}".format(
-                    address
+            if ida_typeinf.GUESS_FUNC_OK != ida_typeinf.guess_tinfo(tif, address):
+                raise InvalidFunctionException(
+                    "Can't guess type information for function at address {:x}".format(
+                        address
+                    )
                 )
-            )
 
         if not tif.is_func():
             raise InvalidFunctionException(

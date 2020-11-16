@@ -69,6 +69,7 @@ class MCToIRLifter {
   llvm::Module &module;
   llvm::LLVMContext &ctx;
   llvm::Function *lifted_func{nullptr};
+  llvm::Value *state_ptr{nullptr};
   remill::Instruction *curr_inst{nullptr};
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
@@ -106,12 +107,21 @@ class MCToIRLifter {
   void VisitFunctionReturn(const remill::Instruction &inst,
                            remill::Instruction *delayed_inst,
                            llvm::BasicBlock *block);
+
+  std::pair<uint64_t, llvm::Value *>
+  LoadFunctionReturnAddress(const remill::Instruction &inst,
+                            llvm::BasicBlock *block);
+
   void VisitDirectFunctionCall(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block);
   void VisitIndirectFunctionCall(const remill::Instruction &inst,
                                  remill::Instruction *delayed_inst,
                                  llvm::BasicBlock *block);
+
+  void VisitAfterFunctionCall(const remill::Instruction &inst,
+                              llvm::BasicBlock *block);
+
   void VisitConditionalBranch(const remill::Instruction &inst,
                               remill::Instruction *delayed_inst,
                               llvm::BasicBlock *block);
@@ -134,7 +144,6 @@ class MCToIRLifter {
  public:
   MCToIRLifter(const remill::Arch *arch, const Program &program,
                llvm::Module &module);
-
 
   // Lift the function decl `decl` and return an `FunctionEntry`.
   FunctionEntry LiftFunction(const FunctionDecl &decl);

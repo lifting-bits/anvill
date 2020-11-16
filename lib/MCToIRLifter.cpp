@@ -128,6 +128,74 @@ void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
   llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
 }
 
+// Figure out the fall-through return address for a function call. There are
+// annoying SPARC-isms to deal with due to their awful ABI choices.
+std::pair<uint64_t, llvm::Value *>
+MCToIRLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
+                                        llvm::BasicBlock *block) {
+
+  static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
+  const auto pc = inst.branch_not_taken_pc;
+
+  // The semantics for handling a call save the expected return program counter
+  // into a local variable.
+  auto ret_pc =
+      inst_lifter.LoadRegValue(block, state_ptr, remill::kReturnPCVariableName);
+  if (!is_sparc) {
+    return {pc, ret_pc};
+  }
+
+  // Only bad SPARC ABI choices below this point.
+  auto byte = program.FindByte(pc);
+
+  uint8_t bytes[4] = {};
+
+  for (auto i = 0u; i < 4u && byte; ++i, byte = program.FindNextByte(byte)) {
+    auto maybe_val = byte.Value();
+    if (remill::IsError(maybe_val)) {
+      (void) remill::GetErrorString(maybe_val);  // Drop the error.
+      return {pc, ret_pc};
+
+    } else {
+      bytes[i] = remill::GetReference(maybe_val);
+    }
+  }
+
+  union Format0a {
+    uint32_t flat;
+    struct {
+      uint32_t imm22 : 22;
+      uint32_t op2 : 3;
+      uint32_t rd : 5;
+      uint32_t op : 2;
+    } u __attribute__((packed));
+  } __attribute__((packed)) enc = {};
+  static_assert(sizeof(Format0a) == 4, " ");
+
+  enc.flat |= bytes[0];
+  enc.flat <<= 8;
+  enc.flat |= bytes[1];
+  enc.flat <<= 8;
+  enc.flat |= bytes[2];
+  enc.flat <<= 8;
+  enc.flat |= bytes[3];
+
+  // This looks like an `unimp <imm22>` instruction, where the `imm22` encodes
+  // the size of the value to return. See "Programming Note" in v8 manual, B.31,
+  // p 137.
+  if (!enc.u.op && !enc.u.op2) {
+    LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
+              << std::hex << pc << " at " << inst.pc << std::dec;
+
+    llvm::IRBuilder<> ir(block);
+    return {pc + 4u,
+            ir.CreateAdd(ret_pc, llvm::ConstantInt::get(ret_pc->getType(), 4))};
+
+  } else {
+    return {pc, ret_pc};
+  }
+}
+
 void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
                                            remill::Instruction *delayed_inst,
                                            llvm::BasicBlock *block) {
@@ -140,10 +208,11 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
   } else {
     LOG(ERROR) << "Missing declaration for function at " << std::hex
                << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+
+    // If we do not have a function declaration, treat this as a call to an unknown address.
     remill::AddCall(block, intrinsics.function_call);
   }
-
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
+  VisitAfterFunctionCall(inst, block);
 }
 
 void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
@@ -152,7 +221,18 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddCall(block, intrinsics.function_call);
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
+  VisitAfterFunctionCall(inst, block);
+}
+
+void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
+                                          llvm::BasicBlock *block) {
+  auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
+  auto next_pc_ptr =
+      inst_lifter.LoadRegAddress(block, state_ptr, remill::kNextPCVariableName);
+
+  llvm::IRBuilder<> ir(block);
+  ir.CreateStore(ret_pc_val, next_pc_ptr, false);
+  ir.CreateBr(GetOrCreateBlock(ret_pc));
 }
 
 void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,
@@ -181,8 +261,6 @@ void MCToIRLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
 void MCToIRLifter::VisitConditionalAsyncHyperCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
-  VisitConditionalBranch(inst, delayed_inst, block);
-
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
@@ -203,7 +281,7 @@ void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                                            bool on_taken_path) {
   if (delayed_inst &&
       arch->NextInstructionIsDelayed(inst, *delayed_inst, on_taken_path)) {
-    inst_lifter.LiftIntoBlock(*delayed_inst, block, true);
+    inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
   }
 }
 
@@ -211,20 +289,25 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
                                     llvm::BasicBlock *block) {
   curr_inst = &inst;
 
+  // Reserve space for an instrucion that will go into a delay slot, in case it
+  // is needed. This is an uncommon case, so avoid instantiating a new
+  // Instruction unless it is actually needed. The instruction instantition into
+  // this buffer happens via a placement new call later on.
   std::aligned_storage<sizeof(remill::Instruction),
-                       alignof(remill::Instruction)>
-      delayed_inst_storage;
+                       alignof(remill::Instruction)>::type delayed_inst_storage;
 
   remill::Instruction *delayed_inst = nullptr;
 
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
   // to treat instruction lifting as an operation that can't fail.
-  (void) inst_lifter.LiftIntoBlock(inst, block, false);
+  (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
+                                   false /* is_delayed */);
 
   if (arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
-    if (!DecodeInstructionInto(inst.delayed_pc, true, delayed_inst)) {
+    if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
+                               delayed_inst)) {
       LOG(ERROR) << "Unable to decode or use delayed instruction at "
                  << std::hex << inst.delayed_pc << std::dec << " of "
                  << inst.Serialize();
@@ -232,9 +315,14 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
   }
 
   switch (inst.category) {
+
+    // Invalid means failed to decode.
     case remill::Instruction::kCategoryInvalid:
       VisitInvalid(inst, block);
       break;
+
+    // Error is a valid instruction, but specifies error semantics for the
+    // processor. The canonical example is x86's `UD2` instruction.
     case remill::Instruction::kCategoryError:
       VisitError(inst, delayed_inst, block);
       break;
@@ -278,6 +366,9 @@ FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
     return entry;
   }
 
+  // By default we do not want to deal with function names until the very end of
+  // lifting. Instead, lets assign a temporary name based on the function's
+  // starting address.
   const auto base_name = CreateFunctionName(decl.address);
 
   entry.lifted_to_native =
@@ -296,6 +387,8 @@ FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 
 FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   const auto entry = GetOrDeclareFunction(decl);
+
+  // Check if we already lifted this function. If so, do not re-lift it.
   if (!entry.native_to_lifted->isDeclaration()) {
     return entry;
   }
@@ -304,6 +397,11 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   addr_to_block.clear();
 
   lifted_func = entry.lifted;
+
+  // Every lifted function starts as a clone of __remill_basic_block. That
+  // prototype has multiple arguments (memory pointer, state pointer, program
+  // counter). This exctracts the state pointer.
+  state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
   CHECK(lifted_func->isDeclaration());
 
   remill::CloneBlockFunctionInto(lifted_func);

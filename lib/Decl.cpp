@@ -123,7 +123,6 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   auto func = DeclareInModule(name, *module, allow_unowned);
   llvm::IRBuilder<> ir(block);
 
-
   // Go and get a pointer to the stack pointer register, so that we can
   // later store our computed return value stack pointer to it.
   auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
