@@ -99,7 +99,7 @@ llvm::Function *FunctionDecl::DeclareInModule(const std::string &name,
   func->setCallingConv(calling_convention);
 
   // Give them all nice names :-D
-  auto arg_num = 0U;
+  auto arg_num = 0u;
   for (auto &arg : func->args()) {
     arg.setName(params[arg_num++].name);
   }

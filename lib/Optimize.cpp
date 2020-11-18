@@ -654,8 +654,8 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
       return GetPointer(program, module, ir, addr, elem_type, addr_space);
 
     } else {
-      LOG(ERROR) << "Missed cross-reference target " << std::hex << ea
-                 << " to pointer";
+      LOG(WARNING) << "Missed cross-reference target " << std::hex << ea
+                   << " to pointer";
       return llvm::ConstantExpr::getIntToPtr(ci, dest_type);
     }
 
