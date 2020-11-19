@@ -5,8 +5,8 @@ unsigned c = 1;
 
 int main(void)
 {
-    unsigned b = (unsigned)&a;
-    unsigned d = (unsigned)&c;
+    long b = (long)&a;
+    long d = (long)&c;
     
     if (c) {
         printf("Global variable 'a' of value %u is at ", a);

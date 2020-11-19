@@ -529,23 +529,21 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
       const auto elm_type = type->getArrayElementType();
       const auto elm_size = dl.getTypeSizeInBits(elm_type);
       const auto num_elms = type->getArrayNumElements();
-      std::vector<uint64_t> elements;
+      std::string bytes(dl.getTypeSizeInBits(type) / 8, '\0');
       for (auto i = 0u; i < num_elms; ++i) {
-        const auto elm_addr = addr + (i * elm_size) / 8;
-        elements.push_back(
-            ReadValueFromMemory(elm_addr, elm_size, arch, program)
-                .getLimitedValue());
+        const auto elm_offset = i * (elm_size / 8);
+        const auto src =
+            ReadValueFromMemory(addr + elm_offset, elm_size, arch, program)
+                .getRawData();
+        const auto dst = bytes.data() + elm_offset;
+        std::memcpy(dst, src, elm_size / 8);
       }
       auto &ctx = module.getContext();
       if (elm_size == 8) {
-        std::string str;
-        for (auto elm : elements) {
-          str.push_back(static_cast<uint8_t>(elm));
-        }
         result =
-            llvm::ConstantDataArray::getString(ctx, str, /*AddNull=*/false);
+            llvm::ConstantDataArray::getString(ctx, bytes, /*AddNull=*/false);
       } else {
-        result = llvm::ConstantDataArray::get(ctx, elements);
+        result = llvm::ConstantDataArray::getRaw(bytes, num_elms, elm_type);
       }
     } break;
 
@@ -575,7 +573,6 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
     const auto gvar = decl->DeclareInModule(name, module);
     // Set initializer
     auto init = CreateConstFromMemory(addr, decl->type, arch, program, module);
-    DLOG(INFO) << "SATAN: " << remill::LLVMThingToString(init);
     gvar->setInitializer(init);
     return true;
   });
@@ -590,7 +587,6 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   });
 
   // Verify the module
-  remill::StoreModuleIRToFile(&module, "dump.ll", true);
   CHECK(remill::VerifyModule(&module));
 
   return true;
