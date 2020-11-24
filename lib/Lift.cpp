@@ -374,7 +374,7 @@ static void OptimizeFunction(llvm::Function *func) {
 
     for (auto call_inst : calls_to_inline) {
       llvm::InlineFunctionInfo info;
-      InlineFunction(call_inst, info);
+      anvill::InlineFunction(call_inst, info);
     }
   }
 
