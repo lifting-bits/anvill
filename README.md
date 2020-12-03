@@ -78,6 +78,8 @@ make -j 5
 sudo make install
 ```
 
+Or you can tell CMake where to find the remill installation prefix by passing `-Dremill_DIR="<remill_prefix>/lib/cmake/remill"` during configuration.
+
 Anvill's python plugins provide functionality needed to generate a JSON specification that contains information about the contents of a binary.
 These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [Binary Ninja](https://binary.ninja/) for various analysis tasks.
 
