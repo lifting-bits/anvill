@@ -13,6 +13,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# Find remill first because its config has useful dependency-finding info that
+# needs to be found before the CMake `project` declaration
+find_package(remill CONFIG REQUIRED ${REMILL_FINDPACKAGE_HINTS})
+
 include(cmake/vcpkg_helper.cmake)
 
 project(anvill)
@@ -29,18 +33,11 @@ macro(target_public_headers TARGET)
 endmacro()
 
 option(ANVILL_INSTALL_PYTHON2_LIBS "Install Python 2 libraries")
-option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries" ON)
+option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries")
 
 #
 # libraries
 #
-
-# remill
-if("${PLATFORM_NAME}" STREQUAL "windows")
-  set(REMILL_FINDPACKAGE_HINTS HINTS "${CMAKE_INSTALL_PREFIX}/remill/lib")
-endif()
-
-find_package(remill REQUIRED ${REMILL_FINDPACKAGE_HINTS})
 
 #
 # target settings
