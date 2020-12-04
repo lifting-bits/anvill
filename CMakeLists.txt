@@ -15,7 +15,7 @@
 
 # Find remill first because its config has useful dependency-finding info that
 # needs to be found before the CMake `project` declaration
-find_package(remill CONFIG REQUIRED ${REMILL_FINDPACKAGE_HINTS})
+find_package(remill QUIET)
 
 include(cmake/vcpkg_helper.cmake)
 
@@ -38,6 +38,7 @@ option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries")
 #
 # libraries
 #
+find_package(remill CONFIG REQUIRED)
 
 #
 # target settings
@@ -58,25 +59,25 @@ add_library(${ANVILL} STATIC
   lib/Arch/X86_StdCall.cpp
   lib/Arch/X86_ThisCall.cpp
   lib/Arch/X86_64_SysV.cpp
-  
+
   lib/Arch/AllocationState.h
   lib/Arch/AllocationState.cpp
-  
+
   lib/Arch/Arch.h
   lib/Arch/Arch.cpp
-  
+
   include/anvill/TypeParser.h
   lib/TypeParser.cpp
-  
+
   include/anvill/TypePrinter.h
   lib/TypePrinter.cpp
-  
+
   include/anvill/Program.h
   lib/Program.cpp
-  
+
   include/anvill/Decl.h
   lib/Decl.cpp
-  
+
   include/anvill/Lift.h
   lib/Lift.cpp
 
@@ -85,10 +86,10 @@ add_library(${ANVILL} STATIC
 
   include/anvill/Optimize.h
   lib/Optimize.cpp
-  
+
   include/anvill/Analyze.h
   lib/Analyze.cpp
-  
+
   include/anvill/Util.h
   lib/Util.cpp)
 
@@ -96,7 +97,7 @@ target_include_directories(${ANVILL} PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   ${PROJECT_INCLUDEDIRECTORIES})
 
-target_link_libraries(${ANVILL} PUBLIC remill AnvillVersion)
+target_link_libraries(${ANVILL} PUBLIC remill_settings remill AnvillVersion)
 
 target_public_headers(${ANVILL}
   include/anvill/Analyze.h
@@ -152,7 +153,7 @@ endif()
 if(ANVILL_INSTALL_PYTHON2_LIBS)
   add_custom_target(install_anvill_python2
     DEPENDS ${ANVILL_PYTHON_SOURCES})
-    
+
   add_custom_command(
     TARGET install_anvill_python2 POST_BUILD
     COMMAND which python2 && python2 setup.py install ${extra_install_flags}
@@ -205,7 +206,7 @@ install(
   DESTINATION "${install_folder}/share")
 
 #NOTE(artem): Uncomment and add tests as we pass them
-set(ROUNDTRIP_TEST_FILES 
+set(ROUNDTRIP_TEST_FILES
   #tests/assert.c
   #tests/bitops.c
   tests/cast.c
