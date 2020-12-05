@@ -15,19 +15,20 @@
 
 # Find remill first because its config has useful dependency-finding info that
 # needs to be found before the CMake `project` declaration
-find_package(remill QUIET)
+find_package(remill COMPONENTS VCPKG_DEPS QUIET)
 
 include(cmake/vcpkg_helper.cmake)
 
 project(anvill)
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.14)
+include(GNUInstallDirs)
+enable_language(C CXX ASM)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/settings.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/utils.cmake")
 
 FindAndSelectClangCompiler()
 
-enable_language(C CXX ASM)
 macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
 endmacro()
@@ -94,8 +95,9 @@ add_library(${ANVILL} STATIC
   lib/Util.cpp)
 
 target_include_directories(${ANVILL} PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  ${PROJECT_INCLUDEDIRECTORIES})
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  )
 
 target_link_libraries(${ANVILL} PUBLIC remill_settings remill AnvillVersion)
 
@@ -182,28 +184,16 @@ endif()
 # install settings
 #
 
-if(DEFINED WIN32)
-  set(install_folder "${CMAKE_INSTALL_PREFIX}/anvill")
-else()
-  set(install_folder "${CMAKE_INSTALL_PREFIX}")
-endif()
+install(TARGETS ${ANVILL} EXPORT anvillTargets)
 
-install(
-  TARGETS ${ANVILL}
-  ARCHIVE DESTINATION "${install_folder}/lib"
-  LIBRARY DESTINATION "${install_folder}/lib"
-  PUBLIC_HEADER DESTINATION "${install_folder}/include/anvill")
-
-install(
-  TARGETS ${DECOMPILE_JSON}
-  RUNTIME DESTINATION "${install_folder}/bin")
+install(TARGETS ${DECOMPILE_JSON})
 
 set(ROUNDTRIP_TEST
   scripts/roundtrip.py)
 
 install(
   FILES ${ROUNDTRIP_TEST}
-  DESTINATION "${install_folder}/share")
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/anvill")
 
 #NOTE(artem): Uncomment and add tests as we pass them
 set(ROUNDTRIP_TEST_FILES
@@ -218,16 +208,20 @@ set(ROUNDTRIP_TEST_FILES
 
 install(
   FILES ${ROUNDTRIP_TEST_FILES}
-  DESTINATION "${install_folder}/share/tests")
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/anvill/tests")
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
+  @ONLY
 )
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
-  DESTINATION "${install_folder}/lib/cmake/anvill"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
 )
+
+install(EXPORT anvillTargets
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill")
 
 #
 # tests
