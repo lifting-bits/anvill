@@ -184,7 +184,8 @@ endif()
 # install settings
 #
 
-install(TARGETS ${ANVILL} EXPORT anvillTargets)
+install(TARGETS ${ANVILL} EXPORT anvillTargets
+  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/anvill)
 
 install(TARGETS ${DECOMPILE_JSON})
 
