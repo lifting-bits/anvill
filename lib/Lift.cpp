@@ -538,10 +538,9 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
         const auto dst = bytes.data() + elm_offset;
         std::memcpy(dst, src, elm_size / 8);
       }
-      auto &ctx = module.getContext();
       if (elm_size == 8) {
-        result =
-            llvm::ConstantDataArray::getString(ctx, bytes, /*AddNull=*/false);
+        result = llvm::ConstantDataArray::getString(module.getContext(), bytes,
+                                                    /*AddNull=*/false);
       } else {
         result = llvm::ConstantDataArray::getRaw(bytes, num_elms, elm_type);
       }
@@ -574,6 +573,7 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
     // Set initializer
     auto init = CreateConstFromMemory(addr, decl->type, arch, program, module);
     gvar->setInitializer(init);
+
     return true;
   });
 

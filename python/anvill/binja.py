@@ -115,8 +115,7 @@ class XrefType:
 
 
 def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE):
-    """Recursively collect xrefs in a IL instructions
-  """
+    """Recursively collect xrefs in a IL instructions"""
     if not isinstance(insn, bn.LowLevelILInstruction):
         return
 
@@ -355,13 +354,13 @@ class BNVariable(Variable):
 
         if isinstance(self._type, VoidType):
             return
-        
+
         bv = program._bv
         br = bn.BinaryReader(bv)
         mem = program.memory()
         begin = self._address
         end = begin + self._type.size(self._arch)
-        
+
         for ea in range(begin, end):
             br.seek(ea)
             seg = bv.get_segment_at(ea)
@@ -376,14 +375,21 @@ class BNProgram(Program):
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
-    raise an `InvalidVariableException` exception."""
+        raise an `InvalidVariableException` exception."""
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
-        return BNVariable(bn_var, arch, address, get_type(bn_var.type))
+        var_type = get_type(bn_var.type)
+        # fall back onto an array of bytes type for variables
+        # of an unknown (void) type.
+        if isinstance(var_type, VoidType):
+            var_type = ArrayType()
+            var_type.set_num_elements(1)
+
+        return BNVariable(bn_var, arch, address, var_type)
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
-    raise an `InvalidFunctionException` exception."""
+        raise an `InvalidFunctionException` exception."""
         arch = self._arch
 
         bn_func = self._bv.get_function_at(address)
@@ -445,16 +451,14 @@ class BNProgram(Program):
                 loc.set_type(retTy)
                 ret_list.append(loc)
 
-        func = BNFunction(
-            bn_func, arch, address, param_list, ret_list, func_type
-        )
+        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
         return func
 
     @property
     def functions(self):
         for func in self._bv.functions:
             yield (func.start, func.name)
-    
+
     @property
     def variables(self):
         for addr, var in self._bv.data_vars.items():
@@ -471,7 +475,7 @@ def get_program(*args, **kargs):
     if _PROGRAM:
         return _PROGRAM
     assert len(args) == 1
-    
+
     prog = BNProgram(args[0])
     if "cache" not in kargs or kargs["cache"]:
         _PROGRAM = prog
