@@ -502,7 +502,9 @@ static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
     }
   }
 
-  if (arch->MemoryAccessIsLittleEndian()) {
+  // NOTE(artem): LLVM's APInt does not handle byteSwap()
+  // for size 8, leading to a segfault. Guard against it here.
+  if (arch->MemoryAccessIsLittleEndian() && size > 8) {
     result = result.byteSwap();
   }
 
