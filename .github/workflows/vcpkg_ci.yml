@@ -88,7 +88,7 @@ jobs:
         shell: bash
         run: |
           # Change to master after testing
-          git clone --branch vcpkg https://github.com/lifting-bits/remill.git
+          git clone --branch master https://github.com/lifting-bits/remill.git
           cd remill
           ./scripts/build.sh --llvm-version ${{ matrix.llvm }}
           cmake --build remill-build --target install
