@@ -37,7 +37,6 @@ jobs:
           # TODO some of these should probably live in the Docker build image
           apt-get update
           apt-get install -y pixz xz-utils make
-
       - name: Build and install remill
         shell: bash
         run: |
@@ -56,6 +55,16 @@ jobs:
         shell: bash
         run: |
           anvill-decompile-json-${{ matrix.llvm }}.0 -spec ./examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
+      - name: Tests
+        shell: bash
+        working-directory: ci
+        run: |
+          ./install_binja.sh
+          ./install_clang.sh
+          ./run_tests.sh
+        env:
+          BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
+          LLVM_VERSION: "llvm${{ matrix.llvm }}0"
 
   build_mac:
     strategy:
