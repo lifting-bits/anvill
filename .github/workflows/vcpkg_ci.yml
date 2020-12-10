@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           mkdir build && cd build
-          cmake ..
+          cmake -DCMAKE_VERBOSE_MAKEFILE=ON ..
           cmake --build . --target install -- -j "$(nproc)"
       - name: Smoke Test
         shell: bash
@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           mkdir build && cd build
-          cmake ..
+          cmake -DCMAKE_VERBOSE_MAKEFILE=ON ..
           cmake --build . --target install -- -j "$(sysctl -n hw.logicalcpu)"
       - name: Smoke Test
         shell: bash
