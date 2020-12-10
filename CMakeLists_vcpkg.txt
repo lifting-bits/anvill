@@ -34,7 +34,7 @@ macro(target_public_headers TARGET)
 endmacro()
 
 option(ANVILL_INSTALL_PYTHON2_LIBS "Install Python 2 libraries")
-option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries")
+option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries" ON)
 
 #
 # libraries
