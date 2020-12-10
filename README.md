@@ -63,7 +63,7 @@ sudo apt-get install \
 sudo apt-get install realpath
 ```
 
-Assuming we have [Remill](https://github.com/lifting-bits/remill) properly installed the following steps provide a fresh build of Anvill. You'll need to find which vcpkg directory you build with remill, which can either be found within the remill build directory or in a known location if you've built the dependencies from source.
+Assuming we have [Remill](https://github.com/lifting-bits/remill) properly installed the following steps provide a fresh build of Anvill.
 
 ```shell
 # clone anvill repository
