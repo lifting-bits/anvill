@@ -25,12 +25,12 @@ Anvill is supported on Linux platforms and has been tested on Ubuntu 18.04 and 2
 
 ## Dependencies
 
-Most of Anvill's dependencies can be provided by the vcpkg-lifting-bits repository. Trail of Bits hosts downloadable, pre-built versions of the libraries, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
+Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/trailofbits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of the libraries for select operating systems, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
 
 | Name | Version |
 | ---- | ------- |
 | [Git](https://git-scm.com/) | Latest |
-| [CMake](https://cmake.org/) | 3.2+ |
+| [CMake](https://cmake.org/) | 3.14+ |
 | [Clang](http://clang.llvm.org/) | 8.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
 | [Python](https://www.python.org/) | 3.8 |
@@ -71,7 +71,7 @@ git clone https://github.com/lifting-bits/anvill.git
 # create a build dir
 mkdir anvill-build && cd anvill-build
 # configure
-CC=clang cmake -DVCPKG_ROOT=<vcpkg_dir> ../anvill 
+CC=clang cmake -DVCPKG_ROOT=<vcpkg_dir> ../anvill
 # build
 make -j 5
 # install

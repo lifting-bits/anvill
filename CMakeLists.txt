@@ -15,9 +15,11 @@
 
 # Find remill first because its config has useful dependency-finding info that
 # needs to be found before the CMake `project` declaration
-find_package(remill COMPONENTS VCPKG_DEPS QUIET)
+if (NOT DEFINED ENV{TRAILOFBITS_LIBRARIES})
+  find_package(remill COMPONENTS VCPKG_DEPS QUIET)
 
-include(cmake/vcpkg_helper.cmake)
+  include(cmake/vcpkg_helper.cmake)
+endif()
 
 project(anvill)
 cmake_minimum_required(VERSION 3.14)
