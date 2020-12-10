@@ -25,8 +25,19 @@ esac
 CLANG=$(which clang-${V})
 CLANG_VERSION=$(${CLANG} --version)
 
-echo "Running round-trip tests using: ${CLANG_VERSION}"
-python3.8 /opt/trailofbits/anvill/share/roundtrip.py \
-  /opt/trailofbits/anvill/bin/anvill-decompile-json* \
-  /opt/trailofbits/anvill/share/tests \
-  "${CLANG}"
+INSTALL_PREFIX=/opt/trailofbits/anvill
+if [ -d "${INSTALL_PREFIX}" ] ; then
+  # Old installation tree
+  echo "Running round-trip tests using: ${CLANG_VERSION}"
+  python3.8 "${INSTALL_PREFIX}/share/roundtrip.py" \
+    "${INSTALL_PREFIX}/bin/anvill-decompile-json-${V}.0" \
+    "${INSTALL_PREFIX}/share/tests" \
+    "${CLANG}"
+else
+  INSTALL_PREFIX="/usr/local"
+  echo "Running round-trip tests using: ${CLANG_VERSION}"
+  python3.8 "${INSTALL_PREFIX}/share/anvill/roundtrip.py" \
+    "${INSTALL_PREFIX}/bin/anvill-decompile-json-${V}.0" \
+    "${INSTALL_PREFIX}/share/anvill/tests" \
+    "${CLANG}"
+fi
