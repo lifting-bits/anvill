@@ -12,16 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-@PACKAGE_INIT@
-
 cmake_minimum_required(VERSION 3.2)
 
 if(NOT TARGET anvill)
+  if(WIN32)
+    set(ANVILL_LIBRARY_LOCATION "${CMAKE_INSTALL_PREFIX}/lib/anvill-${REMILL_LLVM_VERSION}.lib")
+    set(ANVILL_INCLUDE_LOCATION "${CMAKE_INSTALL_PREFIX}/include")
+  else()
+    set(ANVILL_LIBRARY_LOCATION "${CMAKE_INSTALL_PREFIX}/lib/libanvill-${REMILL_LLVM_VERSION}.a")
+    set(ANVILL_INCLUDE_LOCATION "${CMAKE_INSTALL_PREFIX}/include")
+  endif()
 
-  include(CMakeFindDependencyMacro)
-  find_dependency(remill)
+  add_library(anvill STATIC IMPORTED)
+  set_property(TARGET anvill PROPERTY IMPORTED_LOCATION "$${}{ANVILL_LIBRARY_LOCATION}")
+  set_property(TARGET anvill PROPERTY INTERFACE_INCLUDE_DIRECTORIES "$${}{ANVILL_INCLUDE_LOCATION}")
 
-  # Exported Targets
-  include("${CMAKE_CURRENT_LIST_DIR}/anvillTargets.cmake")
-
+  add_library(anvill-${REMILL_LLVM_VERSION} STATIC IMPORTED)
+  set_property(TARGET anvill-${REMILL_LLVM_VERSION} PROPERTY IMPORTED_LOCATION "$${}{ANVILL_LIBRARY_LOCATION}")
+  set_property(TARGET anvill-${REMILL_LLVM_VERSION} PROPERTY INTERFACE_INCLUDE_DIRECTORIES "$${}{ANVILL_INCLUDE_LOCATION}")
 endif()
