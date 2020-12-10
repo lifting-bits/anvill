@@ -71,7 +71,7 @@ git clone https://github.com/lifting-bits/anvill.git
 # create a build dir
 mkdir anvill-build && cd anvill-build
 # configure
-CC=clang cmake -DVCPKG_ROOT=<vcpkg_dir> ../anvill
+CC=clang cmake ../anvill
 # build
 make -j 5
 # install
