@@ -212,27 +212,23 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
-  if (FLAGS_feature_inline_asm_for_unspec_registers) {
 
-    arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-      if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-        std::stringstream ss;
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+
+      if (FLAGS_feature_inline_asm_for_unspec_registers) {
         ss << "# read register " << reg->name;
 
         llvm::InlineAsm *read_reg =
             llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
                                  ss.str(), "=r", true /* hasSideEffects */);
 
-        const auto reg_ptr = reg->AddressOf(state_ptr, block);
         ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
-      }
-    });
-  } else {
-
-    arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-      if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-        std::stringstream ss;
+      } else {
         ss << "__anvill_reg_" << reg->name;
+
         const auto reg_name = ss.str();
         auto reg_global = module->getGlobalVariable(reg_name);
         if (!reg_global) {
@@ -240,11 +236,11 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
               *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
               nullptr, reg_name);
         }
-        auto reg_ptr = reg->AddressOf(state_ptr, block);
+
         ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
       }
-    });
-  }
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
