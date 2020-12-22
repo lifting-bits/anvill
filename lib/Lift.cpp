@@ -33,6 +33,12 @@
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
+#include <gflags/gflags.h>
+
+DEFINE_bool(
+    feature_inline_asm_for_unspec_registers, false,
+    "Use an InlineAsm call to get values of registeres referenced in a function, but not present in it's specification");
+
 namespace anvill {
 
 namespace {
@@ -208,17 +214,33 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
+
   arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
     if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
       std::stringstream ss;
-      ss << "# read register " << reg->name;
-
-      llvm::InlineAsm *read_reg =
-          llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
-                               ss.str(), "=r", true /* hasSideEffects */);
-
       const auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+
+      if (FLAGS_feature_inline_asm_for_unspec_registers) {
+        ss << "# read register " << reg->name;
+
+        llvm::InlineAsm *read_reg =
+            llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                                 ss.str(), "=r", true /* hasSideEffects */);
+
+        ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+      } else {
+        ss << "__anvill_reg_" << reg->name;
+
+        const auto reg_name = ss.str();
+        auto reg_global = module->getGlobalVariable(reg_name);
+        if (!reg_global) {
+          reg_global = new llvm::GlobalVariable(
+              *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+              nullptr, reg_name);
+        }
+
+        ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+      }
     }
   });
 

@@ -25,12 +25,12 @@ Anvill is supported on Linux platforms and has been tested on Ubuntu 18.04 and 2
 
 ## Dependencies
 
-Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/trailofbits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of cxx-common, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
+Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/trailofbits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of the libraries for select operating systems, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
 
 | Name | Version |
 | ---- | ------- |
 | [Git](https://git-scm.com/) | Latest |
-| [CMake](https://cmake.org/) | 3.2+ |
+| [CMake](https://cmake.org/) | 3.14+ |
 | [Clang](http://clang.llvm.org/) | 8.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
 | [Python](https://www.python.org/) | 3.8 |
@@ -71,12 +71,14 @@ git clone https://github.com/lifting-bits/anvill.git
 # create a build dir
 mkdir anvill-build && cd anvill-build
 # configure
-CC=clang cmake ../anvill 
+CC=clang cmake ../anvill
 # build
 make -j 5
 # install
 sudo make install
 ```
+
+Or you can tell CMake where to find the remill installation prefix by passing `-Dremill_DIR="<remill_prefix>/lib/cmake/remill"` during configuration.
 
 Anvill's python plugins provide functionality needed to generate a JSON specification that contains information about the contents of a binary.
 These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [Binary Ninja](https://binary.ninja/) for various analysis tasks.
