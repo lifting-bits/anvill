@@ -126,7 +126,7 @@ There must always be a return type. If a function does not return any values,
 then its return type can be specified with `v`.
 
 | Example | C equivalent | C++ equivalent | Interpretation |
-|--|--|--|
+|--|--|--|--|
 | `(vv)` | `void(void)` | `void(void)` | A function taking no arguments and returning no values. |
 | `(vi)` | `int(void)` | `int(void)` | A function taking no arguments and retuning no values. |
 | `(&v)` | `void()` | `void(...)` | A function taking a variadic number of arguments, and returning no values. |
