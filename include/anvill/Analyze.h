@@ -104,4 +104,6 @@ class XrefExprFolder {
 // in `program` and defined in `module`.
 void RecoverMemoryAccesses(const Program &program, llvm::Module &module);
 
+void RecoverMemoryReferences(const Program &program, llvm::Module &module);
+
 }  // namespace anvill

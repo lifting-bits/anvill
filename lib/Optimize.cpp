@@ -1084,6 +1084,8 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   RemoveUndefFuncCalls(module);
 
+  RecoverMemoryReferences(program, module);
+
   CHECK(remill::VerifyModule(&module));
 }
 

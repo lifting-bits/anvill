@@ -1032,4 +1032,42 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   RecoverReturnAddressUses(module, ci_fixups);
 }
 
+void RecoverMemoryReferences(const Program &program, llvm::Module &module) {
+  llvm::IRBuilder<> ir(module.getContext());
+  for (auto &func : module) {
+    for (auto &block : func) {
+      for (auto &inst : block) {
+        for (auto op : inst.operand_values()) {
+          if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(op);
+              ce && ce->getOpcode() == llvm::Instruction::IntToPtr) {
+            auto addr{llvm::cast<llvm::ConstantInt>(ce->getOperand(0))
+                          ->getLimitedValue()};
+            llvm::Value *val{nullptr};
+            if (auto vdecl = program.FindVariable(addr)) {
+              auto name{CreateVariableName(addr)};
+              auto gvar{vdecl->DeclareInModule(name, module)};
+              auto type{gvar->getValueType()};
+              if (type->isArrayTy() &&
+                  type->getArrayElementType() ==
+                      ce->getType()->getPointerElementType()) {
+                ir.SetInsertPoint(&inst);
+                val = ir.CreateConstGEP2_64(gvar, 0U, 0U);
+              } else {
+                val = gvar;
+              }
+
+            } else if (auto fdecl = program.FindFunction(addr)) {
+              val = fdecl->DeclareInModule(CreateFunctionName(addr), module);
+            }
+
+            if (val) {
+              ce->replaceAllUsesWith(val);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace anvill
