@@ -16,7 +16,6 @@
 
 from .type import Type, FunctionType, StructureType
 from .loc import Location
-from .typed_register import TypedRegister
 from typing import List
 
 
@@ -63,7 +62,7 @@ class Function(object):
     def calling_convention(self):
         return self._cc
 
-    def visit(self, program, is_definition):
+    def visit(self, program, is_definition: bool, add_refs_as_defs: bool):
         raise NotImplementedError()
 
     def is_declaration(self):
