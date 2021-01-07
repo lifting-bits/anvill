@@ -50,6 +50,7 @@
 #include "anvill/Decl.h"
 #include "anvill/Lift.h"
 #include "anvill/Program.h"
+#include "anvill/RecoverMemRefs.h"
 #include "anvill/Util.h"
 
 namespace anvill {
@@ -1039,11 +1040,11 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     pm.add(llvm::createSROAPass());
     pm.add(llvm::createPromoteMemoryToRegisterPass());
 
-    fpm.doInitialization();
+    pm.doInitialization();
     for (auto func : changed_funcs) {
-      fpm.run(*func);
+      pm.run(*func);
     }
-    fpm.doFinalization();
+    pm.doFinalization();
 
     changed_funcs.clear();
 
@@ -1067,10 +1068,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   LowerMemOps(program, module);
 
-  llvm::legacy::FunctionPassManager pm(&module);
-  pm.add(llvm::createDeadCodeEliminationPass());
-  pm.add(llvm::createSROAPass());
-  pm.add(llvm::createPromoteMemoryToRegisterPass());
+  RecoverMemoryReferences(program, module);
 
   fpm.doInitialization();
   for (auto &func : module) {
@@ -1083,8 +1081,6 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   mpm.run(module);
 
   RemoveUndefFuncCalls(module);
-
-  RecoverMemoryReferences(program, module);
 
   CHECK(remill::VerifyModule(&module));
 }
