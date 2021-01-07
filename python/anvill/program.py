@@ -111,18 +111,22 @@ class Program(object):
             return False
 
     def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
-        try:
-            if add_refs_as_defs:
+        if add_refs_as_defs:
+            try:
                 self.add_function_definition(ea, add_refs_as_defs)
-            else:
-                self.add_function_declaration(ea, add_refs_as_defs)
+                return True
+            except InvalidFunctionException as e1:
+                try:
+                    self.add_variable_definition(ea, add_refs_as_defs)
+                    return True
+                except InvalidVariableException as e2:
+                    pass
+        try:
+            self.add_function_declaration(ea, False)
             return True
         except InvalidFunctionException as e1:
             try:
-                if add_refs_as_defs:
-                    self.add_variable_definition(ea, add_refs_as_defs)
-                else:
-                    self.add_variable_declaration(ea, add_refs_as_defs)
+                self.add_variable_declaration(ea, False)
                 return True
             except InvalidVariableException as e2:
                 return False
@@ -173,8 +177,8 @@ class Program(object):
             )
 
         stack_base = (
-            int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
-            & page_mask
+                int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
+                & page_mask
         )
 
         proto["stack"] = {"address": stack_base, "size": 24576, "start_offset": 4096}
