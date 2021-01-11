@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Tuple, Optional, Set
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -340,13 +340,10 @@ class BNFunction(Function):
         memory = program.memory()
 
         seg = [None]
-        ref_eas = set()
+        ref_eas: Set[int] = set()
         ea = self._bn_func.start
         max_ea = max([x.end for x in self._bn_func.basic_blocks])
         self._fill_bytes(memory, ea, max_ea, ref_eas)
-
-        for ref_ea in ref_eas:
-            program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
         # Collect typed register info for this function
         for block in self._bn_func.llil:
@@ -357,9 +354,20 @@ class BNFunction(Function):
                     loc.set_register(reg_info[0].upper())
                     loc.set_type(reg_info[1])
                     if reg_info[2] is not None:
+                        # fill_bytes misses some references, catch what we can
+                        ref_eas.add(reg_info[2])
+                        # print(f"inst_addr: {hex(inst.address)}, reg_info[2]: {reg_info[2]}, ref_eas: {ref_eas}")
+                        # assert reg_info[2] in ref_eas
+                        # assert reg_info 1 is a pointer, then reg2 should be in ea
                         loc.set_value(reg_info[2])
                     loc.set_address(inst.address)
                     self._register_info.append(loc)
+        # ea = effective_address
+        # there is a distinction between declaration and definition
+        # if the function is a declaration, then Anvill only needs to know its symbols and prototypes
+        # if its a definition, then Anvill will perform analysis of the function and produce information for the func
+        for ref_ea in ref_eas:
+            program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
     def _extract_types_mlil(self, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
         """
@@ -397,8 +405,9 @@ class BNFunction(Function):
             # For every register, is it a pointer?
             possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
             if possible_pointer.type == bn.function.RegisterValueType.ConstantPointerValue or \
-                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue or \
-                    possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue:  # or
+                # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
                 val_type = _convert_bn_llil_type(possible_pointer, item_or_list.info.size)
                 results.append((item_or_list.name, val_type, possible_pointer.value))
 
@@ -426,15 +435,130 @@ class BNFunction(Function):
                 ea += 1
 
 
+class BNVariable(Variable):
+    # __slots__ = ("_bn_seg",)
+
+    def __init__(self, arch: bn.Architecture, address: int, type_: Type, bn_seg: bn.Segment, view: bn.BinaryView):
+        super(BNVariable, self).__init__(arch, address, type_)
+        self._bn_seg = bn_seg
+        self.view = view
+
+    # TODO (Carson), These type signatures don't match, lets work with Peter to improve it
+    def visit(self, program, is_definition, add_refs_as_defs) -> None:
+        is_imported_sec = _is_imported_table_sec(self.view, self.address())
+        if is_imported_sec:
+            is_definition = True
+        if not is_definition:
+            return
+        memory = program.memory()
+
+def _find_sections_containing_ea(view: bn.BinaryView, ea: int) -> Optional[List[bn.Section]]:
+    return view.get_sections_at(ea)
+
+def _find_segment_containing_ea(view: bn.BinaryView, ea: int) -> Optional[bn.Segment]:
+    """Fetches the segment containing the address."""
+    return view.get_segment_at(ea)
+
+def _is_imported_table_sec(view: bn.BinaryView, addr: int) -> bool:
+    sections: List[bn.Section] = _find_sections_containing_ea(view, addr)
+    sec_names = [section.name for section in sections]
+    return ".idata" in sec_names or ".plt" in sec_names or ".got" in sec_names
+
+def _invent_var_type(view: bn.BinaryView, ea: int, min_size=1) -> Tuple[int, Optional[Type]]:
+    """Try to invent a variable type. This will basically be an array of bytes
+  that spans what we need. We will, however, try to be slightly smarter and
+  look for cross-references in the range, and when possible, use their types.
+
+  inputs: binary_view
+  ea: address of potential variable
+  min_size, minimum size parameter for type
+
+  returns: The address and it's invented type. returns None = exception triggered
+
+  algorithm:
+    1. Check if binaryninja is able to identify a variable location at that address
+    2. If so and the type is not void, convert it to an anvill type and return it
+    3. If the type is void, try and determine if the current address is pointing to the middle of a variable,
+    or a non aligned offset, try and move it to the previously known variable address
+    4. Assign that address an array type and calculate size accordingly
+  """
+
+    # Try and access binary ninja data variable at the address
+    data_var: bn.DataVariable = view.get_data_var_at(ea)
+    if data_var is None:
+        return ea, None
+
+    # Convert binary ninja type to anvill type
+    var_type: bn.types.Type = data_var.type
+    anvill_var_type = get_type(var_type)
+
+    # VoidTypes have no size, and don't exist in LLVM, so create a new type
+    if not isinstance(anvill_var_type, VoidType):
+        return ea, anvill_var_type
+
+    prev_data_var_addr: int = view.get_previous_data_var_start_before(ea + 1)
+    if prev_data_var_addr < ea:
+        return _invent_var_type(view, prev_data_var_addr, ea - prev_data_var_addr)
+
+    next_ea = view.get_next_data_var_start_after(data_var.address + 1)
+
+    segment = _find_segment_containing_ea(view, data_var.address)
+    if segment is None:
+        # if segment is none, it could be a section only variable like __FRAME_END__
+        # in that case, just make an array of size 1 and return
+        arr = ArrayType()
+        arr.set_element_type(IntegerType(1, False))
+        assert min_size == 1
+        arr.set_num_elements(min_size)
+        return data_var.address, arr
+
+    segment_end = segment.data_end
+    # Check to see if the next data variable is in a different segment
+    if next_ea <= segment_end:
+        min_size = next_ea - data_var.address
+    arr = ArrayType()
+    arr.set_element_type(IntegerType(1, False))
+    arr.set_num_elements(min_size)
+    return data_var.address, arr
+
+
+def _variable_name(view: bn.BinaryView, ea: int) -> Optional[str]:
+    """Return the name of a variable."""
+    symbol: bn.Symbol = view.get_symbol_at(ea)
+    if symbol:
+        return symbol.name
+    return ""
+
+
 class BNProgram(Program):
     def __init__(self, path_or_bv):
         if isinstance(path_or_bv, bn.BinaryView):
-            self._bv = path_or_bv
-            self._path = self._bv.file.filename
+            self._bv: bn.BinaryView = path_or_bv
+            self._path: str = self._bv.file.filename
         else:
-            self._path = path_or_bv
-            self._bv = bn.BinaryViewType.get_view_of_file(self._path)
+            self._path: str = path_or_bv
+            self._bv: bn.BinaryView = bn.BinaryViewType.get_view_of_file(self._path)
         super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
+
+    def get_variable_impl(self, address) -> Variable:
+        """Given an address, return a `Variable` instance, or
+        raise an `InvalidVariableException` exception."""
+        arch = self._arch
+
+        address, var_type = _invent_var_type(self._bv, address)
+        if not var_type:
+            raise InvalidVariableException(
+                "No variable defined at or containing address {:x}".format(address)
+            )
+
+        assert not isinstance(var_type, VoidType)
+        assert not isinstance(var_type, FunctionType)
+
+        self.add_symbol(address, _variable_name(self._bv, address))
+        var = BNVariable(
+            arch, address, var_type, _find_segment_containing_ea(self._bv, address), self._bv
+        )
+        return var
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
