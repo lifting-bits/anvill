@@ -19,6 +19,7 @@
 
 #include <glog/logging.h>
 #include <remill/BC/Util.h>
+#include <sstream>
 
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
@@ -285,8 +286,25 @@ void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
   }
 }
 
+
+llvm::Constant* MCToIRLifter::GetOrCreateTaintedRegister(llvm::Type* goal_type, llvm::Type* current_type, llvm::Module& mod) {
+  if (!current_type->isIntegerTy()) {
+    //we don't handle this
+    return nullptr;
+  }
+  //Come up with variable name
+  std::stringstream var_name;
+  var_name << "__anvill_type_" << reinterpret_cast<void*>(goal_type);
+
+  //So give the global is a pointer to the goal type, so char *
+  llvm::Constant * global_var = mod.getOrInsertGlobal(var_name.str(), goal_type);
+  return llvm::ConstantExpr::getPtrToInt(global_var, current_type);
+  
+}
+
 void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
-                                    llvm::BasicBlock *block) {
+                                    llvm::BasicBlock *block, 
+                                    const std::unordered_map<uint64_t, TypedRegisterDecl>& reg_map) {
   curr_inst = &inst;
 
   // Reserve space for an instrucion that will go into a delay slot, in case it
@@ -296,7 +314,7 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
   std::aligned_storage<sizeof(remill::Instruction),
                        alignof(remill::Instruction)>::type delayed_inst_storage;
 
-  remill::Instruction *delayed_inst = nullptr;
+  remill::Instruction *delayed_inst = nullptr;  
 
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
@@ -312,6 +330,35 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
                  << std::hex << inst.delayed_pc << std::dec << " of "
                  << inst.Serialize();
     }
+  }
+  
+  // Check to see if this location has type and value information associated with it
+  //inst.pc
+  auto match = reg_map.find(inst.pc);
+  if (match != reg_map.end()) {
+    //If we have information for this program point, check to see if a value exists
+    const TypedRegisterDecl& decl = match->second;
+    
+    //Access the register value, (probably some integer)
+    //Check type information to see if it is a pointer
+    //If it is, we want to coerce LLVM into treating it as pointer
+    //In order to do this we want to taint the reg so we know its a pointer
+    //Global variables in LLVM are pointers, and it's location is symbolic
+    llvm::IRBuilder irb(block);
+    auto reg_pointer = inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
+    llvm::Value* reg_value = irb.CreateLoad(reg_pointer);
+    auto reg_type = reg_value->getType();
+    
+    if (decl.value && reg_type->isIntegerTy()) {
+      reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
+      irb.CreateStore(reg_value, reg_pointer);
+    }
+    //auto reg_value = irb.CreateLoad(reg_pointer);
+    if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module)) {
+      irb.CreateStore(irb.CreateAdd(reg_value, tainted_global), reg_pointer);
+    }
+    //Cache maps register names to last loaded value, we change last loaded value, so invalidate the cache
+    inst_lifter.ClearCache();
   }
 
   switch (inst.category) {
@@ -457,7 +504,7 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
       continue;
 
     } else {
-      VisitInstruction(inst, block);
+      VisitInstruction(inst, block, decl.reg_info);
     }
   }
 
