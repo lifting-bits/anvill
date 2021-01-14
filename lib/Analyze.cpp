@@ -16,7 +16,7 @@
  */
 
 #include "anvill/Analyze.h"
-
+#include <remill/BC/Compat/GlobalValue.h>
 #include <glog/logging.h>
 
 // clang-format off
@@ -70,6 +70,7 @@ void XrefExprFolder::Reset(void) {
   right_shift_amount = 0;
   bits_xor = 0;
   bits_and = 0;
+  hinted_type = nullptr;
 
   // Drop the error.
   llvm::handleAllErrors(std::move(error), [](llvm::ErrorInfoBase &) {});
@@ -161,7 +162,10 @@ uint64_t XrefExprFolder::VisitConst(llvm::Constant *c) {
     } else if (gv->getName() == "__anvill_ci") {
       is_ci_relative = true;
       return 0;
-
+    } else if (gv->getName().startswith("__anvill_type")) {
+      is_pointer = true;
+      hinted_type = remill::GetValueType(gv);
+      return 0;
     } else if (auto [resolved, ea] = TryResolveGlobal(gv); resolved) {
       is_gv_relative = true;
       is_pointer = true;
@@ -636,10 +640,10 @@ static bool ClassifyCell(const llvm::DataLayout &dl, Cell &cell) {
 }
 
 static void FindPossibleCrossReferences(
-    const Program &program, llvm::Module &module, const char *gv_name,
-    std::vector<std::pair<llvm::Use *, Byte>> &ptr_fixups,
-    std::vector<std::pair<llvm::Use *, Byte>> &maybe_fixups,
-    std::vector<std::pair<llvm::Use *, uint64_t>> &imm_fixups) {
+    const Program &program, llvm::Module &module, llvm::StringRef gv_name,
+    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &ptr_fixups,
+    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &maybe_fixups,
+    std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &imm_fixups) {
 
   std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> work_list;
   std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> next_work_list;
@@ -1015,6 +1019,13 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   FindPossibleCrossReferences(program, module, "__anvill_pc", fixups,
                               maybe_fixups, ci_fixups);
+
+  for (auto& var : module.globals()) {
+    if (var.getName().startswith("__anvill_type")) {
+        FindPossibleCrossReferences(program, module, var.getName(), fixups,
+                              maybe_fixups, ci_fixups);
+    }
+  }
 
   RecoverMemoryAccesses(program, module, fixups);
   RecoverMemoryAccesses(program, module, maybe_fixups);

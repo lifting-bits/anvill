@@ -61,6 +61,9 @@ class XrefExprFolder {
   // Do we think this is a pointer?
   bool is_pointer{false};
 
+  // Type hinted by IDA or Binja
+  llvm::Type* hinted_type{nullptr};
+
   // Might tell us if there are aspects of this xref that might disqualify
   // it as an actual xref.
   unsigned left_shift_amount{0};
