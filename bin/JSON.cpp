@@ -172,22 +172,17 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 
 //
 static bool ParseTypedRegister(const remill::Arch *arch, llvm::LLVMContext &context,
-		anvill::TypedRegisterDecl &decl, llvm::json::Object * obj) {
+		std::unordered_map<uint64_t, anvill::TypedRegisterDecl>& reg_map, llvm::json::Object * obj) {
 
-	  auto maybe_address_str = obj->getString("address");
-	  if (!maybe_address_str) {
+	  auto maybe_address = obj->getInteger("address");
+	  if (!maybe_address) {
 		  LOG(ERROR) << "Missing 'address' field in typed register.";
 		  return false;
 	  }
-	  //TODO Remove this var
-	  std::string maybe_address = *maybe_address_str;
-	  decl.address = std::stoi(maybe_address);
-
-	  auto maybe_value_str = obj->getString("value");
-	  if (maybe_value_str) {
-		  //TODO Remove this var
-		  std::string maybe_value = *maybe_value_str;
-		  decl.value = stoi(maybe_value);
+    anvill::TypedRegisterDecl decl;
+	  auto maybe_value = obj->getInteger("value");
+	  if (maybe_value) {
+		  decl.value = *maybe_value;
 	  }
 
 	  auto maybe_type_str = obj->getString("type");
@@ -203,6 +198,22 @@ static bool ParseTypedRegister(const remill::Arch *arch, llvm::LLVMContext &cont
 	  }
 
 	  decl.type = remill::GetReference(maybe_type);
+
+    auto register_name = obj->getString("register");
+    if (!register_name) {
+      LOG(ERROR) << "Missing 'register' field in typed register";
+      return false;
+    }
+    auto maybe_reg = arch->RegisterByName(register_name->str());
+    if (!maybe_reg) {
+      LOG(ERROR) << "Unable to locate register '" << register_name->str()
+                  << "' for typed register information:"
+                  << " at '" << std::hex
+                  << *maybe_address << std::dec << "'";
+      return false;
+    }
+    decl.reg = maybe_reg;
+    reg_map[*maybe_address] = decl;
 	  return ParseValue(arch, decl, obj, "typed register");
 }
 
@@ -263,9 +274,9 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto register_info = obj->getArray("register_info")) {
 	  for (llvm::json::Value &maybe_reg: *register_info) {
 		  if (auto reg_obj = maybe_reg.getAsObject()) {
-			  decl.register_info.emplace_back();
+			  //decl.register_info.emplace_back();
 		  	  //Parse the register info!
-		  	  if (!ParseTypedRegister(arch, context, decl.register_info.back(), reg_obj)) {
+		  	  if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
 			  	  return false;
 		  	  }
 		  }
