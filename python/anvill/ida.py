@@ -354,7 +354,7 @@ def get_type(ty, context):
 
 def _get_address_sized_reg(arch, reg_name):
     """Given the regiseter name `reg_name`, find the name of the register in the
-  same family whose size is the pointer size of this architecture."""
+    same family whose size is the pointer size of this architecture."""
 
     try:
         family = arch.register_family(reg_name)
@@ -369,7 +369,7 @@ def _get_address_sized_reg(arch, reg_name):
 
 def _expand_locations(arch, pfn, ty, argloc, out_locs):
     """Expand the locations referred to by `argloc` into a list of `Location`s
-  in `out_locs`."""
+    in `out_locs`."""
 
     reg_names = ida_idp.ph_get_regnames()
     where = argloc.atype()
@@ -530,7 +530,7 @@ def _find_segment_containing_ea(ea, seg_ref):
 
 def _is_extern_seg(seg):
     """Returns `True` if `seg` refers to a segment with external variable or
-  function declarations."""
+    function declarations."""
     if not seg:
         return False
 
@@ -540,7 +540,7 @@ def _is_extern_seg(seg):
 
 def _is_imported_table_seg(seg):
     """Returns `True` if `seg` refers to a segment that typically contains
-  import entries, i.e. cross-reference pointers into an external segment."""
+    import entries, i.e. cross-reference pointers into an external segment."""
     if not seg:
         return False
 
@@ -584,19 +584,19 @@ def _try_map_byte(memory, ea, seg_ref):
 
 def _get_function_bounds(func, seg_ref):
     """Get the bounds of the function containing `ea`. We want to discover jump
-  table targets that are missed by IDA, and it's possible that they aren't
-  marked as being part of the current function, and perhaps are after the
-  assumed range of the current function. Ideally they will fall before the
-  beginning of the next function, though.
+    table targets that are missed by IDA, and it's possible that they aren't
+    marked as being part of the current function, and perhaps are after the
+    assumed range of the current function. Ideally they will fall before the
+    beginning of the next function, though.
 
-  We need to be pretty careful with the case that one function tail-calls
-  another. IDA will sometimes treat the end of the tail-called function
-  (e.g. a thunk) as if it is the end of the caller. For this reason, we start
-  with loose bounds using the prev/next functions, then try to narrow with
-  the bounds of the function containing `ea`.
+    We need to be pretty careful with the case that one function tail-calls
+    another. IDA will sometimes treat the end of the tail-called function
+    (e.g. a thunk) as if it is the end of the caller. For this reason, we start
+    with loose bounds using the prev/next functions, then try to narrow with
+    the bounds of the function containing `ea`.
 
-  NOTE(pag): This does not handle function chunks.
-  """
+    NOTE(pag): This does not handle function chunks.
+    """
     ea = func.start_ea
     seg = _find_segment_containing_ea(ea, seg_ref)
     if not seg:
@@ -639,7 +639,7 @@ def _get_function_bounds(func, seg_ref):
 
 def _xref_iterator(ea, get_first, get_next):
     """Generate the cross-references addresses using functors `get_first` and
-  `get_next`."""
+    `get_next`."""
     target_ea = get_first(ea)
     while target_ea != ida_idaapi.BADADDR:
         yield target_ea
@@ -680,8 +680,8 @@ _REF_OPERAND_TYPES = (
 
 def _add_real_xref(ea, ref_ea, out_ref_eas):
     """Sometimes IDA will have a operand like `[foo+10]` and the xref collector
-  will give us the address of `foo`, but not the address of `foo+10`, so we
-  will try to find it here."""
+    will give us the address of `foo`, but not the address of `foo+10`, so we
+    will try to find it here."""
     global _OPERANDS_NUMS, _REF_OPERAND_TYPES
 
     ref_name = ida_name.get_ea_name(ref_ea)
@@ -706,7 +706,7 @@ def _add_real_xref(ea, ref_ea, out_ref_eas):
 
 def _collect_xrefs_from_func(pfn, ea, out_ref_eas, seg_ref):
     """Collect cross-references at `ea` in `pfn` that target code/data
-  outside of `pfn`. Save them into `out_ref_eas`."""
+    outside of `pfn`. Save them into `out_ref_eas`."""
     global _OPERANDS_NUMS
 
     # TODO(pag): Decode instruction at `ea`, iterate over operands, and try
@@ -722,8 +722,8 @@ def _collect_xrefs_from_func(pfn, ea, out_ref_eas, seg_ref):
 
 def _invent_var_type(ea, seg_ref, min_size=1):
     """Try to invent a variable type. This will basically be an array of bytes
-  that spans what we need. We will, however, try to be slightly smarter and
-  look for cross-references in the range, and when possible, use their types."""
+    that spans what we need. We will, however, try to be slightly smarter and
+    look for cross-references in the range, and when possible, use their types."""
     seg = _find_segment_containing_ea(ea, seg_ref)
     if not seg:
         return ea, None
@@ -914,7 +914,7 @@ class IDAProgram(Program):
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
-    raise an `InvalidVariableException` exception."""
+        raise an `InvalidVariableException` exception."""
         arch = self._arch
 
         seg_ref = [None]
@@ -956,7 +956,7 @@ class IDAProgram(Program):
 
     def get_function_impl(self, address):
         """Given an address, return a `Function` instance or
-    raise an `InvalidFunctionException` exception."""
+        raise an `InvalidFunctionException` exception."""
         arch = self._arch
         os = self._os
 
