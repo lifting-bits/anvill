@@ -376,6 +376,7 @@ class BNProgram(Program):
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
+
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
         var_type = get_type(bn_var.type)
@@ -454,10 +455,13 @@ class BNProgram(Program):
         func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
         return func
 
+    def get_symbols_impl(self, address):
+        return set(map(lambda x: x.name, self._bv.get_symbols(address, 1)))
+
     @property
     def functions(self):
-        for func in self._bv.functions:
-            yield (func.start, func.name)
+        for f in self._bv.functions:
+            yield f.start
 
     @property
     def variables(self):
@@ -465,6 +469,11 @@ class BNProgram(Program):
             # filter out functions
             if len(self._bv.get_functions_at(addr)) == 0:
                 yield (addr, var)
+
+    @property
+    def symbols(self):
+        for s in self._bv.get_symbols():
+            yield (s.address, s.name)
 
 
 _PROGRAM = None

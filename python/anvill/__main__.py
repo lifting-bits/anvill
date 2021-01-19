@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import json
 
 from .binja import get_program
 
@@ -35,42 +36,47 @@ def main():
         help="Output functions only reachable from given entry point.",
     )
 
-    args, _ = arg_parser.parse_known_args()
+    arg_parser.add_argument(
+        "--refs_as_defs",
+        type=bool,
+        help="Output definitions of discovered functions and variables.",
+        default=False,
+    )
+
+    args = arg_parser.parse_args()
 
     p = get_program(args.bin_in)
-    funcs = {}
-    ep = None
 
+    ep = None
     if args.entry_point is not None:
         try:
             ep = int(args.entry_point, 0)
         except ValueError:
             ep = args.entry_point
 
-    def add_callees(ea):
-        f = p.get_function(ea)
-        if f not in funcs:
-            funcs[ea] = f.name()
-            for c in f._bn_func.callees:
-                add_callees(c.start)
+    if ep is None:
+        for ea in p.functions:
+            p.add_function_definition(ea, args.refs_as_defs)
+    elif isinstance(ep, int):
+        p.add_function_definition(ep, args.refs_as_defs)
+    else:
+        for ea, name in p.symbols:
+            if name == ep:
+                p.add_function_definition(ea, args.refs_as_defs)
 
-    for ea, name in p.functions:
-        if not ep:
-            funcs[ea] = p.get_function(ea).name()
-        elif ep == (ea if isinstance(ep, int) else name):
-            add_callees(ea)
-            break
+    for f in p.proto()["functions"]:
+        ea = f["address"]
+        for name in p.get_symbols(ea):
+            p.add_symbol(ea, name)
 
-    for ea in funcs:
-        p.add_symbol(ea, funcs[ea])
-        p.add_function_definition(ea, True)
-       
+    funcs = map(lambda x: x["address"], p.proto()["functions"])
+
     for ea, v in p.variables:
         for r in v.code_refs:
             if r.function.start in funcs:
-                p.add_variable_definition(ea, False)
+                p.add_variable_definition(ea, args.refs_as_defs)
 
-    open(args.spec_out, "w").write(p.proto())
+    open(args.spec_out, "w").write(json.dumps(p.proto()))
 
 
 if __name__ == "__main__":
