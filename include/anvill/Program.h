@@ -24,6 +24,11 @@
 #include <memory>
 #include <string_view>
 
+//Forward declare
+namespace llvm {
+  class Type;
+}
+
 namespace anvill {
 
 // Represents a range of bytes, whose data is found in the range
@@ -286,6 +291,8 @@ class Program {
       const std::string &name,
       std::function<bool(const GlobalVarDecl *)> callback) const;
 
+  llvm::Type* FindType(uint64_t address) const;
+  
   // Access memory, looking for a specific byte. Returns the byte found, if any.
   Byte FindByte(uint64_t address) const;
 
