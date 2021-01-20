@@ -345,7 +345,7 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(inst.operands, inst)
+                register_information = self._extract_types(program._bv, inst.operands, inst)
                 for reg_info in register_information:
                     loc = Location()
                     loc.set_register(reg_info[0].upper())
@@ -366,7 +366,7 @@ class BNFunction(Function):
         for ref_ea in ref_eas:
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
-    def _extract_types_mlil(self, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
+    def _extract_types_mlil(self, bv, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of MLIL instructions and variables into a list of tuples
         that associate registers with pointer information if it exists.
@@ -374,18 +374,18 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results += self._extract_types_mlil(item, initial_inst)
+                results += self._extract_types_mlil(bv, item, initial_inst)
         elif isinstance(item_or_list, mlinst):
-            results += self._extract_types_mlil(item_or_list.operands, initial_inst)
+            results += self._extract_types_mlil(bv, item_or_list.operands, initial_inst)
         elif isinstance(item_or_list, bn.Variable):
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
                 if item_or_list.source_type == bn.VariableSourceType.RegisterVariableSourceType:
-                    reg_name = self._bv.arch.get_reg_name(item_or_list.storage)
+                    reg_name = bv.arch.get_reg_name(item_or_list.storage)
                     results.append((reg_name, _convert_bn_type(item_or_list.type, {}), None))
         return results
 
-    def _extract_types(self, item_or_list, initial_inst: llinst) -> List[Tuple[str, Type, Optional[int]]]:
+    def _extract_types(self, bv, item_or_list, initial_inst: llinst) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of LLIL instructions and associates registers with pointer values
         if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
@@ -395,9 +395,9 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results += self._extract_types(item, initial_inst)
+                results += self._extract_types(bv, item, initial_inst)
         elif isinstance(item_or_list, llinst):
-            results += self._extract_types(item_or_list.operands, initial_inst)
+            results += self._extract_types(bv, item_or_list.operands, initial_inst)
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # For every register, is it a pointer?
             possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
@@ -409,12 +409,12 @@ class BNFunction(Function):
                 results.append((item_or_list.name, val_type, possible_pointer.value))
 
             if initial_inst.mlil is not None:
-                mlil_results = self._extract_types_mlil(initial_inst.mlil, initial_inst.mlil)
+                mlil_results = self._extract_types_mlil(bv, initial_inst.mlil, initial_inst.mlil)
                 results += mlil_results
         return results
 
-    def _fill_bytes(self, memory, start, end, ref_eas):
-        br = bn.BinaryReader(self._bv)
+    def _fill_bytes(self, bv, memory, start, end, ref_eas):
+        br = bn.BinaryReader(bv)
         for bb in self._bn_func.basic_blocks:
             for ea in range(bb.start, bb.end):
                 seg = bv.get_segment_at(ea)
@@ -447,102 +447,6 @@ class BNVariable(Variable):
             br.seek(ea)
             seg = bv.get_segment_at(ea)
             mem.map_byte(ea, br.read8(), seg.writable, seg.executable)
-
-
-
-class BNVariable(Variable):
-    # __slots__ = ("_bn_seg",)
-
-    def __init__(self, arch: bn.Architecture, address: int, type_: Type, bn_seg: bn.Segment, view: bn.BinaryView):
-        super(BNVariable, self).__init__(arch, address, type_)
-        self._bn_seg = bn_seg
-        self.view = view
-
-    # TODO (Carson), These type signatures don't match, lets work with Peter to improve it
-    def visit(self, program, is_definition, add_refs_as_defs) -> None:
-        is_imported_sec = _is_imported_table_sec(self.view, self.address())
-        if is_imported_sec:
-            is_definition = True
-        if not is_definition:
-            return
-        memory = program.memory()
-
-def _find_sections_containing_ea(view: bn.BinaryView, ea: int) -> Optional[List[bn.Section]]:
-    return view.get_sections_at(ea)
-
-def _find_segment_containing_ea(view: bn.BinaryView, ea: int) -> Optional[bn.Segment]:
-    """Fetches the segment containing the address."""
-    return view.get_segment_at(ea)
-
-def _is_imported_table_sec(view: bn.BinaryView, addr: int) -> bool:
-    sections: List[bn.Section] = _find_sections_containing_ea(view, addr)
-    sec_names = [section.name for section in sections]
-    return ".idata" in sec_names or ".plt" in sec_names or ".got" in sec_names
-
-def _invent_var_type(view: bn.BinaryView, ea: int, min_size=1) -> Tuple[int, Optional[Type]]:
-    """Try to invent a variable type. This will basically be an array of bytes
-  that spans what we need. We will, however, try to be slightly smarter and
-  look for cross-references in the range, and when possible, use their types.
-
-  inputs: binary_view
-  ea: address of potential variable
-  min_size, minimum size parameter for type
-
-  returns: The address and it's invented type. returns None = exception triggered
-
-  algorithm:
-    1. Check if binaryninja is able to identify a variable location at that address
-    2. If so and the type is not void, convert it to an anvill type and return it
-    3. If the type is void, try and determine if the current address is pointing to the middle of a variable,
-    or a non aligned offset, try and move it to the previously known variable address
-    4. Assign that address an array type and calculate size accordingly
-  """
-
-    # Try and access binary ninja data variable at the address
-    data_var: bn.DataVariable = view.get_data_var_at(ea)
-    if data_var is None:
-        return ea, None
-
-    # Convert binary ninja type to anvill type
-    var_type: bn.types.Type = data_var.type
-    anvill_var_type = get_type(var_type)
-
-    # VoidTypes have no size, and don't exist in LLVM, so create a new type
-    if not isinstance(anvill_var_type, VoidType):
-        return ea, anvill_var_type
-
-    prev_data_var_addr: int = view.get_previous_data_var_start_before(ea + 1)
-    if prev_data_var_addr < ea:
-        return _invent_var_type(view, prev_data_var_addr, ea - prev_data_var_addr)
-
-    next_ea = view.get_next_data_var_start_after(data_var.address + 1)
-
-    segment = _find_segment_containing_ea(view, data_var.address)
-    if segment is None:
-        # if segment is none, it could be a section only variable like __FRAME_END__
-        # in that case, just make an array of size 1 and return
-        arr = ArrayType()
-        arr.set_element_type(IntegerType(1, False))
-        assert min_size == 1
-        arr.set_num_elements(min_size)
-        return data_var.address, arr
-
-    segment_end = segment.data_end
-    # Check to see if the next data variable is in a different segment
-    if next_ea <= segment_end:
-        min_size = next_ea - data_var.address
-    arr = ArrayType()
-    arr.set_element_type(IntegerType(1, False))
-    arr.set_num_elements(min_size)
-    return data_var.address, arr
-
-
-def _variable_name(view: bn.BinaryView, ea: int) -> Optional[str]:
-    """Return the name of a variable."""
-    symbol: bn.Symbol = view.get_symbol_at(ea)
-    if symbol:
-        return symbol.name
-    return ""
 
 
 class BNProgram(Program):
