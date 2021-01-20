@@ -29,6 +29,7 @@ class Instruction;
 class Module;
 class Type;
 class Value;
+class CallInst;
 }  // namespace llvm
 namespace anvill {
 
@@ -90,6 +91,7 @@ class XrefExprFolder {
   uint64_t VisitShl(llvm::Value *lhs, llvm::Value *rhs);
   uint64_t VisitLShr(llvm::Value *lhs, llvm::Value *rhs);
   uint64_t VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op);
+  uint64_t VisitCall(llvm::CallInst* call);
   int64_t Signed(uint64_t val, llvm::Value *op);
   uint64_t VisitICmp(llvm::Instruction *inst);
   uint64_t VisitICmp(llvm::ConstantExpr *ce);

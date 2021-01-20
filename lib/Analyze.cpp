@@ -133,6 +133,7 @@ uint64_t XrefExprFolder::VisitInst(llvm::Instruction *ce) {
     case llvm::Instruction::IntToPtr:
     case llvm::Instruction::PtrToInt:
     case llvm::Instruction::BitCast: return Visit(ce->getOperand(0));
+    case llvm::Instruction::Call: return VisitCall(llvm::dyn_cast<llvm::CallInst>(ce));
     default: break;
   }
 
@@ -388,6 +389,26 @@ uint64_t XrefExprFolder::VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op) {
   }
   is_pointer = is_pointer_copy;
   return static_cast<uint64_t>(lhs_val >> rhs_val) & mask;
+}
+uint64_t XrefExprFolder::VisitCall(llvm::CallInst* call) {
+  auto id = call->getIntrinsicID();
+  switch (id) {
+    case llvm::Intrinsic::ctpop: {
+      auto val = Visit(call->getArgOperand(0));
+      return __builtin_popcountl(val);
+    }
+    default: break;
+  }
+  //This will happen like all the time, its sorta an error, sorta a warning, it doesnt really matter
+  auto err =
+        llvm::createStringError(std::errc::address_not_available,
+                                "Unrecognized call instruction");
+    if (error) {
+      error = llvm::joinErrors(std::move(error), std::move(err));
+    } else {
+      error = std::move(err);
+    }
+  return 0;
 }
 
 int64_t XrefExprFolder::Signed(uint64_t val, llvm::Value *op) {
@@ -677,24 +698,28 @@ static void FindPossibleCrossReferences(
       folder.Reset();
       const auto ea = folder.Visit(val);
       if (folder.error) {
+        LOG_IF(ERROR, folder.hinted_type != nullptr) << remill::LLVMThingToString(folder.hinted_type);
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
-              LOG_IF(ERROR, report_failure)
+              LOG_IF(ERROR, true)
                   << "Unable to handle possible cross-reference to " << std::hex
                   << ea << std::dec << ": " << eib.message();
             });
         continue;
       }
-
+      //auto type = program.FindType(ea);
+      auto type = folder.hinted_type;
       if (auto byte = program.FindByte(ea);
           byte && !folder.is_sp_relative && !folder.is_ra_relative) {
         if (folder.is_pointer) {
-          ptr_fixups.emplace_back(use, byte);
+          ptr_fixups.emplace_back(use, byte, type);
         } else {
-          maybe_fixups.emplace_back(use, byte);
+          maybe_fixups.emplace_back(use, byte, type);
         }
-      } else {
-        imm_fixups.emplace_back(use, ea);
+      } else if (type && folder.is_pointer) {
+          ptr_fixups.emplace_back(use, anvill::Byte(), type);
+        }else {
+        imm_fixups.emplace_back(use, ea, type);
       }
 
       // Recursively ascend the usage graph.
@@ -725,7 +750,7 @@ struct StackFrame {
 };
 
 static void RecoverStackMemoryAccesses(
-    const std::vector<std::pair<llvm::Use *, uint64_t>> &sp_fixups,
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &sp_fixups,
     llvm::Module &module) {
 
   std::unordered_map<llvm::Function *, StackFrame> frames;
@@ -735,7 +760,7 @@ static void RecoverStackMemoryAccesses(
   const auto ptr_size = dl.getPointerSizeInBits(0);
   const auto i8_type = llvm::Type::getInt8Ty(context);
 
-  for (auto [use, ea] : sp_fixups) {
+  for (auto [use, ea, type] : sp_fixups) {
     llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!inst) {
       LOG(WARNING) << "Ignoring non-inst user: "
@@ -874,8 +899,8 @@ static void RecoverStackMemoryAccesses(
 
 void RecoverMemoryAccesses(
     const Program &program, llvm::Module &module,
-    const std::vector<std::pair<llvm::Use *, Byte>> &fixups) {
-  for (auto [use, byte] : fixups) {
+    const std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &fixups) {
+  for (auto [use, byte, type] : fixups) {
     const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!user) {
       continue;  // We're not allowed to replace uses inside of constants.
@@ -894,7 +919,7 @@ void RecoverMemoryAccesses(
       continue;
     }
 
-    llvm::Constant *new_val = nullptr;
+    llvm::Value *new_val = nullptr;
 
     if (auto func_decl = program.FindFunction(addr)) {
       const auto name = CreateFunctionName(func_decl->address);
@@ -909,13 +934,35 @@ void RecoverMemoryAccesses(
     // TODO(pag): Leaving these as integers might be best, as we may go an
     //            collect them in the optimizer.
     } else {
-      LOG(ERROR) << "TODO: Found byte address " << std::hex << addr << std::dec
+      if (addr) {
+        LOG(ERROR) << "TODO: Found byte address " << std::hex << addr << std::dec
                  << " that is mapped to memory but doesn't directly "
                  << "resolve to a function or variable";
-
+        new_val = llvm::ConstantInt::get(int_type, addr, false);
+      }
+      else {
+        new_val = used_val;
+      }
       new_val = llvm::ConstantInt::get(int_type, addr, false);
+      if (type) {
+        // 1) get the user instruction containing the use
+        llvm::User * test_user = use->getUser();
+        if (llvm::Instruction* inst = llvm::dyn_cast<llvm::Instruction>(test_user); inst) {
+          CHECK_EQ(inst->getOpcode(), llvm::Instruction::Add);
+          // 2) create an IRBuilder and // 3) set the insert point to just before the user instruction
+          llvm::IRBuilder builder(inst);
+          LOG(ERROR) << inst->getParent()->getParent()->getName().str();
+          // 4) create an inttoptr on `new_val` to `hinted_type`
+          llvm::Value* ptr_cast = builder.CreateIntToPtr(new_val, type);
+          LOG(ERROR) << remill::LLVMThingToString(ptr_cast);
+          // 5) create a ptrtoint on (4) back to the type of `int_type`&  // 6) set `new_val` to (5)
+          new_val = builder.CreatePtrToInt(ptr_cast, int_type);
+        }
+        else {
+          LOG(ERROR) << "Unable to cast user to instruction! addr:" << std::hex << addr << std::dec;
+        }
+      }
     }
-
     if (new_val != used_val) {
       use->set(new_val);
     }
@@ -924,8 +971,8 @@ void RecoverMemoryAccesses(
 
 void ReplaceImmediateIntegers(
     const Program &program,
-    const std::vector<std::pair<llvm::Use *, uint64_t>> &ci_fixups) {
-  for (auto [use, imm_val] : ci_fixups) {
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &ci_fixups) {
+  for (auto [use, imm_val, type] : ci_fixups) {
     const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!user) {
       continue;  // We're not allowed to replace uses inside of constants.
@@ -952,8 +999,8 @@ void ReplaceImmediateIntegers(
 // Convert uses of `__anvill_ra` into uses of the return address intrinsics.
 static void RecoverReturnAddressUses(
     llvm::Module &module,
-    const std::vector<std::pair<llvm::Use *, uint64_t>> &fixups) {
-  for (auto [use, val] : fixups) {
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &fixups) {
+  for (auto [use, val, type] : fixups) {
     (void) val;
     if (auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser()); user) {
       UnfoldConstantExpressions(user);
@@ -1003,10 +1050,11 @@ static void RecoverReturnAddressUses(
 // in `program` and defined in `module`.
 void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
-  std::vector<std::pair<llvm::Use *, Byte>> fixups;
-  std::vector<std::pair<llvm::Use *, Byte>> maybe_fixups;
-  std::vector<std::pair<llvm::Use *, uint64_t>> sp_fixups;
-  std::vector<std::pair<llvm::Use *, uint64_t>> ci_fixups;
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> fixups;
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> maybe_fixups;
+  //FIXME (Carson) do I need to turn these from pairs to tuples as well?
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> sp_fixups;
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> ci_fixups;
 
   FindPossibleCrossReferences(program, module, "__anvill_sp", fixups,
                               maybe_fixups, sp_fixups);
@@ -1036,8 +1084,8 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   ci_fixups.clear();
   FindPossibleCrossReferences(program, module, "__anvill_ra", fixups, fixups,
                               ci_fixups);
-  for (auto [use, byte] : fixups) {
-    ci_fixups.emplace_back(use, byte.Address());
+  for (auto [use, byte, type] : fixups) {
+    ci_fixups.emplace_back(use, byte.Address(), type);
   }
 
   RecoverReturnAddressUses(module, ci_fixups);
