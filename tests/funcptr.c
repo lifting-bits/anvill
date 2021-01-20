@@ -2,7 +2,7 @@ int add(int a, int b) { return a + b; }
 
 int sub(int a, int b) { return a - b; }
 
-int x = 0;
+int x = 1;
 
 int main(void) {
   int (*func)(int, int);

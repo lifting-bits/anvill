@@ -75,6 +75,9 @@ add_library(${ANVILL} STATIC
 
   include/anvill/Program.h
   lib/Program.cpp
+  
+  include/anvill/RecoverMemRefs.h
+  lib/RecoverMemRefs.cpp
 
   include/anvill/Decl.h
   lib/Decl.cpp
@@ -107,6 +110,7 @@ target_public_headers(${ANVILL}
   include/anvill/Lift.h
   include/anvill/Optimize.h
   include/anvill/Program.h
+  include/anvill/RecoverMemRefs.h
   include/anvill/Type.h
   include/anvill/TypeParser.h
   include/anvill/TypePrinter.h

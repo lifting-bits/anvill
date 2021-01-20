@@ -50,6 +50,7 @@
 #include "anvill/Decl.h"
 #include "anvill/Lift.h"
 #include "anvill/Program.h"
+#include "anvill/RecoverMemRefs.h"
 #include "anvill/Util.h"
 
 namespace anvill {
@@ -654,8 +655,8 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
       return GetPointer(program, module, ir, addr, elem_type, addr_space);
 
     } else {
-      LOG(ERROR) << "Missed cross-reference target " << std::hex << ea
-                 << " to pointer";
+      LOG(WARNING) << "Missed cross-reference target " << std::hex << ea
+                   << " to pointer";
       return llvm::ConstantExpr::getIntToPtr(ci, dest_type);
     }
 
@@ -876,6 +877,7 @@ static void ReplaceMemWriteOp(const Program &program, llvm::Module &module,
 
 static void LowerMemOps(const Program &program, llvm::Module &module) {
   auto &context = module.getContext();
+
   ReplaceMemReadOp(program, module, "__remill_read_memory_8",
                    llvm::Type::getInt8Ty(context));
   ReplaceMemReadOp(program, module, "__remill_read_memory_16",
@@ -939,11 +941,8 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   std::vector<llvm::GlobalVariable *> vars_to_remove;
   for (auto &gv : module.globals()) {
-    if (!gv.hasNUsesOrMore(1)) {
-      vars_to_remove.push_back(&gv);
-    } else if (gv.getName().startswith("ISEL_") ||
-               gv.getName().startswith("COND_") ||
-               gv.getName().startswith("DR")) {
+    if (gv.getName().startswith("ISEL_") || gv.getName().startswith("COND_") ||
+        gv.getName().startswith("DR")) {
       gv.setInitializer(nullptr);
       gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));
       vars_to_remove.push_back(&gv);
@@ -1006,6 +1005,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   std::unordered_set<llvm::Function *> changed_funcs;
 
   // These improve optimizability.
+  // MuteStateEscape(module, "__remill_jump", changed_funcs);
   MuteStateEscape(module, "__remill_function_return", changed_funcs);
   MuteStateEscape(module, "__remill_error", changed_funcs);
   MuteStateEscape(module, "__remill_missing_block", changed_funcs);
@@ -1040,11 +1040,11 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     pm.add(llvm::createSROAPass());
     pm.add(llvm::createPromoteMemoryToRegisterPass());
 
-    fpm.doInitialization();
+    pm.doInitialization();
     for (auto func : changed_funcs) {
-      fpm.run(*func);
+      pm.run(*func);
     }
-    fpm.doFinalization();
+    pm.doFinalization();
 
     changed_funcs.clear();
 
@@ -1068,10 +1068,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   LowerMemOps(program, module);
 
-  llvm::legacy::FunctionPassManager pm(&module);
-  pm.add(llvm::createDeadCodeEliminationPass());
-  pm.add(llvm::createSROAPass());
-  pm.add(llvm::createPromoteMemoryToRegisterPass());
+  RecoverMemoryReferences(program, module);
 
   fpm.doInitialization();
   for (auto &func : module) {

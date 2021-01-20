@@ -38,7 +38,7 @@ def main():
     args, _ = arg_parser.parse_known_args()
 
     p = get_program(args.bin_in)
-    s = set()
+    funcs = {}
     ep = None
 
     if args.entry_point is not None:
@@ -49,21 +49,26 @@ def main():
 
     def add_callees(ea):
         f = p.get_function(ea)
-        if f not in s:
-            s.add(f)
+        if f not in funcs:
+            funcs[ea] = f.name()
             for c in f._bn_func.callees:
                 add_callees(c.start)
 
     for ea, name in p.functions:
         if not ep:
-            s.add(p.get_function(ea))
+            funcs[ea] = p.get_function(ea).name()
         elif ep == (ea if isinstance(ep, int) else name):
             add_callees(ea)
             break
 
-    for f in s:
-        p.add_symbol(f.address(), f.name())
-        p.add_function_definition(f.address(), False)
+    for ea in funcs:
+        p.add_symbol(ea, funcs[ea])
+        p.add_function_definition(ea, True)
+       
+    for ea, v in p.variables:
+        for r in v.code_refs:
+            if r.function.start in funcs:
+                p.add_variable_definition(ea, False)
 
     open(args.spec_out, "w").write(p.proto())
 
