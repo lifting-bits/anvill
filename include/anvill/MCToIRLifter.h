@@ -35,6 +35,7 @@ class Constant;
 
 namespace remill {
 class Arch;
+struct Register;
 }  // namespace remill
 
 namespace anvill {
@@ -141,7 +142,8 @@ class MCToIRLifter {
 
   void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block,
                       const std::unordered_map<uint64_t, TypedRegisterDecl>& reg_map);
-  llvm::Constant* GetOrCreateTaintedRegister(llvm::Type* type, llvm::Type* other_type, llvm::Module& mod);
+  llvm::Constant* GetOrCreateTaintedRegister(llvm::Type* type, llvm::Type* other_type, llvm::Module& mod, 
+    const remill::Register* reg, uint64_t pc);
 
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out);
