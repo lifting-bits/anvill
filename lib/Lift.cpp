@@ -17,19 +17,26 @@
 
 #include "anvill/Lift.h"
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
-#include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
+
+#include "anvill/Compat/Cloning.h"
 #include "anvill/Decl.h"
 #include "anvill/MCToIRLifter.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
+
+DEFINE_bool(
+    feature_inline_asm_for_unspec_registers, false,
+    "Use an InlineAsm call to get values of registeres referenced in a function, but not present in it's specification");
 
 namespace anvill {
 
@@ -206,19 +213,35 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
-  // arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-  //   if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-  //     std::stringstream ss;
-  //     ss << "# read register " << reg->name;
 
-  //     llvm::InlineAsm *read_reg =
-  //         llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
-  //                              ss.str(), "=r", true /* hasSideEffects */);
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
 
-  //     const auto reg_ptr = reg->AddressOf(state_ptr, block);
-  //     ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
-  //   }
-  // });
+      if (FLAGS_feature_inline_asm_for_unspec_registers) {
+        ss << "# read register " << reg->name;
+
+        llvm::InlineAsm *read_reg =
+            llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                                 ss.str(), "=r", true /* hasSideEffects */);
+
+        ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+      } else {
+        ss << "__anvill_reg_" << reg->name;
+
+        const auto reg_name = ss.str();
+        auto reg_global = module->getGlobalVariable(reg_name);
+        if (!reg_global) {
+          reg_global = new llvm::GlobalVariable(
+              *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+              nullptr, reg_name);
+        }
+
+        ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+      }
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
@@ -372,11 +395,7 @@ static void OptimizeFunction(llvm::Function *func) {
 
     for (auto call_inst : calls_to_inline) {
       llvm::InlineFunctionInfo info;
-#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
-      llvm::InlineFunction(call_inst, info);
-#else
-      llvm::InlineFunction(*call_inst, info);
-#endif
+      anvill::InlineFunction(call_inst, info);
     }
   }
 
@@ -463,7 +482,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
     auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
     auto reg = ir.CreateLoad(ptr_to_reg);
-    if (auto adapted_val = AdaptToType(ir, reg, decl.type); adapted_val) {
+    if (auto adapted_val = AdaptToType(ir, reg, decl.type)) {
       return adapted_val;
     } else {
       return ir.CreateLoad(
@@ -486,6 +505,79 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
   }
 }
 
+namespace {
+
+static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
+                                       const remill::Arch *arch,
+                                       const Program &program) {
+  llvm::APInt result(size, 0);
+  for (auto i = 0u; i < (size / 8); ++i) {
+    auto byte_val = program.FindByte(addr + i).Value();
+    if (remill::IsError(byte_val)) {
+      LOG(ERROR) << "Unable to read value of byte at " << std::hex << addr + i
+                 << std::dec << ": " << remill::GetErrorString(byte_val);
+      break;
+    } else {
+      result <<= 8;
+      result |= remill::GetReference(byte_val);
+    }
+  }
+
+  // NOTE(artem): LLVM's APInt does not handle byteSwap()
+  // for size 8, leading to a segfault. Guard against it here.
+  if (arch->MemoryAccessIsLittleEndian() && size > 8) {
+    result = result.byteSwap();
+  }
+
+  return result;
+}
+
+static llvm::Constant *
+CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
+                      const remill::Arch *arch, const Program &program,
+                      llvm::Module &module) {
+  auto dl = module.getDataLayout();
+  llvm::Constant *result{nullptr};
+  switch (type->getTypeID()) {
+    case llvm::Type::IntegerTyID: {
+      const auto size = dl.getTypeSizeInBits(type);
+      auto val = ReadValueFromMemory(addr, size, arch, program);
+      result = llvm::ConstantInt::get(type, val);
+    } break;
+
+    case llvm::Type::PointerTyID: {
+    } break;
+
+    case llvm::Type::ArrayTyID: {
+      const auto elm_type = type->getArrayElementType();
+      const auto elm_size = dl.getTypeSizeInBits(elm_type);
+      const auto num_elms = type->getArrayNumElements();
+      std::string bytes(dl.getTypeSizeInBits(type) / 8, '\0');
+      for (auto i = 0u; i < num_elms; ++i) {
+        const auto elm_offset = i * (elm_size / 8);
+        const auto src =
+            ReadValueFromMemory(addr + elm_offset, elm_size, arch, program)
+                .getRawData();
+        const auto dst = bytes.data() + elm_offset;
+        std::memcpy(dst, src, elm_size / 8);
+      }
+      if (elm_size == 8) {
+        result = llvm::ConstantDataArray::getString(module.getContext(), bytes,
+                                                    /*AddNull=*/false);
+      } else {
+        result = llvm::ConstantDataArray::getRaw(bytes, num_elms, elm_type);
+      }
+    } break;
+
+    default:
+      LOG(FATAL) << "Unknown LLVM Type: " << remill::LLVMThingToString(type);
+      break;
+  }
+
+  return result;
+}
+}  // namespace
+
 bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
                         llvm::Module &module) {
   DLOG(INFO) << "LiftCodeIntoModule";
@@ -496,9 +588,16 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   // and data as the lifting process progresses.
   MCToIRLifter lifter(arch, program, module);
 
-  // Declare global variables.
+  // Lift global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    decl->DeclareInModule(anvill::CreateVariableName(decl->address), module);
+    const auto addr = decl->address;
+    const auto name = anvill::CreateVariableName(addr);
+    const auto gvar = decl->DeclareInModule(name, module);
+
+    // Set initializer
+    auto init = CreateConstFromMemory(addr, decl->type, arch, program, module);
+    gvar->setInitializer(init);
+
     return true;
   });
 

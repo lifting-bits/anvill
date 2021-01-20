@@ -724,7 +724,7 @@ llvm::Error Program::Impl::MapRange(const ByteRange &range) {
   // TODO(pag): I think this is right.
   const auto max_addr = std::numeric_limits<uint64_t>::max();
   const auto end_address = range.address + size;
-  if (((max_addr - (size - 1U)) < range.address) ||
+  if (((max_addr - (size - 1u)) < range.address) ||
       end_address <= range.address || !end_address) {
     return llvm::createStringError(
         std::make_error_code(std::errc::bad_address),

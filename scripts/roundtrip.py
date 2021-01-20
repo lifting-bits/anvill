@@ -132,7 +132,7 @@ if __name__ == "__main__":
 
     def test_generator(path, test_name):
         def test(self):
-            specifier = ["python3.8", "-m", "anvill"]
+            specifier = ["python3", "-m", "anvill"]
             roundtrip(self, specifier, args.anvill, path, test_name, args.clang, args.timeout)
 
         return test
