@@ -287,14 +287,15 @@ void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
 }
 
 
-llvm::Constant* MCToIRLifter::GetOrCreateTaintedRegister(llvm::Type* goal_type, llvm::Type* current_type, llvm::Module& mod) {
+llvm::Constant* MCToIRLifter::GetOrCreateTaintedRegister(llvm::Type* goal_type, llvm::Type* current_type, llvm::Module& mod,
+  const remill::Register* reg, uint64_t pc) {
   if (!current_type->isIntegerTy()) {
     //we don't handle this
     return nullptr;
   }
   //Come up with variable name
   std::stringstream var_name;
-  var_name << "__anvill_type_" << reinterpret_cast<void*>(goal_type);
+  var_name << "__anvill_type_" << std::hex << pc << "_" << reg->name;
 
   //So give the global is a pointer to the goal type, so char *
   llvm::Constant * global_var = mod.getOrInsertGlobal(var_name.str(), goal_type);
@@ -354,7 +355,7 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
       irb.CreateStore(reg_value, reg_pointer);
     }
     //auto reg_value = irb.CreateLoad(reg_pointer);
-    if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module)) {
+    if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module, decl.reg, inst.pc)) {
       irb.CreateStore(irb.CreateAdd(reg_value, tainted_global), reg_pointer);
     }
     //Cache maps register names to last loaded value, we change last loaded value, so invalidate the cache
