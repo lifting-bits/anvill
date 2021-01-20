@@ -63,7 +63,7 @@ class XrefExprFolder {
   bool is_pointer{false};
 
   // Type hinted by IDA or Binja
-  llvm::Type* hinted_type{nullptr};
+  llvm::Type *hinted_type{nullptr};
 
   // Might tell us if there are aspects of this xref that might disqualify
   // it as an actual xref.
@@ -91,7 +91,7 @@ class XrefExprFolder {
   uint64_t VisitShl(llvm::Value *lhs, llvm::Value *rhs);
   uint64_t VisitLShr(llvm::Value *lhs, llvm::Value *rhs);
   uint64_t VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op);
-  uint64_t VisitCall(llvm::CallInst* call);
+  uint64_t VisitCall(llvm::CallInst *call);
   int64_t Signed(uint64_t val, llvm::Value *op);
   uint64_t VisitICmp(llvm::Instruction *inst);
   uint64_t VisitICmp(llvm::ConstantExpr *ce);

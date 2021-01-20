@@ -85,12 +85,12 @@ struct ParameterDecl : public ValueDecl {
 };
 
 struct TypedRegisterDecl : public ValueDecl {
-  const remill::Register* reg;
-  llvm::Type* type;
+  const remill::Register *reg;
+  llvm::Type *type;
   std::optional<uint64_t> value;
 
   ANVILL_WITH_JSON(
-        llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
+      llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 };
 
 struct GlobalVarDecl {
@@ -155,7 +155,7 @@ struct FunctionDecl {
 
   // Register information
   //std::vector<TypedRegisterDecl> register_info;
-  //Map program addresses to remill registers and type information. 
+  //Map program addresses to remill registers and type information.
   std::unordered_map<uint64_t, TypedRegisterDecl> reg_info;
 
   // Return values.

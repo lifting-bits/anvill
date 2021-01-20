@@ -110,7 +110,7 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   GlobalVarDecl *FindVariable(const std::string &name);
 
-  llvm::Type* FindType(uint64_t address);
+  llvm::Type *FindType(uint64_t address);
 
   std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
 
@@ -608,13 +608,14 @@ GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
 }
 
 // Lookup the type that corresponds to an address
-llvm::Type *
-Program::Impl::FindType(uint64_t address) {
+llvm::Type *Program::Impl::FindType(uint64_t address) {
+
   //FIXME (Carson) this is just for debugging
   uint64_t hit_count = 0;
-  llvm::Type * ret = nullptr;
-  for (auto& curr_func : funcs) {
-    if (auto match = curr_func->reg_info.find(address); match != curr_func->reg_info.end()) {
+  llvm::Type *ret = nullptr;
+  for (auto &curr_func : funcs) {
+    if (auto match = curr_func->reg_info.find(address);
+        match != curr_func->reg_info.end()) {
       hit_count += 1;
       ret = match->second.type;
     }
@@ -984,9 +985,8 @@ void Program::ForEachVariableWithName(
   }
 }
 
-// Lookup type corresponding to an address 
-llvm::Type*
-Program::FindType(uint64_t address) const {
+// Lookup type corresponding to an address
+llvm::Type *Program::FindType(uint64_t address) const {
   return impl->FindType(address);
 }
 

@@ -142,13 +142,17 @@ class MCToIRLifter {
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block, bool on_taken_path);
 
-  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block,
-                      const std::unordered_map<uint64_t, TypedRegisterDecl>& reg_map);
-  // llvm::Constant* GetOrCreateTaintedRegister(llvm::Type* type, llvm::Type* other_type, llvm::Module& mod, 
+  void VisitInstruction(
+      remill::Instruction &inst, llvm::BasicBlock *block,
+      const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map);
+
+  // llvm::Constant* GetOrCreateTaintedRegister(llvm::Type* type, llvm::Type* other_type, llvm::Module& mod,
   //   const remill::Register* reg, uint64_t pc, llvm::BasicBlock* inst);
 
-  llvm::FunctionCallee GetOrCreateTaintedFunction(llvm::Type* curr_type, llvm::Type* goal_type, 
-  llvm::Module& mod, llvm::BasicBlock* curr_block, const remill::Register* reg, uint64_t pc);
+  llvm::FunctionCallee
+  GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
+                             llvm::Module &mod, llvm::BasicBlock *curr_block,
+                             const remill::Register *reg, uint64_t pc);
 
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out);

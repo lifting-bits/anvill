@@ -26,7 +26,7 @@
 
 //Forward declare
 namespace llvm {
-  class Type;
+class Type;
 }
 
 namespace anvill {
@@ -291,8 +291,8 @@ class Program {
       const std::string &name,
       std::function<bool(const GlobalVarDecl *)> callback) const;
 
-  llvm::Type* FindType(uint64_t address) const;
-  
+  llvm::Type *FindType(uint64_t address) const;
+
   // Access memory, looking for a specific byte. Returns the byte found, if any.
   Byte FindByte(uint64_t address) const;
 

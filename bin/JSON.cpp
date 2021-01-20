@@ -171,50 +171,51 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 }
 
 //
-static bool ParseTypedRegister(const remill::Arch *arch, llvm::LLVMContext &context,
-		std::unordered_map<uint64_t, anvill::TypedRegisterDecl>& reg_map, llvm::json::Object * obj) {
+static bool ParseTypedRegister(
+    const remill::Arch *arch, llvm::LLVMContext &context,
+    std::unordered_map<uint64_t, anvill::TypedRegisterDecl> &reg_map,
+    llvm::json::Object *obj) {
 
-	  auto maybe_address = obj->getInteger("address");
-	  if (!maybe_address) {
-		  LOG(ERROR) << "Missing 'address' field in typed register.";
-		  return false;
-	  }
-    anvill::TypedRegisterDecl decl;
-	  auto maybe_value = obj->getInteger("value");
-	  if (maybe_value) {
-		  decl.value = *maybe_value;
-	  }
+  auto maybe_address = obj->getInteger("address");
+  if (!maybe_address) {
+    LOG(ERROR) << "Missing 'address' field in typed register.";
+    return false;
+  }
+  anvill::TypedRegisterDecl decl;
+  auto maybe_value = obj->getInteger("value");
+  if (maybe_value) {
+    decl.value = *maybe_value;
+  }
 
-	  auto maybe_type_str = obj->getString("type");
-	  if (!maybe_type_str) {
-	    LOG(ERROR) << "Missing 'type' field in typed register.";
-	    return false;
-	  }
+  auto maybe_type_str = obj->getString("type");
+  if (!maybe_type_str) {
+    LOG(ERROR) << "Missing 'type' field in typed register.";
+    return false;
+  }
 
-	  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
-	  if (remill::IsError(maybe_type)) {
-	    LOG(ERROR) << remill::GetErrorString(maybe_type);
-	    return false;
-	  }
+  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+  if (remill::IsError(maybe_type)) {
+    LOG(ERROR) << remill::GetErrorString(maybe_type);
+    return false;
+  }
 
-	  decl.type = remill::GetReference(maybe_type);
+  decl.type = remill::GetReference(maybe_type);
 
-    auto register_name = obj->getString("register");
-    if (!register_name) {
-      LOG(ERROR) << "Missing 'register' field in typed register";
-      return false;
-    }
-    auto maybe_reg = arch->RegisterByName(register_name->str());
-    if (!maybe_reg) {
-      LOG(ERROR) << "Unable to locate register '" << register_name->str()
-                  << "' for typed register information:"
-                  << " at '" << std::hex
-                  << *maybe_address << std::dec << "'";
-      return false;
-    }
-    decl.reg = maybe_reg;
-    reg_map[*maybe_address] = decl;
-	  return ParseValue(arch, decl, obj, "typed register");
+  auto register_name = obj->getString("register");
+  if (!register_name) {
+    LOG(ERROR) << "Missing 'register' field in typed register";
+    return false;
+  }
+  auto maybe_reg = arch->RegisterByName(register_name->str());
+  if (!maybe_reg) {
+    LOG(ERROR) << "Unable to locate register '" << register_name->str()
+               << "' for typed register information:"
+               << " at '" << std::hex << *maybe_address << std::dec << "'";
+    return false;
+  }
+  decl.reg = maybe_reg;
+  reg_map[*maybe_address] = decl;
+  return ParseValue(arch, decl, obj, "typed register");
 }
 
 // Parse a return value from the JSON spec.
@@ -272,20 +273,20 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
   }
 
   if (auto register_info = obj->getArray("register_info")) {
-	  for (llvm::json::Value &maybe_reg: *register_info) {
-		  if (auto reg_obj = maybe_reg.getAsObject()) {
-			  //decl.register_info.emplace_back();
-		  	  //Parse the register info!
-		  	  if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
-			  	  return false;
-		  	  }
-		  }
-		  else {
-			  LOG(ERROR) << "Non-object value in 'register_info' array of "
-					  << "function at address '" << decl.address
-					  << std::dec << "'";
-		  }
-	  }
+    for (llvm::json::Value &maybe_reg : *register_info) {
+      if (auto reg_obj = maybe_reg.getAsObject()) {
+
+        //decl.register_info.emplace_back();
+        //Parse the register info!
+        if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
+          return false;
+        }
+      } else {
+        LOG(ERROR) << "Non-object value in 'register_info' array of "
+                   << "function at address '" << decl.address << std::dec
+                   << "'";
+      }
+    }
   }
 
   // Get the return address location.

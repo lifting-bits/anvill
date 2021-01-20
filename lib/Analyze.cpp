@@ -16,8 +16,9 @@
  */
 
 #include "anvill/Analyze.h"
-#include <remill/BC/Compat/GlobalValue.h>
+
 #include <glog/logging.h>
+#include <remill/BC/Compat/GlobalValue.h>
 
 // clang-format off
 #include <remill/BC/Compat/CTypes.h>
@@ -133,7 +134,8 @@ uint64_t XrefExprFolder::VisitInst(llvm::Instruction *ce) {
     case llvm::Instruction::IntToPtr:
     case llvm::Instruction::PtrToInt:
     case llvm::Instruction::BitCast: return Visit(ce->getOperand(0));
-    case llvm::Instruction::Call: return VisitCall(llvm::dyn_cast<llvm::CallInst>(ce));
+    case llvm::Instruction::Call:
+      return VisitCall(llvm::dyn_cast<llvm::CallInst>(ce));
     default: break;
   }
 
@@ -390,7 +392,7 @@ uint64_t XrefExprFolder::VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op) {
   is_pointer = is_pointer_copy;
   return static_cast<uint64_t>(lhs_val >> rhs_val) & mask;
 }
-uint64_t XrefExprFolder::VisitCall(llvm::CallInst* call) {
+uint64_t XrefExprFolder::VisitCall(llvm::CallInst *call) {
   auto id = call->getIntrinsicID();
   switch (id) {
     case llvm::Intrinsic::ctpop: {
@@ -400,14 +402,13 @@ uint64_t XrefExprFolder::VisitCall(llvm::CallInst* call) {
     default: break;
   }
   //This will happen like all the time, its sorta an error, sorta a warning, it doesnt really matter
-  auto err =
-        llvm::createStringError(std::errc::address_not_available,
-                                "Unrecognized call instruction");
-    if (error) {
-      error = llvm::joinErrors(std::move(error), std::move(err));
-    } else {
-      error = std::move(err);
-    }
+  auto err = llvm::createStringError(std::errc::address_not_available,
+                                     "Unrecognized call instruction");
+  if (error) {
+    error = llvm::joinErrors(std::move(error), std::move(err));
+  } else {
+    error = std::move(err);
+  }
   return 0;
 }
 
@@ -662,9 +663,9 @@ static bool ClassifyCell(const llvm::DataLayout &dl, Cell &cell) {
 
 static void FindPossibleCrossReferences(
     const Program &program, llvm::Module &module, llvm::StringRef gv_name,
-    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &ptr_fixups,
-    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &maybe_fixups,
-    std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &imm_fixups) {
+    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &ptr_fixups,
+    std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &maybe_fixups,
+    std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> &imm_fixups) {
 
   std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> work_list;
   std::vector<std::tuple<llvm::Use *, llvm::Value *, bool>> next_work_list;
@@ -698,7 +699,8 @@ static void FindPossibleCrossReferences(
       folder.Reset();
       const auto ea = folder.Visit(val);
       if (folder.error) {
-        LOG_IF(ERROR, folder.hinted_type != nullptr) << remill::LLVMThingToString(folder.hinted_type);
+        LOG_IF(ERROR, folder.hinted_type != nullptr)
+            << remill::LLVMThingToString(folder.hinted_type);
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
               LOG_IF(ERROR, true)
@@ -717,8 +719,8 @@ static void FindPossibleCrossReferences(
           maybe_fixups.emplace_back(use, byte, type);
         }
       } else if (type && folder.is_pointer) {
-          ptr_fixups.emplace_back(use, anvill::Byte(), type);
-        }else {
+        ptr_fixups.emplace_back(use, anvill::Byte(), type);
+      } else {
         imm_fixups.emplace_back(use, ea, type);
       }
 
@@ -750,7 +752,8 @@ struct StackFrame {
 };
 
 static void RecoverStackMemoryAccesses(
-    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &sp_fixups,
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>>
+        &sp_fixups,
     llvm::Module &module) {
 
   std::unordered_map<llvm::Function *, StackFrame> frames;
@@ -899,7 +902,7 @@ static void RecoverStackMemoryAccesses(
 
 void RecoverMemoryAccesses(
     const Program &program, llvm::Module &module,
-    const std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> &fixups) {
+    const std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &fixups) {
   for (auto [use, byte, type] : fixups) {
     const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!user) {
@@ -935,31 +938,37 @@ void RecoverMemoryAccesses(
     //            collect them in the optimizer.
     } else {
       if (addr) {
-        LOG(ERROR) << "TODO: Found byte address " << std::hex << addr << std::dec
-                 << " that is mapped to memory but doesn't directly "
-                 << "resolve to a function or variable";
+        LOG(ERROR) << "TODO: Found byte address " << std::hex << addr
+                   << std::dec
+                   << " that is mapped to memory but doesn't directly "
+                   << "resolve to a function or variable";
         new_val = llvm::ConstantInt::get(int_type, addr, false);
-      }
-      else {
+      } else {
         new_val = used_val;
       }
       new_val = llvm::ConstantInt::get(int_type, addr, false);
       if (type) {
+
         // 1) get the user instruction containing the use
-        llvm::User * test_user = use->getUser();
-        if (llvm::Instruction* inst = llvm::dyn_cast<llvm::Instruction>(test_user); inst) {
+        llvm::User *test_user = use->getUser();
+        if (llvm::Instruction *inst =
+                llvm::dyn_cast<llvm::Instruction>(test_user);
+            inst) {
           CHECK_EQ(inst->getOpcode(), llvm::Instruction::Add);
+
           // 2) create an IRBuilder and // 3) set the insert point to just before the user instruction
           llvm::IRBuilder builder(inst);
           LOG(ERROR) << inst->getParent()->getParent()->getName().str();
+
           // 4) create an inttoptr on `new_val` to `hinted_type`
-          llvm::Value* ptr_cast = builder.CreateIntToPtr(new_val, type);
+          llvm::Value *ptr_cast = builder.CreateIntToPtr(new_val, type);
           LOG(ERROR) << remill::LLVMThingToString(ptr_cast);
+
           // 5) create a ptrtoint on (4) back to the type of `int_type`&  // 6) set `new_val` to (5)
           new_val = builder.CreatePtrToInt(ptr_cast, int_type);
-        }
-        else {
-          LOG(ERROR) << "Unable to cast user to instruction! addr:" << std::hex << addr << std::dec;
+        } else {
+          LOG(ERROR) << "Unable to cast user to instruction! addr:" << std::hex
+                     << addr << std::dec;
         }
       }
     }
@@ -971,7 +980,8 @@ void RecoverMemoryAccesses(
 
 void ReplaceImmediateIntegers(
     const Program &program,
-    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &ci_fixups) {
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>>
+        &ci_fixups) {
   for (auto [use, imm_val, type] : ci_fixups) {
     const auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser());
     if (!user) {
@@ -999,7 +1009,8 @@ void ReplaceImmediateIntegers(
 // Convert uses of `__anvill_ra` into uses of the return address intrinsics.
 static void RecoverReturnAddressUses(
     llvm::Module &module,
-    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> &fixups) {
+    const std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>>
+        &fixups) {
   for (auto [use, val, type] : fixups) {
     (void) val;
     if (auto user = llvm::dyn_cast<llvm::Instruction>(use->getUser()); user) {
@@ -1050,11 +1061,12 @@ static void RecoverReturnAddressUses(
 // in `program` and defined in `module`.
 void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
-  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> fixups;
-  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type*>> maybe_fixups;
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
+
   //FIXME (Carson) do I need to turn these from pairs to tuples as well?
-  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> sp_fixups;
-  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type*>> ci_fixups;
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> sp_fixups;
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> ci_fixups;
 
   FindPossibleCrossReferences(program, module, "__anvill_sp", fixups,
                               maybe_fixups, sp_fixups);
@@ -1068,10 +1080,10 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
   FindPossibleCrossReferences(program, module, "__anvill_pc", fixups,
                               maybe_fixups, ci_fixups);
 
-  for (auto& var : module.globals()) {
+  for (auto &var : module.globals()) {
     if (var.getName().startswith("__anvill_type")) {
-        FindPossibleCrossReferences(program, module, var.getName(), fixups,
-                              maybe_fixups, ci_fixups);
+      FindPossibleCrossReferences(program, module, var.getName(), fixups,
+                                  maybe_fixups, ci_fixups);
     }
   }
 
