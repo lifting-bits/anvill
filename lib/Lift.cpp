@@ -206,19 +206,19 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
-  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-      std::stringstream ss;
-      ss << "# read register " << reg->name;
+  // arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+  //   if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+  //     std::stringstream ss;
+  //     ss << "# read register " << reg->name;
 
-      llvm::InlineAsm *read_reg =
-          llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
-                               ss.str(), "=r", true /* hasSideEffects */);
+  //     llvm::InlineAsm *read_reg =
+  //         llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+  //                              ss.str(), "=r", true /* hasSideEffects */);
 
-      const auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
-    }
-  });
+  //     const auto reg_ptr = reg->AddressOf(state_ptr, block);
+  //     ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+  //   }
+  // });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
