@@ -146,7 +146,7 @@ class MCToIRLifter {
       remill::Instruction &inst, llvm::BasicBlock *block,
       const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map);
 
-  llvm::Function*
+  llvm::Function *
   GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
                              llvm::Module &mod, llvm::BasicBlock *curr_block,
                              const remill::Register *reg, uint64_t pc);

@@ -297,7 +297,7 @@ into
 %2 = __anvill_type_<uid>(<%4's type> %4)
 %3 = ptrtoint %2 goal_type
 */
-llvm::Function* MCToIRLifter::GetOrCreateTaintedFunction(
+llvm::Function *MCToIRLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
   std::stringstream func_name;

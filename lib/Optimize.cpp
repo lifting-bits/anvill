@@ -874,16 +874,17 @@ static void ReplaceMemWriteOp(const Program &program, llvm::Module &module,
   RemoveFunction(func);
 }
 
-// Lower an anvill type function into an `inttoptr` instructionz
+// Lower an anvill type function into an `inttoptr` instructions
 static void ReplaceTypeOp(const Program &program, llvm::Module &module,
-                          llvm::Function* func) {
+                          llvm::Function *func) {
   auto callers = remill::CallersOf(func);
   for (auto call_inst : callers) {
     auto arg_val = call_inst->getArgOperand(0);
     llvm::IRBuilder<> irb(call_inst);
 
     //Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
-    llvm::Value *ptr = GetPointer(program, module, irb, arg_val, func->getType()->getPointerElementType(), 0);
+    llvm::Value *ptr = GetPointer(program, module, irb, arg_val,
+                                  func->getType()->getPointerElementType(), 0);
 
     //The ptr value should be the return type of the function, which is the binary ninja type.
     //Replace the call with uses of this pointer value
@@ -898,7 +899,7 @@ static void ReplaceTypeOp(const Program &program, llvm::Module &module,
 
 static void LowerTypeOps(const Program &program, llvm::Module &mod) {
   std::vector<llvm::Function *> funcs;
-  for (auto& func : mod) {
+  for (auto &func : mod) {
     funcs.push_back(&func);
   }
   for (auto func : funcs) {
