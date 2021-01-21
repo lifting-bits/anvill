@@ -392,6 +392,7 @@ uint64_t XrefExprFolder::VisitAShr(llvm::Value *lhs_op, llvm::Value *rhs_op) {
   is_pointer = is_pointer_copy;
   return static_cast<uint64_t>(lhs_val >> rhs_val) & mask;
 }
+
 uint64_t XrefExprFolder::VisitCall(llvm::CallInst *call) {
   auto id = call->getIntrinsicID();
   switch (id) {
@@ -944,31 +945,6 @@ void RecoverMemoryAccesses(
         new_val = llvm::ConstantInt::get(int_type, addr, false);
       } else {
         new_val = used_val;
-      }
-      new_val = llvm::ConstantInt::get(int_type, addr, false);
-      if (type) {
-
-        // 1) get the user instruction containing the use
-        llvm::User *test_user = use->getUser();
-        if (llvm::Instruction *inst =
-                llvm::dyn_cast<llvm::Instruction>(test_user);
-            inst) {
-          CHECK_EQ(inst->getOpcode(), llvm::Instruction::Add);
-
-          // 2) create an IRBuilder and // 3) set the insert point to just before the user instruction
-          llvm::IRBuilder builder(inst);
-          LOG(ERROR) << inst->getParent()->getParent()->getName().str();
-
-          // 4) create an inttoptr on `new_val` to `hinted_type`
-          llvm::Value *ptr_cast = builder.CreateIntToPtr(new_val, type);
-          LOG(ERROR) << remill::LLVMThingToString(ptr_cast);
-
-          // 5) create a ptrtoint on (4) back to the type of `int_type`&  // 6) set `new_val` to (5)
-          new_val = builder.CreatePtrToInt(ptr_cast, int_type);
-        } else {
-          LOG(ERROR) << "Unable to cast user to instruction! addr:" << std::hex
-                     << addr << std::dec;
-        }
       }
     }
     if (new_val != used_val) {
