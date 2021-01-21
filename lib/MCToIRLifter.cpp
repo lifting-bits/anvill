@@ -297,7 +297,7 @@ into
 %2 = __anvill_type_<uid>(<%4's type> %4)
 %3 = ptrtoint %2 goal_type
 */
-llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(
+llvm::Function* MCToIRLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
   std::stringstream func_name;
@@ -307,7 +307,8 @@ llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(
 
   auto anvill_type_fn_ty =
       llvm::FunctionType::get(return_type, {current_type}, false);
-  return mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
+  mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
+  return mod.getFunction(func_name.str());
 }
 
 void MCToIRLifter::VisitInstruction(
