@@ -880,26 +880,30 @@ static void ReplaceMemWriteOp(const Program &program, llvm::Module &module,
 }
 
 // Lower an anvill type function into an `inttoptr` instructionz
-static void ReplaceTypeOp(const Program& program, llvm::Module& module, const std::string& name, llvm::Type* val_type) {
+static void ReplaceTypeOp(const Program &program, llvm::Module &module,
+                          const std::string &name, llvm::Type *val_type) {
   auto func = module.getFunction(name);
   if (!func) {
     LOG(ERROR) << "Function " << name << " not found";
     return;
   }
-    CHECK(func->isDeclaration())
+  CHECK(func->isDeclaration())
       << "Cannot lower already implemented memory intrinsic " << name;
   auto callers = remill::CallersOf(func);
   for (auto call_inst : callers) {
     auto arg_val = call_inst->getArgOperand(0);
     llvm::IRBuilder<> irb(call_inst);
+
     //Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
-    llvm::Value * ptr = GetPointer(program, module, irb, arg_val, val_type, 0);
+    llvm::Value *ptr = GetPointer(program, module, irb, arg_val, val_type, 0);
+
     //llvm::Value * ptr_cast = irb.CreateIntToPtr(arg_val, val_type);
     //The ptr value should be the return type of the function, which is the binary ninja type.
     //Replace the call with uses of this pointer value
     call_inst->replaceAllUsesWith(ptr);
   }
   LOG(ERROR) << "Cleaning up!";
+
   //Clean up
   for (auto call_inst : callers) {
     call_inst->eraseFromParent();
@@ -909,17 +913,18 @@ static void ReplaceTypeOp(const Program& program, llvm::Module& module, const st
 }
 
 static void LowerTypeOps(const Program &program, llvm::Module &mod) {
-  std::vector<llvm::Function*> funcs;
-  for (auto& func: mod) {
+  std::vector<llvm::Function *> funcs;
+  for (auto &func : mod) {
     funcs.push_back(&func);
   }
-  for (auto& func: funcs) {
+  for (auto &func : funcs) {
     if (func->hasName() && func->getName().startswith("__anvill_type")) {
       LOG(ERROR) << "Lowering type function!";
-      //I think func.getReturnType() should already be a pointer type so its fine?
-      ReplaceTypeOp(program, mod, func->getName(), func->getReturnType()->getPointerElementType());
-    }
 
+      //I think func.getReturnType() should already be a pointer type so its fine?
+      ReplaceTypeOp(program, mod, func->getName(),
+                    func->getReturnType()->getPointerElementType());
+    }
   }
 }
 
@@ -1115,6 +1120,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   } while (!changed_funcs.empty());
 
   LowerMemOps(program, module);
+
   //LowerTypeOps(program, module);
 
   RecoverMemoryReferences(program, module);
