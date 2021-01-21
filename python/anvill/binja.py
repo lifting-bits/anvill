@@ -149,7 +149,7 @@ def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE)
 
 
 def _convert_bn_llil_type(constant_val: bn.function.RegisterValue, reg_size_bytes: int) \
-        -> Union[PointerType, IntegerType]:
+        -> Type:
     """Convert LLIL register type to Anvill type
     """
     if constant_val.type == bn.function.RegisterValueType.ConstantPointerValue:
