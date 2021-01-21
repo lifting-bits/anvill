@@ -703,13 +703,12 @@ static void FindPossibleCrossReferences(
             << remill::LLVMThingToString(folder.hinted_type);
         llvm::handleAllErrors(
             std::move(folder.error), [=](llvm::ErrorInfoBase &eib) {
-              LOG_IF(ERROR, true)
+              LOG_IF(ERROR, report_failure)
                   << "Unable to handle possible cross-reference to " << std::hex
                   << ea << std::dec << ": " << eib.message();
             });
         continue;
       }
-      //auto type = program.FindType(ea);
       auto type = folder.hinted_type;
       if (auto byte = program.FindByte(ea);
           byte && !folder.is_sp_relative && !folder.is_ra_relative) {
@@ -1082,6 +1081,7 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   for (auto &var : module.globals()) {
     if (var.getName().startswith("__anvill_type")) {
+
       FindPossibleCrossReferences(program, module, var.getName(), fixups,
                                   maybe_fixups, ci_fixups);
     }

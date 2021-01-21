@@ -679,7 +679,6 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
     return ir.CreateBitCast(addr, dest_type);
 
   } else if (auto as_add = llvm::dyn_cast<llvm::AddOperator>(addr); as_add) {
-    LOG(ERROR) << "ADD?";
     const auto lhs_op = as_add->getOperand(0);
     const auto rhs_op = as_add->getOperand(1);
     auto lhs = FindPointer(ir, lhs_op, elem_type, addr_space);
@@ -775,7 +774,6 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
 
   // E.g. loading an address-sized integer register.
   } else if (addr_type->isIntegerTy()) {
-    LOG(ERROR) << "INT TYPE?";
     const auto bb = ir.GetInsertBlock();
     const auto addr_inst = &*ir.GetInsertPoint();
 
@@ -805,14 +803,11 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
       // `addr_inst` in the block, so we'll move it to where we need it.
       inst_user->removeFromParent();
       inst_user->insertBefore(addr_inst);
-      LOG(ERROR) << "1";
       return ir.CreateBitCast(inst_user, dest_type);
     }
-    LOG(ERROR) << "0";
     return GetPointerFromInt(ir, addr, elem_type, addr_space);
 
   } else {
-    LOG(ERROR) << "END";
     CHECK(addr_type->isPointerTy());
     return ir.CreateBitCast(addr, dest_type);
   }
@@ -922,7 +917,7 @@ static void LowerTypeOps(const Program &program, llvm::Module &mod) {
       LOG(ERROR) << "Lowering type function!";
 
       //I think func.getReturnType() should already be a pointer type so its fine?
-      ReplaceTypeOp(program, mod, func->getName(),
+      ReplaceTypeOp(program, mod, std::string(func->getName()),
                     func->getReturnType()->getPointerElementType());
     }
   }
@@ -1121,7 +1116,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   LowerMemOps(program, module);
 
-  //LowerTypeOps(program, module);
+  LowerTypeOps(program, module);
 
   RecoverMemoryReferences(program, module);
 
