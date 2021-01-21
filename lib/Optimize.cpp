@@ -892,18 +892,14 @@ static void ReplaceTypeOp(const Program &program, llvm::Module &module,
     //Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
     llvm::Value *ptr = GetPointer(program, module, irb, arg_val, val_type, 0);
 
-    //llvm::Value * ptr_cast = irb.CreateIntToPtr(arg_val, val_type);
     //The ptr value should be the return type of the function, which is the binary ninja type.
     //Replace the call with uses of this pointer value
     call_inst->replaceAllUsesWith(ptr);
   }
-  LOG(ERROR) << "Cleaning up!";
-
   //Clean up
   for (auto call_inst : callers) {
     call_inst->eraseFromParent();
   }
-  //Buggy stmt?
   RemoveFunction(func);
 }
 
@@ -914,9 +910,6 @@ static void LowerTypeOps(const Program &program, llvm::Module &mod) {
   }
   for (auto &func : funcs) {
     if (func->hasName() && func->getName().startswith("__anvill_type")) {
-      LOG(ERROR) << "Lowering type function!";
-
-      //I think func.getReturnType() should already be a pointer type so its fine?
       ReplaceTypeOp(program, mod, std::string(func->getName()),
                     func->getReturnType()->getPointerElementType());
     }
