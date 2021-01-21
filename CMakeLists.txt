@@ -217,13 +217,25 @@ install(
 
 #NOTE(artem): Uncomment and add tests as we pass them
 set(ROUNDTRIP_TEST_FILES 
-  #tests/assert.c
-  #tests/bitops.c
+  tests/array_swap.c
+  # tests/assert.c
+  tests/binops.c
+  tests/bitops.c
+  # tests/branch.c
   tests/cast.c
-  #tests/funcptr.c
-  #tests/nullptr.c
+  # tests/funcptr.c
+  tests/init_list.c
+  tests/inttoptr.c
+  # tests/loop.c
+  # tests/nested_struct.c
+  tests/nullptr.c
   tests/ret0.c
-  #tests/zeroinit.c
+  tests/struct_swap.c
+  tests/struct.c
+  # tests/sum.c
+  tests/trunc.c
+  tests/zeroinit.c
+  tests/zext.c
 )
 
 install(
