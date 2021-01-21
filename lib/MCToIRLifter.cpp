@@ -305,35 +305,10 @@ llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(
             << "_" << reinterpret_cast<void *>(current_type);
   llvm::Type *return_type = goal_type;
 
-  //if (!goal_type->isPointerTy()) {
-  //return_type = goal_type->getPointerTo();
-  //}
   auto anvill_type_fn_ty =
       llvm::FunctionType::get(return_type, {current_type}, false);
   return mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
 }
-
-// llvm::Constant* MCToIRLifter::GetOrCreateTaintedRegister(llvm::Type* goal_type, llvm::Type* current_type, llvm::Module& mod,
-//   const remill::Register* reg, uint64_t pc, llvm::BasicBlock* current_block) {
-//   if (!current_type->isIntegerTy()) {
-//     //we don't handle this
-//     return nullptr;
-//   }
-//   //Come up with function name
-//   std::stringstream func_name;
-//   func_name << "__anvill_type_func" << std::hex << pc << "_" << reg->name << "_" << reinterpret_cast<void*>(current_type);
-//   auto anvill_type_fn_ty = llvm::FunctionType::get(current_type->getPointerTo(),
-//                                                  {current_type}, false);
-//   llvm::FunctionCallee type_func = mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
-//   llvm::IRBuilder irb(current_block);
-//   llvm::Value * type_func_call = irb.CreateCall(type_func, );
-//   //Cast the func call to goal type
-//   return llvm::ConstantExpr::getPtrToInt(type_func_call, goal_type);
-//   //So give the global is a pointer to the goal type, so char *
-//   //llvm::Constant * global_var = mod.getOrInsertGlobal(var_name.str(), goal_type);
-//   //return llvm::ConstantExpr::getPtrToInt(global_var, current_type);
-
-// }
 
 void MCToIRLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block,
@@ -377,11 +352,6 @@ void MCToIRLifter::VisitInstruction(
     //Only operate on binaryninja pointer types for now
     if (decl.type->isPointerTy()) {
 
-      //Access the register value, (probably some integer)
-      //Check type information to see if it is a pointer
-      //If it is, we want to coerce LLVM into treating it as pointer
-      //In order to do this we want to taint the reg so we know its a pointer
-      //Global variables in LLVM are pointers, and it's location is symbolic
       llvm::IRBuilder irb(block);
       auto reg_pointer =
           inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
@@ -398,17 +368,10 @@ void MCToIRLifter::VisitInstruction(
       llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
 
       //Cast the result of this call, to the goal type
-      //llvm::Value * replacement_reg = irb.CreateBitOrPointerCast(tainted_call, reg_type);
       llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg_type);
 
       //Store the value back, this keeps the replacement_reg cast around.
       irb.CreateStore(replacement_reg, reg_pointer);
-
-      //auto reg_value = irb.CreateLoad(reg_pointer);
-      // if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module, decl.reg, block)) {
-      //   irb.CreateStore(irb.CreateAdd(reg_value, tainted_global), reg_pointer);
-      // }
-      //Cache maps register names to last loaded value, we change last loaded value, so invalidate the cache
       inst_lifter.ClearCache();
     }
   }

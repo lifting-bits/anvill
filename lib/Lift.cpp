@@ -214,34 +214,34 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
 
-  // arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-  //   if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-  //     std::stringstream ss;
-  //     const auto reg_ptr = reg->AddressOf(state_ptr, block);
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
 
-  //     if (FLAGS_feature_inline_asm_for_unspec_registers) {
-  //       ss << "# read register " << reg->name;
+      if (FLAGS_feature_inline_asm_for_unspec_registers) {
+        ss << "# read register " << reg->name;
 
-  //       llvm::InlineAsm *read_reg =
-  //           llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
-  //                                ss.str(), "=r", true /* hasSideEffects */);
+        llvm::InlineAsm *read_reg =
+            llvm::InlineAsm::get(llvm::FunctionType::get(reg->type, false),
+                                 ss.str(), "=r", true /* hasSideEffects */);
 
-  //       ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
-  //     } else {
-  //       ss << "__anvill_reg_" << reg->name;
+        ir.CreateStore(ir.CreateCall(read_reg), reg_ptr);
+      } else {
+        ss << "__anvill_reg_" << reg->name;
 
-  //       const auto reg_name = ss.str();
-  //       auto reg_global = module->getGlobalVariable(reg_name);
-  //       if (!reg_global) {
-  //         reg_global = new llvm::GlobalVariable(
-  //             *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-  //             nullptr, reg_name);
-  //       }
+        const auto reg_name = ss.str();
+        auto reg_global = module->getGlobalVariable(reg_name);
+        if (!reg_global) {
+          reg_global = new llvm::GlobalVariable(
+              *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+              nullptr, reg_name);
+        }
 
-  //       ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-  //     }
-  //   }
-  // });
+        ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+      }
+    }
+  });
 
   // Store the program counter into the state.
   auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
