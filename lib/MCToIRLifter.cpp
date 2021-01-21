@@ -19,7 +19,6 @@
 
 #include <glog/logging.h>
 #include <remill/BC/Util.h>
-
 #include <sstream>
 
 #include "anvill/Decl.h"
@@ -290,27 +289,26 @@ void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
 /*
 This function encodes type information within symbolic functions
 so the type information can survive optimization.
-it should turn some instruction like
-%1 = add %4, 1
-into
+it should turn some instruction like 
+%1 = add %4, 1 
+into 
 %1 = add %4, 1
 %2 = __anvill_type_<uid>(<%4's type> %4)
 %3 = ptrtoint %2 goal_type
 */
-llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(
-    llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
-    llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
-  std::stringstream func_name;
-  func_name << "__anvill_type_func_" << std::hex << pc << "_" << reg->name
-            << "_" << reinterpret_cast<void *>(current_type);
-  llvm::Type *return_type = goal_type;
-  if (!goal_type->isPointerTy()) {
-    return_type = goal_type->getPointerTo();
+llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(llvm::Type* current_type, llvm::Type* goal_type,
+ llvm::Module& mod, llvm::BasicBlock* curr_block,
+  const remill::Register* reg, uint64_t pc) {
+    std::stringstream func_name;
+    func_name << "__anvill_type_func_" << std::hex << pc << "_" << reg->name << "_" << reinterpret_cast<void*>(current_type);
+    llvm::Type * return_type = goal_type;
+
+    //if (!goal_type->isPointerTy()) {
+      //return_type = goal_type->getPointerTo();
+    //}
+    auto anvill_type_fn_ty = llvm::FunctionType::get(return_type, {current_type}, false);
+    return mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
   }
-  auto anvill_type_fn_ty =
-      llvm::FunctionType::get(return_type, {current_type}, false);
-  return mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
-}
 
 // llvm::Constant* MCToIRLifter::GetOrCreateTaintedRegister(llvm::Type* goal_type, llvm::Type* current_type, llvm::Module& mod,
 //   const remill::Register* reg, uint64_t pc, llvm::BasicBlock* current_block) {
@@ -331,12 +329,12 @@ llvm::FunctionCallee MCToIRLifter::GetOrCreateTaintedFunction(
 //   //So give the global is a pointer to the goal type, so char *
 //   //llvm::Constant * global_var = mod.getOrInsertGlobal(var_name.str(), goal_type);
 //   //return llvm::ConstantExpr::getPtrToInt(global_var, current_type);
-
+  
 // }
 
-void MCToIRLifter::VisitInstruction(
-    remill::Instruction &inst, llvm::BasicBlock *block,
-    const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map) {
+void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
+                                    llvm::BasicBlock *block, 
+                                    const std::unordered_map<uint64_t, TypedRegisterDecl>& reg_map) {
   curr_inst = &inst;
 
   // Reserve space for an instrucion that will go into a delay slot, in case it
@@ -346,14 +344,14 @@ void MCToIRLifter::VisitInstruction(
   std::aligned_storage<sizeof(remill::Instruction),
                        alignof(remill::Instruction)>::type delayed_inst_storage;
 
-  remill::Instruction *delayed_inst = nullptr;
+  remill::Instruction *delayed_inst = nullptr;  
 
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
   // to treat instruction lifting as an operation that can't fail.
   (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
                                    false /* is_delayed */);
-
+  
 
   if (arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
@@ -364,53 +362,44 @@ void MCToIRLifter::VisitInstruction(
                  << inst.Serialize();
     }
   }
-
+  
   // Check to see if this location has type and value information associated with it
   //inst.pc
   auto match = reg_map.find(inst.pc);
   if (match != reg_map.end()) {
-
     //If we have information for this program point, check to see if a value exists
-    const TypedRegisterDecl &decl = match->second;
-
-    //Access the register value, (probably some integer)
-    //Check type information to see if it is a pointer
-    //If it is, we want to coerce LLVM into treating it as pointer
-    //In order to do this we want to taint the reg so we know its a pointer
-    //Global variables in LLVM are pointers, and it's location is symbolic
-    llvm::IRBuilder irb(block);
-    auto reg_pointer =
-        inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
-    llvm::Value *reg_value = irb.CreateLoad(reg_pointer);
-    auto reg_type = reg_value->getType();
-
-    if (decl.value && reg_type->isIntegerTy()) {
-      reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
-      irb.CreateStore(reg_value, reg_pointer);
+    const TypedRegisterDecl& decl = match->second;
+    //Only operate on binaryninja pointer types for now
+    if (decl.type->isPointerTy()) {
+      //Access the register value, (probably some integer)
+      //Check type information to see if it is a pointer
+      //If it is, we want to coerce LLVM into treating it as pointer
+      //In order to do this we want to taint the reg so we know its a pointer
+      //Global variables in LLVM are pointers, and it's location is symbolic
+      llvm::IRBuilder irb(block);
+      auto reg_pointer = inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
+      llvm::Value* reg_value = irb.CreateLoad(reg_pointer);
+      auto reg_type = reg_value->getType();
+      
+      if (decl.value && reg_type->isIntegerTy()) {
+        reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
+        irb.CreateStore(reg_value, reg_pointer);
+      }
+      //Creates a function that returns a binja_type* and takes an argument of (reg_type)
+      auto taint_func = GetOrCreateTaintedFunction(reg_type, decl.type, module, block, decl.reg, inst.pc);
+      llvm::Value * tainted_call = irb.CreateCall(taint_func, reg_value);
+      //Cast the result of this call, to the goal type
+      //llvm::Value * replacement_reg = irb.CreateBitOrPointerCast(tainted_call, reg_type);
+      llvm::Value * replacement_reg = irb.CreatePtrToInt(tainted_call, reg_type);
+      //Store the value back, this keeps the replacement_reg cast around.
+      irb.CreateStore(replacement_reg, reg_pointer);
+      //auto reg_value = irb.CreateLoad(reg_pointer);
+      // if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module, decl.reg, block)) {
+      //   irb.CreateStore(irb.CreateAdd(reg_value, tainted_global), reg_pointer);
+      // }
+      //Cache maps register names to last loaded value, we change last loaded value, so invalidate the cache
+      inst_lifter.ClearCache();
     }
-    //Creates a function that returns a reg_type* and takes an argument of (reg_type)
-    //turns some %a = %b, %c (assume you know type info for %b)
-    //into %b_ptr = __anvill_type_func(%b)
-    //TODO (Carson) I never used the binja information
-    auto taint_func = GetOrCreateTaintedFunction(reg_type, decl.type, module,
-                                                 block, decl.reg, inst.pc);
-    LOG(ERROR) << remill::LLVMThingToString(taint_func.getFunctionType());
-    LOG(ERROR) << remill::LLVMThingToString(reg_type);
-    llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
-    LOG(ERROR) << "Creating PtrToInt";
-
-    //Cast the result of this call, to the goal type
-    llvm::Value *replacment_reg = irb.CreatePtrToInt(tainted_call, reg_type);
-
-    //Store the value back, this keeps the replacement_reg cast around.
-    irb.CreateStore(replacment_reg, reg_pointer);
-
-    //auto reg_value = irb.CreateLoad(reg_pointer);
-    // if (auto tainted_global = GetOrCreateTaintedRegister(decl.type, reg_type, module, decl.reg, block)) {
-    //   irb.CreateStore(irb.CreateAdd(reg_value, tainted_global), reg_pointer);
-    // }
-    //Cache maps register names to last loaded value, we change last loaded value, so invalidate the cache
-    inst_lifter.ClearCache();
   }
 
   switch (inst.category) {
