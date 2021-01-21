@@ -38,7 +38,7 @@ def main():
 
     arg_parser.add_argument(
         "--refs_as_defs",
-        type=bool,
+        action="store_true",
         help="Output definitions of discovered functions and variables.",
         default=False,
     )
@@ -69,7 +69,7 @@ def main():
         for name in p.get_symbols(ea):
             p.add_symbol(ea, name)
 
-    funcs = map(lambda x: x["address"], p.proto()["functions"])
+    funcs = set(map(lambda x: x["address"], p.proto()["functions"]))
 
     for ea, v in p.variables:
         for r in v.code_refs:
