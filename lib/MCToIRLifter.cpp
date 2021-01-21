@@ -343,14 +343,14 @@ void MCToIRLifter::VisitInstruction(
   }
 
   // Check to see if this location has type and value information associated with it
-  //inst.pc
+  // inst.pc
   auto match = reg_map.find(inst.pc);
   if (match != reg_map.end()) {
 
-    //If we have information for this program point, check to see if a value exists
+    // If we have information for this program point, check to see if a value exists
     const TypedRegisterDecl &decl = match->second;
 
-    //Only operate on binaryninja pointer types for now
+    // Only operate on binaryninja pointer types for now
     if (decl.type->isPointerTy()) {
 
       llvm::IRBuilder irb(block);
@@ -363,15 +363,15 @@ void MCToIRLifter::VisitInstruction(
         reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
         irb.CreateStore(reg_value, reg_pointer);
       }
-      //Creates a function that returns a binja_type* and takes an argument of (reg_type)
+      // Creates a function that returns a binja_type* and takes an argument of (reg_type)
       auto taint_func = GetOrCreateTaintedFunction(reg_type, decl.type, module,
                                                    block, decl.reg, inst.pc);
       llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
 
-      //Cast the result of this call, to the goal type
+      // Cast the result of this call, to the goal type
       llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg_type);
 
-      //Store the value back, this keeps the replacement_reg cast around.
+      // Store the value back, this keeps the replacement_reg cast around.
       irb.CreateStore(replacement_reg, reg_pointer);
       inst_lifter.ClearCache();
     }

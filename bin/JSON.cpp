@@ -276,8 +276,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
     for (llvm::json::Value &maybe_reg : *register_info) {
       if (auto reg_obj = maybe_reg.getAsObject()) {
 
-        //decl.register_info.emplace_back();
-        //Parse the register info!
+        // decl.register_info.emplace_back();
+        // Parse the register info!
         if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
           return false;
         }

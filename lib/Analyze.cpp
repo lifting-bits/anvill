@@ -402,7 +402,7 @@ uint64_t XrefExprFolder::VisitCall(llvm::CallInst *call) {
     }
     default: break;
   }
-  //This will happen like all the time, its sorta an error, sorta a warning, it doesnt really matter
+  // This will happen like all the time, its sorta an error, sorta a warning, it doesnt really matter
   auto err = llvm::createStringError(std::errc::address_not_available,
                                      "Unrecognized call instruction");
   if (error) {
@@ -1038,8 +1038,6 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
-
-  //FIXME (Carson) do I need to turn these from pairs to tuples as well?
   std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> sp_fixups;
   std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> ci_fixups;
 

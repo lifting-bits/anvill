@@ -882,15 +882,15 @@ static void ReplaceTypeOp(const Program &program, llvm::Module &module,
     auto arg_val = call_inst->getArgOperand(0);
     llvm::IRBuilder<> irb(call_inst);
 
-    //Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
+    // Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
     llvm::Value *ptr = GetPointer(program, module, irb, arg_val,
                                   func->getType()->getPointerElementType(), 0);
 
-    //The ptr value should be the return type of the function, which is the binary ninja type.
-    //Replace the call with uses of this pointer value
+    // The ptr value should be the return type of the function, which is the binary ninja type.
+    // Replace the call with uses of this pointer value
     call_inst->replaceAllUsesWith(ptr);
   }
-  //Clean up
+  // Clean up
   for (auto call_inst : callers) {
     call_inst->eraseFromParent();
   }

@@ -24,7 +24,7 @@
 #include <memory>
 #include <string_view>
 
-//Forward declare
+// Forward declare
 namespace llvm {
 class Type;
 }
