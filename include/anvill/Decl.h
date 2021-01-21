@@ -21,8 +21,8 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <unordered_map> 
 
 #if __has_include(<llvm/Support/JSON.h>)
 #  include <llvm/Support/JSON.h>
