@@ -374,9 +374,9 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results += self._extract_types_mlil(bv, item, initial_inst)
+                results.extend(self._extract_types_mlil(bv, item, initial_inst))
         elif isinstance(item_or_list, mlinst):
-            results += self._extract_types_mlil(bv, item_or_list.operands, initial_inst)
+            results.extend(self._extract_types_mlil(bv, item_or_list.operands, initial_inst))
         elif isinstance(item_or_list, bn.Variable):
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
@@ -395,9 +395,9 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results += self._extract_types(bv, item, initial_inst)
+                results.extend(self._extract_types(bv, item, initial_inst))
         elif isinstance(item_or_list, llinst):
-            results += self._extract_types(bv, item_or_list.operands, initial_inst)
+            results.extend(self._extract_types(bv, item_or_list.operands, initial_inst))
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # For every register, is it a pointer?
             possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
@@ -410,7 +410,7 @@ class BNFunction(Function):
 
             if initial_inst.mlil is not None:
                 mlil_results = self._extract_types_mlil(bv, initial_inst.mlil, initial_inst.mlil)
-                results += mlil_results
+                results.extend(mlil_results)
         return results
 
     def _fill_bytes(self, bv, memory, start, end, ref_eas):
