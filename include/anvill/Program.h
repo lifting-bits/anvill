@@ -24,6 +24,11 @@
 #include <memory>
 #include <string_view>
 
+// Forward declare
+namespace llvm {
+class Type;
+}
+
 namespace anvill {
 
 // Represents a range of bytes, whose data is found in the range

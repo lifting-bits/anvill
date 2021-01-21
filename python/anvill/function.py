@@ -16,12 +16,13 @@
 
 from .type import Type, FunctionType, StructureType
 from .loc import Location
+from typing import List
 
 
 class Function(object):
     """Represents a generic function."""
 
-    __slots__ = ("_arch", "_address", "_parameters", "_return_values", "_type", "_cc")
+    __slots__ = ("_arch", "_address", "_parameters", "_return_values", "_type", "_cc", "_register_info")
 
     def __init__(self, arch, address, parameters, return_values, func_type, cc=0):
         assert isinstance(func_type, FunctionType)
@@ -31,6 +32,7 @@ class Function(object):
         self._return_values = return_values
         self._type = func_type
         self._cc = cc
+        self._register_info: List[Location] = []
 
         for param in self._parameters:
             assert isinstance(param, Location)
@@ -60,7 +62,7 @@ class Function(object):
     def calling_convention(self):
         return self._cc
 
-    def visit(self, program, is_definition):
+    def visit(self, program, is_definition: bool, add_refs_as_defs: bool):
         raise NotImplementedError()
 
     def is_declaration(self):
@@ -94,4 +96,6 @@ class Function(object):
             proto["is_noreturn"] = True
         if self._cc:
             proto["calling_convention"] = self._cc
+        if self._register_info:
+            proto["register_info"] = [loc.proto(self._arch) for loc in self._register_info]
         return proto

@@ -29,16 +29,22 @@ class BasicBlock;
 class Function;
 class Module;
 class LLVMContext;
+class Type;
+class Constant;
+class FunctionCallee;
+class Instruction;
 }  // namespace llvm
 
 namespace remill {
 class Arch;
+struct Register;
 }  // namespace remill
 
 namespace anvill {
 
 class Program;
 struct FunctionDecl;
+struct TypedRegisterDecl;
 
 struct FunctionEntry {
 
@@ -136,7 +142,14 @@ class MCToIRLifter {
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block, bool on_taken_path);
 
-  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block);
+  void VisitInstruction(
+      remill::Instruction &inst, llvm::BasicBlock *block,
+      const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map);
+
+  llvm::Function *
+  GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
+                             llvm::Module &mod, llvm::BasicBlock *curr_block,
+                             const remill::Register *reg, uint64_t pc);
 
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out);

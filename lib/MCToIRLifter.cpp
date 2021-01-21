@@ -20,6 +20,8 @@
 #include <glog/logging.h>
 #include <remill/BC/Util.h>
 
+#include <sstream>
+
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
@@ -285,8 +287,33 @@ void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
   }
 }
 
-void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
-                                    llvm::BasicBlock *block) {
+/*
+This function encodes type information within symbolic functions
+so the type information can survive optimization.
+it should turn some instruction like
+%1 = add %4, 1
+into
+%1 = add %4, 1
+%2 = __anvill_type_<uid>(<%4's type> %4)
+%3 = ptrtoint %2 goal_type
+*/
+llvm::Function *MCToIRLifter::GetOrCreateTaintedFunction(
+    llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
+    llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
+  std::stringstream func_name;
+  func_name << "__anvill_type_func_" << std::hex << pc << "_" << reg->name
+            << "_" << reinterpret_cast<void *>(current_type);
+  llvm::Type *return_type = goal_type;
+
+  auto anvill_type_fn_ty =
+      llvm::FunctionType::get(return_type, {current_type}, false);
+  mod.getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
+  return mod.getFunction(func_name.str());
+}
+
+void MCToIRLifter::VisitInstruction(
+    remill::Instruction &inst, llvm::BasicBlock *block,
+    const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map) {
   curr_inst = &inst;
 
   // Reserve space for an instrucion that will go into a delay slot, in case it
@@ -304,6 +331,7 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
   (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
                                    false /* is_delayed */);
 
+
   if (arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
     if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
@@ -311,6 +339,41 @@ void MCToIRLifter::VisitInstruction(remill::Instruction &inst,
       LOG(ERROR) << "Unable to decode or use delayed instruction at "
                  << std::hex << inst.delayed_pc << std::dec << " of "
                  << inst.Serialize();
+    }
+  }
+
+  // Check to see if this location has type and value information associated with it
+  // inst.pc
+  auto match = reg_map.find(inst.pc);
+  if (match != reg_map.end()) {
+
+    // If we have information for this program point, check to see if a value exists
+    const TypedRegisterDecl &decl = match->second;
+
+    // Only operate on binaryninja pointer types for now
+    if (decl.type->isPointerTy()) {
+
+      llvm::IRBuilder irb(block);
+      auto reg_pointer =
+          inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
+      llvm::Value *reg_value = irb.CreateLoad(reg_pointer);
+      auto reg_type = reg_value->getType();
+
+      if (decl.value && reg_type->isIntegerTy()) {
+        reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
+        irb.CreateStore(reg_value, reg_pointer);
+      }
+      // Creates a function that returns a binja_type* and takes an argument of (reg_type)
+      auto taint_func = GetOrCreateTaintedFunction(reg_type, decl.type, module,
+                                                   block, decl.reg, inst.pc);
+      llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
+
+      // Cast the result of this call, to the goal type
+      llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg_type);
+
+      // Store the value back, this keeps the replacement_reg cast around.
+      irb.CreateStore(replacement_reg, reg_pointer);
+      inst_lifter.ClearCache();
     }
   }
 
@@ -457,7 +520,7 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
       continue;
 
     } else {
-      VisitInstruction(inst, block);
+      VisitInstruction(inst, block, decl.reg_info);
     }
   }
 

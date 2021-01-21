@@ -14,6 +14,18 @@ import shutil
 
 REFLOW_COMMENT = "// !!! REFLOW-COMMENT"
 
+def add_space_in_comm(line):
+  unindented_line = line.lstrip("\t ")
+  if unindented_line.startswith("//"):
+    if len(unindented_line) == 2:
+      return line
+    # if it does not have a space, reformat it
+    if unindented_line[2] != " ":
+      line_pos = line.find("//")
+      res = line[:line_pos+2] + " " + line[line_pos+2:]
+      return res
+  return line
+
 
 def find_comment_lines(path):
   new_lines = []
@@ -182,6 +194,10 @@ def main():
       new_lines, has_error = run_clang_format_on_lines(
           args.format_exe, format_file, cxx_file, new_lines)
       if not has_error:
+        for i, line in enumerate(new_lines):
+          new_line = add_space_in_comm(line)
+          if new_line != line:
+            new_lines[i] = new_line
         fixup_file(cxx_file, new_lines, old_comments)
 
   if in_place_files:
