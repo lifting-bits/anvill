@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
+# # Copyright (c) 2020 Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from .arch import *
-
+import os
 try:
     import ida_idp
     from .ida import *
@@ -22,5 +22,6 @@ except ImportError as e:
     try:
         import binaryninja
         from .binja import *
+
     except ImportError as e:
         raise NotImplementedError("Could not find either IDA or Binary Ninja APIs")

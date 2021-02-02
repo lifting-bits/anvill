@@ -13,6 +13,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
+from .type import Type
+
 
 class Variable(object):
     """Represents a generic global variable."""
@@ -24,15 +27,17 @@ class Variable(object):
         self._address = address
         self._type = type_
 
-    def address(self):
+    def address(self) -> int:
         return self._address
 
-    def type(self):
+    def type(self) -> Type:
         return self._type
 
-    def visit(self, program, is_definition):
+   # @abstractmethod
+    def visit(self, program: 'Program', is_definition: bool, add_refs_as_defs: bool):
         raise NotImplementedError()
 
+  #  @abstractmethod
     def is_declaration(self):
         raise NotImplementedError()
 

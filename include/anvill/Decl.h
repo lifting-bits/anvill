@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #if __has_include(<llvm/Support/JSON.h>)
@@ -79,6 +80,17 @@ struct ValueDecl {
 
 struct ParameterDecl : public ValueDecl {
   std::string name;
+
+  ANVILL_WITH_JSON(
+      llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
+};
+
+// A TypedRegisterDecl stores inferred types and values for a given register
+// Inferred infromation can come from binja, ida, or some other tool
+struct TypedRegisterDecl : public ValueDecl {
+  const remill::Register *reg;
+  llvm::Type *type;
+  std::optional<uint64_t> value;
 
   ANVILL_WITH_JSON(
       llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
@@ -143,6 +155,9 @@ struct FunctionDecl {
   //            we expect the specification to include `AL` as an explicit
   //            parameter (number of varargs).
   std::vector<ParameterDecl> params;
+
+  // Map program addresses to remill registers and type information.
+  std::unordered_map<uint64_t, TypedRegisterDecl> reg_info;
 
   // Return values.
   //

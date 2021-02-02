@@ -27,6 +27,8 @@ class Location(object):
         self._mem_offset = 0
         self._name = None
         self._type = None
+        self._value = None
+        self._address = None
 
     def set_register(self, reg_name):
         assert not self._register
@@ -50,6 +52,15 @@ class Location(object):
     def type(self):
         return self._type
 
+    def set_value(self, value):
+        self._value = value
+
+    def set_address(self, address):
+        self._address = address
+
+    def address(self):
+        return self._address
+
     def proto(self, arch):
         if self._register:
             ret = {"register": self._register}
@@ -63,10 +74,15 @@ class Location(object):
         else:
             raise InvalidLocationException("Can't get prototype of empty location")
 
+        if self._address is not None:
+            ret["address"] = self._address
+
         if self._name is not None:
             ret["name"] = self._name
 
         if self._type is not None:
             ret["type"] = self._type.proto(arch)
 
+        if self._value is not None:
+            ret["value"] = self._value
         return ret

@@ -12,9 +12,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from typing import Union, List, Tuple, Optional, Set
 
 import binaryninja as bn
-
+from binaryninja import MediumLevelILInstruction as mlinst
+from binaryninja import LowLevelILInstruction as llinst
 from .arch import *
 from .exc import *
 from .function import *
@@ -146,8 +148,20 @@ def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE)
         _collect_code_xrefs_from_insn(bv, opnd, ref_eas, reftype)
 
 
-def _convert_binja_type(tinfo, cache):
-    """Convert an Binja `Type` instance into a `Type` instance."""
+def _convert_bn_llil_type(constant_val: bn.function.RegisterValue, reg_size_bytes: int) \
+        -> Type:
+    """Convert LLIL register type to Anvill type
+    """
+    if constant_val.type == bn.function.RegisterValueType.ConstantPointerValue:
+        ret = PointerType()
+        return ret
+    elif constant_val.type == bn.function.RegisterValueType.ConstantValue:
+        ret = IntegerType(reg_size_bytes, True)
+        return ret
+
+
+def _convert_bn_type(tinfo: bn.types.Type, cache):
+    """Convert an bn `Type` instance into a `Type` instance."""
     if str(tinfo) in cache:
         return cache[str(tinfo)]
 
@@ -159,16 +173,16 @@ def _convert_binja_type(tinfo, cache):
     elif tinfo.type_class == bn.TypeClass.PointerTypeClass:
         ret = PointerType()
         cache[str(tinfo)] = ret
-        ret.set_element_type(_convert_binja_type(tinfo.element_type, cache))
+        ret.set_element_type(_convert_bn_type(tinfo.element_type, cache))
         return ret
 
     elif tinfo.type_class == bn.TypeClass.FunctionTypeClass:
         ret = FunctionType()
         cache[str(tinfo)] = ret
-        ret.set_return_type(_convert_binja_type(tinfo.return_value, cache))
+        ret.set_return_type(_convert_bn_type(tinfo.return_value, cache))
 
         for var in tinfo.parameters:
-            ret.add_parameter_type(_convert_binja_type(var.type, cache))
+            ret.add_parameter_type(_convert_bn_type(var.type, cache))
 
         if tinfo.has_variable_arguments:
             ret.set_is_variadic()
@@ -178,7 +192,7 @@ def _convert_binja_type(tinfo, cache):
     elif tinfo.type_class == bn.TypeClass.ArrayTypeClass:
         ret = ArrayType()
         cache[str(tinfo)] = ret
-        ret.set_element_type(_convert_binja_type(tinfo.element_type, cache))
+        ret.set_element_type(_convert_bn_type(tinfo.element_type, cache))
         ret.set_num_elements(tinfo.count)
         return ret
 
@@ -234,7 +248,7 @@ def get_type(ty):
         return ty.type()
 
     elif isinstance(ty, bn.Type):
-        return _convert_binja_type(ty, {})
+        return _convert_bn_type(ty, {})
 
     if not ty:
         return VoidType()
@@ -323,13 +337,81 @@ class BNFunction(Function):
 
         mem = program.memory()
 
-        ref_eas = set()
+        ref_eas: Set[int] = set()
         ea = self._bn_func.start
         max_ea = self._bn_func.highest_address
         self._fill_bytes(program._bv, mem, ea, max_ea, ref_eas)
 
+        # Collect typed register info for this function
+        for block in self._bn_func.llil:
+            for inst in block:
+                register_information = self._extract_types(program._bv, inst.operands, inst)
+                for reg_info in register_information:
+                    loc = Location()
+                    loc.set_register(reg_info[0].upper())
+                    loc.set_type(reg_info[1])
+                    if reg_info[2] is not None:
+                        # fill_bytes misses some references, catch what we can
+                        ref_eas.add(reg_info[2])
+                        # print(f"inst_addr: {hex(inst.address)}, reg_info[2]: {reg_info[2]}, ref_eas: {ref_eas}")
+                        # assert reg_info[2] in ref_eas
+                        # assert reg_info 1 is a pointer, then reg2 should be in ea
+                        loc.set_value(reg_info[2])
+                    loc.set_address(inst.address)
+                    self._register_info.append(loc)
+        # ea = effective_address
+        # there is a distinction between declaration and definition
+        # if the function is a declaration, then Anvill only needs to know its symbols and prototypes
+        # if its a definition, then Anvill will perform analysis of the function and produce information for the func
         for ref_ea in ref_eas:
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
+
+    def _extract_types_mlil(self, bv, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
+        """
+        This function decomposes a list of MLIL instructions and variables into a list of tuples
+        that associate registers with pointer information if it exists.
+        """
+        results = []
+        if isinstance(item_or_list, list):
+            for item in item_or_list:
+                results.extend(self._extract_types_mlil(bv, item, initial_inst))
+        elif isinstance(item_or_list, mlinst):
+            results.extend(self._extract_types_mlil(bv, item_or_list.operands, initial_inst))
+        elif isinstance(item_or_list, bn.Variable):
+            # We only care about registers that represent pointers.
+            if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
+                if item_or_list.source_type == bn.VariableSourceType.RegisterVariableSourceType:
+                    reg_name = bv.arch.get_reg_name(item_or_list.storage)
+                    results.append((reg_name, _convert_bn_type(item_or_list.type, {}), None))
+        return results
+
+    def _extract_types(self, bv, item_or_list, initial_inst: llinst) -> List[Tuple[str, Type, Optional[int]]]:
+        """
+        This function decomposes a list of LLIL instructions and associates registers with pointer values
+        if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
+        information about otherwise implicit operands and their types if available. (ex, a call instruction has
+        rdi, rsi as operands in the MLIL, we should check if they have pointer information)
+        """
+        results = []
+        if isinstance(item_or_list, list):
+            for item in item_or_list:
+                results.extend(self._extract_types(bv, item, initial_inst))
+        elif isinstance(item_or_list, llinst):
+            results.extend(self._extract_types(bv, item_or_list.operands, initial_inst))
+        elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
+            # For every register, is it a pointer?
+            possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
+            if possible_pointer.type == bn.function.RegisterValueType.ConstantPointerValue or \
+                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue:  # or
+                # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
+                val_type = _convert_bn_llil_type(possible_pointer, item_or_list.info.size)
+                results.append((item_or_list.name, val_type, possible_pointer.value))
+
+            if initial_inst.mlil is not None:
+                mlil_results = self._extract_types_mlil(bv, initial_inst.mlil, initial_inst.mlil)
+                results.extend(mlil_results)
+        return results
 
     def _fill_bytes(self, bv, memory, start, end, ref_eas):
         br = bn.BinaryReader(bv)
@@ -416,8 +498,8 @@ class BNProgram(Program):
 
             if source_type == bn.VariableSourceType.RegisterVariableSourceType:
                 if (
-                    bn.TypeClass.IntegerTypeClass == var_type.type_class
-                    or bn.TypeClass.PointerTypeClass == var_type.type_class
+                        bn.TypeClass.IntegerTypeClass == var_type.type_class
+                        or bn.TypeClass.PointerTypeClass == var_type.type_class
                 ):
                     reg_name = calling_conv.next_int_arg_reg
                 elif bn.TypeClass.FloatTypeClass == var_type.type_class:

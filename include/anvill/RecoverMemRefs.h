@@ -24,6 +24,7 @@ class Module;
 namespace anvill {
 
 class Program;
+
 // Attempts to recover references to memory objects. It does this by visiting
 // all operands of all instructions in `module` and looking for pointers
 // derived from constant integer values that are mapped as addresses in `program`.

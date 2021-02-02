@@ -45,10 +45,12 @@ MemRefVisitor::MemRefVisitor(const Program &p) : program(p) {}
 void MemRefVisitor::visitInstruction(llvm::Instruction &inst) {
   for (auto op : inst.operand_values()) {
     if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(op)) {
+
       // Replace the constant expression with an equivalent instruction
       auto ce_inst{ce->getAsInstruction()};
       ce_inst->insertBefore(&inst);
       ce->replaceAllUsesWith(ce_inst);
+
       // Visit
       visit(ce_inst);
     }
@@ -57,6 +59,7 @@ void MemRefVisitor::visitInstruction(llvm::Instruction &inst) {
 
 void MemRefVisitor::visitIntToPtr(llvm::IntToPtrInst &inst) {
   const auto op{llvm::dyn_cast<llvm::ConstantInt>(inst.getOperand(0))};
+
   // Return if the operand is not a integer constant
   if (!op) {
     return;
