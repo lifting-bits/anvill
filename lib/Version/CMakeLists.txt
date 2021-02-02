@@ -19,7 +19,9 @@ add_library(AnvillVersion STATIC
   ${Version_PUBLIC_H}
   )
 # Needed for compilation settings
-target_link_libraries(AnvillVersion PRIVATE remill_settings)
+if (NOT DEFINED ENV{TRAILOFBITS_LIBRARIES})
+  target_link_libraries(AnvillVersion PRIVATE remill_settings)
+endif()
 target_include_directories(AnvillVersion PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
