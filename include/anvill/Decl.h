@@ -20,6 +20,7 @@
 #include <llvm/IR/CallingConv.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
