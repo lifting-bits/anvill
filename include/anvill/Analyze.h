@@ -17,11 +17,10 @@
 
 #pragma once
 
+#include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Compat/Error.h>
 
 #include <cstdint>
-
-#include <llvm/IR/IRBuilder.h>
 
 namespace llvm {
 class Constant;
@@ -111,7 +110,8 @@ class XrefExprFolder {
 // Try to get an Value representing the address of `ea` as an entity, or return
 // `nullptr`.
 llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
-                                  uint64_t ea, llvm::IRBuilder<> &builder, llvm::PointerType *var_ptr_ty);
+                           uint64_t ea, llvm::IRBuilder<> &builder,
+                           llvm::PointerType *var_ptr_ty);
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.

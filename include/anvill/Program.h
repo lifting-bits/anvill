@@ -28,7 +28,7 @@
 namespace llvm {
 class Type;
 class DataLayout;
-} // namespace llvm
+}  // namespace llvm
 
 namespace anvill {
 
@@ -284,7 +284,8 @@ class Program {
   const GlobalVarDecl *FindVariable(uint64_t address) const;
 
   // Determine if an address lies somewhere within a known variable
-  const GlobalVarDecl *FindInVariable(uint64_t address, const llvm::DataLayout& layout) const;
+  const GlobalVarDecl *FindInVariable(uint64_t address,
+                                      const llvm::DataLayout &layout) const;
 
   // Call `callback` on each variable with the given name.
   //
@@ -298,7 +299,7 @@ class Program {
   // Access memory, looking for a specific byte. Returns the byte found, if any.
   Byte FindByte(uint64_t address) const;
 
-  
+
   // Find which byte sequence (defined in the spec) has the provided `address`
   ByteSequence FindBytesContaining(uint64_t address) const;
 

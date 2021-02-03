@@ -110,11 +110,13 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   GlobalVarDecl *FindVariable(const std::string &name);
 
-  GlobalVarDecl *FindInVariable(uint64_t address, const llvm::DataLayout &layout);
+  GlobalVarDecl *FindInVariable(uint64_t address,
+                                const llvm::DataLayout &layout);
 
   std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
 
-  std::tuple<Byte::Data *, Byte::Meta *, size_t> FindBytesContaining(uint64_t address);
+  std::tuple<Byte::Data *, Byte::Meta *, size_t>
+  FindBytesContaining(uint64_t address);
 
   std::tuple<Byte::Data *, Byte::Meta *, size_t> FindBytes(uint64_t address,
                                                            size_t size);
@@ -609,13 +611,15 @@ GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
   }
 }
 
-GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address, const llvm::DataLayout &layout) {
+GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address,
+                                             const llvm::DataLayout &layout) {
 
   GlobalVarDecl *closest_match = nullptr;
   for (const auto [var_address, var] : ea_to_var) {
     if (var_address <= address) {
       closest_match = var;
     } else {
+
       // NOTE(artem): ea_to_var is a sorted map, so we can quit once we find and address out of range
       break;
     }
@@ -627,17 +631,18 @@ GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address, const llvm::DataL
   }
 
   // this matched an exact address of a variable; return it
-  if(closest_match->address == address) {
+  if (closest_match->address == address) {
     return closest_match;
   }
 
   // if there is no type, we can't really see if `address` is inside the type size
-  if(!closest_match->type) {
+  if (!closest_match->type) {
     return nullptr;
   }
 
   // lets find out how big this type is (including padding)
-  const auto type_size = static_cast<uint64_t>(layout.getTypeAllocSize(closest_match->type));
+  const auto type_size =
+      static_cast<uint64_t>(layout.getTypeAllocSize(closest_match->type));
 
   // make sure to clamp the address range to what our target actually uses
   auto address_mask = std::numeric_limits<uint64_t>::max();
@@ -645,22 +650,24 @@ GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address, const llvm::DataL
 
     // clamp to 32 bits if needed
     address_mask >>= 32u;
-
   }
 
   const auto address_max = address_mask & (closest_match->address + type_size);
 
-  if( address_max < closest_match->address || address_max < type_size) {
+  if (address_max < closest_match->address || address_max < type_size) {
+
     // overflow occurred: address + type size overflows address space limits
-    //TODO(artem): there is a chance that the reference could still be valid if
+    // TODO(artem): there is a chance that the reference could still be valid if
     // ea is between second->address and the max for the address space
     return nullptr;
   }
 
-  if(closest_match->address <= address && address < address_max) {
+  if (closest_match->address <= address && address < address_max) {
+
     // The address referenced into the middle of the type
     return closest_match;
   } else {
+
     // the address is outside this type's allocated bounds
     return nullptr;
   }
@@ -740,7 +747,7 @@ Program::Impl::FindBytesContaining(uint64_t address) {
 // Find a sequence of bytes within the same mapped range starting at
 // `address` and including as many bytes fall within the range up to
 // but not including `address+size`.
-//TODO(artem): This code shares much in common with FindBytesContaining.
+// TODO(artem): This code shares much in common with FindBytesContaining.
 // And it can be reimplemented in terms of FindBytesContaining
 std::tuple<Byte::Data *, Byte::Meta *, size_t>
 Program::Impl::FindBytes(uint64_t address, size_t size) {
@@ -1048,7 +1055,9 @@ const GlobalVarDecl *Program::FindVariable(uint64_t address) const {
   return impl->FindVariable(address);
 }
 
-const GlobalVarDecl *Program::FindInVariable(uint64_t address, const llvm::DataLayout& layout) const {
+const GlobalVarDecl *
+Program::FindInVariable(uint64_t address,
+                        const llvm::DataLayout &layout) const {
   return impl->FindInVariable(address, layout);
 }
 

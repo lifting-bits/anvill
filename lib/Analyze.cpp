@@ -1031,19 +1031,24 @@ static void RecoverReturnAddressUses(
 // Try to get an Value representing the address of `ea` as an entity, or return
 // `nullptr`.
 llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
-                                  uint64_t ea, llvm::IRBuilder<> &builder, llvm::PointerType *var_ptr_ty) {
+                           uint64_t ea, llvm::IRBuilder<> &builder,
+                           llvm::PointerType *var_ptr_ty) {
 
   llvm::Constant *ret = nullptr;
+
   // Can we find a function at `ea`?
   if (auto func_decl = program.FindFunction(ea); func_decl) {
     ret = func_decl->DeclareInModule(CreateFunctionName(ea), module, true);
 
   // Can we find a variable at `ea`, or one that contains `ea`?
-  } else if (auto var_decl = program.FindInVariable(ea, module.getDataLayout()); var_decl) {
+  } else if (auto var_decl = program.FindInVariable(ea, module.getDataLayout());
+             var_decl) {
     ret = var_decl->DeclareInModule(CreateVariableName(ea), module, true);
     if (var_decl->address != ea) {
+
       // the address is inside an allocated type
-      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(builder, ret, ea - var_decl->address, var_ptr_ty));
+      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+          builder, ret, ea - var_decl->address, var_ptr_ty));
     }
 
   // Can we find a byte (included anywhere in the Anvill Spec) that belongs to this program?
@@ -1051,17 +1056,20 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
     auto start_address = bytes[0].Address();
     auto var_name = CreateVariableName(start_address);
     auto data = bytes.ToString();
-    auto init_data = llvm::ConstantDataArray::get(module.getContext(), llvm::makeArrayRef(data.data(), data.size()));
+    auto init_data = llvm::ConstantDataArray::get(
+        module.getContext(), llvm::makeArrayRef(data.data(), data.size()));
     auto var_type = init_data->getType();
 
     auto ret = module.getOrInsertGlobal(var_name, var_type);
-    if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(ret); gv && !gv->hasInitializer()) {
+    if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(ret);
+        gv && !gv->hasInitializer()) {
       gv->setInitializer(init_data);
     }
     if (start_address != ea) {
 
       // the address is inside an allocated type
-      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(builder, ret, ea - start_address, var_ptr_ty));
+      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+          builder, ret, ea - start_address, var_ptr_ty));
     }
 
   // In C a pointer can be one element beyond an array end.
