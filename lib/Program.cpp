@@ -415,20 +415,20 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
 
   auto err = CheckValueDecl(return_address, context, "return address", tpl);
   if (err) {
-    return err;
+    return std::move(err);
   }
 
   for (auto &param : tpl.params) {
     err = CheckValueDecl(param, context, "parameter", tpl);
     if (err) {
-      return err;
+      return std::move(err);
     }
   }
 
   for (auto &ret : tpl.returns) {
     err = CheckValueDecl(ret, context, "return value", tpl);
     if (err) {
-      return err;
+      return std::move(err);
     }
   }
 
