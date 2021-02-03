@@ -445,37 +445,6 @@ static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
   }
 }
 
-// Try to get an Value representing the address of `ea` as an entity, or return
-// `nullptr`.
-static llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
-                                  uint64_t ea) {
-
-  llvm::Constant *ret = nullptr;
-  if (auto func_decl = program.FindFunction(ea); func_decl) {
-    ret = func_decl->DeclareInModule(CreateFunctionName(ea), module, true);
-
-  } else if (auto var_decl = program.FindVariable(ea); var_decl) {
-    ret = var_decl->DeclareInModule(CreateVariableName(ea), module, true);
-
-  } else if (auto byte = program.FindByte(ea); byte) {
-
-  } else if (auto prev_byte = program.FindByte(ea - 1u); ea && prev_byte) {
-
-  } else {
-    return nullptr;
-  }
-
-  if (ret) {
-    const auto &dl = module.getDataLayout();
-    auto &context = module.getContext();
-    const auto intptr_ty =
-        llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
-    return llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
-  }
-
-  return nullptr;
-}
-
 static llvm::Value *FindPointer(llvm::IRBuilder<> &ir, llvm::Value *addr,
                                 llvm::Type *elem_type, unsigned addr_space) {
 
@@ -651,7 +620,7 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
   // A missed cross-reference!
   } else if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(addr); ci) {
     const auto ea = ci->getZExtValue();
-    if (auto addr = GetAddress(program, module, ea); addr) {
+    if (auto addr = GetAddress(program, module, ea, ir, dest_type); addr) {
       return GetPointer(program, module, ir, addr, elem_type, addr_space);
 
     } else {

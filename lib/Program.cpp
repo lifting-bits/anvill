@@ -110,7 +110,11 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   GlobalVarDecl *FindVariable(const std::string &name);
 
+  GlobalVarDecl *FindInVariable(uint64_t address, const llvm::DataLayout &layout);
+
   std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
+
+  std::tuple<Byte::Data *, Byte::Meta *, size_t> FindBytesContaining(uint64_t address);
 
   std::tuple<Byte::Data *, Byte::Meta *, size_t> FindBytes(uint64_t address,
                                                            size_t size);
@@ -131,7 +135,7 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
   // Declarations for the variables.
   bool vars_are_sorted{true};
   std::vector<std::unique_ptr<GlobalVarDecl>> vars;
-  std::unordered_map<uint64_t, GlobalVarDecl *> ea_to_var;
+  std::map<uint64_t, GlobalVarDecl *> ea_to_var;
 
   // Values of all bytes mapped in memory, including additional
   // bits of metadata, and the address at which each byte is
@@ -409,20 +413,20 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
 
   auto err = CheckValueDecl(return_address, context, "return address", tpl);
   if (err) {
-    return std::move(err);
+    return err;
   }
 
   for (auto &param : tpl.params) {
     err = CheckValueDecl(param, context, "parameter", tpl);
     if (err) {
-      return std::move(err);
+      return err;
     }
   }
 
   for (auto &ret : tpl.returns) {
     err = CheckValueDecl(ret, context, "return value", tpl);
     if (err) {
-      return std::move(err);
+      return err;
     }
   }
 
@@ -605,6 +609,63 @@ GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
   }
 }
 
+GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address, const llvm::DataLayout &layout) {
+
+  GlobalVarDecl *closest_match = nullptr;
+  for (const auto [var_address, var] : ea_to_var) {
+    if (var_address <= address) {
+      closest_match = var;
+    } else {
+      // NOTE(artem): ea_to_var is a sorted map, so we can quit once we find and address out of range
+      break;
+    }
+  }
+
+  // the address is not in the range of variable map
+  if (!closest_match) {
+    return nullptr;
+  }
+
+  // this matched an exact address of a variable; return it
+  if(closest_match->address == address) {
+    return closest_match;
+  }
+
+  // if there is no type, we can't really see if `address` is inside the type size
+  if(!closest_match->type) {
+    return nullptr;
+  }
+
+  // lets find out how big this type is (including padding)
+  const auto type_size = static_cast<uint64_t>(layout.getTypeAllocSize(closest_match->type));
+
+  // make sure to clamp the address range to what our target actually uses
+  auto address_mask = std::numeric_limits<uint64_t>::max();
+  if (layout.getPointerSizeInBits() == 32) {
+
+    // clamp to 32 bits if needed
+    address_mask >>= 32u;
+
+  }
+
+  const auto address_max = address_mask & (closest_match->address + type_size);
+
+  if( address_max < closest_match->address || address_max < type_size) {
+    // overflow occurred: address + type size overflows address space limits
+    //TODO(artem): there is a chance that the reference could still be valid if
+    // ea is between second->address and the max for the address space
+    return nullptr;
+  }
+
+  if(closest_match->address <= address && address < address_max) {
+    // The address referenced into the middle of the type
+    return closest_match;
+  } else {
+    // the address is outside this type's allocated bounds
+    return nullptr;
+  }
+}
+
 // Access memory, looking for a specific byte. Returns
 // a reference to the found byte, or to an invalid byte.
 std::pair<Byte::Data *, Byte::Meta *>
@@ -642,9 +703,45 @@ Program::Impl::FindByte(uint64_t address) {
   }
 }
 
+std::tuple<Byte::Data *, Byte::Meta *, size_t>
+Program::Impl::FindBytesContaining(uint64_t address) {
+  uint64_t limit_address = 0;
+  std::vector<Byte::Data> *mapped_data = nullptr;
+  std::vector<Byte::Meta> *mapped_meta = nullptr;
+
+  auto it = bytes.upper_bound(address);
+  if (it == bytes.end()) {
+    const auto rit = bytes.rbegin();
+    if (rit == bytes.rend()) {
+      return {nullptr, nullptr, 0};
+
+    } else if (rit->first == address) {
+      limit_address = rit->first;
+      mapped_data = &(rit->second.first);
+      mapped_meta = &(rit->second.second);
+    } else {
+      return {nullptr, nullptr, 0};
+    }
+
+  } else {
+    limit_address = it->first;
+    mapped_data = &(it->second.first);
+    mapped_meta = &(it->second.second);
+  }
+
+  const auto base_address = limit_address - mapped_data->size();
+  if (base_address <= address && address < limit_address) {
+    return {&((*mapped_data)[0]), &((*mapped_meta)[0]), mapped_data->size()};
+  } else {
+    return {nullptr, nullptr, 0};
+  }
+}
+
 // Find a sequence of bytes within the same mapped range starting at
 // `address` and including as many bytes fall within the range up to
 // but not including `address+size`.
+//TODO(artem): This code shares much in common with FindBytesContaining.
+// And it can be reimplemented in terms of FindBytesContaining
 std::tuple<Byte::Data *, Byte::Meta *, size_t>
 Program::Impl::FindBytes(uint64_t address, size_t size) {
   if (!size) {
@@ -951,6 +1048,10 @@ const GlobalVarDecl *Program::FindVariable(uint64_t address) const {
   return impl->FindVariable(address);
 }
 
+const GlobalVarDecl *Program::FindInVariable(uint64_t address, const llvm::DataLayout& layout) const {
+  return impl->FindInVariable(address, layout);
+}
+
 // Search for a specific variable by its name.
 void Program::ForEachVariableWithName(
     const std::string &name,
@@ -971,6 +1072,12 @@ void Program::ForEachVariableWithName(
 Byte Program::FindByte(uint64_t address) const {
   auto [data, meta] = impl->FindByte(address);
   return Byte(address, data, meta);
+}
+
+// Find which byte sequence (defined in the spec) has the provided `address`
+ByteSequence Program::FindBytesContaining(uint64_t address) const {
+  auto [data, meta, found_size] = impl->FindBytesContaining(address);
+  return ByteSequence(address, data, meta, found_size);
 }
 
 // Find the next byte.
