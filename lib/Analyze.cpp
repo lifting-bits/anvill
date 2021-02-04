@@ -922,21 +922,17 @@ void RecoverMemoryAccesses(
       continue;
     }
 
-    llvm::Value *new_val = nullptr;
-
-    if (auto func_decl = program.FindFunction(addr)) {
-      const auto name = CreateFunctionName(func_decl->address);
-      const auto sym = func_decl->DeclareInModule(name, module, true);
-      new_val = llvm::ConstantExpr::getPtrToInt(sym, int_type);
-
-    } else if (auto var_decl = program.FindVariable(addr)) {
-      const auto name = CreateVariableName(var_decl->address);
-      const auto sym = var_decl->DeclareInModule(name, module, true);
-      new_val = llvm::ConstantExpr::getPtrToInt(sym, int_type);
+    llvm::IRBuilder<> builder(user->getParent());
+    builder.SetInsertPoint(user);
+    auto ptr_type = llvm::dyn_cast_or_null<llvm::PointerType>(type);
+    if (!ptr_type) {
+      ptr_type = llvm::Type::getInt8PtrTy(module.getContext(), 0);
+    }
+    llvm::Value *new_val = GetAddress(program, module, addr, builder, ptr_type);
 
     // TODO(pag): Leaving these as integers might be best, as we may go an
     //            collect them in the optimizer.
-    } else {
+    if (!new_val) {
       if (addr) {
         LOG(ERROR) << "TODO: Found byte address " << std::hex << addr
                    << std::dec
@@ -1031,6 +1027,88 @@ static void RecoverReturnAddressUses(
 }
 
 }  // namespace
+
+// Try to get an Value representing the address of `ea` as an entity, or return
+// `nullptr`.
+llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
+                           uint64_t ea, llvm::IRBuilder<> &builder,
+                           llvm::PointerType *var_ptr_ty) {
+
+  llvm::Constant *ret = nullptr;
+
+  // Can we find a function at `ea`?
+  if (auto func_decl = program.FindFunction(ea); func_decl) {
+    ret = func_decl->DeclareInModule(CreateFunctionName(ea), module, true);
+
+  // Can we find a variable at `ea`, or one that contains `ea`?
+  } else if (auto var_decl = program.FindInVariable(ea, module.getDataLayout());
+             var_decl) {
+    DLOG(INFO) << "Found variable at: " << std::hex << ea << std::dec;
+
+    if (var_decl->address == ea) {
+
+      // This variable starts at exactly the bounds of a known variable
+      ret = var_decl->DeclareInModule(CreateVariableName(ea), module, true);
+    } else {
+
+      // This variable is inside a known variable.
+      // First, get a reference to it's enclosing variable
+      auto enclosing_var = var_decl->DeclareInModule(
+          CreateVariableName(var_decl->address), module, true);
+
+      DLOG(INFO) << "... and its inside an allocated type: [" << std::hex
+                 << var_decl->address << ", size:  " << std::hex
+                 << module.getDataLayout().getTypeAllocSize(var_decl->type)
+                 << "]" << std::dec;
+
+      // second, build an expression to reference this variable in term of
+      // its enclosing variable
+      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+          builder, enclosing_var, ea - var_decl->address, var_ptr_ty));
+    }
+
+  // Can we find a byte (included anywhere in the Anvill Spec) that belongs to this program?
+  } else if (auto bytes = program.FindBytesContaining(ea); bytes) {
+    DLOG(INFO) << "Found a byte inside a memory area at: " << std::hex << ea
+               << std::dec;
+    auto start_address = bytes[0].Address();
+    auto var_name = CreateVariableName(start_address);
+    auto data = bytes.ToString();
+    auto init_data = llvm::ConstantDataArray::get(
+        module.getContext(), llvm::makeArrayRef(data.data(), data.size()));
+    auto var_type = init_data->getType();
+
+    auto ret = module.getOrInsertGlobal(var_name, var_type);
+    if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(ret);
+        gv && !gv->hasInitializer()) {
+      gv->setInitializer(init_data);
+    }
+    if (start_address != ea) {
+
+      // the address is inside an allocated type
+      ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+          builder, ret, ea - start_address, var_ptr_ty));
+    }
+
+  // In C a pointer can be one element beyond an array end.
+  // This sometimes results in references to one byte beyond an array end
+  // Handle this case, assuming the byte before `ea` exists
+  } else if (auto prev_byte = program.FindByte(ea - 1u); ea && prev_byte) {
+
+  } else {
+    return nullptr;
+  }
+
+  if (ret) {
+    const auto &dl = module.getDataLayout();
+    auto &context = module.getContext();
+    const auto intptr_ty =
+        llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
+    return llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
+  }
+
+  return nullptr;
+}
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.

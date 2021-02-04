@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Compat/Error.h>
 
 #include <cstdint>
@@ -30,6 +31,8 @@ class Module;
 class Type;
 class Value;
 class CallInst;
+class PointerType;
+class DataLayout;
 }  // namespace llvm
 namespace anvill {
 
@@ -104,6 +107,11 @@ class XrefExprFolder {
   std::pair<bool, uint64_t> TryResolveGlobal(llvm::GlobalValue *gv);
 };
 
+// Try to get an Value representing the address of `ea` as an entity, or return
+// `nullptr`.
+llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
+                           uint64_t ea, llvm::IRBuilder<> &builder,
+                           llvm::PointerType *var_ptr_ty);
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.

@@ -37,6 +37,10 @@
 #include <sstream>
 #include <string>
 
+#ifdef _WIN32
+#  define STDOUT_FILENO 1
+#endif
+
 #if __has_include(<llvm/Support/JSON.h>)
 
 #  include <llvm/Support/JSON.h>
