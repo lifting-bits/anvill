@@ -879,12 +879,18 @@ static void ReplaceTypeOp(const Program &program, llvm::Module &module,
                           llvm::Function *func) {
   auto callers = remill::CallersOf(func);
   for (auto call_inst : callers) {
+
+    // The type of the argument value is the type that remill lifted.
     auto arg_val = call_inst->getArgOperand(0);
     llvm::IRBuilder<> irb(call_inst);
 
+    // Make sure we are accessing the return type, instead of the pure function type.
+    // The return type is the inferred Binja type, which is what we want.
+    llvm::Type *func_ret_type = func->getReturnType()->getPointerElementType();
+
     // Assuming that the addr value is supposed to be 0, and that arg_val is a subsitute for addr.
-    llvm::Value *ptr = GetPointer(program, module, irb, arg_val,
-                                  func->getType()->getPointerElementType(), 0);
+    llvm::Value *ptr =
+        GetPointer(program, module, irb, arg_val, func_ret_type, 0);
 
     // The ptr value should be the return type of the function, which is the binary ninja type.
     // Replace the call with uses of this pointer value
