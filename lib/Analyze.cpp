@@ -1045,11 +1045,13 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
              var_decl) {
     DLOG(INFO) << "Found variable at: " << std::hex << ea << std::dec;
 
-    if(var_decl->address == ea) {
+    if (var_decl->address == ea) {
+
       // This variable starts at exactly the bounds of a known variable
       ret = var_decl->DeclareInModule(CreateVariableName(ea), module, true);
     } else {
-      // This variable is inside a known variable. 
+
+      // This variable is inside a known variable.
       // First, get a reference to it's enclosing variable
       auto enclosing_var = var_decl->DeclareInModule(
           CreateVariableName(var_decl->address), module, true);
@@ -1067,7 +1069,8 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 
   // Can we find a byte (included anywhere in the Anvill Spec) that belongs to this program?
   } else if (auto bytes = program.FindBytesContaining(ea); bytes) {
-    DLOG(INFO) << "Found a byte inside a memory area at: " << std::hex << ea << std::dec;
+    DLOG(INFO) << "Found a byte inside a memory area at: " << std::hex << ea
+               << std::dec;
     auto start_address = bytes[0].Address();
     auto var_name = CreateVariableName(start_address);
     auto data = bytes.ToString();
@@ -1081,6 +1084,7 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
       gv->setInitializer(init_data);
     }
     if (start_address != ea) {
+
       // the address is inside an allocated type
       ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
           builder, ret, ea - start_address, var_ptr_ty));
