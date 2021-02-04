@@ -64,17 +64,15 @@ def main():
             if name == ep:
                 p.add_function_definition(ea, args.refs_as_defs)
 
-    for f in p.proto()["functions"]:
-        ea = f["address"]
+    def add_symbol(ea):
         for name in p.get_symbols(ea):
             p.add_symbol(ea, name)
 
-    funcs = set(map(lambda x: x["address"], p.proto()["functions"]))
+    for f in p.proto()["functions"]:
+        add_symbol(f["address"])
 
-    for ea, v in p.variables:
-        for r in v.code_refs:
-            if r.function.start in funcs:
-                p.add_variable_definition(ea, args.refs_as_defs)
+    for v in p.proto()["variables"]:
+        add_symbol(v["address"])
 
     open(args.spec_out, "w").write(json.dumps(p.proto()))
 

@@ -97,10 +97,19 @@ def is_undef(bv, inst):
 
 
 def is_code(bv, addr):
-    sec_list = bv.get_sections_at(addr)
-    for sec in sec_list:
+    for sec in bv.get_sections_at(addr):
         if sec.start <= addr < sec.end:
             return sec.semantics == bn.SectionSemantics.ReadOnlyCodeSectionSemantics
+    return False
+
+
+def is_data(bv, addr):
+    for sec in bv.get_sections_at(addr):
+        if sec.start <= addr < sec.end:
+            return sec.semantics in [
+                bn.SectionSemantics.ReadOnlyDataSectionSemantics,
+                bn.SectionSemantics.ReadWriteDataSectionSemantics,
+            ]
     return False
 
 
@@ -116,42 +125,46 @@ class XrefType:
         return reftype in (XrefType.XREF_DISPLACEMENT, XrefType.XREF_MEMORY)
 
 
-def _collect_code_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
+def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     """Recursively collect xrefs in a IL instructions"""
     if not isinstance(inst, bn.LowLevelILInstruction):
         return
 
-    if is_unimplemented(bv, inst) or is_undef(bv, inst):
-        return
+    assert not is_unimplemented(bv, inst)
+    assert not is_undef(bv, inst)
 
     if is_function_call(bv, inst) or is_jump(bv, inst):
         reftype = XrefType.XREF_CONTROL_FLOW
 
     elif is_memory_inst(bv, inst) or is_unimplemented_mem(bv, inst):
         mem_il = inst.dest if is_store_inst(bv, inst) else inst.src
+
         if is_constant(bv, mem_il):
             reftype = XrefType.XREF_MEMORY
         else:
             reftype = XrefType.XREF_DISPLACEMENT
-        _collect_code_xrefs_from_inst(bv, mem_il, ref_eas, reftype)
+
+        _collect_xrefs_from_inst(bv, mem_il, ref_eas, reftype)
 
         for opnd in inst.operands:
-            _collect_code_xrefs_from_inst(bv, opnd, ref_eas)
+            _collect_xrefs_from_inst(bv, opnd, ref_eas)
 
     elif is_constant_pointer(bv, inst):
         const_ea = inst.constant
         if is_code(bv, const_ea) and not XrefType.is_memory(bv, reftype):
             ref_eas.add(const_ea)
+        elif is_data(bv, const_ea):
+            ref_eas.add(const_ea)
 
     # Recursively look for the xrefs in operands
     for opnd in inst.operands:
-        _collect_code_xrefs_from_inst(bv, opnd, ref_eas, reftype)
+        _collect_xrefs_from_inst(bv, opnd, ref_eas, reftype)
 
 
-def _convert_bn_llil_type(constant_val: bn.function.RegisterValue, reg_size_bytes: int) \
-        -> Type:
-    """Convert LLIL register type to Anvill type
-    """
+def _convert_bn_llil_type(
+    constant_val: bn.function.RegisterValue, reg_size_bytes: int
+) -> Type:
+    """Convert LLIL register type to Anvill type"""
     if constant_val.type == bn.function.RegisterValueType.ConstantPointerValue:
         ret = PointerType()
         return ret
@@ -345,7 +358,9 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(program._bv, inst.operands, inst)
+                register_information = self._extract_types(
+                    program._bv, inst.operands, inst
+                )
                 for reg_info in register_information:
                     loc = Location()
                     loc.set_register(reg_info[0].upper())
@@ -366,7 +381,9 @@ class BNFunction(Function):
         for ref_ea in ref_eas:
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
-    def _extract_types_mlil(self, bv, item_or_list, initial_inst: mlinst) -> List[Tuple[str, Type, Optional[int]]]:
+    def _extract_types_mlil(
+        self, bv, item_or_list, initial_inst: mlinst
+    ) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of MLIL instructions and variables into a list of tuples
         that associate registers with pointer information if it exists.
@@ -376,16 +393,25 @@ class BNFunction(Function):
             for item in item_or_list:
                 results.extend(self._extract_types_mlil(bv, item, initial_inst))
         elif isinstance(item_or_list, mlinst):
-            results.extend(self._extract_types_mlil(bv, item_or_list.operands, initial_inst))
+            results.extend(
+                self._extract_types_mlil(bv, item_or_list.operands, initial_inst)
+            )
         elif isinstance(item_or_list, bn.Variable):
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
-                if item_or_list.source_type == bn.VariableSourceType.RegisterVariableSourceType:
+                if (
+                    item_or_list.source_type
+                    == bn.VariableSourceType.RegisterVariableSourceType
+                ):
                     reg_name = bv.arch.get_reg_name(item_or_list.storage)
-                    results.append((reg_name, _convert_bn_type(item_or_list.type, {}), None))
+                    results.append(
+                        (reg_name, _convert_bn_type(item_or_list.type, {}), None)
+                    )
         return results
 
-    def _extract_types(self, bv, item_or_list, initial_inst: llinst) -> List[Tuple[str, Type, Optional[int]]]:
+    def _extract_types(
+        self, bv, item_or_list, initial_inst: llinst
+    ) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of LLIL instructions and associates registers with pointer values
         if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
@@ -400,16 +426,26 @@ class BNFunction(Function):
             results.extend(self._extract_types(bv, item_or_list.operands, initial_inst))
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # For every register, is it a pointer?
-            possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(item_or_list.name)
-            if possible_pointer.type == bn.function.RegisterValueType.ConstantPointerValue or \
-                    possible_pointer.type == bn.function.RegisterValueType.ExternalPointerValue:  # or
+            possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(
+                item_or_list.name
+            )
+            if (
+                possible_pointer.type
+                == bn.function.RegisterValueType.ConstantPointerValue
+                or possible_pointer.type
+                == bn.function.RegisterValueType.ExternalPointerValue
+            ):  # or
                 # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
                 # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
-                val_type = _convert_bn_llil_type(possible_pointer, item_or_list.info.size)
+                val_type = _convert_bn_llil_type(
+                    possible_pointer, item_or_list.info.size
+                )
                 results.append((item_or_list.name, val_type, possible_pointer.value))
 
             if initial_inst.mlil is not None:
-                mlil_results = self._extract_types_mlil(bv, initial_inst.mlil, initial_inst.mlil)
+                mlil_results = self._extract_types_mlil(
+                    bv, initial_inst.mlil, initial_inst.mlil
+                )
                 results.extend(mlil_results)
         return results
 
@@ -420,9 +456,9 @@ class BNFunction(Function):
                 seg = bv.get_segment_at(ea)
                 br.seek(ea)
                 memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
-                inst = self._bn_func.get_lifted_il_at(ea)
+                inst = self._bn_func.get_low_level_il_at(ea)
                 if inst:
-                    _collect_code_xrefs_from_inst(bv, inst, ref_eas)
+                    _collect_xrefs_from_inst(bv, inst, ref_eas)
 
 
 class BNVariable(Variable):
@@ -498,8 +534,8 @@ class BNProgram(Program):
 
             if source_type == bn.VariableSourceType.RegisterVariableSourceType:
                 if (
-                        bn.TypeClass.IntegerTypeClass == var_type.type_class
-                        or bn.TypeClass.PointerTypeClass == var_type.type_class
+                    bn.TypeClass.IntegerTypeClass == var_type.type_class
+                    or bn.TypeClass.PointerTypeClass == var_type.type_class
                 ):
                     reg_name = calling_conv.next_int_arg_reg
                 elif bn.TypeClass.FloatTypeClass == var_type.type_class:
@@ -544,13 +580,6 @@ class BNProgram(Program):
     def functions(self):
         for f in self._bv.functions:
             yield f.start
-
-    @property
-    def variables(self):
-        for addr, var in self._bv.data_vars.items():
-            # filter out functions
-            if len(self._bv.get_functions_at(addr)) == 0:
-                yield (addr, var)
 
     @property
     def symbols(self):

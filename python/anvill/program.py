@@ -185,8 +185,8 @@ class Program(object):
             )
 
         stack_base = (
-                int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
-                & page_mask
+            int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
+            & page_mask
         )
 
         proto["stack"] = {"address": stack_base, "size": 24576, "start_offset": 4096}

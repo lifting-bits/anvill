@@ -15,6 +15,7 @@
 
 from .arch import *
 import os
+
 try:
     import ida_idp
     from .ida import *
