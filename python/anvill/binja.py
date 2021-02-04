@@ -30,70 +30,70 @@ def is_valid_addr(bv, addr):
     return bv.get_segment_at(addr) is not None
 
 
-def is_constant(bv, insn):
-    return insn.operation in (
+def is_constant(bv, inst):
+    return inst.operation in (
         bn.LowLevelILOperation.LLIL_CONST,
         bn.LowLevelILOperation.LLIL_CONST_PTR,
     )
 
 
-def is_constant_pointer(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
+def is_constant_pointer(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
 
 
-def is_function_call(bv, insn):
-    return insn.operation in (
+def is_function_call(bv, inst):
+    return inst.operation in (
         bn.LowLevelILOperation.LLIL_CALL,
         bn.LowLevelILOperation.LLIL_TAILCALL,
         bn.LowLevelILOperation.LLIL_CALL_STACK_ADJUST,
     )
 
 
-def is_tailcall(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_TAILCALL
+def is_tailcall(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_TAILCALL
 
 
-def is_return(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_RET
+def is_return(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_RET
 
 
-def is_jump(bv, insn):
-    return insn.operation in (
+def is_jump(bv, inst):
+    return inst.operation in (
         bn.LowLevelILOperation.LLIL_JUMP,
         bn.LowLevelILOperation.LLIL_JUMP_TO,
     )
 
 
-def is_branch(bv, insn):
-    return insn.operation in (
+def is_branch(bv, inst):
+    return inst.operation in (
         bn.LowLevelILOperation.LLIL_JUMP,
         bn.LowLevelILOperation.LLIL_JUMP_TO,
         bn.LowLevelILOperation.LLIL_GOTO,
     )
 
 
-def is_load_insn(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_LOAD
+def is_load_inst(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_LOAD
 
 
-def is_store_insn(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_STORE
+def is_store_inst(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_STORE
 
 
-def is_memory_insn(bv, insn):
-    return is_load_insn(bv, insn) or is_store_insn(bv, insn)
+def is_memory_inst(bv, inst):
+    return is_load_inst(bv, inst) or is_store_inst(bv, inst)
 
 
-def is_unimplemented(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_UNIMPL
+def is_unimplemented(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL
 
 
-def is_unimplemented_mem(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
+def is_unimplemented_mem(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
 
 
-def is_undef(bv, insn):
-    return insn.operation == bn.LowLevelILOperation.LLIL_UNDEF
+def is_undef(bv, inst):
+    return inst.operation == bn.LowLevelILOperation.LLIL_UNDEF
 
 
 def is_code(bv, addr):
@@ -116,36 +116,36 @@ class XrefType:
         return reftype in (XrefType.XREF_DISPLACEMENT, XrefType.XREF_MEMORY)
 
 
-def _collect_code_xrefs_from_insn(bv, insn, ref_eas, reftype=XrefType.XREF_NONE):
+def _collect_code_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     """Recursively collect xrefs in a IL instructions"""
-    if not isinstance(insn, bn.LowLevelILInstruction):
+    if not isinstance(inst, bn.LowLevelILInstruction):
         return
 
-    if is_unimplemented(bv, insn) or is_undef(bv, insn):
+    if is_unimplemented(bv, inst) or is_undef(bv, inst):
         return
 
-    if is_function_call(bv, insn) or is_jump(bv, insn):
+    if is_function_call(bv, inst) or is_jump(bv, inst):
         reftype = XrefType.XREF_CONTROL_FLOW
 
-    elif is_memory_insn(bv, insn) or is_unimplemented_mem(bv, insn):
-        mem_il = insn.dest if is_store_insn(bv, insn) else insn.src
+    elif is_memory_inst(bv, inst) or is_unimplemented_mem(bv, inst):
+        mem_il = inst.dest if is_store_inst(bv, inst) else inst.src
         if is_constant(bv, mem_il):
             reftype = XrefType.XREF_MEMORY
         else:
             reftype = XrefType.XREF_DISPLACEMENT
-        _collect_code_xrefs_from_insn(bv, mem_il, ref_eas, reftype)
+        _collect_code_xrefs_from_inst(bv, mem_il, ref_eas, reftype)
 
-        for opnd in insn.operands:
-            _collect_code_xrefs_from_insn(bv, opnd, ref_eas)
+        for opnd in inst.operands:
+            _collect_code_xrefs_from_inst(bv, opnd, ref_eas)
 
-    elif is_constant_pointer(bv, insn):
-        const_ea = insn.constant
+    elif is_constant_pointer(bv, inst):
+        const_ea = inst.constant
         if is_code(bv, const_ea) and not XrefType.is_memory(bv, reftype):
             ref_eas.add(const_ea)
 
     # Recursively look for the xrefs in operands
-    for opnd in insn.operands:
-        _collect_code_xrefs_from_insn(bv, opnd, ref_eas, reftype)
+    for opnd in inst.operands:
+        _collect_code_xrefs_from_inst(bv, opnd, ref_eas, reftype)
 
 
 def _convert_bn_llil_type(constant_val: bn.function.RegisterValue, reg_size_bytes: int) \
@@ -420,9 +420,9 @@ class BNFunction(Function):
                 seg = bv.get_segment_at(ea)
                 br.seek(ea)
                 memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
-                insn = self._bn_func.get_lifted_il_at(ea)
-                if insn:
-                    _collect_code_xrefs_from_insn(bv, insn, ref_eas)
+                inst = self._bn_func.get_lifted_il_at(ea)
+                if inst:
+                    _collect_code_xrefs_from_inst(bv, inst, ref_eas)
 
 
 class BNVariable(Variable):
