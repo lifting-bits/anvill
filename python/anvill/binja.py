@@ -106,10 +106,10 @@ def is_code(bv, addr):
 def is_data(bv, addr):
     for sec in bv.get_sections_at(addr):
         if sec.start <= addr < sec.end:
-            return sec.semantics in [
-                bn.SectionSemantics.ReadOnlyDataSectionSemantics,
-                bn.SectionSemantics.ReadWriteDataSectionSemantics,
-            ]
+            return (
+                sec.semantics == bn.SectionSemantics.ReadOnlyDataSectionSemantics
+                or sec.semantics == bn.SectionSemantics.ReadWriteDataSectionSemantics
+            )
     return False
 
 
@@ -459,7 +459,7 @@ class BNFunction(Function):
                 br.seek(ea)
                 memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
                 inst = self._bn_func.get_low_level_il_at(ea)
-                if inst:
+                if inst and not is_unimplemented(bv, inst):
                     _collect_xrefs_from_inst(bv, inst, ref_eas)
 
 
