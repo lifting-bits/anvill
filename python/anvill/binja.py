@@ -397,6 +397,8 @@ class BNFunction(Function):
                 self._extract_types_mlil(bv, item_or_list.operands, initial_inst)
             )
         elif isinstance(item_or_list, bn.Variable):
+            if item_or_list.type is None:
+                return results
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
                 if (
