@@ -947,13 +947,13 @@ class Sparc32Arch(Arch):
     """SPARCv8 architecture description (32-bit)."""
 
     _REG_FAMILY_qX = lambda l: (
-        ("q{}".format(l*4), 0, 16),
-        ("d{}".format(l*2), 0, 8),
-        ("d{}".format(l*2+1), 8, 16),
-        ("f{}".format(l*4), 0, 4),
-        ("f{}".format(l*4+1), 4, 8),
-        ("f{}".format(l*4+2), 8, 12),
-        ("f{}".format(l*4+3), 12, 16),
+        ("q{}".format(l * 4), 0, 16),
+        ("d{}".format(l * 2), 0, 8),
+        ("d{}".format(l * 2 + 1), 8, 16),
+        ("f{}".format(l * 4), 0, 4),
+        ("f{}".format(l * 4 + 1), 4, 8),
+        ("f{}".format(l * 4 + 2), 8, 12),
+        ("f{}".format(l * 4 + 3), 12, 16),
     )
 
     _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
@@ -965,8 +965,14 @@ class Sparc32Arch(Arch):
     _REG_FAMILY_q24 = _REG_FAMILY_qX(6)
     _REG_FAMILY_q28 = _REG_FAMILY_qX(7)
 
-    _REG_FAMILY_SP = (("sp", 0, 4), ("o6", 0, 4),)
-    _REG_FAMILY_FP = (("fp", 0, 4), ("i6", 0, 4),)
+    _REG_FAMILY_SP = (
+        ("sp", 0, 4),
+        ("o6", 0, 4),
+    )
+    _REG_FAMILY_FP = (
+        ("fp", 0, 4),
+        ("i6", 0, 4),
+    )
 
     _REG_FAMILY = {
         "g0": (("g0", 0, 4),),
@@ -977,7 +983,6 @@ class Sparc32Arch(Arch):
         "g5": (("g5", 0, 4),),
         "g6": (("g6", 0, 4),),
         "g7": (("g7", 0, 4),),
-
         "l0": (("l0", 0, 4),),
         "l1": (("l1", 0, 4),),
         "l2": (("l2", 0, 4),),
@@ -986,7 +991,6 @@ class Sparc32Arch(Arch):
         "l5": (("l5", 0, 4),),
         "l6": (("l6", 0, 4),),
         "l7": (("l7", 0, 4),),
-
         "i0": (("i0", 0, 4),),
         "i1": (("i1", 0, 4),),
         "i2": (("i2", 0, 4),),
@@ -995,7 +999,6 @@ class Sparc32Arch(Arch):
         "i5": (("i5", 0, 4),),
         "i6": _REG_FAMILY_FP,
         "i7": (("i7", 0, 4),),
-
         "o0": (("o0", 0, 4),),
         "o1": (("o1", 0, 4),),
         "o2": (("o2", 0, 4),),
@@ -1004,12 +1007,10 @@ class Sparc32Arch(Arch):
         "o5": (("o5", 0, 4),),
         "o6": _REG_FAMILY_SP,
         "o7": (("o7", 0, 4),),
-
         "sp": _REG_FAMILY_SP,
         "fp": _REG_FAMILY_FP,
         "pc": (("pc", 0, 4),),
         "npc": (("npc", 0, 4),),
-
         "q0": _REG_FAMILY_q0,
         "q4": _REG_FAMILY_q4,
         "q8": _REG_FAMILY_q8,
@@ -1018,7 +1019,6 @@ class Sparc32Arch(Arch):
         "q20": _REG_FAMILY_q20,
         "q24": _REG_FAMILY_q24,
         "q28": _REG_FAMILY_q28,
-
         "d0": _REG_FAMILY_q0,
         "d2": _REG_FAMILY_q0,
         "d4": _REG_FAMILY_q4,
@@ -1035,7 +1035,6 @@ class Sparc32Arch(Arch):
         "d26": _REG_FAMILY_q24,
         "d28": _REG_FAMILY_q28,
         "d30": _REG_FAMILY_q28,
-
         "f0": _REG_FAMILY_q0,
         "f1": _REG_FAMILY_q0,
         "f2": _REG_FAMILY_q0,
@@ -1080,29 +1079,22 @@ class Sparc32Arch(Arch):
         return "o6"
 
     def return_address_proto(self):
-        return {
-            "register": "o7",
-            "type": "I"
-        }
+        return {"register": "o7", "type": "I"}
 
     def return_stack_pointer_proto(self, num_bytes_popped):
-        return {
-            "register": "o6",
-            "offset": 0,
-            "type": "I"
-        }
+        return {"register": "o6", "offset": 0, "type": "I"}
 
     def pointer_size(self):
         return 4
 
     def register_family(self, reg_name):
-        if reg_name.startswith('%'):
+        if reg_name.startswith("%"):
             return self._REG_FAMILY[reg_name[1:].lower()]
         else:
             return self._REG_FAMILY[reg_name.lower()]
 
     def register_name(self, reg_name):
-        if reg_name.startswith('%'):
+        if reg_name.startswith("%"):
             return reg_name[1:].lower()
         else:
             return reg_name.lower()
@@ -1112,19 +1104,19 @@ class Sparc64Arch(Arch):
     """SPARCv9 architecture description (32-bit)."""
 
     _REG_FAMILY_qX = lambda l: (
-        ("q{}".format(l*4), 0, 16),
-        ("d{}".format(l*2), 0, 8),
-        ("d{}".format(l*2+1), 8, 16),
-        ("f{}".format(l*4), 0, 4),
-        ("f{}".format(l*4+1), 4, 8),
-        ("f{}".format(l*4+2), 8, 12),
-        ("f{}".format(l*4+3), 12, 16),
+        ("q{}".format(l * 4), 0, 16),
+        ("d{}".format(l * 2), 0, 8),
+        ("d{}".format(l * 2 + 1), 8, 16),
+        ("f{}".format(l * 4), 0, 4),
+        ("f{}".format(l * 4 + 1), 4, 8),
+        ("f{}".format(l * 4 + 2), 8, 12),
+        ("f{}".format(l * 4 + 3), 12, 16),
     )
 
     _REG_FAMILY_qXv9 = lambda l: (
-        ("q{}".format(l*4), 0, 16),
-        ("d{}".format(l*2), 0, 8),
-        ("d{}".format(l*2+1), 8, 16),
+        ("q{}".format(l * 4), 0, 16),
+        ("d{}".format(l * 2), 0, 8),
+        ("d{}".format(l * 2 + 1), 8, 16),
     )
 
     _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
@@ -1147,8 +1139,14 @@ class Sparc64Arch(Arch):
     _REG_FAMILY_q56 = _REG_FAMILY_qXv9(14)
     _REG_FAMILY_q60 = _REG_FAMILY_qXv9(15)
 
-    _REG_FAMILY_SP = (("sp", 0, 8), ("o6", 0, 8),)
-    _REG_FAMILY_FP = (("fp", 0, 8), ("i6", 0, 8),)
+    _REG_FAMILY_SP = (
+        ("sp", 0, 8),
+        ("o6", 0, 8),
+    )
+    _REG_FAMILY_FP = (
+        ("fp", 0, 8),
+        ("i6", 0, 8),
+    )
 
     _REG_FAMILY = {
         "g0": (("g0", 0, 8),),
@@ -1159,7 +1157,6 @@ class Sparc64Arch(Arch):
         "g5": (("g5", 0, 8),),
         "g6": (("g6", 0, 8),),
         "g7": (("g7", 0, 8),),
-
         "l0": (("l0", 0, 8),),
         "l1": (("l1", 0, 8),),
         "l2": (("l2", 0, 8),),
@@ -1168,7 +1165,6 @@ class Sparc64Arch(Arch):
         "l5": (("l5", 0, 8),),
         "l6": (("l6", 0, 8),),
         "l7": (("l7", 0, 8),),
-
         "i0": (("i0", 0, 8),),
         "i1": (("i1", 0, 8),),
         "i2": (("i2", 0, 8),),
@@ -1177,7 +1173,6 @@ class Sparc64Arch(Arch):
         "i5": (("i5", 0, 8),),
         "i6": _REG_FAMILY_FP,
         "i7": (("i7", 0, 8),),
-
         "o0": (("o0", 0, 8),),
         "o1": (("o1", 0, 8),),
         "o2": (("o2", 0, 8),),
@@ -1186,12 +1181,10 @@ class Sparc64Arch(Arch):
         "o5": (("o5", 0, 8),),
         "o6": _REG_FAMILY_SP,
         "o7": (("o7", 0, 8),),
-
         "sp": _REG_FAMILY_SP,
         "fp": _REG_FAMILY_FP,
         "pc": (("pc", 0, 8),),
         "npc": (("npc", 0, 8),),
-
         "q0": _REG_FAMILY_q0,
         "q4": _REG_FAMILY_q4,
         "q8": _REG_FAMILY_q8,
@@ -1208,7 +1201,6 @@ class Sparc64Arch(Arch):
         "q52": _REG_FAMILY_q52,
         "q56": _REG_FAMILY_q56,
         "q60": _REG_FAMILY_q60,
-
         "d0": _REG_FAMILY_q0,
         "d2": _REG_FAMILY_q0,
         "d4": _REG_FAMILY_q4,
@@ -1225,7 +1217,6 @@ class Sparc64Arch(Arch):
         "d26": _REG_FAMILY_q24,
         "d28": _REG_FAMILY_q28,
         "d30": _REG_FAMILY_q28,
-
         "d32": _REG_FAMILY_q32,
         "d34": _REG_FAMILY_q32,
         "d36": _REG_FAMILY_q36,
@@ -1242,7 +1233,6 @@ class Sparc64Arch(Arch):
         "d58": _REG_FAMILY_q56,
         "d60": _REG_FAMILY_q60,
         "d62": _REG_FAMILY_q60,
-
         "f0": _REG_FAMILY_q0,
         "f1": _REG_FAMILY_q0,
         "f2": _REG_FAMILY_q0,
@@ -1287,29 +1277,22 @@ class Sparc64Arch(Arch):
         return "o6"
 
     def return_address_proto(self):
-        return {
-            "register": "o7",
-            "type": "L"
-        }
+        return {"register": "o7", "type": "L"}
 
     def return_stack_pointer_proto(self, num_bytes_popped):
-        return {
-            "register": "o6",
-            "offset": 0,
-            "type": "L"
-        }
+        return {"register": "o6", "offset": 0, "type": "L"}
 
     def pointer_size(self):
         return 8
 
     def register_family(self, reg_name):
-        if reg_name.startswith('%'):
+        if reg_name.startswith("%"):
             return self._REG_FAMILY[reg_name[1:].lower()]
         else:
             return self._REG_FAMILY[reg_name.lower()]
 
     def register_name(self, reg_name):
-        if reg_name.startswith('%'):
+        if reg_name.startswith("%"):
             return reg_name[1:].lower()
         else:
             return reg_name.lower()

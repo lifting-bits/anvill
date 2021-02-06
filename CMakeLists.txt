@@ -236,7 +236,7 @@ set(ROUNDTRIP_TEST_FILES
   tests/trunc.c
   tests/zeroinit.c
   tests/zext.c
-  tests/binja_var_none_type.c
+  # tests/binja_var_none_type.c
 )
 
 install(

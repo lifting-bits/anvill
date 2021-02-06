@@ -885,6 +885,14 @@ static void RecoverStackMemoryAccesses(
       auto &gep = offset_cache[cell.address_const];
       if (!gep) {
         const auto goal_offset = cell.address_const - frame.min_ea;
+
+        // NOTE(surovic):
+        // This thing iteratively builds up a GEP to point to an offset.
+        // It moves in increments that are as wide as an element of the
+        // indexed type. However if there's some leftover offset, it tries
+        // to do some casting magic to satisfy the request. The assumption
+        // is that the leftover is smaller than the size of a single element
+        // which doesn't hold for tests/binja_none_type.
         gep = remill::BuildPointerToOffset(
             ir, frame_ptr, goal_offset, llvm::PointerType::get(cell.type, 0));
       }

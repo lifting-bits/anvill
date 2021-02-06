@@ -15,7 +15,6 @@
 
 
 import collections
-import json
 
 from .function import *
 from .var import *
@@ -36,6 +35,12 @@ class Program(object):
         self._func_decls = {}
         self._symbols = collections.defaultdict(set)
 
+    def get_symbols(self, ea):
+        if ea in self._symbols:
+            return self._symbols[ea]
+        else:
+            return self.get_symbols_impl(ea)
+
     def get_function(self, ea):
         if ea in self._func_defs:
             return self._func_defs[ea]
@@ -51,6 +56,9 @@ class Program(object):
             return self._var_decls[ea]
         else:
             return self.get_variable_impl(ea)
+
+    def get_symbols_impl(self, ea):
+        raise NotImplementedError()
 
     def get_function_impl(self, ea):
         raise NotImplementedError()
@@ -177,10 +185,10 @@ class Program(object):
             )
 
         stack_base = (
-                int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
-                & page_mask
+            int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
+            & page_mask
         )
 
         proto["stack"] = {"address": stack_base, "size": 24576, "start_offset": 4096}
 
-        return json.dumps(proto)
+        return proto

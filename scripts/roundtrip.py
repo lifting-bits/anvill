@@ -78,6 +78,7 @@ def specify(self, specifier, input, output, timeout, ws):
     cmd.extend(["--bin_in", input])
     cmd.extend(["--spec_out", output])
     cmd.extend(["--entry_point", "main"])
+    cmd.extend(["--refs_as_defs"])
     p = run_cmd(cmd, timeout, description="Spec generation command", ws=ws)
 
     self.assertEqual(p.returncode, 0, "specifier failure: %s" % p.stderr)
