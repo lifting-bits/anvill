@@ -32,4 +32,4 @@ setuptools.setup(
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja",
         "anvill.exc", "anvill.function", "anvill.ida", "anvill.loc",
         "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
-        "anvill.var"])
+        "anvill.var", "anvill.util"])

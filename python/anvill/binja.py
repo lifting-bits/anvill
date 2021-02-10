@@ -24,6 +24,7 @@ from .loc import *
 from .os import *
 from .type import *
 from .program import *
+from .util import *
 
 
 def is_valid_addr(bv, addr):
@@ -243,9 +244,13 @@ def _convert_bn_type(tinfo: bn.types.Type, cache):
         bn.TypeClass.NamedTypeReferenceClass,
         bn.TypeClass.WideCharTypeClass,
     ]:
-        raise UnhandledTypeException(
-            "Unhandled VarArgs, Value, or WideChar type: {}".format(str(tinfo)), tinfo
-        )
+        err_type_class = {
+            bn.TypeClass.VarArgsTypeClass : "VarArgsTypeClass",
+            bn.TypeClass.ValueTypeClass : "ValueTypeClass",
+            bn.TypeClass.NamedTypeReferenceClass : "NamedTypeReferenceClass",
+            bn.TypeClass.WideCharTypeClass : "WideCharTypeClass",
+        }
+        DEBUG("WARNING: Unhandled type class {}".format(err_type_class[tinfo.type_class]))
 
     else:
         raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
@@ -472,6 +477,10 @@ class BNVariable(Variable):
         if not is_definition:
             return
 
+        # type could be None if type class not handled
+        if self._type is None:
+            return
+
         if isinstance(self._type, VoidType):
             return
 
@@ -484,6 +493,11 @@ class BNVariable(Variable):
         for ea in range(begin, end):
             br.seek(ea)
             seg = bv.get_segment_at(ea)
+            # _elf_header is getting recovered as variable
+            # get_segment_at(...) returns None for elf_header
+            if seg is None:
+                continue
+
             mem.map_byte(ea, br.read8(), seg.writable, seg.executable)
 
 
@@ -597,6 +611,8 @@ def get_program(*args, **kargs):
     if _PROGRAM:
         return _PROGRAM
     assert len(args) == 1
+
+    DEBUG("Recovering program {}".format(args[0]))
 
     prog = BNProgram(args[0])
     if "cache" not in kargs or kargs["cache"]:

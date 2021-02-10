@@ -44,5 +44,7 @@ class Variable(object):
     def proto(self):
         proto = {}
         proto["address"] = self.address()
-        proto["type"] = self.type().proto(self._arch)
+        if self.type() != None:
+            proto["type"] = self.type().proto(self._arch)
+
         return proto
