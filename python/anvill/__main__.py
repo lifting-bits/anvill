@@ -15,9 +15,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
+import sys
 import argparse
 import json
 
+from .util import INIT_DEBUG_FILE
 from .binja import get_program
 
 
@@ -43,7 +46,16 @@ def main():
         default=False,
     )
 
+    arg_parser.add_argument(
+        "--log_file",
+        type=argparse.FileType('w'), default=os.devnull,
+        help="Log to a specific file."
+    )
+
     args = arg_parser.parse_args()
+
+    if args.log_file != os.devnull:
+        INIT_DEBUG_FILE(args.log_file)
 
     p = get_program(args.bin_in)
 
