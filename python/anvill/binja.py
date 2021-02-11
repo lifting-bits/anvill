@@ -432,22 +432,25 @@ class BNFunction(Function):
         elif isinstance(item_or_list, llinst):
             results.extend(self._extract_types(bv, item_or_list.operands, initial_inst))
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
-            # For every register, is it a pointer?
-            possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(
-                item_or_list.name
-            )
-            if (
-                possible_pointer.type
-                == bn.function.RegisterValueType.ConstantPointerValue
-                or possible_pointer.type
-                == bn.function.RegisterValueType.ExternalPointerValue
-            ):  # or
-                # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
-                # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
-                val_type = _convert_bn_llil_type(
-                    possible_pointer, item_or_list.info.size
+            # Check if the register is not temp. Need to check if the temp register is
+            # associated to pointer?? Look into MLIL to get more information
+            if not bn.LLIL_REG_IS_TEMP(item_or_list.index):
+                # For every register, is it a pointer?
+                possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(
+                    item_or_list.name
                 )
-                results.append((item_or_list.name, val_type, possible_pointer.value))
+                if (
+                    possible_pointer.type
+                    == bn.function.RegisterValueType.ConstantPointerValue
+                    or possible_pointer.type
+                    == bn.function.RegisterValueType.ExternalPointerValue
+                ):  # or
+                    # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                    # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
+                    val_type = _convert_bn_llil_type(
+                        possible_pointer, item_or_list.info.size
+                    )
+                    results.append((item_or_list.name, val_type, possible_pointer.value))
 
             if initial_inst.mlil is not None:
                 mlil_results = self._extract_types_mlil(
