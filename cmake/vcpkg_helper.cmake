@@ -1,3 +1,11 @@
+#
+# Copyright (c) 2021-present, Trail of Bits, Inc.
+# All rights reserved.
+#
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
+#
+
 set(USE_SYSTEM_DEPENDENCIES OFF CACHE BOOL "Use system dependencies instead of trying to find vcpkg")
 
 if (NOT USE_SYSTEM_DEPENDENCIES)

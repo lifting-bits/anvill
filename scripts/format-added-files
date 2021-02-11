@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Copyright 2020, Trail of Bits, Inc. All rights reserved.
+
+#
+# Copyright (c) 2021-present, Trail of Bits, Inc.
+# All rights reserved.
+#
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
+#
 
 # Get the list of changed C++ header and source files.
 STAGED_FILES=$( git diff --cached --name-only --diff-filter=ACM | grep -e '\.\(h\)\|\(cpp\)$' )
