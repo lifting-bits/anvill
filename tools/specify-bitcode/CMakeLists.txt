@@ -15,3 +15,16 @@ target_link_libraries(anvill-specify-bitcode PRIVATE
 )
 
 appendRemillVersionToTargetOutputName(anvill-specify-bitcode)
+
+if(ANVILL_ENABLE_INSTALL_TARGET)
+  install(
+    TARGETS
+      anvill-specify-bitcode
+
+    EXPORT
+      anvillTargets
+
+    RUNTIME DESTINATION
+      bin
+  )
+endif()

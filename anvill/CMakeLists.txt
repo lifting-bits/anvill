@@ -9,50 +9,50 @@
 add_library(anvill STATIC
   include/anvill/Type.h
 
-  lib/Arch/AArch64_C.cpp
-  lib/Arch/SPARC32_C.cpp
-  lib/Arch/SPARC64_C.cpp
-  lib/Arch/X86_C.cpp
-  lib/Arch/X86_FastCall.cpp
-  lib/Arch/X86_StdCall.cpp
-  lib/Arch/X86_ThisCall.cpp
-  lib/Arch/X86_64_SysV.cpp
+  src/Arch/AArch64_C.cpp
+  src/Arch/SPARC32_C.cpp
+  src/Arch/SPARC64_C.cpp
+  src/Arch/X86_C.cpp
+  src/Arch/X86_FastCall.cpp
+  src/Arch/X86_StdCall.cpp
+  src/Arch/X86_ThisCall.cpp
+  src/Arch/X86_64_SysV.cpp
 
-  lib/Arch/AllocationState.h
-  lib/Arch/AllocationState.cpp
+  src/Arch/AllocationState.h
+  src/Arch/AllocationState.cpp
 
-  lib/Arch/Arch.h
-  lib/Arch/Arch.cpp
+  src/Arch/Arch.h
+  src/Arch/Arch.cpp
 
   include/anvill/TypeParser.h
-  lib/TypeParser.cpp
+  src/TypeParser.cpp
 
   include/anvill/TypePrinter.h
-  lib/TypePrinter.cpp
+  src/TypePrinter.cpp
 
   include/anvill/Program.h
-  lib/Program.cpp
+  src/Program.cpp
   
   include/anvill/RecoverMemRefs.h
-  lib/RecoverMemRefs.cpp
+  src/RecoverMemRefs.cpp
 
   include/anvill/Decl.h
-  lib/Decl.cpp
+  src/Decl.cpp
 
   include/anvill/Lift.h
-  lib/Lift.cpp
+  src/Lift.cpp
 
   include/anvill/MCToIRLifter.h
-  lib/MCToIRLifter.cpp
+  src/MCToIRLifter.cpp
 
   include/anvill/Optimize.h
-  lib/Optimize.cpp
+  src/Optimize.cpp
 
   include/anvill/Analyze.h
-  lib/Analyze.cpp
+  src/Analyze.cpp
 
   include/anvill/Util.h
-  lib/Util.cpp
+  src/Util.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)
@@ -78,6 +78,47 @@ target_public_headers(anvill
   include/anvill/Type.h
   include/anvill/TypeParser.h
   include/anvill/TypePrinter.h
-  include/anvill/Version.h
   include/anvill/Util.h
 )
+
+add_subdirectory("python")
+
+if(ANVILL_ENABLE_INSTALL_TARGET)
+  install(
+    TARGETS
+      anvill
+
+    EXPORT
+      anvillTargets
+
+    LIBRARY DESTINATION
+      lib
+
+    ARCHIVE DESTINATION
+      lib
+
+    INCLUDES DESTINATION
+      include
+
+    PUBLIC_HEADER DESTINATION
+      "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
+  )
+
+  set(anvill_cmake_config
+    "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
+  )
+
+  configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/anvillConfig_vcpkg.cmake.in"
+    "${anvill_cmake_config}"
+    @ONLY
+  )
+  
+  install(FILES "${anvill_cmake_config}"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
+  )
+  
+  install(EXPORT anvillTargets
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
+  )
+endif()

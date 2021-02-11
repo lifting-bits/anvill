@@ -5,32 +5,39 @@
 #
 # Define the two required variables before including
 # the source code for watching a git repository.
-set(PRE_CONFIGURE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/Version.cpp.in")
-set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/Version.cpp")
-set(GIT_WORKING_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/git_watcher.cmake")
 
-set(Version_PUBLIC_H
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/anvill/Version.h"
-)
+function(generateAnvillVersionLibrary)
+  set(PRE_CONFIGURE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/Version.cpp.in")
+  set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/Version.cpp")
+  set(GIT_WORKING_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/git_watcher.cmake")
 
-# Create a library out of the compiled post-configure file.
-add_library(AnvillVersion STATIC
-  ${POST_CONFIGURE_FILE}
-  ${Version_PUBLIC_H}
-)
+  set(Version_PUBLIC_H
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/anvill/Version.h"
+  )
 
-# Needed for compilation settings
-target_link_libraries(AnvillVersion PRIVATE remill_settings)
+  # Create a library out of the compiled post-configure file.
+  add_library(AnvillVersion STATIC
+    ${POST_CONFIGURE_FILE}
+    ${Version_PUBLIC_H}
+  )
 
-target_include_directories(AnvillVersion PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
+  # Needed for compilation settings
+  target_link_libraries(AnvillVersion PRIVATE remill_settings)
 
-add_dependencies(AnvillVersion check_git_anvill)
+  target_include_directories(AnvillVersion PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
 
-install(
-  TARGETS AnvillVersion
-  EXPORT anvillTargets
-)
+  add_dependencies(AnvillVersion check_git_anvill)
+
+  if(ANVILL_ENABLE_INSTALL_TARGET)
+    install(
+      TARGETS AnvillVersion
+      EXPORT anvillTargets
+    )
+  endif()
+endfunction()
+
+generateAnvillVersionLibrary()
