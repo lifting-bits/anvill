@@ -49,12 +49,12 @@ jobs:
         shell: bash
         run: |
           mkdir build && cd build
-          cmake -DCMAKE_VERBOSE_MAKEFILE=ON ..
+          cmake -DCMAKE_VERBOSE_MAKEFILE=ON -DANVILL_ENABLE_TESTS=ON -DANVILL_ENABLE_INSTALL_TARGET=ON ..
           cmake --build . --target install -- -j "$(nproc)"
       - name: Smoke Test
         shell: bash
         run: |
-          anvill-decompile-json-${{ matrix.llvm }}.0 -spec ./examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
+          anvill-decompile-json-${{ matrix.llvm }}.0 -spec ./tools/decompile-json/tests/examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
       - name: Tests
         shell: bash
         working-directory: ci
@@ -101,4 +101,4 @@ jobs:
       - name: Smoke Test
         shell: bash
         run: |
-          anvill-decompile-json-${{ matrix.llvm }}.0 -spec ./examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
+          anvill-decompile-json-${{ matrix.llvm }}.0 -spec ./tools/decompile-json/tests/examples/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
