@@ -549,6 +549,8 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
     } break;
 
     case llvm::Type::StructTyID: {
+      // Take apart the structure type, recursing into each element
+      // so that we can create a constant structure
       auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
 
       auto num_elms = struct_type->getNumElements();
