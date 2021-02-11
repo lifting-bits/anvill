@@ -548,6 +548,30 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
     case llvm::Type::PointerTyID: {
     } break;
 
+    case llvm::Type::StructTyID: {
+      auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
+
+      auto num_elms = struct_type->getNumElements();
+      auto elm_offset = 0;
+
+      std::vector<llvm::Constant *> const_list;
+
+      for (std::uint64_t i = 0U; i < num_elms; ++i) {
+        auto elm_type = struct_type->getElementType(i);
+        auto elm_size = dl.getTypeSizeInBits(elm_type);
+
+        auto const_elm =
+            CreateConstFromMemory(addr + elm_offset, elm_type, arch,
+                                  program, module);
+
+        const_list.push_back(const_elm);
+        elm_offset += elm_size / 8;
+      }
+
+      result = llvm::ConstantStruct::get(struct_type,
+                                        llvm::ArrayRef(const_list));
+    } break;
+
     case llvm::Type::ArrayTyID: {
       const auto elm_type = type->getArrayElementType();
       const auto elm_size = dl.getTypeSizeInBits(elm_type);
@@ -570,12 +594,13 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
     } break;
 
     default:
-      LOG(FATAL) << "Unknown LLVM Type: " << remill::LLVMThingToString(type);
+      LOG(FATAL) << "Unhandled LLVM Type: " << remill::LLVMThingToString(type);
       break;
   }
 
   return result;
 }
+
 }  // namespace
 
 bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
