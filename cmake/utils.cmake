@@ -57,3 +57,17 @@ function(FindAndSelectClangCompiler)
     endif()
   endif()
 endfunction()
+
+function(appendRemillVersionToTargetOutputName target_name)
+  if(NOT DEFINED REMILL_LLVM_VERSION)
+    message(FATAL_ERROR "The REMILL_LLVM_VERSION variable is not set")
+  endif()
+
+  if(NOT TARGET "${target_name}")
+    message(FATAL_ERROR "The following target does not exists: ${target_name}")
+  endif()
+
+  set_target_properties("${target_name}" PROPERTIES
+    OUTPUT_NAME "${target_name}-${REMILL_LLVM_VERSION}"
+  )
+endfunction()
