@@ -173,11 +173,64 @@ def _convert_bn_llil_type(
         ret = IntegerType(reg_size_bytes, True)
         return ret
 
+def _cache_key(tinfo: bn.types.Type) -> str:
+    """ Convert bn Type instance to cache key"""
+    return str(tinfo)
 
-def _convert_bn_type(tinfo: bn.types.Type, cache):
+def _convert_named_type_reference(
+    bv, tinfo: bn.types.Type, cache) -> Type:
+    """ Convert named type references into a `Type` instance"""
+    if tinfo.type_class != bn.TypeClass.NamedTypeReferenceClass:
+        return
+
+    named_tinfo = tinfo.named_type_reference
+    if (named_tinfo.type_class
+        == bn.NamedTypeReferenceClass.StructNamedTypeClass):
+        # Get the bn struct type and recursively recover the elements
+        ref_type = bv.get_type_by_name(named_tinfo.name);
+        struct_type =  ref_type.structure
+        ret = StructureType()
+        cache[_cache_key(struct_type)] = ret
+        for elem in struct_type.members:
+            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
+        return ret
+
+    elif (named_tinfo.type_class
+        == bn.NamedTypeReferenceClass.UnionNamedTypeClass):
+        # Get the union type and recover the member elements
+        ref_type = bv.get_type_by_name(named_tinfo.name);
+        struct_type =  ref_type.structure
+        ret = UnionType()
+        cache[_cache_key(struct_type)] = ret
+        for elem in struct_type.union.members:
+            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
+        return ret
+
+    elif (named_tinfo.type_class
+        == bn.NamedTypeReferenceClass.TypedefNamedTypeClass):
+        ref_type = bv.get_type_by_name(named_tinfo.name);
+        ret = TypedefType()
+        cache[_cache_key(ref_type)] = ret
+        ret.set_underlying_type(_convert_bn_type(bv, ref_type, cache))
+        return ret
+
+    elif (named_tinfo.type_class
+        == bn.NamedTypeReferenceClass.EnumNamedTypeClass):
+        # Set the underlying type int of size width
+        ref_type = bv.get_type_by_name(named_tinfo.name);
+        ret = EnumType()
+        cache[_cache_key(ref_type)] = ret
+        ret.set_underlying_type(IntegerType(ref_type.width, False))
+        return ret
+
+    else:
+        DEBUG("WARNING: Unknown named type {} not handled".format(named_tinfo))
+
+
+def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
     """Convert an bn `Type` instance into a `Type` instance."""
-    if str(tinfo) in cache:
-        return cache[str(tinfo)]
+    if _cache_key(tinfo) in cache:
+        return cache[_cache_key(tinfo)]
 
     # Void type.
     if tinfo.type_class == bn.TypeClass.VoidTypeClass:
@@ -186,17 +239,17 @@ def _convert_bn_type(tinfo: bn.types.Type, cache):
     # Pointer, array, or function.
     elif tinfo.type_class == bn.TypeClass.PointerTypeClass:
         ret = PointerType()
-        cache[str(tinfo)] = ret
-        ret.set_element_type(_convert_bn_type(tinfo.element_type, cache))
+        cache[_cache_key(tinfo)] = ret
+        ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
         return ret
 
     elif tinfo.type_class == bn.TypeClass.FunctionTypeClass:
         ret = FunctionType()
-        cache[str(tinfo)] = ret
-        ret.set_return_type(_convert_bn_type(tinfo.return_value, cache))
+        cache[_cache_key(tinfo)] = ret
+        ret.set_return_type(_convert_bn_type(bv, tinfo.return_value, cache))
 
         for var in tinfo.parameters:
-            ret.add_parameter_type(_convert_bn_type(var.type, cache))
+            ret.add_parameter_type(_convert_bn_type(bv, var.type, cache))
 
         if tinfo.has_variable_arguments:
             ret.set_is_variadic()
@@ -205,19 +258,26 @@ def _convert_bn_type(tinfo: bn.types.Type, cache):
 
     elif tinfo.type_class == bn.TypeClass.ArrayTypeClass:
         ret = ArrayType()
-        cache[str(tinfo)] = ret
-        ret.set_element_type(_convert_bn_type(tinfo.element_type, cache))
+        cache[_cache_key(tinfo)] = ret
+        ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
         ret.set_num_elements(tinfo.count)
         return ret
 
     elif tinfo.type_class == bn.TypeClass.StructureTypeClass:
         ret = StructureType()
-        cache[str(tinfo)] = ret
+        cache[_cache_key(tinfo)] = ret
+
+        for elem in tinfo.structure.members:
+            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
+
         return ret
 
     elif tinfo.type_class == bn.TypeClass.EnumerationTypeClass:
+        # The underlying type of enum will be an Interger of size
+        # tinfo.width
         ret = EnumType()
-        cache[str(tinfo)] = ret
+        cache[_cache_key(tinfo)] = ret
+        ret.set_underlying_type(IntegerType(tinfo.width, False))
         return ret
 
     elif tinfo.type_class == bn.TypeClass.BoolTypeClass:
@@ -238,16 +298,18 @@ def _convert_bn_type(tinfo: bn.types.Type, cache):
         width = tinfo.width
         return FloatingPointType(width)
 
+    elif tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass:
+        ret = _convert_named_type_reference(bv, tinfo, cache)
+        return ret
+
     elif tinfo.type_class in [
         bn.TypeClass.VarArgsTypeClass,
         bn.TypeClass.ValueTypeClass,
-        bn.TypeClass.NamedTypeReferenceClass,
         bn.TypeClass.WideCharTypeClass,
     ]:
         err_type_class = {
             bn.TypeClass.VarArgsTypeClass : "VarArgsTypeClass",
             bn.TypeClass.ValueTypeClass : "ValueTypeClass",
-            bn.TypeClass.NamedTypeReferenceClass : "NamedTypeReferenceClass",
             bn.TypeClass.WideCharTypeClass : "WideCharTypeClass",
         }
         DEBUG("WARNING: Unhandled type class {}".format(err_type_class[tinfo.type_class]))
@@ -256,7 +318,7 @@ def _convert_bn_type(tinfo: bn.types.Type, cache):
         raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
 
 
-def get_type(ty):
+def get_type(bv, ty):
     """Type class that gives access to type sizes, printings, etc."""
 
     if isinstance(ty, Type):
@@ -266,7 +328,7 @@ def get_type(ty):
         return ty.type()
 
     elif isinstance(ty, bn.Type):
-        return _convert_bn_type(ty, {})
+        return _convert_bn_type(bv, ty, {})
 
     if not ty:
         return VoidType()
@@ -416,7 +478,7 @@ class BNFunction(Function):
                 ):
                     reg_name = bv.arch.get_reg_name(item_or_list.storage)
                     results.append(
-                        (reg_name, _convert_bn_type(item_or_list.type, {}), None)
+                        (reg_name, _convert_bn_type(bv, item_or_list.type, {}), None)
                     )
         return results
 
@@ -525,7 +587,8 @@ class BNProgram(Program):
 
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
-        var_type = get_type(bn_var.type)
+        var_type = get_type(self._bv, bn_var.type)
+
         # fall back onto an array of bytes type for variables
         # of an unknown (void) type.
         if isinstance(var_type, VoidType):
@@ -550,7 +613,7 @@ class BNProgram(Program):
                 "No function defined at or containing address {:x}".format(address)
             )
 
-        func_type = get_type(bn_func.function_type)
+        func_type = get_type(self._bv, bn_func.function_type)
         calling_conv = CallingConvention(arch, bn_func)
 
         index = 0
@@ -558,7 +621,7 @@ class BNProgram(Program):
         for var in bn_func.parameter_vars:
             source_type = var.source_type
             var_type = var.type
-            arg_type = get_type(var_type)
+            arg_type = get_type(self._bv, var_type)
 
             if source_type == bn.VariableSourceType.RegisterVariableSourceType:
                 if (
@@ -590,7 +653,7 @@ class BNProgram(Program):
             index += 1
 
         ret_list = []
-        retTy = get_type(bn_func.return_type)
+        retTy = get_type(self._bv, bn_func.return_type)
         if not isinstance(retTy, VoidType):
             for reg in calling_conv.return_regs:
                 loc = Location()
