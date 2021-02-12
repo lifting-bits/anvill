@@ -43,6 +43,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 First, update aptitude and get install the baseline dependencies.
 
 ```shell
+dpkg --add-architecture i386
+
 sudo apt-get update
 sudo apt-get upgrade
 
@@ -57,7 +59,10 @@ sudo apt-get install \
      lsb-release \
      zlib1g-dev \
      ccache \
-     cmake
+     cmake \
+     libc6-dev:i386 \
+     'libstdc++-*-dev:i386' \
+     g++-multilib
 
 # Ubuntu 14.04, 16.04
 sudo apt-get install realpath
