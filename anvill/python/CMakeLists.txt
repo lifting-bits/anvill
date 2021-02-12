@@ -34,23 +34,6 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
     set(extra_install_flags "")
   endif()
 
-  if(ANVILL_INSTALL_PYTHON2_LIBS)
-    add_custom_target(install_anvill_python2
-      DEPENDS ${ANVILL_PYTHON_SOURCES}
-    )
-
-    add_custom_command(
-      TARGET install_anvill_python2 POST_BUILD
-      COMMAND which python2 && python2 "${setup_file_path}" install ${extra_install_flags}
-      COMMENT "Installing Anvill Python 2 API"
-      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    )
-
-    add_dependencies(anvill
-      install_anvill_python2
-    )
-  endif()
-
   if(ANVILL_INSTALL_PYTHON3_LIBS)
     add_custom_target(install_anvill_python3
       DEPENDS ${ANVILL_PYTHON_SOURCES}

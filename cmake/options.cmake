@@ -8,5 +8,4 @@
 
 option(ANVILL_ENABLE_INSTALL_TARGET "Set to ON to enable the install directives")
 option(ANVILL_ENABLE_TESTS "Set to ON to enable the tests")
-option(ANVILL_INSTALL_PYTHON2_LIBS "Install Python 2 libraries. Requires ANVILL_ENABLE_INSTALL_TARGET")
 option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries. Requires ANVILL_ENABLE_INSTALL_TARGET" ON)

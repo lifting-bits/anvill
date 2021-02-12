@@ -26,6 +26,17 @@ endif()
 
 FindAndSelectClangCompiler()
 
+find_program(ccache_path ccache)
+if("${ccache_path}" STREQUAL "ccache_path-NOTFOUND")
+  message(STATUS "anvill: ccache was not found")
+
+else()
+  message(STATUS "anvill: Enabling ccache support with ${ccache_path}")
+
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${ccache_path}" CACHE FILEPATH "")
+  set(CMAKE_C_COMPILER_LAUNCHER "${ccache_path}" CACHE FILEPATH "")
+endif()
+
 find_package(remill CONFIG REQUIRED)
 
 add_subdirectory("libraries")

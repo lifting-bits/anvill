@@ -19,6 +19,7 @@ jobs:
           - { name: 'ubuntu', tag: '20.04' }
 
         llvm: [ '9', '10', '11' ]
+        cxxcommon_version: [ 'v0.1.1' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -46,18 +47,10 @@ jobs:
 
           echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
           echo ::set-output name=REL_SOURCE::${rel_source_path}
-
           echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
-          echo ::set-output name=REL_BUILD::${rel_build_path}
-
           echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
-          echo ::set-output name=REL_INSTALL::${rel_install_path}
-
           echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
-          echo ::set-output name=REL_DOWNLOADS::${rel_downloads_path}
-
           echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
-          echo ::set-output name=REL_CCACHE::${rel_ccache_path}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v2
@@ -88,7 +81,8 @@ jobs:
           apt-get install -y pixz \
                              xz-utils \
                              make \
-                             ninja-build
+                             ninja-build \
+                             ccache
 
       - name: Clone the anvill repository
         uses: actions/checkout@v2
@@ -103,20 +97,20 @@ jobs:
 
       - name: Select the remill version
         run: |
-          if [[ -f ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.remill_commit_id ]] ; then
-            remill_commit_id=$(cat ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.remill_commit_id)
+          remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
+
+          if [[ -f "${remill_commit_id_path}" ]] ; then
+            remill_commit_id=$(cat ${remill_commit_id_path})
             echo "Using the following remill commit: ${remill_commit_id}"
 
-            cd ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
+            cd ${{ steps.build_paths.outputs.SOURCE }}/remill
             git checkout -b remill_commit_id "${remill_commit_id}"
 
           else
             echo "WARNING: Builds/tests will work against an unknown remill version"
           fi
 
-      # TODO(alessandro): The cxx-common version should be pinned, otherwise
-      #                   we don't know what we are testing against
-      - name: Download the cxx-common package
+      - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
         shell: bash
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
@@ -124,10 +118,11 @@ jobs:
           folder_name="vcpkg_${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm-${{ matrix.llvm }}_amd64"
           archive_name="${folder_name}.tar.xz"
 
-          url="https://github.com/trailofbits/cxx-common/releases/latest/download/${archive_name}"
+          url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
           local_path="${{ steps.build_paths.outputs.DOWNLOADS }}/${archive_name}"
 
           if [[ ! -f "${local_path}" ]]; then
+            echo "Downloading: ${url}"
             curl "${url}" -L -o "${local_path}"
 
             ls -t ${{ steps.build_paths.outputs.DOWNLOADS }}/vcpkg_* | tail -n +2 | while read archive_file ; do
@@ -179,14 +174,19 @@ jobs:
                 -j ${{ steps.build_job_count.VALUE }}
 
       - name: Install remill
+        id: remill_installer
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
 
         run: |
+          export DESTDIR=${{ steps.build_paths.outputs.INSTALL }}/remill
+
           cmake --build remill_build \
                 --target install
+
+          echo ::set-output name=PATH::${DESTDIR}
 
       - name: Configure anvill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -200,6 +200,7 @@ jobs:
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -DANVILL_ENABLE_TESTS=true \
               -DANVILL_ENABLE_INSTALL_TARGET=true \
               -G Ninja \
@@ -255,47 +256,198 @@ jobs:
       matrix:
         os: [ 'macos-10.15', 'macos-11.0' ]
         llvm: [ '9', '10', '11' ]
+        cxxcommon_version: [ 'v0.1.1' ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Setup the build paths
+        shell: bash
+        id: build_paths
+        run: |
+          rel_build_path="build"
+          rel_source_path="src"
+          rel_install_path="install"
+          rel_downloads_path="downloads"
+          rel_ccache_path="ccache"
+
+          mkdir -p ${rel_build_path} \
+                   ${rel_install_path} \
+                   ${rel_downloads_path} \
+                   ${rel_ccache_path}
+
+          echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
+          echo ::set-output name=REL_SOURCE::${rel_source_path}
+          echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
+          echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
+          echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
+          echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
+
+      - name: Update the cache (downloads)
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.build_paths.outputs.DOWNLOADS }}
+
+          key: |
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ github.sha }}
+
+          restore-keys: |
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}
+
+      - name: Update the cache (ccache)
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.build_paths.outputs.CCACHE }}
+
+          key: |
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ github.sha }}
+
+          restore-keys: |
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}
+
+      - name: Install system dependencies
+        shell: bash
+        run: |
+          brew install ccache \
+                       ninja
+
       - name: Clone the anvill repository
         uses: actions/checkout@v2
+        with:
+          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
 
-      - name: Build and install remill
-        shell: bash
+      - name: Clone the remill repository
+        uses: actions/checkout@v2
+        with:
+          repository: 'lifting-bits/remill'
+          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
+
+      - name: Select the remill version
         run: |
-          # TODO(Alessandro): Pin the library version at a known tag/commit id
-          git clone --depth=1 \
-                    --branch master \
-                    https://github.com/lifting-bits/remill.git
+          remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
 
-          cd remill
-          ./scripts/build.sh --llvm-version ${{ matrix.llvm }}
+          if [[ -f "${remill_commit_id_path}" ]] ; then
+            remill_commit_id=$(cat ${remill_commit_id_path})
+            echo "Using the following remill commit: ${remill_commit_id}"
 
-          cmake --build remill-build \
+            cd ${{ steps.build_paths.outputs.SOURCE }}/remill
+            git checkout -b remill_commit_id "${remill_commit_id}"
+
+          else
+            echo "WARNING: Builds/tests will work against an unknown remill version"
+          fi
+
+      - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
+        shell: bash
+        id: cxxcommon_installer
+        working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
+        run: |
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-12.1.0_amd64"
+          archive_name="${folder_name}.tar.xz"
+
+          url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
+          local_path="${{ steps.build_paths.outputs.DOWNLOADS }}/${archive_name}"
+
+          if [[ ! -f "${local_path}" ]]; then
+            echo "Downloading: ${url}"
+            curl "${url}" -L -o "${local_path}"
+
+            ls -t ${{ steps.build_paths.outputs.DOWNLOADS }}/vcpkg_* | tail -n +2 | while read archive_file ; do
+              rm "${archive_file}"
+            done
+          fi
+
+          tar xf "${local_path}" \
+              -C "${{ steps.build_paths.outputs.INSTALL }}"
+
+          destination_path="${{ steps.build_paths.outputs.INSTALL }}/vcpkg"
+
+          mv "${{ steps.build_paths.outputs.INSTALL }}/${folder_name}" \
+             "${destination_path}"
+
+          echo "${destination_path}/installed/x64-osx-rel/bin" >> $GITHUB_PATH
+
+          echo ::set-output name=PATH::${destination_path}
+
+      - name: Select the build job count
+        shell: bash
+        id: build_job_count
+        run: |
+          echo ::set-output name=VALUE::$(($(sysctl -n hw.logicalcpu) + 1))
+
+      - name: Configure remill
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          mkdir remill_build && cd remill_build
+
+          cmake \
+              -DCMAKE_VERBOSE_MAKEFILE=true \
+              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -G Ninja \
+              ${{ steps.build_paths.outputs.SOURCE }}/remill
+
+      - name: Build remill
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          cmake --build remill_build \
+                -j ${{ steps.build_job_count.VALUE }}
+
+      - name: Install remill
+        id: remill_installer
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          export DESTDIR=${{ steps.build_paths.outputs.INSTALL }}/remill
+
+          cmake --build remill_build \
                 --target install
 
-      - name: Configure the project
-        shell: bash
-        run: |
-          mkdir build && cd build
+          echo ::set-output name=PATH::${DESTDIR}
 
-          cmake -DCMAKE_VERBOSE_MAKEFILE=ON \
-                -DANVILL_ENABLE_TESTS=ON \
-                -DANVILL_ENABLE_INSTALL_TARGET=ON ..
+      - name: Configure anvill
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
 
-      - name: Build the project
-        shell: bash
-        run: |
-          cmake --build ./build \
-                --target install \
-                -- -j "$(sysctl -n hw.logicalcpu)"
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
 
-      - name: Smoke Test
-        shell: bash
         run: |
-          anvill-decompile-json-${{ matrix.llvm }}.0 \
-            -spec ./tools/decompile-json/tests/examples/ret0.json \
+          mkdir anvill_build && cd anvill_build
+
+          cmake \
+              -DCMAKE_VERBOSE_MAKEFILE=true \
+              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
+              -DANVILL_ENABLE_TESTS=true \
+              -DANVILL_ENABLE_INSTALL_TARGET=true \
+              -G Ninja \
+              ${{ steps.build_paths.outputs.SOURCE }}/anvill
+
+      - name: Build anvill
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          cmake --build anvill_build \
+                -j ${{ steps.build_job_count.VALUE }}
+
+      - name: Test anvill-decompile-json
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
+        run: |
+          ./tools/decompile-json/anvill-decompile-json-${{ matrix.llvm }}.0 \
+            -spec ${{ steps.build_paths.outputs.SOURCE }}/anvill/tools/decompile-json/tests/examples/ret0.json \
             -bc_out ./ret0.bc \
             -ir_out ret0.ir
