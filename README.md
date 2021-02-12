@@ -85,11 +85,25 @@ These depend on tools like [IDA Pro](https://www.hex-rays.com/products/ida) or [
 
 Given that we have either of the above, we can try out Anvill's machine code lifter on a binary of our choice.
 
+**First, we generate a JSON specification from a binary:**
+
+From the CLI:
+
 ```shell
-# First, we generate a JSON specification from a binary
-python3.8 -m anvill --bin_in my_binary --spec_out spec.json
-# Finally we produce LLVM bitcode from a JSON specification
-./remill-build/tools/anvill/anvill-lift-json-*.0 --spec spec.json --bc_out out.bc
+python3 -m anvill --bin_in my_binary --spec_out spec.json
+```
+
+With the IDA plugin:
+1. Open the binary inside IDA
+2. Select **Run script** in the **File** menu
+3. Open the `examples/ida_plugin_action.py`
+4. In the disasm window, place the cursor inside a function
+5. Right click and select **Generate ANVILL spec file**
+
+**Finally we produce LLVM bitcode from a JSON specification**
+
+```
+./build/anvill-decompile-json-*.0 --spec spec.json --bc_out out.bc
 ```
 
 ### Docker image
