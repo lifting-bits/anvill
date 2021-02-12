@@ -590,21 +590,39 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
 
   // Lift global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    const auto addr = decl->address;
-    const auto name = anvill::CreateVariableName(addr);
-    const auto gvar = decl->DeclareInModule(name, module);
+    const auto addr{decl->address};
+    const auto name{anvill::CreateVariableName(addr)};
+    const auto gvar{decl->DeclareInModule(name, module)};
 
+    // Check if we have mapped bytes
+    if (!program.FindByte(addr)) {
+      return true;
+    }
     // Set initializer
-    auto init = CreateConstFromMemory(addr, decl->type, arch, program, module);
+    auto init{CreateConstFromMemory(addr, decl->type, arch, program, module)};
     gvar->setInitializer(init);
-
     return true;
   });
 
   // Lift functions.
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    const auto entry = lifter.LiftFunction(*decl);
-    DefineNativeToLiftedWrapper(arch, *decl, entry);
+    // Initialize function entry
+    const auto name{CreateFunctionName(decl->address)};
+    FunctionEntry entry{nullptr, nullptr, nullptr};
+    entry.lifted_to_native =
+        remill::DeclareLiftedFunction(&module, name + ".lifted_to_native");
+    entry.native_to_lifted = decl->DeclareInModule(name, module, true);
+
+    // Check if we have mapped bytes
+    if (auto start{program.FindByte(decl->address)};
+        start && start.IsExecutable()) {
+      entry = lifter.LiftFunction(*decl);
+      DefineNativeToLiftedWrapper(arch, *decl, entry);
+    } else {
+      entry.native_to_lifted->removeFnAttr(llvm::Attribute::InlineHint);
+      entry.native_to_lifted->removeFnAttr(llvm::Attribute::AlwaysInline);
+      entry.native_to_lifted->addFnAttr(llvm::Attribute::NoInline);
+    }
     DefineLiftedToNativeWrapper(*decl, entry);
     OptimizeFunction(entry.native_to_lifted);
     return true;
