@@ -465,14 +465,26 @@ void MCToIRLifter::VisitInstruction(
     case remill::Instruction::kCategoryIndirectJump:
       VisitIndirectJump(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalIndirectJump:
+      VisitConditionalIndirectJump(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryFunctionReturn:
       VisitFunctionReturn(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalFunctionReturn:
+      VisitConditionalFunctionReturn(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryDirectFunctionCall:
       VisitDirectFunctionCall(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalDirectFunctionCall:
+      VisitConditionalDirectFunctionCall(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryIndirectFunctionCall:
       VisitIndirectFunctionCall(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalIndirectFunctionCall:
+      VisitConditionalIndirectFunctionCall(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryConditionalBranch:
       VisitConditionalBranch(inst, delayed_inst, block);
