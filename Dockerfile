@@ -26,16 +26,10 @@ FROM trailofbits/cxx-common:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as deps
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python2.7 python3.8 python3-pip python3.8-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
+    apt-get install -qqy ninja-build python3.8 python3-pip python3.8-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
     rm -rf /var/lib/apt/lists/*
-# needed for 20.04 support until we migrate to py3
-RUN curl https://bootstrap.pypa.io/2.7/get-pip.py --output get-pip.py && python2.7 get-pip.py
-
-RUN update-alternatives --install /usr/bin/python2 python2 /usr/bin/python2.7 1
-
 
 COPY --from=remill /opt/trailofbits /opt/trailofbits
-
 
 # Source code build
 FROM deps as build

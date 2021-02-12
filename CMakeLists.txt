@@ -32,7 +32,6 @@ macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
 endmacro()
 
-option(ANVILL_INSTALL_PYTHON2_LIBS "Install Python 2 libraries")
 option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries" ON)
 
 #
@@ -158,20 +157,6 @@ if(NOT DEFINED ENV{VIRTUAL_ENV})
 else()
   #virtual env; install normally
   set(extra_install_flags "")
-endif()
-
-if(ANVILL_INSTALL_PYTHON2_LIBS)
-  add_custom_target(install_anvill_python2
-    DEPENDS ${ANVILL_PYTHON_SOURCES})
-    
-  add_custom_command(
-    TARGET install_anvill_python2 POST_BUILD
-    COMMAND which python2 && python2 setup.py install ${extra_install_flags}
-    COMMENT "Installing Anvill Python 2 API"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-
-  add_dependencies(${ANVILL}
-    install_anvill_python2)
 endif()
 
 if(ANVILL_INSTALL_PYTHON3_LIBS)
