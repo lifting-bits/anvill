@@ -7,6 +7,6 @@
 #
 
 add_test(NAME test_roundtrip
-  COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/roundtrip.py" "$<TARGET_FILE:anvill-decompile-json>" "${CMAKE_CURRENT_SOURCE_DIR}/samples" "${CMAKE_C_COMPILER}"
+  COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/roundtrip.py" "$<TARGET_FILE:anvill-decompile-json>" "${CMAKE_CURRENT_SOURCE_DIR}/cases" "${CMAKE_C_COMPILER}"
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )

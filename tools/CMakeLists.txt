@@ -28,11 +28,11 @@ endfunction()
 
 checkForLLVMJsonSupport("ANVILL_LLVM_SUPPORTS_JSON")
 if(ANVILL_LLVM_SUPPORTS_JSON)
-  message(STATUS "ANVILL: LLVM JSON support was found, enabling targets: anvill-decompile-json, anvill-specify-bitcode")
+  message(STATUS "anvill: LLVM JSON support was found, enabling targets: anvill-decompile-json, anvill-specify-bitcode")
 
   add_subdirectory("decompile-json")
   add_subdirectory("specify-bitcode")
 
 else()
-  message(STATUS "ANVILL: LLVM JSON support was not found, disabling targets: anvill-decompile-json, anvill-specify-bitcode")
+  message(STATUS "anvill: LLVM JSON support was not found, disabling targets: anvill-decompile-json, anvill-specify-bitcode")
 endif()
