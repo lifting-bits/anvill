@@ -82,7 +82,8 @@ jobs:
                              xz-utils \
                              make \
                              ninja-build \
-                             ccache
+                             ccache \
+                             rpm
 
       - name: Clone the anvill repository
         uses: actions/checkout@v2
@@ -225,6 +226,21 @@ jobs:
             -bc_out ./ret0.bc \
             -ir_out ret0.ir
 
+      - name: Install anvill
+        id: anvill_installer
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          export DESTDIR=${{ steps.build_paths.outputs.INSTALL }}/anvill
+
+          cmake --build anvill_build \
+                --target install
+
+          echo ::set-output name=PATH::${DESTDIR}
+
       - name: Install Binary Ninja
 
         env:
@@ -247,14 +263,28 @@ jobs:
           cmake --build anvill_build \
                 --target test
 
+      - name: Create the packages
+
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.build }}
+        run: |
+          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --always)
+
+          cpack -D ANVILL_DATA_PATH="${{ steps.anvill_installer.outputs.PATH }}" \
+                -R ${anvill_version} \
+                --config "${{ steps.build_paths.outputs.SOURCE }}/anvill/packaging/main.cmake"
 
 
 
+
+  # Note that we have a limit of 5 concurrent workers, org-wide.
+  # It is best to try and keep the amount of macOS jobs as low
+  # as possible.
   build_mac:
     strategy:
       fail-fast: false
       matrix:
-        os: [ 'macos-10.15', 'macos-11.0' ]
+        os: [ 'macos-11.0' ]
         llvm: [ '9', '10', '11' ]
         cxxcommon_version: [ 'v0.1.1' ]
 
@@ -337,12 +367,13 @@ jobs:
             echo "WARNING: Builds/tests will work against an unknown remill version"
           fi
 
+      # TODO(alessandro): Update the macOS version to big sur once we have the packages
       - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
         shell: bash
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-12.1.0_amd64"
+          folder_name="vcpkg_macos-10.15_llvm-${{ matrix.llvm }}_xcode-12.1.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -443,6 +474,21 @@ jobs:
           cmake --build anvill_build \
                 -j ${{ steps.build_job_count.VALUE }}
 
+      - name: Install anvill
+        id: anvill_installer
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+
+        run: |
+          export DESTDIR=${{ steps.build_paths.outputs.INSTALL }}/anvill
+
+          cmake --build anvill_build \
+                --target install
+
+          echo ::set-output name=PATH::${DESTDIR}
+
       - name: Test anvill-decompile-json
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
@@ -451,3 +497,14 @@ jobs:
             -spec ${{ steps.build_paths.outputs.SOURCE }}/anvill/tools/decompile-json/tests/examples/ret0.json \
             -bc_out ./ret0.bc \
             -ir_out ret0.ir
+
+      - name: Create the packages
+
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.build }}
+        run: |
+          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --always)
+
+          cpack -D ANVILL_DATA_PATH="${{ steps.anvill_installer.outputs.PATH }}" \
+                -R ${anvill_version} \
+                --config "${{ steps.build_paths.outputs.SOURCE }}/anvill/packaging/main.cmake"
