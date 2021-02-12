@@ -515,7 +515,13 @@ uint64_t XrefExprFolder::VisitSExt(llvm::Value *op, llvm::Type *type) {
 uint64_t XrefExprFolder::VisitTrunc(llvm::Value *op, llvm::Type *type) {
   auto ea = Visit(op);
   const auto dest_size = type->getPrimitiveSizeInBits();
-  CHECK_LT(dest_size, 64u);
+
+  // return ea if dest type is not trucated
+  if (dest_size == 64u) {
+    return ea;
+  }
+
+  CHECK_LE(dest_size, 64u);
   const auto mask = (1ull << dest_size) - 1ull;
   return (ea & mask);
 }

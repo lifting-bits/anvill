@@ -131,8 +131,8 @@ def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     if not isinstance(inst, bn.LowLevelILInstruction):
         return
 
-    assert not is_unimplemented(bv, inst)
-    assert not is_undef(bv, inst)
+    if is_unimplemented(bv, inst) or is_undef(bv, inst):
+        return
 
     if is_function_call(bv, inst) or is_jump(bv, inst):
         reftype = XrefType.XREF_CONTROL_FLOW
@@ -384,6 +384,10 @@ class BNFunction(Function):
         # if the function is a declaration, then Anvill only needs to know its symbols and prototypes
         # if its a definition, then Anvill will perform analysis of the function and produce information for the func
         for ref_ea in ref_eas:
+            # If ref_ea is an invalid address
+            seg = program._bv.get_segment_at(ref_ea)
+            if seg is None:
+                continue
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
     def _extract_types_mlil(
@@ -513,6 +517,11 @@ class BNProgram(Program):
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
+
+        # raise exception if the variable has invalid address
+        seg = self._bv.get_segment_at(address)
+        if seg is None:
+            raise InvalidVariableException("Invalid variable address")
 
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
