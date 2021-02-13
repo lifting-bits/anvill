@@ -1,13 +1,23 @@
-name: VCPKG Continuous Integration
+name: Build
+
 on:
+  # Run this workflow once every 6 hours against the master branch
+  schedule:
+   - cron: "0 */6 * * *"
+
   push:
     branches:
-      - master
+      - 'master'
+
+    tags:
+      - '*'
 
   pull_request:
-  schedule:
-    # run CI every day even if no PRs/merges occur
-    - cron:  '0 6 * * *'
+    branches:
+      - '*'
+
+
+
 
 jobs:
   build_linux:
@@ -274,6 +284,32 @@ jobs:
                 -R ${anvill_version} \
                 --config "${{ steps.build_paths.outputs.SOURCE }}/anvill/packaging/main.cmake"
 
+      - name: Locate the packages
+        id: package_names
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.build }}
+        run: |
+          echo ::set-output name=DEB_PACKAGE_PATH::$(pwd)/$(*.deb)
+          echo ::set-output name=RPM_PACKAGE_PATH::$(pwd)/$(*.rpm)
+          echo ::set-output name=TGZ_PACKAGE_PATH::$(pwd)/$(*.tgz)
+
+      - name: Store the DEB package
+        uses: actions/upload-artifact@v1
+        with:
+          name: linux_deb_package
+          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
+
+      - name: Store the RPM package
+        uses: actions/upload-artifact@v1
+        with:
+          name: linux_rpm_package
+          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
+
+      - name: Store the RPM package
+        uses: actions/upload-artifact@v1
+        with:
+          name: linux_tgz_package
+          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
 
 
@@ -367,7 +403,6 @@ jobs:
             echo "WARNING: Builds/tests will work against an unknown remill version"
           fi
 
-      # TODO(alessandro): Update the macOS version to big sur once we have the packages
       - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
         shell: bash
         id: cxxcommon_installer
@@ -508,3 +543,143 @@ jobs:
           cpack -D ANVILL_DATA_PATH="${{ steps.anvill_installer.outputs.PATH }}" \
                 -R ${anvill_version} \
                 --config "${{ steps.build_paths.outputs.SOURCE }}/anvill/packaging/main.cmake"
+
+      - name: Locate the packages
+        id: package_names
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.build }}
+        run: |
+          echo ::set-output name=TGZ_PACKAGE_PATH::$(pwd)/$(*.tgz)
+
+      - name: Store the RPM package
+        uses: actions/upload-artifact@v1
+        with:
+          name: macos_tgz_package
+          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
+
+
+
+
+  release_linux:
+    # Do not run the release procedure if any of the builds has failed
+    needs: [ linux_build, macos_build ]
+    runs-on: ubuntu-20.04
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+
+    steps:
+      - name: Download the DEB package
+        uses: actions/download-artifact@v2
+        with:
+          name: linux_deb_package
+
+      - name: Download the RPM package
+        uses: actions/download-artifact@v2
+        with:
+          name: linux_rpm_package
+
+      - name: Download the TGZ package
+        uses: actions/download-artifact@v2
+        with:
+          name: linux_tgz_package
+
+      - name: Locate the packages
+        id: package_names
+        shell: bash
+        run: |
+          echo ::set-output name=DEB_PACKAGE_NAME::$(*.deb)
+          echo ::set-output name=RPM_PACKAGE_NAME::$(*.rpm)
+          echo ::set-output name=TGZ_PACKAGE_NAME::$(*.tgz)
+
+      - name: Draft the new release
+        id: create_release
+        uses: actions/create-release@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Version ${{ github.ref }}
+          draft: true
+          prerelease: true
+
+      - name: Upload the DEB package
+        uses: actions/upload-release-asset@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.package_names.outputs.DEB_PACKAGE_NAME }}
+          asset_name: ${{ steps.package_names.outputs.DEB_PACKAGE_NAME }}
+          asset_content_type: application/vnd.debian.binary-package
+
+      - name: Upload the RPM package
+        uses: actions/upload-release-asset@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.package_names.outputs.RPM_PACKAGE_NAME }}
+          asset_name: ${{ steps.package_names.outputs.RPM_PACKAGE_NAME }}
+          asset_content_type: application/x-rpm
+
+      - name: Upload the TGZ package
+        uses: actions/upload-release-asset@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_name: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_content_type: application/gzip
+
+
+
+  release_macos:
+    # Do not run the release procedure if any of the builds has failed
+    needs: [ linux_build, macos_build ]
+    runs-on: 'macos-11.0'
+    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+
+    steps:
+      - name: Download the TGZ package
+        uses: actions/download-artifact@v2
+        with:
+          name: macos_tgz_package
+
+      - name: Locate the packages
+        id: package_names
+        shell: bash
+        run: |
+          echo ::set-output name=RPM_PACKAGE_NAME::$(*.rpm)
+
+      - name: Draft the new release
+        id: create_release
+        uses: actions/create-release@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Version ${{ github.ref }}
+          draft: true
+          prerelease: true
+
+      - name: Upload the TGZ package
+        uses: actions/upload-release-asset@v1
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_name: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_content_type: application/gzip
