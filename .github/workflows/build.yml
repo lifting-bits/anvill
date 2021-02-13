@@ -1,3 +1,11 @@
+#
+# Copyright (c) 2021-present, Trail of Bits, Inc.
+# All rights reserved.
+#
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
+#
+
 name: Build
 
 on:
@@ -20,7 +28,31 @@ on:
 
 
 jobs:
+  cleanup_stale_workflows:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Clone the anvill repository
+        uses: actions/checkout@v2
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests
+
+      - name: Cancel old workflow runs
+
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+        run: |
+          python3 .github/scripts/abort_previous_workflows.py
+
+
+
+
   build_linux:
+    needs: cleanup_stale_workflows
+
     strategy:
       fail-fast: false
       matrix:
@@ -321,6 +353,8 @@ jobs:
   # It is best to try and keep the amount of macOS jobs as low
   # as possible.
   build_macos:
+    needs: cleanup_stale_workflows
+
     strategy:
       fail-fast: false
       matrix:
