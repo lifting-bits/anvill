@@ -21,7 +21,10 @@ include("cmake/utils.cmake")
 include(GNUInstallDirs)
 
 if(ANVILL_ENABLE_TESTS)
+  message(STATUS "anvill: Tests have been enabled")
   enable_testing()
+else()
+  message(STATUS "anvill: Tests are not enabled")
 endif()
 
 FindAndSelectClangCompiler()
