@@ -58,6 +58,7 @@ jobs:
           echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
           echo ::set-output name=REL_SOURCE::${rel_source_path}
           echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
+          echo ::set-output name=REL_BUILD::${rel_build_path}
           echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
           echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
           echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
@@ -268,17 +269,20 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
 
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.build }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
           cmake --build anvill_build \
                 --target test
-
+ 
       - name: Create the packages
 
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.build }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --always)
+          ( cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git fetch --tags )
+          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always)
+
+          echo "Version: ${anvill_version}"
 
           cpack -D ANVILL_DATA_PATH="${{ steps.anvill_installer.outputs.PATH }}" \
                 -R ${anvill_version} \
@@ -287,36 +291,36 @@ jobs:
       - name: Locate the packages
         id: package_names
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.build }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=DEB_PACKAGE_PATH::$(pwd)/$(*.deb)
-          echo ::set-output name=RPM_PACKAGE_PATH::$(pwd)/$(*.rpm)
-          echo ::set-output name=TGZ_PACKAGE_PATH::$(pwd)/$(*.tgz)
+          echo ::set-output name=DEB_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.deb)
+          echo ::set-output name=RPM_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)
+          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
         with:
           name: linux_deb_package
-          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
+          path: ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
       - name: Store the RPM package
         uses: actions/upload-artifact@v1
         with:
           name: linux_rpm_package
-          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
+          path: ${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
 
       - name: Store the RPM package
         uses: actions/upload-artifact@v1
         with:
           name: linux_tgz_package
-          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
+          path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
 
 
   # Note that we have a limit of 5 concurrent workers, org-wide.
   # It is best to try and keep the amount of macOS jobs as low
   # as possible.
-  build_mac:
+  build_macos:
     strategy:
       fail-fast: false
       matrix:
@@ -345,6 +349,7 @@ jobs:
           echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
           echo ::set-output name=REL_SOURCE::${rel_source_path}
           echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
+          echo ::set-output name=REL_BUILD::${rel_build_path}
           echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
           echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
           echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
@@ -536,9 +541,12 @@ jobs:
       - name: Create the packages
 
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.build }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --always)
+          ( cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git fetch --tags )
+          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always)
+
+          echo "Version: ${anvill_version}"
 
           cpack -D ANVILL_DATA_PATH="${{ steps.anvill_installer.outputs.PATH }}" \
                 -R ${anvill_version} \
@@ -547,22 +555,22 @@ jobs:
       - name: Locate the packages
         id: package_names
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.build }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=TGZ_PACKAGE_PATH::$(pwd)/$(*.tgz)
+          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
 
       - name: Store the RPM package
         uses: actions/upload-artifact@v1
         with:
           name: macos_tgz_package
-          path: ${{ steps.build_paths.outputs.build }}/${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
+          path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
 
 
 
   release_linux:
     # Do not run the release procedure if any of the builds has failed
-    needs: [ linux_build, macos_build ]
+    needs: [ build_linux, build_macos ]
     runs-on: ubuntu-20.04
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
@@ -586,9 +594,9 @@ jobs:
         id: package_names
         shell: bash
         run: |
-          echo ::set-output name=DEB_PACKAGE_NAME::$(*.deb)
-          echo ::set-output name=RPM_PACKAGE_NAME::$(*.rpm)
-          echo ::set-output name=TGZ_PACKAGE_NAME::$(*.tgz)
+          echo ::set-output name=DEB_PACKAGE_NAME::$(ls *.deb)
+          echo ::set-output name=RPM_PACKAGE_NAME::$(ls *.rpm)
+          echo ::set-output name=TGZ_PACKAGE_NAME::$(ls *.tar.gz)
 
       - name: Draft the new release
         id: create_release
@@ -643,7 +651,7 @@ jobs:
 
   release_macos:
     # Do not run the release procedure if any of the builds has failed
-    needs: [ linux_build, macos_build ]
+    needs: [ build_linux, build_macos ]
     runs-on: 'macos-11.0'
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
@@ -657,7 +665,7 @@ jobs:
         id: package_names
         shell: bash
         run: |
-          echo ::set-output name=RPM_PACKAGE_NAME::$(*.rpm)
+          echo ::set-output name=TGZ_PACKAGE_NAME::$(ls *.tar.gz)
 
       - name: Draft the new release
         id: create_release
