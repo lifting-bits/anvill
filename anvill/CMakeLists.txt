@@ -62,7 +62,7 @@ target_include_directories(anvill PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(anvill PUBLIC remill_settings remill AnvillVersion)
+target_link_libraries(anvill PUBLIC remill_settings remill anvill_version)
 
 macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
@@ -109,7 +109,7 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
   )
 
   configure_file(
-    "${PROJECT_SOURCE_DIR}/cmake/anvillConfig_vcpkg.cmake.in"
+    "${PROJECT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
     "${anvill_cmake_config}"
     @ONLY
   )

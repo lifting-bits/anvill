@@ -117,6 +117,7 @@ jobs:
           restore-keys: |
             gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}
 
+      # TODO(alessandro): Remove this step once the dependencies have been embedded in the container image
       - name: Install system dependencies
         shell: bash
         run: |
@@ -184,7 +185,7 @@ jobs:
           mv "${{ steps.build_paths.outputs.INSTALL }}/${folder_name}" \
              "${destination_path}"
 
-          echo "${destination_path}/installed/x64-linux/tools/llvm-11" >> $GITHUB_PATH
+          echo "${destination_path}/installed/x64-linux-rel/tools/llvm-${{matrix.llvm}}" >> $GITHUB_PATH
 
           echo ::set-output name=PATH::${destination_path}
 
@@ -262,15 +263,6 @@ jobs:
           cmake --build anvill_build \
                 -j ${{ steps.build_job_count.VALUE }}
 
-      - name: Test anvill-decompile-json
-        shell: bash
-        working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
-        run: |
-          ./tools/decompile-json/anvill-decompile-json-${{ matrix.llvm }}.0 \
-            -spec ${{ steps.build_paths.outputs.SOURCE }}/anvill/tools/decompile-json/tests/examples/ret0.json \
-            -bc_out ./ret0.bc \
-            -ir_out ret0.ir
-
       - name: Install anvill
         id: anvill_installer
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -335,20 +327,21 @@ jobs:
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
         with:
-          name: linux_deb_package
+          name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_deb_package
           path: ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
       - name: Store the RPM package
         uses: actions/upload-artifact@v1
         with:
-          name: linux_rpm_package
+          name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_rpm_package
           path: ${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
 
-      - name: Store the RPM package
+      - name: Store the TGZ package
         uses: actions/upload-artifact@v1
         with:
-          name: linux_tgz_package
+          name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
+
 
 
 
@@ -452,7 +445,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_macos-10.15_llvm-${{ matrix.llvm }}_xcode-12.1.0_amd64"
+          folder_name="vcpkg_macos-11.0_llvm-${{ matrix.llvm }}_xcode-12.2.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -568,15 +561,6 @@ jobs:
 
           echo ::set-output name=PATH::${DESTDIR}
 
-      - name: Test anvill-decompile-json
-        shell: bash
-        working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
-        run: |
-          ./tools/decompile-json/anvill-decompile-json-${{ matrix.llvm }}.0 \
-            -spec ${{ steps.build_paths.outputs.SOURCE }}/anvill/tools/decompile-json/tests/examples/ret0.json \
-            -bc_out ./ret0.bc \
-            -ir_out ret0.ir
-
       - name: Create the packages
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -599,10 +583,10 @@ jobs:
         run: |
           echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
 
-      - name: Store the RPM package
+      - name: Store the TGZ package
         uses: actions/upload-artifact@v1
         with:
-          name: macos_tgz_package
+          name: macos-11.0_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
 
@@ -615,20 +599,15 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
     steps:
-      - name: Download the DEB package
+      - name: Download all artifacts
         uses: actions/download-artifact@v2
-        with:
-          name: linux_deb_package
 
-      - name: Download the RPM package
-        uses: actions/download-artifact@v2
-        with:
-          name: linux_rpm_package
-
-      - name: Download the TGZ package
-        uses: actions/download-artifact@v2
-        with:
-          name: linux_tgz_package
+      - name: Extract the artifacts
+        shell: bash
+        run: |
+          ls *.zip | while read archive_file ; do
+            unzip "${archive_file}"
+          done
 
       - name: Locate the packages
         id: package_names
@@ -689,6 +668,7 @@ jobs:
 
 
 
+
   release_macos:
     # Do not run the release procedure if any of the builds has failed
     needs: [ build_linux, build_macos ]
@@ -696,10 +676,8 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
     steps:
-      - name: Download the TGZ package
+      - name: Download all artifacts
         uses: actions/download-artifact@v2
-        with:
-          name: macos_tgz_package
 
       - name: Locate the packages
         id: package_names

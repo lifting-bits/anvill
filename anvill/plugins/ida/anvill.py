@@ -1,4 +1,10 @@
-# Copyright (c) 2021-present Trail of Bits, Inc.
+#
+# Copyright (c) 2021-present, Trail of Bits, Inc.
+# All rights reserved.
+#
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
+#
 
 import ida_funcs
 import ida_kernwin
@@ -21,7 +27,7 @@ class generate_anvill_spec_t(ida_kernwin.action_handler_t):
       screen_cursor = ida_kernwin.get_screen_ea()
       function_name = ida_funcs.get_func_name(screen_cursor)
       if function_name is None:
-        print("ANVILL: The cursor is not located inside a function")
+        print("anvill: The cursor is not located inside a function")
         return 1
 
       output_file_name_hint = function_name + ".json"
@@ -30,7 +36,7 @@ class generate_anvill_spec_t(ida_kernwin.action_handler_t):
         p.add_function_definition(screen_cursor)
 
       except:
-        print("ANVILL: Failed to process the function at address {0:x}".format(screen_cursor))
+        print("anvill: Failed to process the function at address {0:x}".format(screen_cursor))
         return 1
 
     else:
@@ -40,7 +46,7 @@ class generate_anvill_spec_t(ida_kernwin.action_handler_t):
           p.add_function_definition(function_address)
 
         except:
-          print("ANVILL: Failed to process the function at address {0:x}".format(function_address))
+          print("anvill: Failed to process the function at address {0:x}".format(function_address))
 
       output_file_name_hint = "program.json"
 
@@ -50,7 +56,7 @@ class generate_anvill_spec_t(ida_kernwin.action_handler_t):
 
     output = json.dumps(p.proto(), sort_keys=False, indent=2)
 
-    print("ANVILL: Saving the spec file to {}".format(output_path))
+    print("anvill: Saving the spec file to {}".format(output_path))
     with open(output_path, "w") as f:
       f.write(output)
 
@@ -65,7 +71,7 @@ ACTION_NAME = "generate-anvill-spec-file"
 ida_kernwin.register_action(
     ida_kernwin.action_desc_t(
         ACTION_NAME,
-        "Generate ANVILL spec file",
+        "Generate anvill spec file",
         generate_anvill_spec_t(),
         "Ctrl+H"))
 

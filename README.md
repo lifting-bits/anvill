@@ -101,7 +101,7 @@ python3 -m anvill --bin_in my_binary --spec_out spec.json
 With the IDA plugin:
 1. Open the binary inside IDA
 2. Select **Run script** in the **File** menu
-3. Open the `examples/ida_plugin_action.py`
+3. Open the `anvill/plugins/ida/anvill.py`
 4. In the disasm window, place the cursor inside a function
 5. Right click and select **Generate ANVILL spec file**
 

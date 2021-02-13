@@ -1,5 +1,6 @@
-#!/usr/bin/env python
-# Copyright (c) 2019 Trail of Bits, Inc.
+#!/usr/bin/env python3
+
+# Copyright (c) 2021-present Trail of Bits, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as

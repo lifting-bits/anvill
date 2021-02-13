@@ -17,24 +17,26 @@ function(generateAnvillVersionLibrary)
   )
 
   # Create a library out of the compiled post-configure file.
-  add_library(AnvillVersion STATIC
+  add_library(anvill_version STATIC
     ${POST_CONFIGURE_FILE}
     ${Version_PUBLIC_H}
   )
 
   # Needed for compilation settings
-  target_link_libraries(AnvillVersion PRIVATE remill_settings)
+  target_link_libraries(anvill_version PRIVATE
+    remill_settings
+  )
 
-  target_include_directories(AnvillVersion PUBLIC
+  target_include_directories(anvill_version PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
   )
 
-  add_dependencies(AnvillVersion check_git_anvill)
+  add_dependencies(anvill_version check_git_anvill)
 
   if(ANVILL_ENABLE_INSTALL_TARGET)
     install(
-      TARGETS AnvillVersion
+      TARGETS anvill_version
       EXPORT anvillTargets
     )
   endif()
