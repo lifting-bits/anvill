@@ -132,12 +132,14 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+          fetch-depth: 0
 
       - name: Clone the remill repository
         uses: actions/checkout@v2
         with:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
+          fetch-depth: 0
 
       - name: Select the remill version
         run: |
@@ -307,12 +309,13 @@ jobs:
                 --target test
  
       - name: Create the packages
-
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          ( cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git fetch --tags )
-          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always)
+          anvill_tag=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always --abbrev=0)
+          anvill_commit=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git rev-parse HEAD | cut -c1-7)
+
+          anvill_version="${anvill_tag:1}.${anvill_commit}"
 
           echo "Version: ${anvill_version}"
 
@@ -420,12 +423,14 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+          fetch-depth: 0
 
       - name: Clone the remill repository
         uses: actions/checkout@v2
         with:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
+          fetch-depth: 0
 
       - name: Select the remill version
         run: |
@@ -573,12 +578,13 @@ jobs:
             -ir_out ret0.ir
 
       - name: Create the packages
-
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          ( cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git fetch --tags )
-          anvill_version=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always)
+          anvill_tag=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git describe --tags --always --abbrev=0)
+          anvill_commit=$(cd "${{ steps.build_paths.outputs.SOURCE }}/anvill" && git rev-parse HEAD | cut -c1-7)
+
+          anvill_version="${anvill_tag:1}.${anvill_commit}"
 
           echo "Version: ${anvill_version}"
 
