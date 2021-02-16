@@ -24,6 +24,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
+
+#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include <algorithm>
@@ -510,8 +512,10 @@ namespace {
 static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
                                        const remill::Arch *arch,
                                        const Program &program) {
-  llvm::APInt result(size, 0);
-  for (auto i = 0u; i < (size / 8); ++i) {
+
+  // create an instance of precision integer of size*8 bits
+  llvm::APInt result(size * 8, 0);
+  for (auto i = 0u; i < size; ++i) {
     auto byte_val = program.FindByte(addr + i).Value();
     if (remill::IsError(byte_val)) {
       LOG(ERROR) << "Unable to read value of byte at " << std::hex << addr + i
@@ -524,8 +528,8 @@ static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
   }
 
   // NOTE(artem): LLVM's APInt does not handle byteSwap()
-  // for size 8, leading to a segfault. Guard against it here.
-  if (arch->MemoryAccessIsLittleEndian() && size > 8) {
+  // for size 1, leading to a segfault. Guard against it here.
+  if (arch->MemoryAccessIsLittleEndian() && size > 1) {
     result = result.byteSwap();
   }
 
@@ -540,60 +544,73 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
   llvm::Constant *result{nullptr};
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
-      const auto size = dl.getTypeSizeInBits(type);
+      const auto size = dl.getTypeAllocSize(type);
       auto val = ReadValueFromMemory(addr, size, arch, program);
       result = llvm::ConstantInt::get(type, val);
     } break;
 
     case llvm::Type::PointerTyID: {
+      const auto pointer_type = llvm::dyn_cast<llvm::PointerType>(type);
+      const auto size = dl.getTypeAllocSize(type);
+      auto val = ReadValueFromMemory(addr, size, arch, program);
+      result = llvm::Constant::getIntegerValue(pointer_type, val);
     } break;
 
     case llvm::Type::StructTyID: {
+
       // Take apart the structure type, recursing into each element
       // so that we can create a constant structure
-      auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
+      const auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
+      const auto layout = dl.getStructLayout(struct_type);
+      const auto num_elms = struct_type->getStructNumElements();
+      std::vector<llvm::Constant *> initializer_list;
+      initializer_list.reserve(num_elms);
 
-      auto num_elms = struct_type->getNumElements();
-      auto elm_offset = 0;
-
-      std::vector<llvm::Constant *> const_list;
-
-      for (std::uint64_t i = 0U; i < num_elms; ++i) {
-        auto elm_type = struct_type->getElementType(i);
-        auto elm_size = dl.getTypeSizeInBits(elm_type);
-
-        auto const_elm =
-            CreateConstFromMemory(addr + elm_offset, elm_type, arch,
-                                  program, module);
-
-        const_list.push_back(const_elm);
-        elm_offset += elm_size / 8;
+      for (auto i = 0u; i < num_elms; ++i) {
+        const auto elm_type = struct_type->getStructElementType(i);
+        const auto offset = layout->getElementOffset(i);
+        auto const_elm = CreateConstFromMemory(addr + offset, elm_type, arch,
+                                               program, module);
+        initializer_list.push_back(const_elm);
       }
-
-      result = llvm::ConstantStruct::get(struct_type,
-                                        llvm::ArrayRef(const_list));
+      result = llvm::ConstantStruct::get(struct_type, initializer_list);
     } break;
 
     case llvm::Type::ArrayTyID: {
+
+      // Traverse through all the elements of array and create the initializer
+      const auto array_type = llvm::dyn_cast<llvm::ArrayType>(type);
       const auto elm_type = type->getArrayElementType();
-      const auto elm_size = dl.getTypeSizeInBits(elm_type);
+      const auto elm_size = dl.getTypeAllocSize(elm_type);
       const auto num_elms = type->getArrayNumElements();
-      std::string bytes(dl.getTypeSizeInBits(type) / 8, '\0');
+      std::vector<llvm::Constant *> initializer_list;
+      initializer_list.reserve(num_elms);
+
       for (auto i = 0u; i < num_elms; ++i) {
-        const auto elm_offset = i * (elm_size / 8);
-        const auto src =
-            ReadValueFromMemory(addr + elm_offset, elm_size, arch, program)
-                .getRawData();
-        const auto dst = bytes.data() + elm_offset;
-        std::memcpy(dst, src, elm_size / 8);
+        const auto elm_offset = i * elm_size;
+        auto const_elm = CreateConstFromMemory(addr + elm_offset, elm_type,
+                                               arch, program, module);
+        initializer_list.push_back(const_elm);
       }
-      if (elm_size == 8) {
-        result = llvm::ConstantDataArray::getString(module.getContext(), bytes,
-                                                    /*AddNull=*/false);
-      } else {
-        result = llvm::ConstantDataArray::getRaw(bytes, num_elms, elm_type);
-      }
+      result = llvm::ConstantArray::get(array_type, initializer_list);
     } break;
+
+    case llvm::GetFixedVectorTypeId(): {
+      const auto vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type);
+      const auto num_elms = vec_type->getNumElements();
+      const auto elm_type = vec_type->getElementType();
+      const auto elm_size = dl.getTypeAllocSize(elm_type);
+      std::vector<llvm::Constant *> initializer_list;
+      initializer_list.reserve(num_elms);
+
+      for (auto i = 0u; i < num_elms; ++i) {
+        const auto elm_offset = i * elm_size;
+        auto const_elm = CreateConstFromMemory(addr + elm_offset, elm_type,
+                                               arch, program, module);
+        initializer_list.push_back(const_elm);
+      }
+      result = llvm::ConstantVector::get(initializer_list);
+    }break;
 
     default:
       LOG(FATAL) << "Unhandled LLVM Type: " << remill::LLVMThingToString(type);
