@@ -606,25 +606,28 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
 
   // Lift functions.
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    // Initialize function entry
-    const auto name{CreateFunctionName(decl->address)};
-    FunctionEntry entry{nullptr, nullptr, nullptr};
-    entry.lifted_to_native =
-        remill::DeclareLiftedFunction(&module, name + ".lifted_to_native");
-    entry.native_to_lifted = decl->DeclareInModule(name, module, true);
+    // Initialize function entry. This will lift machine code
+    // into `entry.lifted` if instruction bytes for are
+    // available and declare `entry.lifted_to_native` and
+    // `entry.lifted_to_native` wrapper functions that
+    // are needed for further lifting to native functions.
+    const auto entry{lifter.LiftFunction(*decl)};
 
-    // Check if we have mapped bytes
-    if (auto start{program.FindByte(decl->address)};
-        start && start.IsExecutable()) {
-      entry = lifter.LiftFunction(*decl);
+    // We have `entry.lifted` available. `entry.lifted`
+    // will be inlined into `entry.native_to_lifted`.
+    if (!entry.lifted->isDeclaration()) {
       DefineNativeToLiftedWrapper(arch, *decl, entry);
-    } else {
-      entry.native_to_lifted->removeFnAttr(llvm::Attribute::InlineHint);
-      entry.native_to_lifted->removeFnAttr(llvm::Attribute::AlwaysInline);
-      entry.native_to_lifted->addFnAttr(llvm::Attribute::NoInline);
     }
+    // Wrap native functions in a function that lifted
+    // functions can call. This will result in the
+    // lifted functions calling the native ones.
     DefineLiftedToNativeWrapper(*decl, entry);
+
+    // Optimize and inline. After this we should end up
+    // with only native functions.
     OptimizeFunction(entry.native_to_lifted);
+
+    // The ritual is done.
     return true;
   });
 

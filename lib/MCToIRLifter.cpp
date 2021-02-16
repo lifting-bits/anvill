@@ -455,6 +455,11 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   if (!entry.native_to_lifted->isDeclaration()) {
     return entry;
   }
+  // Check if there's any instruction bytes to lift
+  if (auto start{program.FindByte(decl.address)};
+      !start || !start.IsExecutable()) {
+    return entry;
+  }
 
   work_list.clear();
   addr_to_block.clear();
