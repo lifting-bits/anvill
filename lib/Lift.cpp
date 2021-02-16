@@ -617,23 +617,44 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
 
   // Lift global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    const auto addr = decl->address;
-    const auto name = anvill::CreateVariableName(addr);
-    const auto gvar = decl->DeclareInModule(name, module);
+    const auto addr{decl->address};
+    const auto name{anvill::CreateVariableName(addr)};
+    const auto gvar{decl->DeclareInModule(name, module)};
 
+    // Check if we have mapped bytes
+    if (!program.FindByte(addr)) {
+      return true;
+    }
     // Set initializer
-    auto init = CreateConstFromMemory(addr, decl->type, arch, program, module);
+    auto init{CreateConstFromMemory(addr, decl->type, arch, program, module)};
     gvar->setInitializer(init);
-
     return true;
   });
 
   // Lift functions.
   program.ForEachFunction([&](const FunctionDecl *decl) {
-    const auto entry = lifter.LiftFunction(*decl);
-    DefineNativeToLiftedWrapper(arch, *decl, entry);
+    // Initialize function entry. This will lift machine code
+    // into `entry.lifted` if instruction bytes for are
+    // available and declare `entry.lifted_to_native` and
+    // `entry.lifted_to_native` wrapper functions that
+    // are needed for further lifting to native functions.
+    const auto entry{lifter.LiftFunction(*decl)};
+
+    // We have `entry.lifted` available. `entry.lifted`
+    // will be inlined into `entry.native_to_lifted`.
+    if (!entry.lifted->isDeclaration()) {
+      DefineNativeToLiftedWrapper(arch, *decl, entry);
+    }
+    // Wrap native functions in a function that lifted
+    // functions can call. This will result in the
+    // lifted functions calling the native ones.
     DefineLiftedToNativeWrapper(*decl, entry);
+
+    // Optimize and inline. After this we should end up
+    // with only native functions.
     OptimizeFunction(entry.native_to_lifted);
+
+    // The ritual is done.
     return true;
   });
 
