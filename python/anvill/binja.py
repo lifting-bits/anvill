@@ -229,8 +229,10 @@ def _convert_named_type_reference(
 
 def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
     """Convert an bn `Type` instance into a `Type` instance."""
-    if _cache_key(tinfo) in cache:
-        return cache[_cache_key(tinfo)]
+    
+    cache_key = _cache_key(tinfo)
+    if cache_key in cache:
+        return cache[cache_key]
 
     # Void type.
     if tinfo.type_class == bn.TypeClass.VoidTypeClass:
@@ -239,13 +241,13 @@ def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
     # Pointer, array, or function.
     elif tinfo.type_class == bn.TypeClass.PointerTypeClass:
         ret = PointerType()
-        cache[_cache_key(tinfo)] = ret
+        cache[cache_key] = ret
         ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
         return ret
 
     elif tinfo.type_class == bn.TypeClass.FunctionTypeClass:
         ret = FunctionType()
-        cache[_cache_key(tinfo)] = ret
+        cache[cache_key] = ret
         ret.set_return_type(_convert_bn_type(bv, tinfo.return_value, cache))
 
         for var in tinfo.parameters:
@@ -258,14 +260,14 @@ def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
 
     elif tinfo.type_class == bn.TypeClass.ArrayTypeClass:
         ret = ArrayType()
-        cache[_cache_key(tinfo)] = ret
+        cache[cache_key] = ret
         ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
         ret.set_num_elements(tinfo.count)
         return ret
 
     elif tinfo.type_class == bn.TypeClass.StructureTypeClass:
         ret = StructureType()
-        cache[_cache_key(tinfo)] = ret
+        cache[cache_key] = ret
 
         for elem in tinfo.structure.members:
             ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
@@ -276,7 +278,7 @@ def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
         # The underlying type of enum will be an Interger of size
         # tinfo.width
         ret = EnumType()
-        cache[_cache_key(tinfo)] = ret
+        cache[cache_key] = ret
         ret.set_underlying_type(IntegerType(tinfo.width, False))
         return ret
 

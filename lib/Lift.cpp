@@ -564,7 +564,7 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
       std::vector<llvm::Constant *> initializer_list;
       initializer_list.reserve(num_elms);
 
-      for (auto i = 0U; i < num_elms; ++i) {
+      for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_type = struct_type->getStructElementType(i);
         const auto offset = layout->getElementOffset(i);
         auto const_elm = CreateConstFromMemory(addr + offset, elm_type, arch,
@@ -592,6 +592,23 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
       }
       result = llvm::ConstantArray::get(array_type, initializer_list);
     } break;
+
+    case llvm::Type::FixedVectorTyID: {
+      const auto vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type);
+      const auto num_elms = vec_type->getNumElements();
+      const auto elm_type = vec_type->getElementType();
+      const auto elm_size = dl.getTypeAllocSize(elm_type);
+      std::vector<llvm::Constant *> initializer_list;
+      initializer_list.reserve(num_elms);
+
+      for (auto i = 0u; i < num_elms; ++i) {
+        const auto elm_offset = i * elm_size;
+        auto const_elm = CreateConstFromMemory(addr + elm_offset, elm_type,
+                                               arch, program, module);
+        initializer_list.push_back(const_elm);
+      }
+      result = llvm::ConstantVector::get(initializer_list);
+    }break;
 
     default:
       LOG(FATAL) << "Unhandled LLVM Type: " << remill::LLVMThingToString(type);
