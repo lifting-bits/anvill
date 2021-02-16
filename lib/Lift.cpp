@@ -24,6 +24,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
+
+#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include <algorithm>
@@ -593,7 +595,7 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
       result = llvm::ConstantArray::get(array_type, initializer_list);
     } break;
 
-    case llvm::Type::FixedVectorTyID: {
+    case llvm::GetFixedVectorTypeId(): {
       const auto vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type);
       const auto num_elms = vec_type->getNumElements();
       const auto elm_type = vec_type->getElementType();
