@@ -602,21 +602,6 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v2
 
-      - name: Extract the artifacts
-        shell: bash
-        run: |
-          ls *.zip | while read archive_file ; do
-            unzip "${archive_file}"
-          done
-
-      - name: Locate the packages
-        id: package_names
-        shell: bash
-        run: |
-          echo ::set-output name=DEB_PACKAGE_NAME::$(ls *.deb)
-          echo ::set-output name=RPM_PACKAGE_NAME::$(ls *.rpm)
-          echo ::set-output name=TGZ_PACKAGE_NAME::$(ls *.tar.gz)
-
       - name: Draft the new release
         id: create_release
         uses: actions/create-release@v1
@@ -630,7 +615,15 @@ jobs:
           draft: true
           prerelease: true
 
-      - name: Upload the DEB package
+      - name: Group the packages by platform
+        run: |
+          zip -r9 ubuntu-18.04_packages.zip \
+                  ubuntu-18.04*
+
+          zip -r9 ubuntu-20.04_packages.zip \
+                  ubuntu-20.04*
+
+      - name: Upload the Ubuntu 18.04 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -638,11 +631,11 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.package_names.outputs.DEB_PACKAGE_NAME }}
-          asset_name: ${{ steps.package_names.outputs.DEB_PACKAGE_NAME }}
-          asset_content_type: application/vnd.debian.binary-package
+          asset_path: ubuntu-18.04_packages.zip
+          asset_name: ubuntu-18.04_packages
+          asset_content_type: application/gzip
 
-      - name: Upload the RPM package
+      - name: Upload the Ubuntu 20.04 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -650,20 +643,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.package_names.outputs.RPM_PACKAGE_NAME }}
-          asset_name: ${{ steps.package_names.outputs.RPM_PACKAGE_NAME }}
-          asset_content_type: application/x-rpm
-
-      - name: Upload the TGZ package
-        uses: actions/upload-release-asset@v1
-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
-          asset_name: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_path: ubuntu-20.04_packages.zip
+          asset_name: ubuntu-20.04_packages
           asset_content_type: application/gzip
 
 
@@ -679,12 +660,6 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v2
 
-      - name: Locate the packages
-        id: package_names
-        shell: bash
-        run: |
-          echo ::set-output name=TGZ_PACKAGE_NAME::$(ls *.tar.gz)
-
       - name: Draft the new release
         id: create_release
         uses: actions/create-release@v1
@@ -698,7 +673,12 @@ jobs:
           draft: true
           prerelease: true
 
-      - name: Upload the TGZ package
+      - name: Group the packages by platform
+        run: |
+          zip -r9 macos-11.0_packages.zip \
+                  macos-11.0*
+
+      - name: Upload the macOS 11.0 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -706,6 +686,6 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
-          asset_name: ${{ steps.package_names.outputs.TGZ_PACKAGE_NAME }}
+          asset_path: macos-11.0_packages.zip
+          asset_name: macos-11.0_packages
           asset_content_type: application/gzip
