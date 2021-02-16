@@ -510,6 +510,7 @@ namespace {
 static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
                                        const remill::Arch *arch,
                                        const Program &program) {
+
   // create an instance of precision integer of size*8 bits
   llvm::APInt result(size * 8, 0);
   for (auto i = 0u; i < size; ++i) {
@@ -525,7 +526,7 @@ static llvm::APInt ReadValueFromMemory(const uint64_t addr, const uint64_t size,
   }
 
   // NOTE(artem): LLVM's APInt does not handle byteSwap()
-  // for size 8, leading to a segfault. Guard against it here.
+  // for size 1, leading to a segfault. Guard against it here.
   if (arch->MemoryAccessIsLittleEndian() && size > 1) {
     result = result.byteSwap();
   }
@@ -563,15 +564,14 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
       std::vector<llvm::Constant *> initializer_list;
       initializer_list.reserve(num_elms);
 
-      for (std::uint64_t i = 0U; i < num_elms; ++i) {
+      for (auto i = 0U; i < num_elms; ++i) {
         const auto elm_type = struct_type->getStructElementType(i);
         const auto offset = layout->getElementOffset(i);
-        auto const_elm = CreateConstFromMemory(addr + offset, elm_type,
-                                               arch, program, module);
+        auto const_elm = CreateConstFromMemory(addr + offset, elm_type, arch,
+                                               program, module);
         initializer_list.push_back(const_elm);
       }
-      result = llvm::ConstantStruct::get(struct_type,
-                                         llvm::ArrayRef(initializer_list));
+      result = llvm::ConstantStruct::get(struct_type, initializer_list);
     } break;
 
     case llvm::Type::ArrayTyID: {
