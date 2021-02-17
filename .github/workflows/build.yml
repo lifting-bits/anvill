@@ -355,7 +355,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ 'macos-11.0' ]
-        llvm: [ '9', '10', '11' ]
+        llvm: [ '11' ]
         cxxcommon_version: [ 'v0.1.1' ]
 
     runs-on: ${{ matrix.os }}

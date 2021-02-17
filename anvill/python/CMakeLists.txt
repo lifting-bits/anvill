@@ -8,7 +8,7 @@
 
 set(setup_file_path "${PROJECT_SOURCE_DIR}/setup.py")
 
-if(ANVILL_ENABLE_INSTALL_TARGET)
+if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
   install(
     FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
