@@ -1,3 +1,11 @@
+#
+# Copyright (c) 2021-present, Trail of Bits, Inc.
+# All rights reserved.
+#
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
+#
+
 cmake_minimum_required(VERSION 3.2)
 
 function(FindAndSelectClangCompiler)
@@ -56,4 +64,18 @@ function(FindAndSelectClangCompiler)
       set(CMAKE_LLVM_LINK "llvm-link${executable_extension}" PARENT_SCOPE)
     endif()
   endif()
+endfunction()
+
+function(appendRemillVersionToTargetOutputName target_name)
+  if(NOT DEFINED REMILL_LLVM_VERSION)
+    message(FATAL_ERROR "The REMILL_LLVM_VERSION variable is not set")
+  endif()
+
+  if(NOT TARGET "${target_name}")
+    message(FATAL_ERROR "The following target does not exists: ${target_name}")
+  endif()
+
+  set_target_properties("${target_name}" PROPERTIES
+    OUTPUT_NAME "${target_name}-${REMILL_LLVM_VERSION}"
+  )
 endfunction()

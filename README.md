@@ -43,6 +43,8 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 First, update aptitude and get install the baseline dependencies.
 
 ```shell
+dpkg --add-architecture i386
+
 sudo apt-get update
 sudo apt-get upgrade
 
@@ -57,7 +59,10 @@ sudo apt-get install \
      lsb-release \
      zlib1g-dev \
      ccache \
-     cmake
+     cmake \
+     libc6-dev:i386 \
+     'libstdc++-*-dev:i386' \
+     g++-multilib
 
 # Ubuntu 14.04, 16.04
 sudo apt-get install realpath
@@ -96,7 +101,7 @@ python3 -m anvill --bin_in my_binary --spec_out spec.json
 With the IDA plugin:
 1. Open the binary inside IDA
 2. Select **Run script** in the **File** menu
-3. Open the `examples/ida_plugin_action.py`
+3. Open the `anvill/plugins/ida/anvill.py`
 4. In the disasm window, place the cursor inside a function
 5. Right click and select **Generate ANVILL spec file**
 

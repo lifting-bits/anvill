@@ -36,9 +36,9 @@
 anvill.egg-info/*
 dist/*
 build/*
-python/anvill.egg-info/*
-python/build/*
-python/dist/*
+anvill/python/anvill.egg-info/*
+anvill/python/build/*
+anvill/python/dist/*
 
 #ignore vscode dir
 .vscode
