@@ -43,15 +43,15 @@ class MemRefVisitor : public llvm::InstVisitor<MemRefVisitor> {
 MemRefVisitor::MemRefVisitor(const Program &p) : program(p) {}
 
 void MemRefVisitor::visitInstruction(llvm::Instruction &inst) {
-  for (auto op : inst.operand_values()) {
-    if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(op)) {
+  for (auto &op : inst.operands()) {
 
-      // Replace the constant expression with an equivalent instruction
-      auto ce_inst{ce->getAsInstruction()};
+    // Replace the constant expression with an equivalent instruction
+    //
+    // TODO(marek): Why are we doing this?
+    if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(op.get())) {
+      auto ce_inst = ce->getAsInstruction();
       ce_inst->insertBefore(&inst);
-      ce->replaceAllUsesWith(ce_inst);
-
-      // Visit
+      op.set(ce_inst);
       visit(ce_inst);
     }
   }

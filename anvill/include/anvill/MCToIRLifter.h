@@ -80,6 +80,9 @@ class MCToIRLifter {
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
 
+  llvm::Function *log_printf{nullptr};
+  llvm::Value *log_format_str{nullptr};
+
   // A work list of instructions to lift. The first entry in the work list
   // is the instruction PC; the second entry is the PC of how we got to even
   // ask about the first entry (provenance).
@@ -141,6 +144,8 @@ class MCToIRLifter {
   void VisitDelayedInstruction(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block, bool on_taken_path);
+
+  void InstrumentInstruction(llvm::BasicBlock *block);
 
   void VisitInstruction(
       remill::Instruction &inst, llvm::BasicBlock *block,

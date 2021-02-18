@@ -12,11 +12,11 @@ unsigned char atoi(const char * s) {
  return s[0] - '0';
 }
 int main(int argc, const char *argv[]) {	
-  unsigned char buf[3] = {9, 10, 11};
+  unsigned char buf[3] = {1, 0, 11};
   int buff_size = sizeof(buf)/sizeof(buf[0]);
   for(int i = 1; i < argc && i < buff_size; i++) {
     buf[i - 1] = (unsigned char)atoi(argv[i]);
   }
   xor_swap(buf);
-  return 0;
+  return buf[0];
 }
