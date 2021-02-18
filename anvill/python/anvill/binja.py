@@ -556,7 +556,9 @@ class BNFunction(Function):
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # Check if the register is not temp. Need to check if the temp register is
             # associated to pointer?? Look into MLIL to get more information
-            if not bn.LLIL_REG_IS_TEMP(item_or_list.index):
+            if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and (
+                item_or_list.name not in ["x87control", "x87status"]
+            ):
                 # For every register, is it a pointer?
                 possible_pointer: bn.function.RegisterValue = (
                     initial_inst.get_reg_value(item_or_list.name)
@@ -654,6 +656,14 @@ class BNProgram(Program):
 
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
+
+        # `bn_var` can be None if the data variable is not created
+        # for it. raise an exception with the address information
+        if bn_var is None:
+            raise InvalidVariableException(
+                "Missing BN data variable at {:x}".format(address)
+            )
+
         var_type = self.type_cache.get(bn_var.type)
 
         # fall back onto an array of bytes type for variables
@@ -698,6 +708,13 @@ class BNProgram(Program):
                     reg_name = calling_conv.next_int_arg_reg
                 elif bn.TypeClass.FloatTypeClass == var_type.type_class:
                     reg_name = calling_conv.next_float_arg_reg
+                elif bn.TypeClass.NamedTypeReferenceClass == var_type.type_class:
+                    # The function paramater could be named alias of a float type.
+                    # TODO(akshayk) Should check the underlying types as well for aliases??
+                    if isinstance(arg_type, FloatingPointType):
+                        reg_name = calling_conv.next_float_arg_reg
+                    else:
+                        reg_name = calling_conv.next_int_arg_reg
                 elif bn.TypeClass.VoidTypeClass == var_type.type_class:
                     reg_name = "invalid void"
                 else:
