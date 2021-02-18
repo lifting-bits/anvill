@@ -173,170 +173,6 @@ def _convert_bn_llil_type(
         ret = IntegerType(reg_size_bytes, True)
         return ret
 
-def _cache_key(tinfo: bn.types.Type) -> str:
-    """ Convert bn Type instance to cache key"""
-    return str(tinfo)
-
-def _convert_named_type_reference(
-    bv, tinfo: bn.types.Type, cache) -> Type:
-    """ Convert named type references into a `Type` instance"""
-    if tinfo.type_class != bn.TypeClass.NamedTypeReferenceClass:
-        return
-
-    named_tinfo = tinfo.named_type_reference
-    if (named_tinfo.type_class
-        == bn.NamedTypeReferenceClass.StructNamedTypeClass):
-        # Get the bn struct type and recursively recover the elements
-        ref_type = bv.get_type_by_name(named_tinfo.name);
-        struct_type =  ref_type.structure
-        ret = StructureType()
-        cache[_cache_key(struct_type)] = ret
-        for elem in struct_type.members:
-            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
-        return ret
-
-    elif (named_tinfo.type_class
-        == bn.NamedTypeReferenceClass.UnionNamedTypeClass):
-        # Get the union type and recover the member elements
-        ref_type = bv.get_type_by_name(named_tinfo.name);
-        struct_type =  ref_type.structure
-        ret = UnionType()
-        cache[_cache_key(struct_type)] = ret
-        for elem in struct_type.union.members:
-            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
-        return ret
-
-    elif (named_tinfo.type_class
-        == bn.NamedTypeReferenceClass.TypedefNamedTypeClass):
-        ref_type = bv.get_type_by_name(named_tinfo.name);
-        ret = TypedefType()
-        cache[_cache_key(ref_type)] = ret
-        ret.set_underlying_type(_convert_bn_type(bv, ref_type, cache))
-        return ret
-
-    elif (named_tinfo.type_class
-        == bn.NamedTypeReferenceClass.EnumNamedTypeClass):
-        # Set the underlying type int of size width
-        ref_type = bv.get_type_by_name(named_tinfo.name);
-        ret = EnumType()
-        cache[_cache_key(ref_type)] = ret
-        ret.set_underlying_type(IntegerType(ref_type.width, False))
-        return ret
-
-    else:
-        DEBUG("WARNING: Unknown named type {} not handled".format(named_tinfo))
-
-
-def _convert_bn_type(bv, tinfo: bn.types.Type, cache):
-    """Convert an bn `Type` instance into a `Type` instance."""
-    
-    cache_key = _cache_key(tinfo)
-    if cache_key in cache:
-        return cache[cache_key]
-
-    # Void type.
-    if tinfo.type_class == bn.TypeClass.VoidTypeClass:
-        return VoidType()
-
-    # Pointer, array, or function.
-    elif tinfo.type_class == bn.TypeClass.PointerTypeClass:
-        ret = PointerType()
-        cache[cache_key] = ret
-        ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
-        return ret
-
-    elif tinfo.type_class == bn.TypeClass.FunctionTypeClass:
-        ret = FunctionType()
-        cache[cache_key] = ret
-        ret.set_return_type(_convert_bn_type(bv, tinfo.return_value, cache))
-
-        for var in tinfo.parameters:
-            ret.add_parameter_type(_convert_bn_type(bv, var.type, cache))
-
-        if tinfo.has_variable_arguments:
-            ret.set_is_variadic()
-
-        return ret
-
-    elif tinfo.type_class == bn.TypeClass.ArrayTypeClass:
-        ret = ArrayType()
-        cache[cache_key] = ret
-        ret.set_element_type(_convert_bn_type(bv, tinfo.element_type, cache))
-        ret.set_num_elements(tinfo.count)
-        return ret
-
-    elif tinfo.type_class == bn.TypeClass.StructureTypeClass:
-        ret = StructureType()
-        cache[cache_key] = ret
-
-        for elem in tinfo.structure.members:
-            ret.add_element_type(_convert_bn_type(bv, elem.type, cache))
-
-        return ret
-
-    elif tinfo.type_class == bn.TypeClass.EnumerationTypeClass:
-        # The underlying type of enum will be an Interger of size
-        # tinfo.width
-        ret = EnumType()
-        cache[cache_key] = ret
-        ret.set_underlying_type(IntegerType(tinfo.width, False))
-        return ret
-
-    elif tinfo.type_class == bn.TypeClass.BoolTypeClass:
-        return BoolType()
-
-    # long double ty may get represented as int80_t. If the size
-    # of the IntegerTypeClass is [10, 12], create a float type
-    # int32_t (int32_t arg1, int80_t arg2 @ st0)
-    elif tinfo.type_class == bn.TypeClass.IntegerTypeClass:
-        if tinfo.width in [1, 2, 4, 8, 16]:
-            ret = IntegerType(tinfo.width, True)
-            return ret
-        elif tinfo.width in [10, 12]:
-            width = tinfo.width
-            return FloatingPointType(width)
-
-    elif tinfo.type_class == bn.TypeClass.FloatTypeClass:
-        width = tinfo.width
-        return FloatingPointType(width)
-
-    elif tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass:
-        ret = _convert_named_type_reference(bv, tinfo, cache)
-        return ret
-
-    elif tinfo.type_class in [
-        bn.TypeClass.VarArgsTypeClass,
-        bn.TypeClass.ValueTypeClass,
-        bn.TypeClass.WideCharTypeClass,
-    ]:
-        err_type_class = {
-            bn.TypeClass.VarArgsTypeClass : "VarArgsTypeClass",
-            bn.TypeClass.ValueTypeClass : "ValueTypeClass",
-            bn.TypeClass.WideCharTypeClass : "WideCharTypeClass",
-        }
-        DEBUG("WARNING: Unhandled type class {}".format(err_type_class[tinfo.type_class]))
-
-    else:
-        raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
-
-
-def get_type(bv, ty):
-    """Type class that gives access to type sizes, printings, etc."""
-
-    if isinstance(ty, Type):
-        return ty
-
-    elif isinstance(ty, Function):
-        return ty.type()
-
-    elif isinstance(ty, bn.Type):
-        return _convert_bn_type(bv, ty, {})
-
-    if not ty:
-        return VoidType()
-
-    raise UnhandledTypeException("Unrecognized type passed to `Type`.", ty)
-
 
 def get_arch(bv):
     """Arch class that gives access to architecture-specific functionality."""
@@ -368,7 +204,225 @@ def get_os(bv):
         )
 
 
-class CallingConvention(object):
+class TypeCache:
+    """The class provides API to recursively visit the binja types and convert
+    them to the anvill `Type` instance. It maintains a cache of visited binja
+    types to reduce lookup time.
+    """
+
+    __slots__ = ("_bv", "_cache")
+
+    # list of unhandled type classes which should log error
+    _err_type_class = {
+        bn.TypeClass.VarArgsTypeClass: "VarArgsTypeClass",
+        bn.TypeClass.ValueTypeClass: "ValueTypeClass",
+        bn.TypeClass.WideCharTypeClass: "WideCharTypeClass",
+    }
+
+    def __init__(self, bv):
+        self._bv = bv
+        self._cache = dict()
+
+    def _cache_key(self, tinfo: bn.types.Type):
+        """ Convert bn Type instance to cache key"""
+        return str(tinfo)
+
+    def _convert_struct(self, tinfo: bn.types.Type) -> Type:
+        """Convert bn struct type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.StructureTypeClass
+
+        if tinfo.structure.type == bn.StructureType.UnionStructureType:
+            return self._convert_union(tinfo)
+
+        assert (
+            tinfo.structure.type == bn.StructureType.StructStructureType
+            or tinfo.structure.type == bn.StructureType.ClassStructureType
+        )
+
+        ret = StructureType()
+        self._cache[self._cache_key(tinfo)] = ret
+        for elem in tinfo.structure.members:
+            ret.add_element_type(self._convert_bn_type(elem.type))
+
+        return ret
+
+    def _convert_union(self, tinfo: bn.types.Type) -> Type:
+        """Convert bn union type into a `Type` instance"""
+
+        assert tinfo.structure.type == bn.StructureType.UnionStructureType
+
+        ret = UnionType()
+        self._cache[self._cache_key(tinfo)] = ret
+        for elem in tinfo.structure.members:
+            ret.add_element_type(self._convert_bn_type(elem.type))
+
+        return ret
+
+    def _convert_enum(self, tinfo: bn.types.Type) -> Type:
+        """Convert bn enum type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.EnumerationTypeClass
+
+        ret = EnumType()
+        self._cache[self._cache_key(tinfo)] = ret
+        # The underlying type of enum will be an Interger of size info.width
+        ret.set_underlying_type(IntegerType(tinfo.width, False))
+        return ret
+
+    def _convert_typedef(self, tinfo: bn.types.Type) -> Type:
+        """ Convert bn typedef into a `Type` instance"""
+
+        assert tinfo.type_class == bn.NamedTypeReferenceClass.TypedefNamedTypeClass
+
+        ret = TypedefType()
+        self._cache[self._cache_key(tinfo)] = ret
+        ret.set_underlying_type(
+            self._convert_bn_type(self._bv.get_type_by_name(tinfo.name))
+        )
+        return ret
+
+    def _convert_array(self, tinfo: bn.types.Type) -> Type:
+        """ Convert bn pointer type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.ArrayTypeClass
+
+        ret = ArrayType()
+        self._cache[self._cache_key(tinfo)] = ret
+        ret.set_element_type(self._convert_bn_type(tinfo.element_type))
+        ret.set_num_elements(tinfo.count)
+        return ret
+
+    def _convert_pointer(self, tinfo) -> Type:
+        """ Convert bn pointer type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.PointerTypeClass
+
+        ret = PointerType()
+        self._cache[self._cache_key(tinfo)] = ret
+        ret.set_element_type(self._convert_bn_type(tinfo.element_type))
+        return ret
+
+    def _convert_function(self, tinfo) -> Type:
+        """ Convert bn function type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.FunctionTypeClass
+
+        ret = FunctionType()
+        self._cache[self._cache_key(tinfo)] = ret
+        ret.set_return_type(self._convert_bn_type(tinfo.return_value))
+
+        for var in tinfo.parameters:
+            ret.add_parameter_type(self._convert_bn_type(var.type))
+
+        if tinfo.has_variable_arguments:
+            ret.set_is_variadic()
+
+        return ret
+
+    def _convert_integer(self, tinfo) -> Type:
+        """ Convert bn integer type into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.IntegerTypeClass
+
+        # long double ty may get represented as int80_t. If the size
+        # of the IntegerTypeClass is [10, 12], create a float type
+        # int32_t (int32_t arg1, int80_t arg2 @ st0)
+        if tinfo.width in [1, 2, 4, 8, 16]:
+            ret = IntegerType(tinfo.width, True)
+            return ret
+        elif tinfo.width in [10, 12]:
+            width = tinfo.width
+            return FloatingPointType(width)
+
+    def _convert_named_reference(self, tinfo: bn.types.Type) -> Type:
+        """ Convert named type references into a `Type` instance"""
+
+        assert tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass
+
+        named_tinfo = tinfo.named_type_reference
+        ref_type = self._bv.get_type_by_name(named_tinfo.name)
+        if named_tinfo.type_class == bn.NamedTypeReferenceClass.StructNamedTypeClass:
+            return self._convert_struct(ref_type)
+
+        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.UnionNamedTypeClass:
+            return self._convert_union(ref_type)
+
+        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.TypedefNamedTypeClass:
+            return self._convert_typedef(named_tinfo)
+
+        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.EnumNamedTypeClass:
+            return self._convert_enum(ref_type)
+
+        else:
+            DEBUG("WARNING: Unknown named type {} not handled".format(named_tinfo))
+
+    def _convert_bn_type(self, tinfo: bn.types.Type) -> Type:
+        """Convert an bn `Type` instance into a `Type` instance."""
+
+        if self._cache_key(tinfo) in self._cache:
+            return self._cache[self._cache_key(tinfo)]
+
+        # Void type
+        if tinfo.type_class == bn.TypeClass.VoidTypeClass:
+            return VoidType()
+
+        elif tinfo.type_class == bn.TypeClass.PointerTypeClass:
+            return self._convert_pointer(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.FunctionTypeClass:
+            return self._convert_function(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.ArrayTypeClass:
+            return self._convert_array(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.StructureTypeClass:
+            return self._convert_struct(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.EnumerationTypeClass:
+            return self._convert_enum(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.BoolTypeClass:
+            return BoolType()
+
+        elif tinfo.type_class == bn.TypeClass.IntegerTypeClass:
+            return self._convert_integer(tinfo)
+
+        elif tinfo.type_class == bn.TypeClass.FloatTypeClass:
+            return FloatingPointType(tinfo.width)
+
+        elif tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass:
+            return self._convert_named_reference(tinfo)
+
+        elif tinfo.type_class in TypeCache._err_type_class.keys():
+            DEBUG(
+                "WARNING: Unhandled type class {}".format(
+                    TypeCache._err_type_class[tinfo.type_class]
+                )
+            )
+
+        else:
+            raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
+
+    def get(self, ty) -> Type:
+        """Type class that gives access to type sizes, printings, etc."""
+
+        if isinstance(ty, Type):
+            return ty
+
+        elif isinstance(ty, Function):
+            return ty.type()
+
+        elif isinstance(ty, bn.Type):
+            return self._convert_bn_type(ty)
+
+        elif not ty:
+            return VoidType()
+
+        raise UnhandledTypeException("Unrecognized type passed to `Type`.", ty)
+
+
+class CallingConvention:
     def __init__(self, arch, bn_func):
         self._cc = bn_func.calling_convention
         self._arch = arch
@@ -422,14 +476,12 @@ class BNFunction(Function):
         ref_eas: Set[int] = set()
         ea = self._bn_func.start
         max_ea = self._bn_func.highest_address
-        self._fill_bytes(program._bv, mem, ea, max_ea, ref_eas)
+        self._fill_bytes(program, mem, ea, max_ea, ref_eas)
 
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(
-                    program._bv, inst.operands, inst
-                )
+                register_information = self._extract_types(program, inst.operands, inst)
                 for reg_info in register_information:
                     loc = Location()
                     loc.set_register(reg_info[0].upper())
@@ -449,13 +501,13 @@ class BNFunction(Function):
         # if its a definition, then Anvill will perform analysis of the function and produce information for the func
         for ref_ea in ref_eas:
             # If ref_ea is an invalid address
-            seg = program._bv.get_segment_at(ref_ea)
+            seg = program.bv.get_segment_at(ref_ea)
             if seg is None:
                 continue
             program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
     def _extract_types_mlil(
-        self, bv, item_or_list, initial_inst: mlinst
+        self, program, item_or_list, initial_inst: mlinst
     ) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of MLIL instructions and variables into a list of tuples
@@ -464,10 +516,10 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types_mlil(bv, item, initial_inst))
+                results.extend(self._extract_types_mlil(program, item, initial_inst))
         elif isinstance(item_or_list, mlinst):
             results.extend(
-                self._extract_types_mlil(bv, item_or_list.operands, initial_inst)
+                self._extract_types_mlil(program, item_or_list.operands, initial_inst)
             )
         elif isinstance(item_or_list, bn.Variable):
             if item_or_list.type is None:
@@ -478,14 +530,14 @@ class BNFunction(Function):
                     item_or_list.source_type
                     == bn.VariableSourceType.RegisterVariableSourceType
                 ):
-                    reg_name = bv.arch.get_reg_name(item_or_list.storage)
+                    reg_name = program.bv.arch.get_reg_name(item_or_list.storage)
                     results.append(
-                        (reg_name, _convert_bn_type(bv, item_or_list.type, {}), None)
+                        (reg_name, program.type_cache.get(item_or_list.type), None)
                     )
         return results
 
     def _extract_types(
-        self, bv, item_or_list, initial_inst: llinst
+        self, program, item_or_list, initial_inst: llinst
     ) -> List[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of LLIL instructions and associates registers with pointer values
@@ -496,16 +548,18 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types(bv, item, initial_inst))
+                results.extend(self._extract_types(program, item, initial_inst))
         elif isinstance(item_or_list, llinst):
-            results.extend(self._extract_types(bv, item_or_list.operands, initial_inst))
+            results.extend(
+                self._extract_types(program, item_or_list.operands, initial_inst)
+            )
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # Check if the register is not temp. Need to check if the temp register is
             # associated to pointer?? Look into MLIL to get more information
             if not bn.LLIL_REG_IS_TEMP(item_or_list.index):
                 # For every register, is it a pointer?
-                possible_pointer: bn.function.RegisterValue = initial_inst.get_reg_value(
-                    item_or_list.name
+                possible_pointer: bn.function.RegisterValue = (
+                    initial_inst.get_reg_value(item_or_list.name)
                 )
                 if (
                     possible_pointer.type
@@ -518,25 +572,27 @@ class BNFunction(Function):
                     val_type = _convert_bn_llil_type(
                         possible_pointer, item_or_list.info.size
                     )
-                    results.append((item_or_list.name, val_type, possible_pointer.value))
+                    results.append(
+                        (item_or_list.name, val_type, possible_pointer.value)
+                    )
 
             if initial_inst.mlil is not None:
                 mlil_results = self._extract_types_mlil(
-                    bv, initial_inst.mlil, initial_inst.mlil
+                    program, initial_inst.mlil, initial_inst.mlil
                 )
                 results.extend(mlil_results)
         return results
 
-    def _fill_bytes(self, bv, memory, start, end, ref_eas):
-        br = bn.BinaryReader(bv)
+    def _fill_bytes(self, program, memory, start, end, ref_eas):
+        br = bn.BinaryReader(program.bv)
         for bb in self._bn_func.basic_blocks:
             for ea in range(bb.start, bb.end):
-                seg = bv.get_segment_at(ea)
+                seg = program.bv.get_segment_at(ea)
                 br.seek(ea)
                 memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
                 inst = self._bn_func.get_low_level_il_at(ea)
-                if inst and not is_unimplemented(bv, inst):
-                    _collect_xrefs_from_inst(bv, inst, ref_eas)
+                if inst and not is_unimplemented(program.bv, inst):
+                    _collect_xrefs_from_inst(program.bv, inst, ref_eas)
 
 
 class BNVariable(Variable):
@@ -555,7 +611,7 @@ class BNVariable(Variable):
         if isinstance(self._type, VoidType):
             return
 
-        bv = program._bv
+        bv = program.bv
         br = bn.BinaryReader(bv)
         mem = program.memory()
         begin = self._address
@@ -576,7 +632,16 @@ class BNProgram(Program):
     def __init__(self, path):
         self._path = path
         self._bv = bn.BinaryViewType.get_view_of_file(self._path)
+        self._type_cache = TypeCache(self._bv)
         super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
+
+    @property
+    def bv(self):
+        return self._bv
+
+    @property
+    def type_cache(self):
+        return self._type_cache
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -589,7 +654,7 @@ class BNProgram(Program):
 
         arch = self._arch
         bn_var = self._bv.get_data_var_at(address)
-        var_type = get_type(self._bv, bn_var.type)
+        var_type = self.type_cache.get(bn_var.type)
 
         # fall back onto an array of bytes type for variables
         # of an unknown (void) type.
@@ -615,7 +680,7 @@ class BNProgram(Program):
                 "No function defined at or containing address {:x}".format(address)
             )
 
-        func_type = get_type(self._bv, bn_func.function_type)
+        func_type = self.type_cache.get(bn_func.function_type)
         calling_conv = CallingConvention(arch, bn_func)
 
         index = 0
@@ -623,7 +688,7 @@ class BNProgram(Program):
         for var in bn_func.parameter_vars:
             source_type = var.source_type
             var_type = var.type
-            arg_type = get_type(self._bv, var_type)
+            arg_type = self.type_cache.get(var_type)
 
             if source_type == bn.VariableSourceType.RegisterVariableSourceType:
                 if (
@@ -655,7 +720,7 @@ class BNProgram(Program):
             index += 1
 
         ret_list = []
-        retTy = get_type(self._bv, bn_func.return_type)
+        retTy = self.type_cache.get(bn_func.return_type)
         if not isinstance(retTy, VoidType):
             for reg in calling_conv.return_regs:
                 loc = Location()
