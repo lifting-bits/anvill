@@ -23,12 +23,25 @@ def main():
     return False
 
   if "GITHUB_HEAD_REF" not in os.environ:
-    print("The GITHUB_HEAD_REF environment variable is not set. Ignoring because this event is not a pull request")
+    print("The GITHUB_HEAD_REF environment variable is missing. Ignoring")
     return True
 
   auth_token = os.environ["GITHUB_TOKEN"]
-  current_workflow_id = int(os.environ["GITHUB_RUN_ID"])
+  if len(auth_token) == 0:
+    print("The GitHub token is empty!")
+    return False
+
+  current_workflow_id = os.environ["GITHUB_RUN_ID"]
+  if len(current_workflow_id) == 0:
+    print("The run id is empty!")
+    return False
+
+  current_workflow_id = int(current_workflow_id)
+
   branch_name = os.environ["GITHUB_HEAD_REF"]
+  if len(branch_name) == 0:
+    print("Ignoring because this event is not a pull request")
+    return True
 
   # This should never happen, since we already make sure that the
   # GITHUB_HEAD_REF env var is defined
