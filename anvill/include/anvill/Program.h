@@ -132,6 +132,10 @@ struct ByteSequence {
     return size;
   }
 
+  uint64_t Address(void) const {
+    return address;
+  }
+
   // Convert this byte sequence to a string.
   std::string_view ToString(void) const;
 

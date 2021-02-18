@@ -115,7 +115,7 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
 
-  std::tuple<Byte::Data *, Byte::Meta *, size_t>
+  std::tuple<Byte::Data *, Byte::Meta *, size_t, uint64_t>
   FindBytesContaining(uint64_t address);
 
   std::tuple<Byte::Data *, Byte::Meta *, size_t> FindBytes(uint64_t address,
@@ -710,7 +710,7 @@ Program::Impl::FindByte(uint64_t address) {
   }
 }
 
-std::tuple<Byte::Data *, Byte::Meta *, size_t>
+std::tuple<Byte::Data *, Byte::Meta *, size_t, uint64_t>
 Program::Impl::FindBytesContaining(uint64_t address) {
   uint64_t limit_address = 0;
   std::vector<Byte::Data> *mapped_data = nullptr;
@@ -720,14 +720,14 @@ Program::Impl::FindBytesContaining(uint64_t address) {
   if (it == bytes.end()) {
     const auto rit = bytes.rbegin();
     if (rit == bytes.rend()) {
-      return {nullptr, nullptr, 0};
+      return {nullptr, nullptr, 0, 0};
 
     } else if (rit->first == address) {
       limit_address = rit->first;
       mapped_data = &(rit->second.first);
       mapped_meta = &(rit->second.second);
     } else {
-      return {nullptr, nullptr, 0};
+      return {nullptr, nullptr, 0, 0};
     }
 
   } else {
@@ -738,9 +738,9 @@ Program::Impl::FindBytesContaining(uint64_t address) {
 
   const auto base_address = limit_address - mapped_data->size();
   if (base_address <= address && address < limit_address) {
-    return {&((*mapped_data)[0]), &((*mapped_meta)[0]), mapped_data->size()};
+    return {&((*mapped_data)[0]), &((*mapped_meta)[0]), mapped_data->size(), base_address};
   } else {
-    return {nullptr, nullptr, 0};
+    return {nullptr, nullptr, 0, 0};
   }
 }
 
@@ -1085,8 +1085,8 @@ Byte Program::FindByte(uint64_t address) const {
 
 // Find which byte sequence (defined in the spec) has the provided `address`
 ByteSequence Program::FindBytesContaining(uint64_t address) const {
-  auto [data, meta, found_size] = impl->FindBytesContaining(address);
-  return ByteSequence(address, data, meta, found_size);
+  auto [data, meta, found_size, base_address] = impl->FindBytesContaining(address);
+  return ByteSequence(base_address, data, meta, found_size);
 }
 
 // Find the next byte.
