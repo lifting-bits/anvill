@@ -237,7 +237,7 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
         if (!reg_global) {
           reg_global = new llvm::GlobalVariable(
               *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
-              nullptr, reg_name);
+              llvm::Constant::getNullValue(reg->type), reg_name);
         }
 
         ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);

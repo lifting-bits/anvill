@@ -882,7 +882,7 @@ static void RecoverStackMemoryAccesses(
     llvm::IRBuilder<> ir(&(func->getEntryBlock().front()));
     std::stringstream frame_ss;
     const auto frame_type = llvm::StructType::create(
-        context, types, func->getName().str() + ".frame_type", false);
+        context, types, func->getName().str() + ".frame_type", true);
     const auto frame_ptr = ir.CreateAlloca(frame_type);
 
     std::unordered_map<uint64_t, llvm::Value *> offset_cache;
