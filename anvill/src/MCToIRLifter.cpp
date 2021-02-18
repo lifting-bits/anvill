@@ -18,13 +18,20 @@
 #include "anvill/MCToIRLifter.h"
 
 #include <glog/logging.h>
+#include <gflags/gflags.h>
+
 #include <remill/BC/Util.h>
+#include <remill/OS/OS.h>
 
 #include <sstream>
 
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
+
+DEFINE_bool(print_registers_before_instuctions, false,
+            "Inject calls to printf (into the lifted bitcode) to log integer "
+            "register state to stdout.");
 
 namespace anvill {
 
@@ -311,10 +318,58 @@ llvm::Function *MCToIRLifter::GetOrCreateTaintedFunction(
   return mod.getFunction(func_name.str());
 }
 
+void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
+  auto &context = module.getContext();
+  if (!log_printf) {
+    llvm::Type *args[] = {llvm::Type::getInt8PtrTy(context, 0)};
+    auto fty = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(context), args, true);
+
+    log_printf = llvm::dyn_cast<llvm::Function>(
+        module.getOrInsertFunction("printf", fty).getCallee());
+
+    std::stringstream ss;
+    arch->ForEachRegister([&] (const remill::Register *reg) {
+      if (reg->EnclosingRegister() == reg &&
+          reg->type->isIntegerTy(arch->address_size)) {
+        ss << reg->name << "=%llx ";
+      }
+    });
+    ss << '\n';
+    const auto i32_type = llvm::Type::getInt32Ty(context);
+    const auto format_str =
+        llvm::ConstantDataArray::getString(context, ss.str(), true);
+    const auto format_var =
+        new llvm::GlobalVariable(module, format_str->getType(), true,
+                                 llvm::GlobalValue::InternalLinkage, format_str);
+
+    llvm::Constant *indices[] = {llvm::ConstantInt::getNullValue(i32_type),
+                                 llvm::ConstantInt::getNullValue(i32_type)};
+    log_format_str = llvm::ConstantExpr::getInBoundsGetElementPtr(
+        format_str->getType(), format_var, indices);
+  }
+
+  std::vector<llvm::Value *> args;
+  args.push_back(log_format_str);
+  arch->ForEachRegister([&] (const remill::Register *reg) {
+    if (reg->EnclosingRegister() == reg &&
+        reg->type->isIntegerTy(arch->address_size)) {
+      args.push_back(inst_lifter.LoadRegValue(block, state_ptr, reg->name));
+    }
+  });
+
+  llvm::IRBuilder<> ir(block);
+  ir.CreateCall(log_printf, args);
+}
+
 void MCToIRLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block,
     const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map) {
   curr_inst = &inst;
+
+  if (FLAGS_print_registers_before_instuctions) {
+    InstrumentInstruction(block);
+  }
 
   // Reserve space for an instrucion that will go into a delay slot, in case it
   // is needed. This is an uncommon case, so avoid instantiating a new
