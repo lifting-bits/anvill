@@ -168,7 +168,7 @@ jobs:
           url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
           local_path="${{ steps.build_paths.outputs.DOWNLOADS }}/${archive_name}"
 
-          if [[ ! -f "${local_path}" ]]; then
+          if [[ ! -f "${local_path}" ]] ; then
             echo "Downloading: ${url}"
             curl "${url}" -L -o "${local_path}"
 
@@ -295,10 +295,9 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
 
         shell: bash
-        working-directory: ${{ steps.build_paths.outputs.BUILD }}
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
         run: |
-          cmake --build anvill_build \
-                --target test
+          ctest -V
  
       - name: Create the packages
         shell: bash
@@ -451,7 +450,7 @@ jobs:
           url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
           local_path="${{ steps.build_paths.outputs.DOWNLOADS }}/${archive_name}"
 
-          if [[ ! -f "${local_path}" ]]; then
+          if [[ ! -f "${local_path}" ]] ; then
             echo "Downloading: ${url}"
             curl "${url}" -L -o "${local_path}"
 
