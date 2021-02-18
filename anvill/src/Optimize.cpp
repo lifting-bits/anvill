@@ -33,6 +33,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
 
@@ -249,88 +250,6 @@ RemoveUndefMemoryWrites(llvm::Module &module, const char *func_name,
     auto in_block = call_inst->getParent();
     auto in_func = in_block->getParent();
     changed_funcs.insert(in_func);
-    call_inst->eraseFromParent();
-  }
-}
-
-// Look for reads of constant memory locations, and replace
-// with the values that would have been read.
-static void
-ReplaceConstMemoryReads(const Program &program, llvm::Module &module,
-                        const char *func_name,
-                        std::unordered_set<llvm::Function *> &changed_funcs,
-                        llvm::Type *fp80_type = nullptr) {
-
-  auto func = module.getFunction(func_name);
-  if (!func) {
-    return;
-  }
-
-  std::vector<llvm::CallInst *> to_remove;
-
-  auto &context = module.getContext();
-  llvm::DataLayout dl(&module);
-  std::vector<uint8_t> bytes;
-
-  for (auto user : func->users()) {
-    auto call_inst = llvm::dyn_cast<llvm::CallInst>(user);
-    if (!call_inst) {
-      continue;
-    }
-
-    auto addr_val = call_inst->getArgOperand(1);
-    auto addr_const = llvm::dyn_cast<llvm::ConstantInt>(addr_val);
-    if (!addr_const) {
-      continue;
-    }
-
-    const auto addr = addr_const->getZExtValue();
-    auto mem_type = fp80_type ? fp80_type : call_inst->getType();
-    auto ret_val_size = dl.getTypeAllocSize(mem_type);
-    bytes.reserve(ret_val_size);
-
-    for (size_t i = 0; i < ret_val_size; ++i) {
-      auto byte = program.FindByte(addr);
-      if (byte && !byte.IsWriteable()) {
-        bytes.push_back(*byte.Value());
-      } else {
-        bytes.clear();
-        break;
-      }
-    }
-
-    if (bytes.empty()) {
-      continue;
-    }
-
-    const auto parent_func = call_inst->getParent()->getParent();
-    changed_funcs.insert(parent_func);
-
-    auto entry_block = &(parent_func->getEntryBlock());
-    llvm::IRBuilder<> ir(entry_block);
-
-    // Create a constant out of the bytes that would be read, then
-    // alloca some space for it, store the bytes into the alloca,
-    // and replace the call with the loaded result.
-    auto data_read = llvm::ConstantDataArray::get(context, bytes);
-    auto mem = ir.CreateAlloca(mem_type);
-    auto bc =
-        ir.CreateBitCast(mem, llvm::PointerType::get(data_read->getType(), 0));
-    ir.CreateStore(data_read, bc);
-
-    llvm::Instruction *as_load = new llvm::LoadInst(
-        llvm::PointerType::get(mem_type, 0), mem, "", call_inst);
-
-    if (fp80_type) {
-      as_load =
-          new llvm::FPTruncInst(as_load, call_inst->getType(), "", call_inst);
-    }
-
-    call_inst->replaceAllUsesWith(as_load);
-    to_remove.push_back(call_inst);
-  }
-
-  for (auto call_inst : to_remove) {
     call_inst->eraseFromParent();
   }
 }
@@ -1002,6 +921,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createSinkingPass());
   fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createInstructionCombiningPass());
 
   fpm.doInitialization();
   for (auto &func : module) {
@@ -1026,7 +946,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
 
 
-  do {
+  for (auto changed = true; changed; ) {
 
     RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
     RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
@@ -1055,31 +975,15 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     }
     pm.doFinalization();
 
+    changed = !changed_funcs.empty();
     changed_funcs.clear();
-
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_8",
-                            changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_16",
-                            changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_32",
-                            changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_64",
-                            changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f32",
-                            changed_funcs);
-    ReplaceConstMemoryReads(program, module, "__remill_read_memory_f64",
-                            changed_funcs);
-
-    //  ReplaceConstMemoryReads(
-    //      program, module, "__remill_read_memory_f80", changed_funcs,
-    //      fp80_type);
-  } while (!changed_funcs.empty());
+  }
 
   LowerMemOps(program, module);
 
   LowerTypeOps(program, module);
 
-  RecoverMemoryReferences(program, module);
+//  RecoverMemoryReferences(program, module);
 
   fpm.doInitialization();
   for (auto &func : module) {

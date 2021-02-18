@@ -463,7 +463,8 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
 
   work_list.clear();
   addr_to_block.clear();
-
+  inst_lifter.ClearCache();
+  curr_inst = nullptr;
   lifted_func = entry.lifted;
 
   // Every lifted function starts as a clone of __remill_basic_block. That
