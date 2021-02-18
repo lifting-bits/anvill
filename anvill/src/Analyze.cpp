@@ -896,20 +896,19 @@ static void RecoverStackMemoryAccesses(
         // This thing iteratively builds up a GEP to point to an offset.
         // It moves in increments that are as wide as an element of the
         // indexed type. However if there's some leftover offset, it tries
-        // to do some casting magic to satisfy the request. The assumption
-        // is that the leftover is smaller than the size of a single element
-        // which doesn't hold for tests/binja_none_type.
+        // to do some casting magic to satisfy the request.
         gep = remill::BuildPointerToOffset(
             ir, frame_ptr, goal_offset, llvm::PointerType::get(cell.type, 0));
       }
 
       auto dest_type = cell.use->get()->getType();
+      auto new_val_to_use = gep;
       if (dest_type->isIntegerTy()) {
-        gep = ir.CreatePtrToInt(gep, dest_type);
+        new_val_to_use = ir.CreatePtrToInt(gep, dest_type);
       } else if (dest_type->isPointerTy()) {
-        gep = ir.CreateBitCast(gep, dest_type);
+        new_val_to_use = ir.CreateBitCast(gep, dest_type);
       }
-      cell.use->set(gep);
+      cell.use->set(new_val_to_use);
     }
   }
 }

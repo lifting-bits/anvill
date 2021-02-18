@@ -983,7 +983,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
 
   LowerTypeOps(program, module);
 
-//  RecoverMemoryReferences(program, module);
+  RecoverMemoryReferences(program, module);
 
   fpm.doInitialization();
   for (auto &func : module) {

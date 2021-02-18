@@ -197,7 +197,8 @@ class SequentialType(Type):
         self._elem_type = elem_type
 
     def set_num_elements(self, num):
-        assert 0 < num
+        # A variable-length object type can have zero sized array
+        assert 0 <= num
         self._num_elems = num
 
     def size(self, arch):
