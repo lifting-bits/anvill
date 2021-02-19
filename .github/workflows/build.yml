@@ -616,10 +616,10 @@ jobs:
 
       - name: Group the packages by platform
         run: |
-          zip -r9 ubuntu-18.04_packages.zip \
+          zip -r9 anvill_ubuntu-18.04_packages.zip \
                   ubuntu-18.04*
 
-          zip -r9 ubuntu-20.04_packages.zip \
+          zip -r9 anvill_ubuntu-20.04_packages.zip \
                   ubuntu-20.04*
 
       - name: Upload the Ubuntu 18.04 packages
@@ -630,8 +630,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ubuntu-18.04_packages.zip
-          asset_name: ubuntu-18.04_packages
+          asset_path: anvill_ubuntu-18.04_packages.zip
+          asset_name: anvill_ubuntu-18.04_packages.zip
           asset_content_type: application/gzip
 
       - name: Upload the Ubuntu 20.04 packages
@@ -642,8 +642,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ubuntu-20.04_packages.zip
-          asset_name: ubuntu-20.04_packages
+          asset_path: anvill_ubuntu-20.04_packages.zip
+          asset_name: anvill_ubuntu-20.04_packages.zip
           asset_content_type: application/gzip
 
 
@@ -674,7 +674,7 @@ jobs:
 
       - name: Group the packages by platform
         run: |
-          zip -r9 macos-11.0_packages.zip \
+          zip -r9 anvill_macos-11.0_packages.zip \
                   macos-11.0*
 
       - name: Upload the macOS 11.0 packages
@@ -685,6 +685,6 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: macos-11.0_packages.zip
-          asset_name: macos-11.0_packages
+          asset_path: anvill_macos-11.0_packages.zip
+          asset_name: anvill_macos-11.0_packages.zip
           asset_content_type: application/gzip
