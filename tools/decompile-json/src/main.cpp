@@ -43,6 +43,9 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
 #include "anvill/Lift.h"
@@ -679,6 +682,11 @@ int main(int argc, char *argv[]) {
   if (!ParseSpec(arch.get(), context, program, spec)) {
     return EXIT_FAILURE;
   }
+
+  auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
+  auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+
+
 
   anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
   anvill::OptimizeModule(arch.get(), program, *semantics);

@@ -53,6 +53,20 @@ add_library(anvill STATIC
 
   include/anvill/Util.h
   src/Util.cpp
+  
+  include/anvill/Lifters/ValueLifter.h
+  src/Lifters/ValueLifter.h
+  src/Lifters/ValueLifter.cpp
+  
+  include/anvill/Lifters/EntityLifter.h
+  src/Lifters/EntityLifter.h
+  src/Lifters/EntityLifter.cpp
+    
+  include/anvill/Providers/MemoryProvider.h
+  src/Providers/MemoryProvider.cpp
+  
+  include/anvill/Providers/TypeProvider.h
+  src/Providers/TypeProvider.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)
