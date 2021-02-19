@@ -45,8 +45,7 @@ llvm::APInt ValueLifterImpl::ConsumeValue(std::string_view &data,
 }
 
 llvm::Constant *ValueLifterImpl::Lift(
-    std::string_view data, llvm::Type *type,
-    DataLifter &data_lifter, FunctionLifter &func_lifter) {
+    std::string_view data, llvm::Type *type, const EntityLifter &ent_lifter) {
   auto dl = module.getDataLayout();
   llvm::Constant *result{nullptr};
   switch (type->getTypeID()) {
@@ -77,8 +76,7 @@ llvm::Constant *ValueLifterImpl::Lift(
         const auto elm_type = struct_type->getStructElementType(i);
         const auto offset = layout->getElementOffset(i);
         data = data.substr(offset);
-        auto const_elm = Lift(data.substr(offset), elm_type,
-                              data_lifter, func_lifter);
+        auto const_elm = Lift(data.substr(offset), elm_type, ent_lifter);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantStruct::get(struct_type, initializer_list);
@@ -96,8 +94,7 @@ llvm::Constant *ValueLifterImpl::Lift(
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type,
-                              data_lifter, func_lifter);
+        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantArray::get(array_type, initializer_list);
@@ -113,8 +110,7 @@ llvm::Constant *ValueLifterImpl::Lift(
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type,
-                              data_lifter, func_lifter);
+        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantVector::get(initializer_list);
@@ -137,8 +133,8 @@ ValueLifter::~ValueLifter(void) {}
 
 llvm::Constant *ValueLifter::Lift(
     std::string_view data, llvm::Type *type_of_data,
-    DataLifter &data_lifter, FunctionLifter &func_lifter) {
-  return impl->Lift(data, type_of_data, data_lifter, func_lifter);
+    const EntityLifter &entity_lifter) const {
+  return impl->Lift(data, type_of_data, entity_lifter);
 }
 
 }  // namespace anvill
