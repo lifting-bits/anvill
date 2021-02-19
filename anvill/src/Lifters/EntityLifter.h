@@ -18,17 +18,31 @@
 #pragma once
 
 #include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
 
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "ValueLifter.h"
+
+namespace llvm {
+class GlobalAlias;
+class Function;
+}  // namespace llvm
 namespace anvill {
 
 // An entity lifter is responsible for lifting functions and data (variables)
 // into a target LLVM module.
 class EntityLifterImpl {
  public:
-  explicit EntityLifter(const std::shared_ptr<const remill::Arch> &arch_,
-                        llvm::Module &module_,
-                        const MemoryProvider &mem_provider_,
-                        const TypeProvider &type_provider_);
+  ~EntityLifterImpl(void);
+
+  explicit EntityLifterImpl(
+      const std::shared_ptr<MemoryProvider> &mem_provider_,
+      const std::shared_ptr<TypeProvider> &type_provider_,
+      const remill::Arch *arch_, llvm::Module &module_);
 
   // Tries to lift the entity at `address` and return an `llvm::Function *`
   // or `llvm::GlobalAlias *` relating to that address.
@@ -37,9 +51,28 @@ class EntityLifterImpl {
  private:
   friend class ValueLifter;
 
-  EntityLifterImpl(void) = default;
+  EntityLifterImpl(void) = delete;
 
-  std::shared_ptr<EntityLifterImpl> impl;
+  const std::shared_ptr<MemoryProvider> mem_provider;
+  const std::shared_ptr<TypeProvider> type_provider;
+  const remill::Arch * const arch;
+
+  // Module into which all code is lifted.
+  llvm::Module &module;
+
+  // Semantics module containing all instruction semantics.
+  std::unique_ptr<llvm::Module> semantics_module;
+
+  // Lifts initializers of global variables.
+  ValueLifter value_lifter;
+
+  std::unordered_map<uint64_t, llvm::Constant *> entities;
+
+  // Work list of functions that need to be lifted.
+  std::vector<std::pair<uint64_t, llvm::Function *>> functions_to_lift;
+
+  // Work list of data variables that need to be lifted.
+  std::vector<std::pair<uint64_t, llvm::GlobalAlias *>> data_to_lift;
 };
 
 }  // namespace anvill

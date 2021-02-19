@@ -45,6 +45,7 @@
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/Lifters/EntityLifter.h>
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
@@ -662,6 +663,7 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+  llvm::Module module;
 
   // Get a unique pointer to a remill architecture object. The architecture
   // object knows how to deal with everything for this specific architecture,
@@ -671,8 +673,6 @@ int main(int argc, char *argv[]) {
   if (!arch) {
     return EXIT_FAILURE;
   }
-
-  auto semantics = remill::LoadArchSemantics(arch);
 
   anvill::Program program;
 
@@ -686,30 +686,42 @@ int main(int argc, char *argv[]) {
   auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
   auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
+  anvill::EntityLifter lifter(memory, types, arch.get(), module);
 
-
-  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
-  anvill::OptimizeModule(arch.get(), program, *semantics);
-
-  // Apply symbol names to functions if we have the names.
-  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-                                  const anvill::FunctionDecl *fdecl,
-                                  const anvill::GlobalVarDecl *vdecl) {
-    llvm::Value *gval{nullptr};
-    if (vdecl) {
-      gval = semantics->getGlobalVariable(anvill::CreateVariableName(addr));
-    } else if (fdecl) {
-      gval = semantics->getFunction(anvill::CreateFunctionName(addr));
-    } else {
-      return true;
-    }
-
-    if (gval) {
-      gval->setName(name);
-    }
-
+  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
+    (void) lifter.TryLiftEntity(decl->address);
     return true;
   });
+
+  // Lift functions.
+  program.ForEachVariable(callback)([&](const anvill::FunctionDecl *decl) {
+    (void) lifter.TryLiftEntity(decl->address);
+    return true;
+  });
+
+//
+//  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
+//  anvill::OptimizeModule(arch.get(), program, *semantics);
+//
+//  // Apply symbol names to functions if we have the names.
+//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+//                                  const anvill::FunctionDecl *fdecl,
+//                                  const anvill::GlobalVarDecl *vdecl) {
+//    llvm::Value *gval{nullptr};
+//    if (vdecl) {
+//      gval = semantics->getGlobalVariable(anvill::CreateVariableName(addr));
+//    } else if (fdecl) {
+//      gval = semantics->getFunction(anvill::CreateFunctionName(addr));
+//    } else {
+//      return true;
+//    }
+//
+//    if (gval) {
+//      gval->setName(name);
+//    }
+//
+//    return true;
+//  });
 
   int ret = EXIT_SUCCESS;
 

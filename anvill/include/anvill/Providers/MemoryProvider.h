@@ -19,19 +19,22 @@
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 
 namespace anvill {
 
 class Program;
 
-enum class BytePermission : unsigned {
+enum class BytePermission : uint8_t {
+  kUnknown,
   kReadable,
   kReadableWritable,
   kReadableWritableExecutable,
   kReadableExecutable
 };
 
-enum class ByteAvailability : unsigned {
+enum class ByteAvailability : uint8_t {
+  kUnknown,
   kUnavailable,
   kAvailableButNotDefined,
   kAvailable
@@ -42,8 +45,9 @@ class MemoryProvider {
  public:
   virtual ~MemoryProvider(void);
 
-  virtual ByteAvailability TryReadByte(uint64_t address, uint8_t *byte_out,
-                                       BytePermission *perm_out) = 0;
+  // Query for the value, availability, and permission of a byte.
+  virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) = 0;
 
   // Sources bytes from an `anvill::Program`.
   static std::shared_ptr<MemoryProvider> CreateProgramMemoryProvider(

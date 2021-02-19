@@ -31,30 +31,30 @@ class ProgramMemoryProvider final : public MemoryProvider {
   explicit ProgramMemoryProvider(const Program &program_)
       : program(program_) {}
 
-  ByteAvailability TryReadByte(uint64_t address, uint8_t *byte_out,
-                               BytePermission *perm_out) final {
+  std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) final {
     auto byte = program.FindByte(address);
 
-    // TODO(pag): This is only correct half the time. ANVILL specs don't
-    //            communicate the structure of the address space, just the
-    //            contents of a subset of the memory of the address space.
+    // TODO(pag): ANVILL specs don't communicate the structure of the address
+    //            space, just the contents of a subset of the memory of the
+    //            address space.
     if (!byte) {
-      *perm_out = BytePermission::kReadableWritableExecutable;
-      return ByteAvailability::kAvailableButNotDefined;
+      return {0, ByteAvailability::kUnknown, BytePermission::kUnknown};
     }
 
-    *byte_out = byte.ValueOr(0u);
+    uint8_t byte_out = byte.ValueOr(0u);
+    auto perm_out = BytePermission::kUnknown;
     if (byte.IsWriteable() && byte.IsWriteable()) {
-      *perm_out = BytePermission::kReadableWritableExecutable;
+      perm_out = BytePermission::kReadableWritableExecutable;
     } else if (byte.IsWriteable()) {
-      *perm_out = BytePermission::kReadableWritable;
+      perm_out = BytePermission::kReadableWritable;
     } else if (byte.IsExecutable()) {
-      *perm_out = BytePermission::kReadableExecutable;
+      perm_out = BytePermission::kReadableExecutable;
     } else {
-      *perm_out = BytePermission::kReadable;
+      perm_out = BytePermission::kReadable;
     }
 
-    return ByteAvailability::kAvailable;
+    return {byte_out, ByteAvailability::kAvailable, perm_out};
   }
 
  private:

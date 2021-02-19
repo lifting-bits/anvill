@@ -19,8 +19,62 @@
 
 #include "EntityLifter.h"
 
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+
+#include <remill/Arch/Arch.h>
+#include <remill/BC/Util.h>
+
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+
 namespace anvill {
 
+EntityLifterImpl::~EntityLifterImpl(void) {
+
+}
+
+EntityLifterImpl::EntityLifterImpl(
+    const std::shared_ptr<MemoryProvider> &mem_provider_,
+    const std::shared_ptr<TypeProvider> &type_provider_,
+    const remill::Arch *arch_, llvm::Module &module_)
+    : mem_provider(mem_provider_),
+      type_provider(type_provider_),
+      arch(arch_),
+      module(module_),
+      semantics_module(remill::LoadArchSemantics(arch_)),
+      value_lifter(module_) {
+  arch->PrepareModule(&module);
+}
+
 EntityLifter::~EntityLifter(void) {}
+
+EntityLifter::EntityLifter(const std::shared_ptr<MemoryProvider> &mem_provider_,
+                           const std::shared_ptr<TypeProvider> &type_provider_,
+                           const remill::Arch *arch_, llvm::Module &module_)
+    : impl(std::make_shared<EntityLifterImpl>(mem_provider_, type_provider_,
+                                              arch_, module_)) {}
+
+// Tries to lift the entity at `address` and return an `llvm::Function *`
+// or `llvm::GlobalAlias *` relating to that address.
+llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
+  auto ent_it = impl->entities.find(address);
+  if (ent_it != impl->entities.end()) {
+    return ent_it->second;
+  }
+
+  uint8_t byte = 0;
+  BytePermission byte_perm = BytePermission::kUnknown;
+
+  auto &context = impl->module.getContext();
+  auto func_type = impl->type_provider.TryGetFunctionType(address);
+  if (func_type) {
+
+  }
+
+
+  return nullptr;
+//  auto [added, new_ent_it] = impl->entities.emplace();
+}
 
 }  // namespace anvill
