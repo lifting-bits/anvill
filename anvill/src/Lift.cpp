@@ -24,7 +24,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
-
 #include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
@@ -236,7 +235,7 @@ static void DefineNativeToLiftedWrapper(const remill::Arch *arch,
         auto reg_global = module->getGlobalVariable(reg_name);
         if (!reg_global) {
           reg_global = new llvm::GlobalVariable(
-              *module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+              *module, reg->type, false, llvm::GlobalValue::InternalLinkage,
               llvm::Constant::getNullValue(reg->type), reg_name);
         }
 
@@ -610,7 +609,7 @@ CreateConstFromMemory(const uint64_t addr, llvm::Type *type,
         initializer_list.push_back(const_elm);
       }
       result = llvm::ConstantVector::get(initializer_list);
-    }break;
+    } break;
 
     default:
       LOG(FATAL) << "Unhandled LLVM Type: " << remill::LLVMThingToString(type);

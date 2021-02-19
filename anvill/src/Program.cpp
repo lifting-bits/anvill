@@ -738,7 +738,8 @@ Program::Impl::FindBytesContaining(uint64_t address) {
 
   const auto base_address = limit_address - mapped_data->size();
   if (base_address <= address && address < limit_address) {
-    return {&((*mapped_data)[0]), &((*mapped_meta)[0]), mapped_data->size(), base_address};
+    return {&((*mapped_data)[0]), &((*mapped_meta)[0]), mapped_data->size(),
+            base_address};
   } else {
     return {nullptr, nullptr, 0, 0};
   }
@@ -1085,7 +1086,8 @@ Byte Program::FindByte(uint64_t address) const {
 
 // Find which byte sequence (defined in the spec) has the provided `address`
 ByteSequence Program::FindBytesContaining(uint64_t address) const {
-  auto [data, meta, found_size, base_address] = impl->FindBytesContaining(address);
+  auto [data, meta, found_size, base_address] =
+      impl->FindBytesContaining(address);
   return ByteSequence(base_address, data, meta, found_size);
 }
 
