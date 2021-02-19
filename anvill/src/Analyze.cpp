@@ -1084,15 +1084,15 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
   } else if (auto bytes = program.FindBytesContaining(ea); bytes) {
     DLOG(INFO) << "Found a byte inside a memory area at: " << std::hex << ea
                << std::dec;
-    auto start_address = bytes[0].Address();
+    auto start_address = bytes.Address();
     auto var_name = CreateVariableName(start_address);
     auto data = bytes.ToString();
     auto init_data = llvm::ConstantDataArray::get(
         module.getContext(), llvm::makeArrayRef(data.data(), data.size()));
     auto var_type = init_data->getType();
 
-    auto ret = module.getOrInsertGlobal(var_name, var_type);
-    if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(ret);
+    auto new_gv = module.getOrInsertGlobal(var_name, var_type);
+    if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(new_gv);
         gv && !gv->hasInitializer()) {
       gv->setInitializer(init_data);
     }
@@ -1100,14 +1100,17 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 
       // the address is inside an allocated type
       ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
-          builder, ret, ea - start_address, var_ptr_ty));
+          builder, new_gv, ea - start_address, var_ptr_ty));
+
+      DLOG(INFO) << "Built an offset to: " << std::hex << ea << " from: " << start_address
+                << std::dec;
     }
 
   // In C a pointer can be one element beyond an array end.
   // This sometimes results in references to one byte beyond an array end
   // Handle this case, assuming the byte before `ea` exists
   } else if (auto prev_byte = program.FindByte(ea - 1u); ea && prev_byte) {
-
+    LOG(ERROR) << "TODO: Handle case of one past a variable reference";
   } else {
     return nullptr;
   }
@@ -1117,7 +1120,9 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
     auto &context = module.getContext();
     const auto intptr_ty =
         llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
-    return llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
+    auto ptr_ret_val = llvm::ConstantExpr::getPtrToInt(ret, intptr_ty);
+    CHECK(ptr_ret_val);
+    return ptr_ret_val;
   }
 
   return nullptr;

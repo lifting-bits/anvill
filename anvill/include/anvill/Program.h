@@ -128,8 +128,12 @@ struct ByteSequence {
     return first_data != nullptr;
   }
 
-  size_t Size(void) const {
+  inline size_t Size(void) const {
     return size;
+  }
+
+  inline uint64_t Address(void) const {
+    return address;
   }
 
   // Convert this byte sequence to a string.
