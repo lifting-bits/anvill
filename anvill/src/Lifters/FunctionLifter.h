@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Trail of Bits, Inc.
+ * Copyright (c) 2021 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,34 +17,26 @@
 
 #pragma once
 
-#include <remill/Arch/Instruction.h>
-#include <remill/BC/IntrinsicTable.h>
-#include <remill/BC/Lifter.h>
-
+#include <cstdint>
 #include <set>
 #include <unordered_map>
 
-namespace llvm {
-class BasicBlock;
-class Function;
-class Module;
-class LLVMContext;
-class Type;
-class Constant;
-class FunctionCallee;
-class Instruction;
-}  // namespace llvm
+#include <anvill/Providers/MemoryProvider.h>
 
+#include <remill/BC/InstructionLifter.h>
+#include <remill/BC/IntrinsicTable.h>
+
+namespace llvm {
+class Function;
+class LLVMContext;
+class Module;
+class Value;
+}  // namespace llvm
 namespace remill {
 class Arch;
-struct Register;
+class Instruction;
 }  // namespace remill
-
 namespace anvill {
-
-class Program;
-struct FunctionDecl;
-struct TypedRegisterDecl;
 
 struct FunctionEntry {
 
@@ -68,12 +60,28 @@ struct FunctionEntry {
   llvm::Function *native_to_lifted;
 };
 
-class MCToIRLifter {
+// Orchestrates lifting of instructions and control-flow between instructions.
+class FunctionLifter {
+ public:
+  FunctionLifter(const remill::Arch *arch_, MemoryProvider &memory_provider_,
+                 TypeProvider &type_provider_, llvm::Module &semantics_module_)
+      : arch(arch_),
+        memory_provider(memory_provider_),
+        type_provider(type_provider_),
+        module(semantics_module_),
+        context(module.getContext()),
+        intrinsics(&semantics_module_),
+        inst_lifter(arch_, intrinsics) {}
+
+  llvm::Function *LiftFunction(uint64_t address, llvm::FunctionType *func_type);
+
  private:
-  const remill::Arch *arch;
-  const Program &program;
+  const remill::Arch * const arch;
+  MemoryProvider &memory_provider;
+  TypeProvider &type_provider;
+
   llvm::Module &module;
-  llvm::LLVMContext &ctx;
+  llvm::LLVMContext &context;
   llvm::Function *lifted_func{nullptr};
   llvm::Value *state_ptr{nullptr};
   remill::Instruction *curr_inst{nullptr};
@@ -160,8 +168,8 @@ class MCToIRLifter {
                              remill::Instruction *inst_out);
 
  public:
-  MCToIRLifter(const remill::Arch *arch, const Program &program,
-               llvm::Module &module);
+  FunctionLifter(const remill::Arch *arch, const Program &program,
+                    llvm::Module &module);
 
   // Lift the function decl `decl` and return an `FunctionEntry`.
   FunctionEntry LiftFunction(const FunctionDecl &decl);

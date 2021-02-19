@@ -36,7 +36,6 @@ enum class BytePermission : uint8_t {
 enum class ByteAvailability : uint8_t {
   kUnknown,
   kUnavailable,
-  kAvailableButNotDefined,
   kAvailable
 };
 

@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "anvill/MCToIRLifter.h"
+#include "FunctionLifter.h"
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -34,16 +34,16 @@ DEFINE_bool(print_registers_before_instuctions, false,
 
 namespace anvill {
 
-MCToIRLifter::MCToIRLifter(const remill::Arch *_arch, const Program &_program,
-                           llvm::Module &_module)
+FunctionLifter::FunctionLifter(
+    const remill::Arch *_arch, const Program &_program, llvm::Module &_module)
     : arch(_arch),
       program(_program),
       module(_module),
-      ctx(_module.getContext()),
+      context(_module.getContext()),
       intrinsics(remill::IntrinsicTable(&_module)),
       inst_lifter(remill::InstructionLifter(_arch, &intrinsics)) {}
 
-llvm::BasicBlock *MCToIRLifter::GetOrCreateBlock(const uint64_t addr) {
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr) {
   auto &block = addr_to_block[addr];
   if (block) {
     return block;
@@ -51,7 +51,7 @@ llvm::BasicBlock *MCToIRLifter::GetOrCreateBlock(const uint64_t addr) {
 
   std::stringstream ss;
   ss << "inst_" << std::hex << addr;
-  block = llvm::BasicBlock::Create(ctx, ss.str(), lifted_func);
+  block = llvm::BasicBlock::Create(context, ss.str(), lifted_func);
 
   // Missed an instruction?! This can happen when IDA merges two instructions
   // into one larger synthetic instruction. This might also be a tail-call.
@@ -60,7 +60,7 @@ llvm::BasicBlock *MCToIRLifter::GetOrCreateBlock(const uint64_t addr) {
   return block;
 }
 
-bool MCToIRLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
+bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                                          remill::Instruction *inst_out) {
   static const auto max_inst_size = arch->MaxInstructionSize();
   inst_out->Reset();
@@ -93,53 +93,53 @@ bool MCToIRLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
   }
 }
 
-void MCToIRLifter::VisitInvalid(const remill::Instruction &inst,
+void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                 llvm::BasicBlock *block) {
   remill::AddTerminatingTailCall(block, intrinsics.error);
 }
 
-void MCToIRLifter::VisitError(const remill::Instruction &inst,
+void FunctionLifter::VisitError(const remill::Instruction &inst,
                               remill::Instruction *delayed_inst,
                               llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddTerminatingTailCall(block, intrinsics.error);
 }
 
-void MCToIRLifter::VisitNormal(const remill::Instruction &inst,
+void FunctionLifter::VisitNormal(const remill::Instruction &inst,
                                llvm::BasicBlock *block) {
   llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
 }
 
-void MCToIRLifter::VisitNoOp(const remill::Instruction &inst,
+void FunctionLifter::VisitNoOp(const remill::Instruction &inst,
                              llvm::BasicBlock *block) {
   VisitNormal(inst, block);
 }
 
-void MCToIRLifter::VisitDirectJump(const remill::Instruction &inst,
+void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                                    remill::Instruction *delayed_inst,
                                    llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_taken_pc), block);
 }
 
-void MCToIRLifter::VisitIndirectJump(const remill::Instruction &inst,
+void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                      remill::Instruction *delayed_inst,
                                      llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddTerminatingTailCall(block, intrinsics.jump);
 }
 
-void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
+void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
+  llvm::ReturnInst::Create(context, remill::LoadMemoryPointer(block), block);
 }
 
 // Figure out the fall-through return address for a function call. There are
 // annoying SPARC-isms to deal with due to their awful ABI choices.
 std::pair<uint64_t, llvm::Value *>
-MCToIRLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
+FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
                                         llvm::BasicBlock *block) {
 
   static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
@@ -204,7 +204,7 @@ MCToIRLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   }
 }
 
-void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
+void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
                                            remill::Instruction *delayed_inst,
                                            llvm::BasicBlock *block) {
 
@@ -223,7 +223,7 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
   VisitAfterFunctionCall(inst, block);
 }
 
-void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
+void FunctionLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block) {
 
@@ -232,7 +232,7 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
   VisitAfterFunctionCall(inst, block);
 }
 
-void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
+void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
   auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
   auto next_pc_ptr =
@@ -243,14 +243,14 @@ void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
   ir.CreateBr(GetOrCreateBlock(ret_pc));
 }
 
-void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,
+void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                           remill::Instruction *delayed_inst,
                                           llvm::BasicBlock *block) {
 
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
-  const auto not_taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  const auto taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
+  const auto not_taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
@@ -259,20 +259,20 @@ void MCToIRLifter::VisitConditionalBranch(const remill::Instruction &inst,
                            not_taken_block);
 }
 
-void MCToIRLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
+void FunctionLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call);
 }
 
-void MCToIRLifter::VisitConditionalAsyncHyperCall(
+void FunctionLifter::VisitConditionalAsyncHyperCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
-  const auto not_taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  const auto taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
+  const auto not_taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
@@ -283,7 +283,7 @@ void MCToIRLifter::VisitConditionalAsyncHyperCall(
                            not_taken_block);
 }
 
-void MCToIRLifter::VisitDelayedInstruction(const remill::Instruction &inst,
+void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                                            remill::Instruction *delayed_inst,
                                            llvm::BasicBlock *block,
                                            bool on_taken_path) {
@@ -303,7 +303,7 @@ into
 %2 = __anvill_type_<uid>(<%4's type> %4)
 %3 = ptrtoint %2 goal_type
 */
-llvm::Function *MCToIRLifter::GetOrCreateTaintedFunction(
+llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
   std::stringstream func_name;
@@ -317,7 +317,7 @@ llvm::Function *MCToIRLifter::GetOrCreateTaintedFunction(
   return mod.getFunction(func_name.str());
 }
 
-void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
+void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   auto &context = module.getContext();
   if (!log_printf) {
     llvm::Type *args[] = {llvm::Type::getInt8PtrTy(context, 0)};
@@ -361,7 +361,7 @@ void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   ir.CreateCall(log_printf, args);
 }
 
-void MCToIRLifter::VisitInstruction(
+void FunctionLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block,
     const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map) {
   curr_inst = &inst;
@@ -477,7 +477,7 @@ void MCToIRLifter::VisitInstruction(
 }
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
-FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
+FunctionEntry FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   auto &entry = addr_to_func[decl.address];
   if (entry.lifted) {
     return entry;
@@ -502,7 +502,7 @@ FunctionEntry MCToIRLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   return entry;
 }
 
-FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
+FunctionEntry FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   const auto entry = GetOrDeclareFunction(decl);
 
   // Check if we already lifted this function. If so, do not re-lift it.
@@ -585,6 +585,11 @@ FunctionEntry MCToIRLifter::LiftFunction(const FunctionDecl &decl) {
   }
 
   return entry;
+}
+
+llvm::Function *FunctionLifter::LiftFunction(
+    uint64_t address, llvm::FunctionType *func_type_) {
+  const auto func_type = remill::RecontextualizeType(func_type_, context);
 }
 
 }  // namespace anvill

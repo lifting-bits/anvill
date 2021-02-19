@@ -29,9 +29,9 @@
 
 #include <algorithm>
 
+#include "../include/anvill/InstructionLifter.h"
 #include "anvill/Compat/Cloning.h"
 #include "anvill/Decl.h"
-#include "anvill/MCToIRLifter.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
@@ -518,7 +518,7 @@ bool LiftCodeIntoModule(const remill::Arch *arch, const Program &program,
   // At this point, `module` is just the loaded semantics for
   // the arcchitecture. The module will be filled in with lifted program code
   // and data as the lifting process progresses.
-  MCToIRLifter lifter(arch, program, module);
+  InstructionLifter lifter(arch, program, module);
 
   // Lift global variables.
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {

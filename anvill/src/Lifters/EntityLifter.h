@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "FunctionLifter.h"
 #include "ValueLifter.h"
 
 namespace llvm {
@@ -44,21 +45,28 @@ class EntityLifterImpl {
       const std::shared_ptr<TypeProvider> &type_provider_,
       const remill::Arch *arch_, llvm::Module &module_);
 
-  // Tries to lift the entity at `address` and return an `llvm::Function *`
-  // or `llvm::GlobalAlias *` relating to that address.
-  llvm::Constant *TryLiftEntity(uint64_t address) const;
+  // Tries to lift the function at `address` and return an `llvm::Function *`.
+  llvm::Constant *TryLiftFunction(uint64_t address, llvm::FunctionType *type);
+
+  // Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
+  //
+  // A key issue with `TryLiftData` is that we might be requesting `address`,
+  // but `address` may be inside of another piece of data, which begins
+  // at `data_address`.
+  llvm::Constant *TryLiftData(uint64_t address, uint64_t data_address,
+                              llvm::Type *data_type);
 
  private:
   friend class ValueLifter;
 
   EntityLifterImpl(void) = delete;
 
-  const std::shared_ptr<MemoryProvider> mem_provider;
+  const std::shared_ptr<MemoryProvider> memory_provider;
   const std::shared_ptr<TypeProvider> type_provider;
   const remill::Arch * const arch;
 
   // Module into which all code is lifted.
-  llvm::Module &module;
+  llvm::Module &target_module;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
@@ -66,13 +74,13 @@ class EntityLifterImpl {
   // Lifts initializers of global variables.
   ValueLifter value_lifter;
 
+  // Used to lift functions.
+  FunctionLifter function_lifter;
+
   std::unordered_map<uint64_t, llvm::Constant *> entities;
 
-  // Work list of functions that need to be lifted.
-  std::vector<std::pair<uint64_t, llvm::Function *>> functions_to_lift;
-
-  // Work list of data variables that need to be lifted.
-  std::vector<std::pair<uint64_t, llvm::GlobalAlias *>> data_to_lift;
+  // Work list of functions that need to be optimized.
+  std::vector<std::pair<uint64_t, llvm::Constant *>> new_entities;
 };
 
 }  // namespace anvill

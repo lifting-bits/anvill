@@ -25,8 +25,14 @@
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
+#include <llvm/IR/Function.h>
+#include <llvm/IR/GlobalAlias.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+
+#include <sstream>
+
+#include <glog/logging.h>
 
 namespace anvill {
 
@@ -38,13 +44,65 @@ EntityLifterImpl::EntityLifterImpl(
     const std::shared_ptr<MemoryProvider> &mem_provider_,
     const std::shared_ptr<TypeProvider> &type_provider_,
     const remill::Arch *arch_, llvm::Module &module_)
-    : mem_provider(mem_provider_),
+    : memory_provider(mem_provider_),
       type_provider(type_provider_),
       arch(arch_),
-      module(module_),
+      target_module(module_),
       semantics_module(remill::LoadArchSemantics(arch_)),
-      value_lifter(module_) {
-  arch->PrepareModule(&module);
+      value_lifter(module_),
+      function_lifter(arch_, *mem_provider_,
+                      *type_provider_, *semantics_module) {
+  arch->PrepareModule(&target_module);
+}
+
+// Tries to lift the function at `address` and return an `llvm::Function *`.
+llvm::Constant *EntityLifterImpl::TryLiftFunction(
+    uint64_t address, llvm::FunctionType *func_type) {
+
+  auto &semantics_context = semantics_module->getContext();
+  auto &module_context = target_module.getContext();
+
+  // First, go lift the function in the semantics module.
+  const auto sem_func_version =
+      function_lifter.LiftFunction(address, func_type);
+  const auto name = sem_func_version->getName().str();
+
+  // Now that we've lifted the function, we're left with some pretty brutal
+  // bitcode, and its in the wrong module too. So, we need to go and move or
+  // copy the lifted function into the target module.
+  if (&semantics_context == &module_context) {
+    remill::MoveFunctionIntoModule(sem_func_version, &target_module);
+    return target_module.getFunction(name);
+
+  } else {
+    const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
+        remill::RecontextualizeType(func_type, module_context));
+
+    const auto target_func_version = llvm::Function::Create(
+        module_func_type, llvm::GlobalValue::ExternalLinkage, name,
+        &target_module);
+
+    remill::CloneFunctionInto(sem_func_version, target_func_version);
+    return target_func_version;
+  }
+}
+
+// Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
+//
+// A key issue with `TryLiftData` is that we might be requesting `address`,
+// but `address` may be inside of another piece of data, which begins
+// at `data_address`.
+llvm::Constant *EntityLifterImpl::TryLiftData(
+    uint64_t address, uint64_t data_address, llvm::Type *data_type) {
+  auto &context = target_module.getContext();
+  data_type = remill::RecontextualizeType(data_type, context);
+
+  std::stringstream ss;
+  ss << "data_" << std::hex << data_address;
+  const auto ref_name = ss.str();
+
+//  auto alias = llvm::GlobalAlias
+  return nullptr;
 }
 
 EntityLifter::~EntityLifter(void) {}
@@ -63,18 +121,44 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
     return ent_it->second;
   }
 
-  uint8_t byte = 0;
-  BytePermission byte_perm = BytePermission::kUnknown;
+  auto [byte, availability, permission] =
+      impl->memory_provider->Query(address);
 
-  auto &context = impl->module.getContext();
-  auto func_type = impl->type_provider.TryGetFunctionType(address);
-  if (func_type) {
+  switch (availability) {
+    case ByteAvailability::kUnknown:
+    case ByteAvailability::kAvailable:
+      break;
 
+    // If the byte isn't available, then it's not part of the address space
+    // to which the memory provider provides access.
+    case ByteAvailability::kUnavailable:
+      return nullptr;
   }
 
+  auto &context = impl->target_module.getContext();
+  llvm::Constant *ret = nullptr;
 
-  return nullptr;
-//  auto [added, new_ent_it] = impl->entities.emplace();
+  switch (permission) {
+    case BytePermission::kUnknown:
+    case BytePermission::kReadableExecutable:
+    case BytePermission::kReadableWritableExecutable:
+      if (auto func_type = impl->type_provider->TryGetFunctionType(address)) {
+        ret = impl->TryLiftFunction(address, func_type);
+        break;
+      }
+      [[clang::fallthrough]];
+    case BytePermission::kReadable:
+    case BytePermission::kReadableWritable: {
+
+    }
+  }
+
+  auto [new_ent_it, added] = impl->entities.emplace(address, ret);
+  if (added) {
+    impl->new_entities.emplace_back(address, ret);
+  }
+
+  return ret;
 }
 
 }  // namespace anvill
