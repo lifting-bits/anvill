@@ -946,7 +946,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
 
 
-  for (auto changed = true; changed; ) {
+  for (auto changed = true; changed;) {
 
     RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
     RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);

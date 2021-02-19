@@ -1102,8 +1102,8 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
       ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
           builder, new_gv, ea - start_address, var_ptr_ty));
 
-      DLOG(INFO) << "Built an offset to: " << std::hex << ea << " from: " << start_address
-                << std::dec;
+      DLOG(INFO) << "Built an offset to: " << std::hex << ea
+                 << " from: " << start_address << std::dec;
     }
 
   // In C a pointer can be one element beyond an array end.

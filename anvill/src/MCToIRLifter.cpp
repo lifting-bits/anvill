@@ -17,9 +17,8 @@
 
 #include "anvill/MCToIRLifter.h"
 
-#include <glog/logging.h>
 #include <gflags/gflags.h>
-
+#include <glog/logging.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
@@ -322,14 +321,14 @@ void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   auto &context = module.getContext();
   if (!log_printf) {
     llvm::Type *args[] = {llvm::Type::getInt8PtrTy(context, 0)};
-    auto fty = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(context), args, true);
+    auto fty =
+        llvm::FunctionType::get(llvm::Type::getVoidTy(context), args, true);
 
     log_printf = llvm::dyn_cast<llvm::Function>(
         module.getOrInsertFunction("printf", fty).getCallee());
 
     std::stringstream ss;
-    arch->ForEachRegister([&] (const remill::Register *reg) {
+    arch->ForEachRegister([&](const remill::Register *reg) {
       if (reg->EnclosingRegister() == reg &&
           reg->type->isIntegerTy(arch->address_size)) {
         ss << reg->name << "=%llx ";
@@ -339,9 +338,9 @@ void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
     const auto i32_type = llvm::Type::getInt32Ty(context);
     const auto format_str =
         llvm::ConstantDataArray::getString(context, ss.str(), true);
-    const auto format_var =
-        new llvm::GlobalVariable(module, format_str->getType(), true,
-                                 llvm::GlobalValue::InternalLinkage, format_str);
+    const auto format_var = new llvm::GlobalVariable(
+        module, format_str->getType(), true, llvm::GlobalValue::InternalLinkage,
+        format_str);
 
     llvm::Constant *indices[] = {llvm::ConstantInt::getNullValue(i32_type),
                                  llvm::ConstantInt::getNullValue(i32_type)};
@@ -351,7 +350,7 @@ void MCToIRLifter::InstrumentInstruction(llvm::BasicBlock *block) {
 
   std::vector<llvm::Value *> args;
   args.push_back(log_format_str);
-  arch->ForEachRegister([&] (const remill::Register *reg) {
+  arch->ForEachRegister([&](const remill::Register *reg) {
     if (reg->EnclosingRegister() == reg &&
         reg->type->isIntegerTy(arch->address_size)) {
       args.push_back(inst_lifter.LoadRegValue(block, state_ptr, reg->name));
