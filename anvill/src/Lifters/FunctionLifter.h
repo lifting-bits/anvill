@@ -22,6 +22,8 @@
 #include <unordered_map>
 #include <anvill/Decl.h>
 
+#include <anvill/Lifters/Options.h>
+
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
@@ -49,14 +51,14 @@ class FunctionLifter {
  public:
   ~FunctionLifter(void);
 
-  FunctionLifter(const remill::Arch *arch_, MemoryProvider &memory_provider_,
+  FunctionLifter(const LifterOptions &options_, MemoryProvider &memory_provider_,
                  TypeProvider &type_provider_, llvm::Module &semantics_module_);
 
   llvm::Function *LiftFunction(uint64_t address, llvm::FunctionType *func_type,
                                llvm::CallingConv::ID calling_convention);
 
  private:
-  const remill::Arch * const arch;
+  const LifterOptions options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
 
@@ -85,6 +87,17 @@ class FunctionLifter {
   // Remill instrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
+
+  // Are we lifting SPARC code? This affects whether or not we need to do
+  // double checking on function return addresses;
+  const bool is_sparc;
+
+  // Convenient to keep around.
+  llvm::Type * const i8_type;
+  llvm::Constant * const i8_zero;
+  llvm::Type * const i32_type;
+  llvm::PointerType * const mem_ptr_type;
+  llvm::PointerType * const state_ptr_type;
 
   llvm::Function *log_printf{nullptr};
   llvm::Value *log_format_str{nullptr};
@@ -307,6 +320,33 @@ class FunctionLifter {
   // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
   // that all semantics and helpers are completely inlined.
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
+
+  // Initialize a symbolic program counter value in a lifted function. This
+  // mechanism is used to improve cross-reference discovery by using a
+  // relocatable constant expression as the initial value for a program counter.
+  // After optimizations, the net effect is that anything derived from this
+  // initial program counter is "tainted" by this initial constant expression,
+  // and therefore can be found.
+  llvm::Value *InitializeSymbolicProgramCounter(llvm::BasicBlock *block);
+
+  // Initialize the program value with a concrete integer address.
+  llvm::Value *InitializeConcreteProgramCounter(llvm::BasicBlock *block);
+
+  // Initialize a symbolic stack pointer value in a lifted function. This
+  // mechanism is used to improve stack frame recovery, in a similar way that
+  // a symbolic PC improves cross-reference discovery.
+  void InitialzieSymbolicStackPointer(llvm::BasicBlock *block);
+
+  // Initialize a symbolic return address. This is similar to symbolic program
+  // counters/stack pointers.
+  llvm::Value *InitializeSymbolicReturnAddress(
+      llvm::BasicBlock *block, llvm::Value *mem_ptr,
+      const ValueDecl &ret_address);
+
+  // Initialize a concrete return address. This is an intrinsic function call.
+  llvm::Value *InitializeConcreteReturnAddress(
+      llvm::BasicBlock *block, llvm::Value *mem_ptr,
+      const ValueDecl &ret_address);
 };
 
 }  // namespace anvill

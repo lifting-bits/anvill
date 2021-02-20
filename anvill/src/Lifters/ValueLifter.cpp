@@ -49,7 +49,6 @@ llvm::APInt ValueLifterImpl::ConsumeValue(std::string_view &data,
 llvm::Constant *ValueLifterImpl::Lift(
     std::string_view data, llvm::Type *type, const EntityLifter &ent_lifter) {
 
-  const auto &dl = module.getDataLayout();
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
       const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
@@ -124,12 +123,12 @@ llvm::Constant *ValueLifterImpl::Lift(
   }
 }
 
-ValueLifter::ValueLifter(llvm::Module &module_)
-    : impl(std::make_shared<ValueLifterImpl>(module_)) {}
+ValueLifter::ValueLifter(const LifterOptions &options_)
+    : impl(std::make_shared<ValueLifterImpl>(options_)) {}
 
-ValueLifterImpl::ValueLifterImpl(llvm::Module &module_)
-    : module(module_),
-      dl(module.getDataLayout()) {}
+ValueLifterImpl::ValueLifterImpl(const LifterOptions &options_)
+    : options(options_),
+      dl(options.module->getDataLayout()) {}
 
 ValueLifter::~ValueLifter(void) {}
 

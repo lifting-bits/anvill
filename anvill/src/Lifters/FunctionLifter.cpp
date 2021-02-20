@@ -37,6 +37,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -104,15 +105,25 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
 FunctionLifter::~FunctionLifter(void) {}
 
 FunctionLifter::FunctionLifter(
-    const remill::Arch *arch_, MemoryProvider &memory_provider_,
+    const LifterOptions &options_, MemoryProvider &memory_provider_,
     TypeProvider &type_provider_, llvm::Module &semantics_module_)
-    : arch(arch_),
+    : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
       module(semantics_module_),
       context(module.getContext()),
       intrinsics(&semantics_module_),
-      inst_lifter(arch_, intrinsics) {}
+      inst_lifter(options.arch, intrinsics),
+      is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
+      i8_type(llvm::Type::getInt8Ty(context)),
+      i8_zero(llvm::Constant::getNullValue(i8_type)),
+      i32_type(llvm::Type::getInt32Ty(context)),
+      mem_ptr_type(llvm::dyn_cast<llvm::PointerType>(
+          remill::RecontextualizeType(options.arch->MemoryPointerType(),
+                                      context))),
+      state_ptr_type(llvm::dyn_cast<llvm::PointerType>(
+          remill::RecontextualizeType(options.arch->StatePointerType(),
+                                      context))) {}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -141,7 +152,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
 // delay slot of another instruction.
 bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                                            remill::Instruction *inst_out) {
-  static const auto max_inst_size = arch->MaxInstructionSize();
+  static const auto max_inst_size = options.arch->MaxInstructionSize();
   inst_out->Reset();
 
   // Read the maximum number of bytes possible for instructions on this
@@ -174,9 +185,11 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
 found_all_bytes:
 
   if (is_delayed) {
-    return arch->DecodeDelayedInstruction(addr, inst_out->bytes, *inst_out);
+    return options.arch->DecodeDelayedInstruction(
+        addr, inst_out->bytes, *inst_out);
   } else {
-    return arch->DecodeInstruction(addr, inst_out->bytes, *inst_out);
+    return options.arch->DecodeInstruction(
+        addr, inst_out->bytes, *inst_out);
   }
 }
 
@@ -325,7 +338,6 @@ std::pair<uint64_t, llvm::Value *>
 FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
                                         llvm::BasicBlock *block) {
 
-  static const bool is_sparc = arch->IsSPARC32() || arch->IsSPARC64();
   const auto pc = inst.branch_not_taken_pc;
 
   // The semantics for handling a call save the expected return program counter
@@ -483,7 +495,8 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                                              llvm::BasicBlock *block,
                                              bool on_taken_path) {
   if (delayed_inst &&
-      arch->NextInstructionIsDelayed(inst, *delayed_inst, on_taken_path)) {
+      options.arch->NextInstructionIsDelayed(inst, *delayed_inst,
+                                             on_taken_path)) {
     inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
   }
 }
@@ -538,14 +551,13 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
         module.getOrInsertFunction("printf", fty).getCallee());
 
     std::stringstream ss;
-    arch->ForEachRegister([&](const remill::Register *reg) {
+    options.arch->ForEachRegister([&](const remill::Register *reg) {
       if (reg->EnclosingRegister() == reg &&
-          reg->type->isIntegerTy(arch->address_size)) {
+          reg->type->isIntegerTy(options.arch->address_size)) {
         ss << reg->name << "=%llx ";
       }
     });
     ss << '\n';
-    const auto i32_type = llvm::Type::getInt32Ty(context);
     const auto format_str =
         llvm::ConstantDataArray::getString(context, ss.str(), true);
     const auto format_var = new llvm::GlobalVariable(
@@ -560,9 +572,9 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
 
   std::vector<llvm::Value *> args;
   args.push_back(log_format_str);
-  arch->ForEachRegister([&](const remill::Register *reg) {
+  options.arch->ForEachRegister([&](const remill::Register *reg) {
     if (reg->EnclosingRegister() == reg &&
-        reg->type->isIntegerTy(arch->address_size)) {
+        reg->type->isIntegerTy(options.arch->address_size)) {
       args.push_back(inst_lifter.LoadRegValue(block, state_ptr, reg->name));
     }
   });
@@ -584,9 +596,9 @@ void FunctionLifter::VisitTypedHintedRegister(
   }
 
   // Only operate on pointer-sized integer registers that are not sub-registers.
-  const auto reg = arch->RegisterByName(reg_name);
+  const auto reg = options.arch->RegisterByName(reg_name);
   if (reg->EnclosingRegister() != reg ||
-      !reg->type->isIntegerTy(arch->address_size)) {
+      !reg->type->isIntegerTy(options.arch->address_size)) {
     return;
   }
 
@@ -642,7 +654,7 @@ void FunctionLifter::VisitInstruction(
 
   // Figure out if we have to decode the subsequent instruction as a delayed
   // instruction.
-  if (arch->MayHaveDelaySlot(inst)) {
+  if (options.arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
     if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
                                delayed_inst)) {
@@ -720,7 +732,7 @@ llvm::Value *FunctionLifter::CallNativeFunction(
     llvm::BasicBlock *block) {
   auto &decl = addr_to_decl[native_addr];
   if (!decl.address) {
-    auto maybe_decl = FunctionDecl::Create(*native_func, arch);
+    auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
     if (remill::IsError(maybe_decl)) {
       LOG(ERROR)
           << "Unable to create FunctionDecl for "
@@ -844,6 +856,109 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(
   return native_func;
 }
 
+// Initialize a symbolic program counter value in a lifted function. This
+// mechanism is used to improve cross-reference discovery by using a
+// relocatable constant expression as the initial value for a program counter.
+// After optimizations, the net effect is that anything derived from this
+// initial program counter is "tainted" by this initial constant expression,
+// and therefore can be found.
+llvm::Value *FunctionLifter::InitializeSymbolicProgramCounter(
+    llvm::BasicBlock *block) {
+
+  auto pc_reg = options.arch->RegisterByName(
+      options.arch->ProgramCounterRegisterName());
+  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
+
+  auto base_pc = module.getGlobalVariable("__anvill_pc");
+  if (!base_pc) {
+    base_pc = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_zero,
+        "__anvill_pc");
+  }
+
+  auto pc = llvm::ConstantExpr::getAdd(
+      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
+      llvm::ConstantInt::get(pc_reg->type, func_address, false));
+
+  llvm::IRBuilder<> ir(block);
+  ir.CreateStore(pc, pc_reg_ptr);
+  return pc;
+}
+
+// Initialize the program value with a concrete integer address.
+llvm::Value *FunctionLifter::InitializeConcreteProgramCounter(
+    llvm::BasicBlock *block) {
+  auto pc_reg = options.arch->RegisterByName(
+      options.arch->ProgramCounterRegisterName());
+  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
+  auto pc = llvm::ConstantInt::get(pc_reg->type, func_address, false);
+  llvm::IRBuilder<> ir(block);
+  ir.CreateStore(pc, pc_reg_ptr);
+  return pc;
+}
+
+// Initialize a symbolic stack pointer value in a lifted function. This
+// mechanism is used to improve stack frame recovery, in a similar way that
+// a symbolic PC improves cross-reference discovery.
+void FunctionLifter::InitialzieSymbolicStackPointer(llvm::BasicBlock *block) {
+  auto sp_reg = options.arch->RegisterByName(
+      options.arch->StackPointerRegisterName());
+  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
+
+  auto base_sp = module.getGlobalVariable("__anvill_sp");
+  if (!base_sp) {
+    base_sp = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_zero,
+        "__anvill_sp");
+  }
+
+  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
+  llvm::IRBuilder<> ir(block);
+  ir.CreateStore(sp, sp_reg_ptr);
+}
+
+// Initialize a symbolic return address. This is similar to symbolic program
+// counters/stack pointers.
+llvm::Value *FunctionLifter::InitializeSymbolicReturnAddress(
+    llvm::BasicBlock *block, llvm::Value *mem_ptr,
+    const ValueDecl &ret_address) {
+  auto base_ra = module.getGlobalVariable("__anvill_ra");
+  if (!base_ra) {
+    base_ra = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_zero,
+        "__anvill_ra");
+  }
+
+  auto pc_reg = options.arch->RegisterByName(
+      options.arch->ProgramCounterRegisterName());
+  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
+
+  return StoreNativeValue(ret_addr, ret_address, intrinsics, block,
+                          state_ptr, mem_ptr);
+}
+
+// Initialize a concrete return address. This is an intrinsic function call.
+llvm::Value *FunctionLifter::InitializeConcreteReturnAddress(
+    llvm::BasicBlock *block, llvm::Value *mem_ptr,
+    const ValueDecl &ret_address) {
+  auto ret_addr_func =
+      llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::returnaddress);
+  llvm::Value *args[] = {llvm::ConstantInt::get(i32_type, 0)};
+
+  auto pc_reg = options.arch->RegisterByName(
+      options.arch->ProgramCounterRegisterName());
+
+  llvm::Value *ret_addr = llvm::CallInst::Create(
+      ret_addr_func, args, llvm::None, llvm::Twine::createNull(),
+      &(block->front()));
+
+  llvm::IRBuilder<> ir(block);
+  ret_addr = ir.CreatePtrToInt(ret_addr, pc_reg->type,
+                               llvm::Twine::createNull());
+  return StoreNativeValue(ret_addr, ret_address, intrinsics, block,
+                          state_ptr, mem_ptr);
+}
+
 // Set up `native_func` to be able to call `lifted_func`. This means
 // marshalling high-level argument types into lower-level values to pass into
 // a stack-allocated `State` structure. This also involves providing initial
@@ -858,7 +973,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   // of Remill lifted code, and marshal out the return value, if any.
   auto &decl = addr_to_decl[func_address];
   if (!decl.address) {
-    auto maybe_decl = FunctionDecl::Create(*native_func, arch);
+    auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
     if (remill::IsError(maybe_decl)) {
       LOG(ERROR)
           << "Unable to create FunctionDecl for "
@@ -877,26 +992,19 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   auto block = llvm::BasicBlock::Create(context, "", native_func);
   llvm::IRBuilder<> ir(block);
 
-  const auto i8_type = llvm::Type::getInt8Ty(context);
-  const auto i8_val = llvm::Constant::getNullValue(i8_type);
-
   // Create a memory pointer.
-  const auto mem_ptr_type = llvm::dyn_cast<llvm::PointerType>(
-      remill::RecontextualizeType(arch->MemoryPointerType(), context));
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate a state pointer.
-  const auto state_ptr_type = llvm::dyn_cast<llvm::PointerType>(
-      remill::RecontextualizeType(arch->StatePointerType(), context));
   const auto state_type = state_ptr_type->getElementType();
-  auto state_ptr = ir.CreateAlloca(state_type);
+  state_ptr = ir.CreateAlloca(state_type);
 
   // Get or create globals for all top-level registers. The idea here is that
   // the spec could feasibly miss some dependencies, and so after optimization,
   // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
   // them appropriately.
 
-  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+  options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
     if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
       std::stringstream ss;
       ss << "__anvill_reg_" << reg->name;
@@ -914,51 +1022,26 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
     }
   });
 
-  // Store the program counter into the state.
-  auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
-  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
-
-  auto base_pc = module.getGlobalVariable("__anvill_pc");
-  if (!base_pc) {
-    base_pc = new llvm::GlobalVariable(
-        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
-        "__anvill_pc");
+  llvm::Value *pc = nullptr;
+  if (options.symbolic_program_counter) {
+    pc = InitializeSymbolicProgramCounter(block);
+  } else {
+    pc = InitializeConcreteProgramCounter(block);
   }
-
-  auto pc = llvm::ConstantExpr::getAdd(
-      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
-      llvm::ConstantInt::get(pc_reg->type, func_address, false));
-  ir.SetInsertPoint(block);
-  ir.CreateStore(pc, pc_reg_ptr);
 
   // Initialize the stack pointer.
-  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
-
-  auto base_sp = module.getGlobalVariable("__anvill_sp");
-  if (!base_sp) {
-    base_sp = new llvm::GlobalVariable(
-        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
-        "__anvill_sp");
+  if (options.symbolic_stack_pointer) {
+    InitialzieSymbolicStackPointer(block);
   }
-
-  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
-  ir.SetInsertPoint(block);
-  ir.CreateStore(sp, sp_reg_ptr);
 
   // Put the function's return address wherever it needs to go.
-  auto base_ra = module.getGlobalVariable("__anvill_ra");
-  if (!base_ra) {
-    base_ra = new llvm::GlobalVariable(
-        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
-        "__anvill_ra");
+  if (options.symbolic_return_address) {
+    mem_ptr = InitializeSymbolicReturnAddress(
+        block, mem_ptr, decl.return_address);
+  } else {
+    mem_ptr = InitializeConcreteReturnAddress(
+        block, mem_ptr, decl.return_address);
   }
-
-  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
-
-
-  mem_ptr = StoreNativeValue(ret_addr, decl.return_address, intrinsics, block,
-                             state_ptr, mem_ptr);
 
   // Store the function parameters either into the state struct
   // or into memory (likely the stack).

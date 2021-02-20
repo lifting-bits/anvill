@@ -30,6 +30,7 @@ class Arch;
 namespace anvill {
 
 class EntityLifterImpl;
+class LifterOptions;
 class ValueLifter;
 class MemoryProvider;
 class TypeProvider;
@@ -40,9 +41,9 @@ class EntityLifter {
  public:
   ~EntityLifter(void);
 
-  explicit EntityLifter(const std::shared_ptr<MemoryProvider> &mem_provider_,
-                        const std::shared_ptr<TypeProvider> &type_provider_,
-                        const remill::Arch *arch_, llvm::Module &module_);
+  explicit EntityLifter(const LifterOptions &options,
+                        const std::shared_ptr<MemoryProvider> &mem_provider_,
+                        const std::shared_ptr<TypeProvider> &type_provider_);
 
   // Tries to lift the entity at `address` and return an `llvm::Function *`
   // or `llvm::GlobalAlias *` relating to that address.

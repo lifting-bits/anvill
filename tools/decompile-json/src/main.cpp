@@ -46,6 +46,7 @@
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
 #include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Lifters/Options.h>
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
@@ -676,15 +677,16 @@ int main(int argc, char *argv[]) {
   }
 
   anvill::Program program;
-
   auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
   auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+
+  anvill::LifterOptions options(arch.get(), module);
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(memory, types, arch.get(), module);
+  anvill::EntityLifter lifter(options, memory, types);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -703,8 +705,6 @@ int main(int argc, char *argv[]) {
     (void) lifter.TryLiftEntity(decl->address);
     return true;
   });
-
-  module.dump();
 
   // Verify the module
   CHECK(remill::VerifyModule(&module));

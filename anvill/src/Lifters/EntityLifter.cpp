@@ -39,18 +39,18 @@ EntityLifterImpl::~EntityLifterImpl(void) {
 }
 
 EntityLifterImpl::EntityLifterImpl(
+    const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<TypeProvider> &type_provider_,
-    const remill::Arch *arch_, llvm::Module &module_)
-    : memory_provider(mem_provider_),
+    const std::shared_ptr<TypeProvider> &type_provider_)
+    : options(options_),
+      memory_provider(mem_provider_),
       type_provider(type_provider_),
-      arch(arch_),
-      target_module(module_),
-      semantics_module(remill::LoadArchSemantics(arch_)),
-      value_lifter(module_),
-      function_lifter(arch_, *mem_provider_,
-                      *type_provider_, *semantics_module) {
-  arch->PrepareModule(&target_module);
+      semantics_module(remill::LoadArchSemantics(options.arch)),
+      value_lifter(options),
+      function_lifter(options, *mem_provider_, *type_provider_,
+                      *semantics_module) {
+  CHECK_EQ(options.arch->context, &(options.module->getContext()));
+  options.arch->PrepareModule(options.module);
 }
 
 // Tries to lift the function at `address` and return an `llvm::Function *`.
@@ -62,7 +62,7 @@ llvm::Constant *EntityLifterImpl::TryLiftFunction(
     llvm::CallingConv::ID calling_convention) {
 
   auto &semantics_context = semantics_module->getContext();
-  auto &module_context = target_module.getContext();
+  auto &module_context = options.module->getContext();
 
   // First, go lift the function in the semantics module.
   const auto sem_func_version =
@@ -73,8 +73,8 @@ llvm::Constant *EntityLifterImpl::TryLiftFunction(
   // bitcode, and its in the wrong module too. So, we need to go and move or
   // copy the lifted function into the target module.
   if (&semantics_context == &module_context) {
-    remill::MoveFunctionIntoModule(sem_func_version, &target_module);
-    return target_module.getFunction(name);
+    remill::MoveFunctionIntoModule(sem_func_version, options.module);
+    return options.module->getFunction(name);
 
   } else {
     const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
@@ -82,7 +82,7 @@ llvm::Constant *EntityLifterImpl::TryLiftFunction(
 
     const auto target_func_version = llvm::Function::Create(
         module_func_type, llvm::GlobalValue::ExternalLinkage, name,
-        &target_module);
+        options.module);
 
     remill::CloneFunctionInto(sem_func_version, target_func_version);
     return target_func_version;
@@ -96,7 +96,7 @@ llvm::Constant *EntityLifterImpl::TryLiftFunction(
 // at `data_address`.
 llvm::Constant *EntityLifterImpl::TryLiftData(
     uint64_t address, uint64_t data_address, llvm::Type *data_type) {
-  auto &context = target_module.getContext();
+  auto &context = options.module->getContext();
   data_type = remill::RecontextualizeType(data_type, context);
 
   std::stringstream ss;
@@ -109,11 +109,11 @@ llvm::Constant *EntityLifterImpl::TryLiftData(
 
 EntityLifter::~EntityLifter(void) {}
 
-EntityLifter::EntityLifter(const std::shared_ptr<MemoryProvider> &mem_provider_,
-                           const std::shared_ptr<TypeProvider> &type_provider_,
-                           const remill::Arch *arch_, llvm::Module &module_)
-    : impl(std::make_shared<EntityLifterImpl>(mem_provider_, type_provider_,
-                                              arch_, module_)) {}
+EntityLifter::EntityLifter(const LifterOptions &options_,
+                           const std::shared_ptr<MemoryProvider> &mem_provider_,
+                           const std::shared_ptr<TypeProvider> &type_provider_)
+    : impl(std::make_shared<EntityLifterImpl>(
+          options_, mem_provider_, type_provider_)) {}
 
 // Tries to lift the entity at `address` and return an `llvm::Function *`
 // or `llvm::GlobalAlias *` relating to that address.

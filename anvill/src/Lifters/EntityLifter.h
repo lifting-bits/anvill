@@ -18,6 +18,7 @@
 #pragma once
 
 #include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
 
@@ -41,9 +42,9 @@ class EntityLifterImpl {
   ~EntityLifterImpl(void);
 
   explicit EntityLifterImpl(
+      const LifterOptions &options_,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<TypeProvider> &type_provider_,
-      const remill::Arch *arch_, llvm::Module &module_);
+      const std::shared_ptr<TypeProvider> &type_provider_);
 
   // Tries to lift the function at `address` and return an `llvm::Function *`.
   // The parameter are return types are defined in terms of the function type,
@@ -66,12 +67,14 @@ class EntityLifterImpl {
 
   EntityLifterImpl(void) = delete;
 
-  const std::shared_ptr<MemoryProvider> memory_provider;
-  const std::shared_ptr<TypeProvider> type_provider;
-  const remill::Arch * const arch;
+  // Options used to guide how lifting should occur.
+  const LifterOptions options;
 
-  // Module into which all code is lifted.
-  llvm::Module &target_module;
+  // Provider of memory when asking for bytes for instructions or data.
+  const std::shared_ptr<MemoryProvider> memory_provider;
+
+  // Provider of type information when asking for function prototypes.
+  const std::shared_ptr<TypeProvider> type_provider;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;

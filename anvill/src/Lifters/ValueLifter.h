@@ -18,6 +18,7 @@
 #pragma once
 
 #include <anvill/Lifters/ValueLifter.h>
+#include <anvill/Lifters/Options.h>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
@@ -29,7 +30,7 @@ namespace anvill {
 
 class ValueLifterImpl {
  public:
-  explicit ValueLifterImpl(llvm::Module &module_);
+  explicit ValueLifterImpl(const LifterOptions &options_);
 
   // Consume `num_bytes` of bytes from `data`, and update `data` in place.
   llvm::APInt ConsumeValue(std::string_view &data, unsigned num_bytes);
@@ -43,7 +44,7 @@ class ValueLifterImpl {
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
                        const EntityLifter &entity_lifter);
 
-  llvm::Module &module;
+  const LifterOptions options;
   const llvm::DataLayout &dl;
 };
 

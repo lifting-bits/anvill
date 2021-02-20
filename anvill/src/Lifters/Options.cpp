@@ -15,41 +15,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include <anvill/Lifters/Options.h>
 
-#include <memory>
-#include <string_view>
+#include <llvm/IR/Module.h>
+#include <remill/Arch/Arch.h>
+#include <glog/logging.h>
 
-namespace llvm {
-class Constant;
-class Module;
-class Type;
-}  // namespace llvm
 namespace anvill {
 
-class ValueLifterImpl;
-
-class EntityLifter;
-class LifterOptions;
-
-// The value lifter is responsible for lifting raw data, as taken from
-// memory, and producing `llvm::Constant` values that can be used to initialize
-// global variables.
-class ValueLifter {
- public:
-  ~ValueLifter(void);
-
-  explicit ValueLifter(const LifterOptions &options_);
-
-  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       const EntityLifter &entity_lifter) const;
-
- private:
-  friend class DataLifter;
-  friend class FunctionLifter;
-
-  ValueLifter(void) = delete;
-  std::shared_ptr<ValueLifterImpl> impl;
-};
+void LifterOptions::CheckModuleContextMatchesArch(void) const {
+  CHECK_EQ(&(module->getContext()), arch->context);
+}
 
 }  // namespace anvill
+
