@@ -19,14 +19,13 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+
+#include <remill/Arch/Arch.h>
+#include <remill/Arch/Instruction.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
 #include <sstream>
-
-#include "anvill/Decl.h"
-#include "anvill/Program.h"
-#include "anvill/Util.h"
 
 DEFINE_bool(print_registers_before_instuctions, false,
             "Inject calls to printf (into the lifted bitcode) to log integer "
@@ -35,14 +34,20 @@ DEFINE_bool(print_registers_before_instuctions, false,
 namespace anvill {
 
 FunctionLifter::FunctionLifter(
-    const remill::Arch *_arch, const Program &_program, llvm::Module &_module)
-    : arch(_arch),
-      program(_program),
-      module(_module),
-      context(_module.getContext()),
-      intrinsics(remill::IntrinsicTable(&_module)),
-      inst_lifter(remill::InstructionLifter(_arch, &intrinsics)) {}
+    const remill::Arch *arch_, MemoryProvider &memory_provider_,
+    TypeProvider &type_provider_, llvm::Module &semantics_module_)
+    : arch(arch_),
+      memory_provider(memory_provider_),
+      type_provider(type_provider_),
+      module(semantics_module_),
+      context(module.getContext()),
+      intrinsics(&semantics_module_),
+      inst_lifter(arch_, intrinsics) {}
 
+// Helper to get the basic block to contain the instruction at `addr`. This
+// function drives a work list, where the first time we ask for the
+// instruction at `addr`, we enqueue a bit of work to decode and lift that
+// instruction.
 llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr) {
   auto &block = addr_to_block[addr];
   if (block) {
@@ -60,8 +65,12 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr) {
   return block;
 }
 
+// Try to decode an instruction at address `addr` into `*inst_out`. Returns
+// `true` is successful and `false` otherwise. `is_delayed` tells the decoder
+// whether or not the instruction being decoded is being decoded inside of a
+// delay slot of another instruction.
 bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
-                                         remill::Instruction *inst_out) {
+                                           remill::Instruction *inst_out) {
   static const auto max_inst_size = arch->MaxInstructionSize();
   inst_out->Reset();
 
@@ -93,11 +102,18 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
   }
 }
 
+// Visit an invalid instruction. An invalid instruction is a sequence of
+// bytes which cannot be decoded, or an empty byte sequence.
 void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                 llvm::BasicBlock *block) {
   remill::AddTerminatingTailCall(block, intrinsics.error);
 }
 
+// Visit an error instruction. An error instruction is guaranteed to trap
+// execution somehow, e.g. `ud2` on x86. Error instructions are treated
+// similarly to invalid instructions, with the exception that they can have
+// delay slots, and therefore the subsequent instruction may actually execute
+// prior to the error.
 void FunctionLifter::VisitError(const remill::Instruction &inst,
                               remill::Instruction *delayed_inst,
                               llvm::BasicBlock *block) {
@@ -105,16 +121,25 @@ void FunctionLifter::VisitError(const remill::Instruction &inst,
   remill::AddTerminatingTailCall(block, intrinsics.error);
 }
 
+// Visit a normal instruction. Normal instructions have straight line control-
+// flow semantics, i.e. after executing the instruction, execution proceeds
+// to the next instruction (`inst.next_pc`).
 void FunctionLifter::VisitNormal(const remill::Instruction &inst,
                                llvm::BasicBlock *block) {
   llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
 }
 
+// Visit a no-op instruction. These behave identically to normal instructions
+// from a control-flow perspective.
 void FunctionLifter::VisitNoOp(const remill::Instruction &inst,
                              llvm::BasicBlock *block) {
   VisitNormal(inst, block);
 }
 
+// Visit a direct jump control-flow instruction. The target of the jump is
+// known at decode time, and the target address is available in
+// `inst.branch_taken_pc`. Execution thus needs to transfer to the instruction
+// (and thus `llvm::BasicBlock`) associated with `inst.branch_taken_pc`.
 void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                                    remill::Instruction *delayed_inst,
                                    llvm::BasicBlock *block) {
@@ -122,6 +147,11 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
   llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_taken_pc), block);
 }
 
+// Visit an indirect jump control-flow instruction. This may be register- or
+// memory-indirect, e.g. `jmp rax` or `jmp [rax]` on x86. Thus, the target is
+// not know a priori and our default mechanism for handling this is to perform
+// a tail-call to the `__remill_jump` function, whose role is to be a stand-in
+// something that enacts the effect of "transfer to target."
 void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                      remill::Instruction *delayed_inst,
                                      llvm::BasicBlock *block) {
@@ -129,6 +159,10 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   remill::AddTerminatingTailCall(block, intrinsics.jump);
 }
 
+// Visit a function return control-flow instruction, which is a form of
+// indirect control-flow, but with a certain semantic associated with
+// returning from a function. This is treated similarly to indirect jumps,
+// except the `__remill_function_return` function is tail-called.
 void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
@@ -136,8 +170,52 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
   llvm::ReturnInst::Create(context, remill::LoadMemoryPointer(block), block);
 }
 
-// Figure out the fall-through return address for a function call. There are
-// annoying SPARC-isms to deal with due to their awful ABI choices.
+// Visit a direct function call control-flow instruction. The target is known
+// at decode time, and its realized address is stored in
+// `inst.branch_taken_pc`. In practice, what we do in this situation is try
+// to call the lifted function function at the target address.
+void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
+                                           remill::Instruction *delayed_inst,
+                                           llvm::BasicBlock *block) {
+
+  VisitDelayedInstruction(inst, delayed_inst, block, true);
+
+  if (auto decl = program.FindFunction(inst.branch_taken_pc); decl) {
+    const auto entry = GetOrDeclareFunction(*decl);
+    remill::AddCall(block, entry.lifted_to_native);
+  } else {
+    LOG(ERROR) << "Missing declaration for function at " << std::hex
+               << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+
+    // If we do not have a function declaration, treat this as a call to an unknown address.
+    remill::AddCall(block, intrinsics.function_call);
+  }
+  VisitAfterFunctionCall(inst, block);
+}
+
+// Visit an indirect function call control-flow instruction. Similar to
+// indirect jumps, we invoke an intrinsic function, `__remill_function_call`;
+// however, unlike indirect jumps, we do not tail-call this intrinsic, and
+// we continue lifting at the instruction where execution will resume after
+// the callee returns. Thus, lifted bitcode maintains the call graph structure
+// as it presents itself in the binary.
+void FunctionLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
+                                             remill::Instruction *delayed_inst,
+                                             llvm::BasicBlock *block) {
+
+  VisitDelayedInstruction(inst, delayed_inst, block, true);
+  remill::AddCall(block, intrinsics.function_call);
+  VisitAfterFunctionCall(inst, block);
+}
+
+// Helper to figure out the address where execution will resume after a
+// function call. In practice this is the instruction following the function
+// call, encoded in `inst.branch_not_taken_pc`. However, SPARC has a terrible
+// ABI where they inject an invalid instruction following some calls as a way
+// of communicating to the callee that they should return an object of a
+// particular, hard-coded size. Thus, we want to actually identify then ignore
+// that instruction, and present the following address for where execution
+// should resume after a `call`.
 std::pair<uint64_t, llvm::Value *>
 FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
                                         llvm::BasicBlock *block) {
@@ -204,34 +282,9 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   }
 }
 
-void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
-                                           remill::Instruction *delayed_inst,
-                                           llvm::BasicBlock *block) {
-
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-
-  if (auto decl = program.FindFunction(inst.branch_taken_pc); decl) {
-    const auto entry = GetOrDeclareFunction(*decl);
-    remill::AddCall(block, entry.lifted_to_native);
-  } else {
-    LOG(ERROR) << "Missing declaration for function at " << std::hex
-               << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
-
-    // If we do not have a function declaration, treat this as a call to an unknown address.
-    remill::AddCall(block, intrinsics.function_call);
-  }
-  VisitAfterFunctionCall(inst, block);
-}
-
-void FunctionLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
-                                             remill::Instruction *delayed_inst,
-                                             llvm::BasicBlock *block) {
-
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-  remill::AddCall(block, intrinsics.function_call);
-  VisitAfterFunctionCall(inst, block);
-}
-
+// Enact relevant control-flow changed after a function call. This figures
+// out the return address targeted by the callee and links it into the
+// control-flow graph.
 void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
   auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
@@ -243,6 +296,12 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
   ir.CreateBr(GetOrCreateBlock(ret_pc));
 }
 
+// Visit a conditional control-flow branch. Both the taken and not taken
+// targets are known by the decoder and their addresses are available in
+// `inst.branch_taken_pc` and `inst.branch_not_taken_pc`, respectively.
+// Here we need to orchestrate the two-way control-flow, as well as the
+// possible execution of a delayed instruction on either or both paths,
+// depending on the presence/absence of delay slot annulment bits.
 void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                           remill::Instruction *delayed_inst,
                                           llvm::BasicBlock *block) {
@@ -259,6 +318,9 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                            not_taken_block);
 }
 
+// Visit an asynchronous hyper call control-flow instruction. These are non-
+// local control-flow transfers, such as system calls. We treat them like
+// indirect function calls.
 void FunctionLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
@@ -266,6 +328,8 @@ void FunctionLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
   remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call);
 }
 
+// Visit conditional asynchronous hyper calls. These are conditional, non-
+// local control-flow transfers, e.g. `bound` on x86.
 void FunctionLifter::VisitConditionalAsyncHyperCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
@@ -283,10 +347,16 @@ void FunctionLifter::VisitConditionalAsyncHyperCall(
                            not_taken_block);
 }
 
+// Visit (and thus lift) a delayed instruction. When lifting a delayed
+// instruction, we need to know if we're one the taken path of a control-flow
+// edge, or on the not-taken path. Delayed instructions appear physically
+// after some instructions, but execute logically before them in the
+// CPU pipeline. They are basically a way for hardware designers to push
+// the effort of keeping the pipeline full to compiler developers.
 void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
-                                           remill::Instruction *delayed_inst,
-                                           llvm::BasicBlock *block,
-                                           bool on_taken_path) {
+                                             remill::Instruction *delayed_inst,
+                                             llvm::BasicBlock *block,
+                                             bool on_taken_path) {
   if (delayed_inst &&
       arch->NextInstructionIsDelayed(inst, *delayed_inst, on_taken_path)) {
     inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
@@ -317,6 +387,18 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   return mod.getFunction(func_name.str());
 }
 
+// Instrument an instruction. This inject a `printf` call just before a
+// lifted instruction to aid in debugging.
+//
+// TODO(pag): In future, this mechanism should be used to provide a feedback
+//            loop, or to provide information to the `TypeProvider` for future
+//            re-lifting of code.
+//
+// TODO(pag): Right now, this feature is enabled by a command-line flag, and
+//            that flag is tested in `VisitInstruction`; we should move
+//            lifting configuration decisions out of here so that we can pass
+//            in a kind of `LiftingOptions` type that changes the lifter's
+//            behavior.
 void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   auto &context = module.getContext();
   if (!log_printf) {
@@ -361,11 +443,15 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   ir.CreateCall(log_printf, args);
 }
 
+// Visit an instruction, and lift it into a basic block. Then, based off of
+  // the category of the instruction, invoke one of the category-specific
+  // lifters to enact a change in control-flow.
 void FunctionLifter::VisitInstruction(
-    remill::Instruction &inst, llvm::BasicBlock *block,
-    const std::unordered_map<uint64_t, TypedRegisterDecl> &reg_map) {
+    remill::Instruction &inst, llvm::BasicBlock *block) {
   curr_inst = &inst;
 
+  // TODO(pag): Externalize the dependency on this flag to a `LifterOptions`
+  //            structure.
   if (FLAGS_print_registers_before_instuctions) {
     InstrumentInstruction(block);
   }
@@ -386,6 +472,8 @@ void FunctionLifter::VisitInstruction(
                                    false /* is_delayed */);
 
 
+  // Figure out if we have to decode the subsequent instruction as a delayed
+  // instruction.
   if (arch->MayHaveDelaySlot(inst)) {
     delayed_inst = new (&delayed_inst_storage) remill::Instruction;
     if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
@@ -395,6 +483,16 @@ void FunctionLifter::VisitInstruction(
                  << inst.Serialize();
     }
   }
+
+  // Try to find any register type hints that we can use later to improve
+  // pointer lifting.
+  arch->ForEachRegister([this, &inst] (const remill::Register *reg) {
+    if (!reg->type->isIntegerTy(arch->address_size)) {
+      return;
+    }
+
+    auto type = this->type_provider.TryGetFunctionType(address)
+  });
 
   // Check to see if this location has type and value information associated with it
   // inst.pc
@@ -477,15 +575,23 @@ void FunctionLifter::VisitInstruction(
 }
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
-FunctionEntry FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
-  auto &entry = addr_to_func[decl.address];
-  if (entry.lifted) {
-    return entry;
+FunctionEntry FunctionLifter::GetOrDeclareFunction(
+    uint64_t address, llvm::FunctionType *func_type,
+    llvm::CallingConv::ID calling_convention) {
+
+  auto &native_func = addr_to_func[address];
+  if (native_func) {
+    return native_func;
   }
 
   // By default we do not want to deal with function names until the very end of
   // lifting. Instead, lets assign a temporary name based on the function's
   // starting address.
+  std::stringstream ss;
+  ss << "sub_" << std::hex << address;
+  const auto base_name = ss.str();
+
+
   const auto base_name = CreateFunctionName(decl.address);
 
   entry.lifted_to_native =
@@ -502,8 +608,19 @@ FunctionEntry FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   return entry;
 }
 
-FunctionEntry FunctionLifter::LiftFunction(const FunctionDecl &decl) {
-  const auto entry = GetOrDeclareFunction(decl);
+llvm::Function *FunctionLifter::LiftFunction(
+    uint64_t address, llvm::FunctionType *func_type_,
+    llvm::CallingConv::ID calling_convention) {
+
+  addr_to_func.clear();
+  work_list.clear();
+  addr_to_block.clear();
+  inst_lifter.ClearCache();
+  curr_inst = nullptr;
+
+  const auto func_type = remill::RecontextualizeType(func_type_, context);
+  const auto entry = GetOrDeclareFunction(
+      address, func_type, calling_convention);
 
   // Check if we already lifted this function. If so, do not re-lift it.
   if (!entry.native_to_lifted->isDeclaration()) {
@@ -515,10 +632,7 @@ FunctionEntry FunctionLifter::LiftFunction(const FunctionDecl &decl) {
     return entry;
   }
 
-  work_list.clear();
-  addr_to_block.clear();
-  inst_lifter.ClearCache();
-  curr_inst = nullptr;
+
   lifted_func = entry.lifted;
 
   // Every lifted function starts as a clone of __remill_basic_block. That
@@ -585,11 +699,6 @@ FunctionEntry FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   }
 
   return entry;
-}
-
-llvm::Function *FunctionLifter::LiftFunction(
-    uint64_t address, llvm::FunctionType *func_type_) {
-  const auto func_type = remill::RecontextualizeType(func_type_, context);
 }
 
 }  // namespace anvill

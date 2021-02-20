@@ -18,7 +18,13 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include <llvm/IR/CallingConv.h>
 
 namespace llvm {
 class FunctionType;
@@ -38,7 +44,16 @@ class TypeProvider {
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  virtual llvm::FunctionType *TryGetFunctionType(uint64_t address) = 0;
+  virtual std::pair<llvm::FunctionType *, llvm::CallingConv::ID>
+  TryGetFunctionType(uint64_t address) = 0;
+
+  // Try to get the type of the register named `reg_name` on entry to the
+  // instruction at `inst_address` inside the function beginning at
+  // `func_address`.
+  virtual void QueryRegisterStateAtInstruction(
+      uint64_t func_address, uint64_t inst_address,
+      std::function<void(const std::string &, llvm::Type *,
+                         std::optional<uint64_t>)> typed_reg_cb);
 
   // Sources bytes from an `anvill::Program`.
   static std::shared_ptr<TypeProvider> CreateProgramTypeProvider(

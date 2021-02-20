@@ -46,7 +46,11 @@ class EntityLifterImpl {
       const remill::Arch *arch_, llvm::Module &module_);
 
   // Tries to lift the function at `address` and return an `llvm::Function *`.
-  llvm::Constant *TryLiftFunction(uint64_t address, llvm::FunctionType *type);
+  // The parameter are return types are defined in terms of the function type,
+  // `type`, and the calling convention is set to `calling_convention`. A
+  // lifter-default name is provided for the function, `sub_<hexaddr>`.
+  llvm::Constant *TryLiftFunction(uint64_t address, llvm::FunctionType *type,
+                                  llvm::CallingConv::ID calling_convention);
 
   // Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
   //

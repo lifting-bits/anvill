@@ -88,7 +88,7 @@ struct ParameterDecl : public ValueDecl {
 
 // A TypedRegisterDecl stores inferred types and values for a given register
 // Inferred infromation can come from binja, ida, or some other tool
-struct TypedRegisterDecl : public ValueDecl {
+struct TypedRegisterDecl {
   const remill::Register *reg;
   llvm::Type *type;
   std::optional<uint64_t> value;
@@ -158,7 +158,7 @@ struct FunctionDecl {
   std::vector<ParameterDecl> params;
 
   // Map program addresses to remill registers and type information.
-  std::unordered_map<uint64_t, TypedRegisterDecl> reg_info;
+  std::unordered_map<uint64_t, std::vector<TypedRegisterDecl>> reg_info;
 
   // Return values.
   //

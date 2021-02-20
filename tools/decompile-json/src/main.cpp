@@ -177,7 +177,7 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 //
 static bool ParseTypedRegister(
     const remill::Arch *arch, llvm::LLVMContext &context,
-    std::unordered_map<uint64_t, anvill::TypedRegisterDecl> &reg_map,
+    std::unordered_map<uint64_t, std::vector<anvill::TypedRegisterDecl>> &reg_map,
     llvm::json::Object *obj) {
 
   auto maybe_address = obj->getInteger("address");
@@ -210,6 +210,7 @@ static bool ParseTypedRegister(
     LOG(ERROR) << "Missing 'register' field in typed register";
     return false;
   }
+
   auto maybe_reg = arch->RegisterByName(register_name->str());
   if (!maybe_reg) {
     LOG(ERROR) << "Unable to locate register '" << register_name->str()
@@ -217,9 +218,10 @@ static bool ParseTypedRegister(
                << " at '" << std::hex << *maybe_address << std::dec << "'";
     return false;
   }
+
   decl.reg = maybe_reg;
-  reg_map[*maybe_address] = decl;
-  return ParseValue(arch, decl, obj, "typed register");
+  reg_map[*maybe_address].emplace_back(std::move(decl));
+  return true;
 }
 
 // Parse a return value from the JSON spec.

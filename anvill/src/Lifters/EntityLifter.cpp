@@ -56,15 +56,19 @@ EntityLifterImpl::EntityLifterImpl(
 }
 
 // Tries to lift the function at `address` and return an `llvm::Function *`.
+// The parameter are return types are defined in terms of the function type,
+// `type`, and the calling convention is set to `calling_convention`. A
+// lifter-default name is provided for the function, `sub_<hexaddr>`.
 llvm::Constant *EntityLifterImpl::TryLiftFunction(
-    uint64_t address, llvm::FunctionType *func_type) {
+    uint64_t address, llvm::FunctionType *func_type,
+    llvm::CallingConv::ID calling_convention) {
 
   auto &semantics_context = semantics_module->getContext();
   auto &module_context = target_module.getContext();
 
   // First, go lift the function in the semantics module.
   const auto sem_func_version =
-      function_lifter.LiftFunction(address, func_type);
+      function_lifter.LiftFunction(address, func_type, calling_convention);
   const auto name = sem_func_version->getName().str();
 
   // Now that we've lifted the function, we're left with some pretty brutal
@@ -142,8 +146,9 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
     case BytePermission::kUnknown:
     case BytePermission::kReadableExecutable:
     case BytePermission::kReadableWritableExecutable:
-      if (auto func_type = impl->type_provider->TryGetFunctionType(address)) {
-        ret = impl->TryLiftFunction(address, func_type);
+      if (auto func = impl->type_provider->TryGetFunctionType(address);
+          func.first) {
+        ret = impl->TryLiftFunction(address, func.first, func.second);
         break;
       }
       [[clang::fallthrough]];
