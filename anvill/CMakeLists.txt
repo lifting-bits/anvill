@@ -42,9 +42,6 @@ add_library(anvill STATIC
   include/anvill/Lift.h
   src/Lift.cpp
 
-  include/anvill/MCToIRLifter.h
-  src/MCToIRLifter.cpp
-
   include/anvill/Optimize.h
   src/Optimize.cpp
 
@@ -61,6 +58,9 @@ add_library(anvill STATIC
   include/anvill/Lifters/EntityLifter.h
   src/Lifters/EntityLifter.h
   src/Lifters/EntityLifter.cpp
+  
+  src/Lifters/FunctionLifter.h
+  src/Lifters/FunctionLifter.cpp
     
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp

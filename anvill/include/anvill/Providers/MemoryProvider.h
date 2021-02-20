@@ -34,8 +34,13 @@ enum class BytePermission : uint8_t {
 };
 
 enum class ByteAvailability : uint8_t {
+  // The address is valid, but a value for the byte is not available.
   kUnknown,
+
+  // The address is not mapped in the address space.
   kUnavailable,
+
+  // The address is mapped and the byte value is available.
   kAvailable
 };
 

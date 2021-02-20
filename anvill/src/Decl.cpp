@@ -302,10 +302,10 @@ ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
 
 // Create a Function Declaration from an `llvm::Function`.
 llvm::Expected<FunctionDecl>
-FunctionDecl::Create(llvm::Function &func, const remill::Arch::ArchPtr &arch) {
+FunctionDecl::Create(llvm::Function &func, const remill::Arch *arch) {
 
   FunctionDecl decl;
-  decl.arch = arch.get();
+  decl.arch = arch;
   decl.type = func.getFunctionType();
   decl.is_variadic = func.isVarArg();
   decl.is_noreturn = func.hasFnAttribute(llvm::Attribute::NoReturn);
@@ -317,7 +317,7 @@ FunctionDecl::Create(llvm::Function &func, const remill::Arch::ArchPtr &arch) {
 
   // The value is not default so use it.
   if (cc_id != llvm::CallingConv::C) {
-    auto maybe_cc = CallingConvention::CreateCCFromCCID(cc_id, arch.get());
+    auto maybe_cc = CallingConvention::CreateCCFromCCID(cc_id, arch);
     if (remill::IsError(maybe_cc)) {
       const auto sub_error = remill::GetErrorString(maybe_cc);
       return llvm::createStringError(
@@ -330,7 +330,7 @@ FunctionDecl::Create(llvm::Function &func, const remill::Arch::ArchPtr &arch) {
 
   // Figure out the default calling convention for this triple.
   } else {
-    auto maybe_cc = CallingConvention::CreateCCFromArch(arch.get());
+    auto maybe_cc = CallingConvention::CreateCCFromArch(arch);
     if (remill::IsError(maybe_cc)) {
       const auto sub_error = remill::GetErrorString(maybe_cc);
       return llvm::createStringError(

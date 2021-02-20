@@ -198,8 +198,14 @@ struct FunctionDecl {
       llvm::json::Object SerializeToJSON(const llvm::DataLayout &dl) const;)
 
   // Create a function declaration from an LLVM function.
+  inline static llvm::Expected<FunctionDecl> Create(
+      llvm::Function &func, const remill::Arch::ArchPtr &arch) {
+    return Create(func, arch.get());
+  }
+
+  // Create a function declaration from an LLVM function.
   static llvm::Expected<FunctionDecl> Create(llvm::Function &func,
-                                             const remill::Arch::ArchPtr &arch);
+                                             const remill::Arch *arch);
 
  private:
   friend class Program;

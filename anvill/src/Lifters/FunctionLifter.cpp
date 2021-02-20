@@ -20,10 +20,24 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include <anvill/Decl.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Instruction.h>
+#include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
+
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
 
 #include <sstream>
 
@@ -32,6 +46,8 @@ DEFINE_bool(print_registers_before_instuctions, false,
             "register state to stdout.");
 
 namespace anvill {
+
+FunctionLifter::~FunctionLifter(void) {}
 
 FunctionLifter::FunctionLifter(
     const remill::Arch *arch_, MemoryProvider &memory_provider_,
@@ -48,7 +64,7 @@ FunctionLifter::FunctionLifter(
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(const uint64_t addr) {
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
   auto &block = addr_to_block[addr];
   if (block) {
     return block;
@@ -74,26 +90,34 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
   static const auto max_inst_size = arch->MaxInstructionSize();
   inst_out->Reset();
 
-  auto byte = program.FindByte(addr);
-  if (!byte.IsExecutable()) {
-    return false;
-  }
+  // Read the maximum number of bytes possible for instructions on this
+  // architecture. For x86(-64), this is 15 bytes, whereas for fixed-width
+  // architectures like AArch32/AArch64 and SPARC32/SPARC64, this is 4 bytes.
+  inst_out->bytes.reserve(max_inst_size);
+  for (auto i = 0u; i < max_inst_size; ++i) {
+    auto [byte, accessible, perms] = memory_provider.Query(addr + i);
+    switch (accessible) {
+      case ByteAvailability::kUnknown:
+      case ByteAvailability::kUnavailable:
+        goto found_all_bytes;
 
-  // Read the bytes.
-  auto &inst_bytes = inst_out->bytes;
-  inst_bytes.reserve(max_inst_size);
-  for (auto i = 0u; i < max_inst_size && byte && byte.IsExecutable();
-       ++i, byte = program.FindNextByte(byte)) {
-    auto maybe_val = byte.Value();
-    if (remill::IsError(maybe_val)) {
-      LOG(ERROR) << "Unable to read value of byte at " << std::hex
-                 << byte.Address() << std::dec << ": "
-                 << remill::GetErrorString(maybe_val);
-      break;
-    } else {
-      inst_bytes.push_back(static_cast<char>(remill::GetReference(maybe_val)));
+      default:
+        break;
+    }
+
+    switch (perms) {
+      case BytePermission::kUnknown:
+      case BytePermission::kReadableExecutable:
+      case BytePermission::kReadableWritableExecutable:
+        inst_out->bytes.push_back(static_cast<char>(byte));
+        break;
+      case BytePermission::kReadable:
+      case BytePermission::kReadableWritable:
+        goto found_all_bytes;
     }
   }
+
+found_all_bytes:
 
   if (is_delayed) {
     return arch->DecodeDelayedInstruction(addr, inst_out->bytes, *inst_out);
@@ -175,21 +199,48 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
 // `inst.branch_taken_pc`. In practice, what we do in this situation is try
 // to call the lifted function function at the target address.
 void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
-                                           remill::Instruction *delayed_inst,
-                                           llvm::BasicBlock *block) {
+                                             remill::Instruction *delayed_inst,
+                                             llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
 
-  if (auto decl = program.FindFunction(inst.branch_taken_pc); decl) {
-    const auto entry = GetOrDeclareFunction(*decl);
-    remill::AddCall(block, entry.lifted_to_native);
-  } else {
-    LOG(ERROR) << "Missing declaration for function at " << std::hex
-               << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+  // First, try to see if it's actually related to another function. This is
+  // equivalent to a tail-call in the original code.
+  const auto [other_func_type, other_func_cc] =
+      type_provider.TryGetFunctionType(inst.branch_taken_pc);
 
-    // If we do not have a function declaration, treat this as a call to an unknown address.
+  if (other_func_type) {
+    llvm::Function * const other_decl = GetOrDeclareFunction(
+        inst.branch_taken_pc, other_func_type, other_func_cc);
+
+    const auto mem_ptr_from_call = CallNativeFunction(
+        inst.branch_taken_pc, other_decl, block);
+
+    if (mem_ptr_from_call) {
+      llvm::ReturnInst::Create(context, mem_ptr_from_call, block);
+
+    } else {
+      LOG(ERROR)
+          << "Failed to call native function at address " << std::hex
+          << inst.branch_taken_pc << " via call at address " << inst.pc
+          << " in function at address " << func_address << std::dec;
+
+      // If we fail to create an ABI specification for this function then treat
+      // this as a call to an unknown address.
+      remill::AddCall(block, intrinsics.function_call);
+    }
+  } else {
+    LOG(ERROR)
+        << "Missing type information for function at address " << std::hex
+        << inst.branch_taken_pc << ", called at address "
+        << inst.pc << " in function at address " << func_address << std::dec;
+
+
+    // If we do not have a function declaration, treat this as a call
+    // to an unknown address.
     remill::AddCall(block, intrinsics.function_call);
   }
+
   VisitAfterFunctionCall(inst, block);
 }
 
@@ -231,19 +282,36 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
     return {pc, ret_pc};
   }
 
-  // Only bad SPARC ABI choices below this point.
-  auto byte = program.FindByte(pc);
-
   uint8_t bytes[4] = {};
 
-  for (auto i = 0u; i < 4u && byte; ++i, byte = program.FindNextByte(byte)) {
-    auto maybe_val = byte.Value();
-    if (remill::IsError(maybe_val)) {
-      (void) remill::GetErrorString(maybe_val);  // Drop the error.
-      return {pc, ret_pc};
+  for (auto i = 0u; i < 4u; ++i) {
+    auto [byte, accessible, perms] = memory_provider.Query(pc + i);
+    switch (accessible) {
+      case ByteAvailability::kUnknown:
+      case ByteAvailability::kUnavailable:
+        LOG(ERROR)
+            << "Byte at address " << std::hex << (pc + i)
+            << " is not available for inspection to figure out return address "
+            << " of call instruction at address " << pc << std::dec;
+        return {pc, ret_pc};
 
-    } else {
-      bytes[i] = remill::GetReference(maybe_val);
+      default:
+        bytes[i] = byte;
+        break;
+    }
+
+    switch (perms) {
+      case BytePermission::kUnknown:
+      case BytePermission::kReadableExecutable:
+      case BytePermission::kReadableWritableExecutable:
+        break;
+      case BytePermission::kReadable:
+      case BytePermission::kReadableWritable:
+        LOG(ERROR)
+            << "Byte at address " << std::hex << (pc + i) << " being inspected "
+            << "to figure out return address of call instruction at address "
+            << pc << " is not executable" << std::dec;
+        return {pc, ret_pc};
     }
   }
 
@@ -269,6 +337,9 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   // This looks like an `unimp <imm22>` instruction, where the `imm22` encodes
   // the size of the value to return. See "Programming Note" in v8 manual, B.31,
   // p 137.
+  //
+  // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
+  //                     function? Try this on Compiler Explorer!
   if (!enc.u.op && !enc.u.op2) {
     LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
               << std::hex << pc << " at " << inst.pc << std::dec;
@@ -287,8 +358,8 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 // control-flow graph.
 void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
-  auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
-  auto next_pc_ptr =
+  const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
+  const auto next_pc_ptr =
       inst_lifter.LoadRegAddress(block, state_ptr, remill::kNextPCVariableName);
 
   llvm::IRBuilder<> ir(block);
@@ -363,19 +434,22 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
   }
 }
 
-/*
-This function encodes type information within symbolic functions
-so the type information can survive optimization.
-it should turn some instruction like
-%1 = add %4, 1
-into
-%1 = add %4, 1
-%2 = __anvill_type_<uid>(<%4's type> %4)
-%3 = ptrtoint %2 goal_type
-*/
+// Creates a type hint taint value that we can hook into downstream in the
+// optimization process.
+//
+// This function encodes type information within symbolic functions so the type
+// information can survive optimization. It should turn some instruction like
+//    %1 = add %4, 1
+//
+// into:
+//
+//    %1 = add %4, 1
+//    %2 = __anvill_type_<uid>(<%4's type> %4)
+//    %3 = ptrtoint %2 goal_type
 llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type, llvm::Module &mod,
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
+
   std::stringstream func_name;
   func_name << "__anvill_type_func_" << std::hex << pc << "_" << reg->name
             << "_" << reinterpret_cast<void *>(current_type);
@@ -443,9 +517,50 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   ir.CreateCall(log_printf, args);
 }
 
+// Visit a type hinted register at the current instruction. We use this
+// information to try to improve lifting of possible pointers later on
+// in the optimization process.
+void FunctionLifter::VisitTypedHintedRegister(
+    llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
+    std::optional<uint64_t> maybe_value) {
+
+  // Only operate on pointer types for now.
+  if (!type->isPointerTy()) {
+    return;
+  }
+
+  // Only operate on pointer-sized integer registers that are not sub-registers.
+  const auto reg = arch->RegisterByName(reg_name);
+  if (reg->EnclosingRegister() != reg ||
+      !reg->type->isIntegerTy(arch->address_size)) {
+    return;
+  }
+
+  llvm::IRBuilder irb(block);
+  auto reg_pointer = inst_lifter.LoadRegAddress(block, state_ptr, reg_name);
+  llvm::Value *reg_value = irb.CreateLoad(reg_pointer);
+
+  if (maybe_value) {
+    reg_value = llvm::ConstantInt::get(reg->type, *maybe_value);
+    irb.CreateStore(reg_value, reg_pointer);
+  }
+
+  // Creates a function that returns a higher-level type, as provided by a
+  // `TypeProider`and takes an argument of (reg_type)
+  const auto taint_func = GetOrCreateTaintedFunction(
+      reg->type, type, module, block, reg, curr_inst->pc);
+  llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
+
+  // Cast the result of this call to the goal type.
+  llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg->type);
+
+  // Store the value back, this keeps the replacement_reg cast around.
+  irb.CreateStore(replacement_reg, reg_pointer);
+}
+
 // Visit an instruction, and lift it into a basic block. Then, based off of
-  // the category of the instruction, invoke one of the category-specific
-  // lifters to enact a change in control-flow.
+// the category of the instruction, invoke one of the category-specific
+// lifters to enact a change in control-flow.
 void FunctionLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block) {
   curr_inst = &inst;
@@ -471,7 +586,6 @@ void FunctionLifter::VisitInstruction(
   (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
                                    false /* is_delayed */);
 
-
   // Figure out if we have to decode the subsequent instruction as a delayed
   // instruction.
   if (arch->MayHaveDelaySlot(inst)) {
@@ -486,48 +600,9 @@ void FunctionLifter::VisitInstruction(
 
   // Try to find any register type hints that we can use later to improve
   // pointer lifting.
-  arch->ForEachRegister([this, &inst] (const remill::Register *reg) {
-    if (!reg->type->isIntegerTy(arch->address_size)) {
-      return;
-    }
-
-    auto type = this->type_provider.TryGetFunctionType(address)
-  });
-
-  // Check to see if this location has type and value information associated with it
-  // inst.pc
-  auto match = reg_map.find(inst.pc);
-  if (match != reg_map.end()) {
-
-    // If we have information for this program point, check to see if a value exists
-    const TypedRegisterDecl &decl = match->second;
-
-    // Only operate on binaryninja pointer types for now
-    if (decl.type->isPointerTy()) {
-
-      llvm::IRBuilder irb(block);
-      auto reg_pointer =
-          inst_lifter.LoadRegAddress(block, state_ptr, decl.reg->name);
-      llvm::Value *reg_value = irb.CreateLoad(reg_pointer);
-      auto reg_type = reg_value->getType();
-
-      if (decl.value && reg_type->isIntegerTy()) {
-        reg_value = llvm::ConstantInt::get(reg_type, *decl.value);
-        irb.CreateStore(reg_value, reg_pointer);
-      }
-      // Creates a function that returns a binja_type* and takes an argument of (reg_type)
-      auto taint_func = GetOrCreateTaintedFunction(reg_type, decl.type, module,
-                                                   block, decl.reg, inst.pc);
-      llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
-
-      // Cast the result of this call, to the goal type
-      llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg_type);
-
-      // Store the value back, this keeps the replacement_reg cast around.
-      irb.CreateStore(replacement_reg, reg_pointer);
-      inst_lifter.ClearCache();
-    }
-  }
+  type_provider.QueryRegisterStateAtInstruction(
+      func_address, inst.pc,
+      std::bind(&FunctionLifter::VisitTypedHintedRegister, this, block));
 
   switch (inst.category) {
 
@@ -574,9 +649,113 @@ void FunctionLifter::VisitInstruction(
   }
 }
 
+// In the process of lifting code, we may want to call another native
+// function, `native_func`, for which we have high-level type info. The main
+// lifter operates on a special three-argument form function style, and
+// operating on this style is actually to our benefit, as it means that as
+// long as we can put data into the emulated `State` structure and pull it
+// out, then calling one native function from another doesn't require /us/
+// to know how to adapt one native return type into another native return
+// type, and instead we let LLVM's optimizations figure it out later during
+// scalar replacement of aggregates (SROA).
+llvm::Value *FunctionLifter::CallNativeFunction(
+    uint64_t native_addr, llvm::Function *native_func,
+    llvm::BasicBlock *block) {
+  auto &decl = addr_to_decl[native_addr];
+  if (!decl.address) {
+    auto maybe_decl = FunctionDecl::Create(*native_func, arch);
+    if (remill::IsError(maybe_decl)) {
+      LOG(ERROR)
+          << "Unable to create FunctionDecl for "
+          << remill::LLVMThingToString(native_func->getFunctionType())
+          << " with calling convention " << native_func->getCallingConv()
+          << ": " << remill::GetErrorString(maybe_decl);
+      return nullptr;
+    }
+    decl = std::move(remill::GetReference(maybe_decl));
+  }
+
+  auto mem_ptr_ref = remill::LoadMemoryPointerRef(block);
+  llvm::IRBuilder<> irb(block);
+
+  auto mem_ptr = irb.CreateLoad(mem_ptr_ref);
+  mem_ptr = decl.CallFromLiftedBlock(native_func->getName().str(), intrinsics,
+                                     block, state_ptr, mem_ptr, true);
+  irb.SetInsertPoint(block);
+  irb.CreateStore(mem_ptr, mem_ptr_ref);
+  return mem_ptr;
+}
+
+// Visit all instructions. This runs the work list and lifts instructions.
+void FunctionLifter::VisitInstructions(uint64_t address) {
+  remill::Instruction inst;
+
+  // Recursively decode and lift all instructions that we come across.
+  while (!work_list.empty()) {
+
+    const auto ent = *(work_list.begin());
+    work_list.erase(ent);
+    const auto inst_addr = ent.first;
+    const auto from_addr = ent.second;
+
+    const auto block = addr_to_block[inst_addr];
+    CHECK_NOTNULL(block);
+
+    if (!block->empty()) {
+      continue;  // Already handled.
+    }
+
+    // First, try to see if it's actually related to another function. This is
+    // equivalent to a tail-call in the original code. This comes up with fall-
+    // throughs, i.e. where one function is a prologue of another one. It also
+    // happens with tail-calls, i.e. `jmp func` or `jCC func`, where we handle
+    // those by way of enqueuing those addresses with `GetOrCreateBlock`, and
+    // then recover from the tail-calliness here, instead of spreading that
+    // logic into all the control-flow visitors.
+    const auto [other_func_type, other_func_cc] =
+        type_provider.TryGetFunctionType(inst_addr);
+    if (other_func_type) {
+      llvm::Function * const other_decl = GetOrDeclareFunction(
+          inst_addr, other_func_type, other_func_cc);
+
+      const auto mem_ptr_from_call =
+          CallNativeFunction(inst_addr, other_decl, block);
+      if (mem_ptr_from_call) {
+        llvm::ReturnInst::Create(context, mem_ptr_from_call, block);
+        continue;
+      }
+
+      LOG(ERROR)
+          << "Failed to call native function at " << std::hex << inst_addr
+          << " via fall-through or tail call from function " << func_address
+          << std::dec;
+
+      // NOTE(pag): Recover by falling through and just try to decode/lift the
+      //            instructions.
+    }
+
+    // Decode.
+    if (!DecodeInstructionInto(inst_addr, false /* is_delayed */, &inst)) {
+      LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
+                 << " reachable from instruction " << from_addr
+                 << " in function at " << func_address << std::dec;
+      remill::AddTerminatingTailCall(block, intrinsics.error);
+      continue;
+
+    // Didn't get a valid instruction.
+    } else if (!inst.IsValid() || inst.IsError()) {
+      remill::AddTerminatingTailCall(block, intrinsics.error);
+      continue;
+
+    } else {
+      VisitInstruction(inst, block);
+    }
+  }
+}
+
 // Declare the function decl `decl` and return an `llvm::Function *`.
-FunctionEntry FunctionLifter::GetOrDeclareFunction(
-    uint64_t address, llvm::FunctionType *func_type,
+llvm::Function *FunctionLifter::GetOrDeclareFunction(
+    uint64_t address, llvm::FunctionType *func_type_,
     llvm::CallingConv::ID calling_convention) {
 
   auto &native_func = addr_to_func[address];
@@ -591,53 +770,57 @@ FunctionEntry FunctionLifter::GetOrDeclareFunction(
   ss << "sub_" << std::hex << address;
   const auto base_name = ss.str();
 
+  native_func = module.getFunction(base_name);
+  if (native_func) {
+    return native_func;
+  }
 
-  const auto base_name = CreateFunctionName(decl.address);
+  const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
+      remill::RecontextualizeType(func_type_, context));
 
-  entry.lifted_to_native =
-      remill::DeclareLiftedFunction(&module, base_name + ".lifted_to_native");
-
-  entry.lifted = remill::DeclareLiftedFunction(&module, base_name + ".lifted");
-
-  entry.native_to_lifted = decl.DeclareInModule(base_name, module, true);
-  entry.native_to_lifted->removeFnAttr(llvm::Attribute::InlineHint);
-  entry.native_to_lifted->removeFnAttr(llvm::Attribute::AlwaysInline);
-  entry.native_to_lifted->addFnAttr(llvm::Attribute::NoInline);
-  entry.lifted->setLinkage(llvm::GlobalValue::ExternalLinkage);
-
-  return entry;
+  native_func = llvm::Function::Create(
+      func_type, llvm::GlobalValue::ExternalLinkage, base_name, &module);
+  native_func->setCallingConv(calling_convention);
+  native_func->removeFnAttr(llvm::Attribute::InlineHint);
+  native_func->removeFnAttr(llvm::Attribute::AlwaysInline);
+  native_func->addFnAttr(llvm::Attribute::NoInline);
+  return native_func;
 }
 
 llvm::Function *FunctionLifter::LiftFunction(
     uint64_t address, llvm::FunctionType *func_type_,
     llvm::CallingConv::ID calling_convention) {
 
+  // NOTE(pag): `addr_to_decl` is relatively safe, so we don't need to clear it.
   addr_to_func.clear();
   work_list.clear();
   addr_to_block.clear();
   inst_lifter.ClearCache();
   curr_inst = nullptr;
+  state_ptr = nullptr;
+  func_address = address;
 
-  const auto func_type = remill::RecontextualizeType(func_type_, context);
-  const auto entry = GetOrDeclareFunction(
-      address, func_type, calling_convention);
+  const auto native_func = GetOrDeclareFunction(
+      address, func_type_, calling_convention);
 
   // Check if we already lifted this function. If so, do not re-lift it.
-  if (!entry.native_to_lifted->isDeclaration()) {
-    return entry;
-  }
-  // Check if there's any instruction bytes to lift
-  if (auto start{program.FindByte(decl.address)};
-      !start || !start.IsExecutable()) {
-    return entry;
+  if (!native_func->isDeclaration()) {
+    return native_func;
   }
 
-
-  lifted_func = entry.lifted;
+  // Check if there's any instruction bytes to lift. If not, don't proceed.
+  auto [first_byte, first_byte_avail, first_byte_perms] =
+      memory_provider.Query(address);
+  if (ByteAvailability::kUnknown == first_byte_avail) {
+    return native_func;
+  }
 
   // Every lifted function starts as a clone of __remill_basic_block. That
   // prototype has multiple arguments (memory pointer, state pointer, program
-  // counter). This exctracts the state pointer.
+  // counter). This extracts the state pointer.
+  lifted_func = remill::DeclareLiftedFunction(
+      &module, native_func->getName().str() + ".lifted");
+
   state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
   CHECK(lifted_func->isDeclaration());
 
@@ -652,53 +835,12 @@ llvm::Function *FunctionLifter::LiftFunction(
   // instruction.
   //
   // NOTE(pag): This also introduces the first element to the work list.
-  llvm::BranchInst::Create(GetOrCreateBlock(decl.address),
+  llvm::BranchInst::Create(GetOrCreateBlock(address),
                            &(lifted_func->getEntryBlock()));
 
-  remill::Instruction inst;
+  VisitInstructions(address);
 
-  // Recursively decode and lift
-  while (!work_list.empty()) {
-    const auto ent = *(work_list.begin());
-    work_list.erase(ent);
-    const auto inst_addr = ent.first;
-    const auto from_addr = ent.second;
-
-    const auto block = addr_to_block[inst_addr];
-    CHECK_NOTNULL(block);
-
-    if (!block->empty()) {
-      continue;  // Already handled.
-    }
-
-    // First, try to see if it's actually related to another function. This is
-    // equivalent to a tail-call in the original code.
-    if (auto other_decl = program.FindFunction(inst_addr);
-        other_decl && inst_addr != other_decl->address) {
-      const auto other_entry = GetOrDeclareFunction(decl);
-      remill::AddTerminatingTailCall(block, other_entry.lifted_to_native);
-      continue;
-    }
-
-    // Decode.
-    if (!DecodeInstructionInto(inst_addr, false /* is_delayed */, &inst)) {
-      LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
-                 << " reachable from instruction " << from_addr
-                 << " in function at " << decl.address << std::dec;
-      remill::AddTerminatingTailCall(block, intrinsics.error);
-      continue;
-
-    // Didn't get a valid instruction.
-    } else if (!inst.IsValid() || inst.IsError()) {
-      remill::AddTerminatingTailCall(block, intrinsics.error);
-      continue;
-
-    } else {
-      VisitInstruction(inst, block, decl.reg_info);
-    }
-  }
-
-  return entry;
+  return native_func;
 }
 
 }  // namespace anvill

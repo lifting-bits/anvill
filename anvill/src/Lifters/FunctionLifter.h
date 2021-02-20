@@ -20,15 +20,16 @@
 #include <cstdint>
 #include <set>
 #include <unordered_map>
-
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
+#include <anvill/Decl.h>
 
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
+#include <llvm/IR/CallingConv.h>
+
 namespace llvm {
 class Function;
+class FunctionType;
 class LLVMContext;
 class Module;
 class Value;
@@ -40,31 +41,11 @@ class Register;
 }  // namespace remill
 namespace anvill {
 
-struct FunctionEntry {
-
-  // Lifted functions contain the remill semantics for the instructions
-  // inside of a binary function.
-  llvm::Function *lifted;
-
-  // Wrapper function that converts lifted state, as represented by the
-  // Remill `State` structure, to "native" or high-level state, as
-  // represented by logical function arguments and return values.
-  //
-  // Before optimization, `lifted` functions call `lifted_to_native`
-  // functions.
-  llvm::Function *lifted_to_native;
-
-  // Wrapper function that converts "native" or high-level state, as
-  // represented by logical function arguments and return values, into
-  // lifted state, as represented by the Remill `State` structure.
-  //
-  // Before optimization, the `native_to_lifted` calls the `lifted` function.
-  llvm::Function *native_to_lifted;
-};
-
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
  public:
+  ~FunctionLifter(void);
+
   FunctionLifter(const remill::Arch *arch_, MemoryProvider &memory_provider_,
                  TypeProvider &type_provider_, llvm::Module &semantics_module_);
 
@@ -76,11 +57,26 @@ class FunctionLifter {
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
 
+  // Semantics module containing instruction semantics functions that can be
+  // associated with `remill::Insruction::function` names.
   llvm::Module &module;
+
+  // Context associated with `module`.
   llvm::LLVMContext &context;
+
+  // Address of the function currently being lifted.
+  uint64_t func_address{0};
+
+  // Three-argument Remill function into which instructions are lifted.
   llvm::Function *lifted_func{nullptr};
+
+  // State pointer in `lifted_func`.
   llvm::Value *state_ptr{nullptr};
+
+  // Current instruction being lifted.
   remill::Instruction *curr_inst{nullptr};
+
+  // Remill instrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
 
@@ -98,9 +94,12 @@ class FunctionLifter {
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
+  // Maps addresses to function declarations, which describe ABIs and such.
+  std::unordered_map<uint64_t, FunctionDecl> addr_to_decl;
+
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
-  FunctionEntry GetOrDeclareFunction(
+  llvm::Function *GetOrDeclareFunction(
       uint64_t address, llvm::FunctionType *func_type,
       llvm::CallingConv::ID calling_convention);
 
@@ -108,7 +107,7 @@ class FunctionLifter {
   // function drives a work list, where the first time we ask for the
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(const uint64_t addr);
+  llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
 
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are
@@ -249,12 +248,37 @@ class FunctionLifter {
   //            behavior.
   void InstrumentInstruction(llvm::BasicBlock *block);
 
+  // Visit a type hinted register at the current instruction. We use this
+  // information to try to improve lifting of possible pointers later on
+  // in the optimization process.
+  void VisitTypedHintedRegister(
+      llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
+      std::optional<uint64_t> maybe_value);
+
   // Visit an instruction, and lift it into a basic block. Then, based off of
   // the category of the instruction, invoke one of the category-specific
   // lifters to enact a change in control-flow.
   void VisitInstruction(
       remill::Instruction &inst, llvm::BasicBlock *block);
 
+  // In the process of lifting code, we may want to call another native
+  // function, `native_func`, for which we have high-level type info. The main
+  // lifter operates on a special three-argument form function style, and
+  // operating on this style is actually to our benefit, as it means that as
+  // long as we can put data into the emulated `State` structure and pull it
+  // out, then calling one native function from another doesn't require /us/
+  // to know how to adapt one native return type into another native return
+  // type, and instead we let LLVM's optimizations figure it out later during
+  // scalar replacement of aggregates (SROA).
+  llvm::Value *CallNativeFunction(uint64_t native_addr,
+                                  llvm::Function *native_func,
+                                  llvm::BasicBlock *block);
+
+  // Visit all instructions. This runs the work list and lifts instructions.
+  void VisitInstructions(uint64_t address);
+
+  // Creates a type hint taint value that we can hook into downstream in the
+  // optimization process.
   llvm::Function *
   GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
                              llvm::Module &mod, llvm::BasicBlock *curr_block,
