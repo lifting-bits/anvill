@@ -35,7 +35,8 @@ class LifterOptions {
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
-        symbolic_register_types(false) {
+        symbolic_register_types(true),
+        store_inferred_register_values(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -89,6 +90,23 @@ class LifterOptions {
   //            with `__anvill_pc`. Then it will compose nicely with
   //            `__anvill_sp`, which it currently does not.
   bool symbolic_register_types:1;
+
+  // If `symbolic_register_types` is `true`, and if the type provider gives us
+  // a concrete value that it believes resides in a register at a specific point
+  // in time, then should we trust that that value is indeed there and store it
+  // into the register? What this looks like is:
+  //
+  //      ... lifted instructions A ...
+  //      state->reg = <constant value>
+  //      ... lifted instructions B ...
+  //
+  // The impact of this option is two-fold. First, from `A`s perspective, any
+  // stores to `state->reg` are dead, and can likely be subject to dead store
+  // elimination, giving scalar replacement of aggregates and mem2reg and easier
+  // time of eliminating accesses to the `State` structure. Second, from `B`s
+  // perspective, `state->reg` is now a constant value, allowing store-to-load
+  // forwarding.
+  bool store_inferred_register_values:1;
 
  private:
   LifterOptions(void) = delete;

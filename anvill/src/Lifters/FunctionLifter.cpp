@@ -590,11 +590,6 @@ void FunctionLifter::VisitTypedHintedRegister(
     llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
     std::optional<uint64_t> maybe_value) {
 
-  // Only operate on pointer types for now.
-  if (!type->isPointerTy()) {
-    return;
-  }
-
   // Only operate on pointer-sized integer registers that are not sub-registers.
   const auto reg = options.arch->RegisterByName(reg_name);
   if (reg->EnclosingRegister() != reg ||
@@ -604,11 +599,22 @@ void FunctionLifter::VisitTypedHintedRegister(
 
   llvm::IRBuilder irb(block);
   auto reg_pointer = inst_lifter.LoadRegAddress(block, state_ptr, reg_name);
-  llvm::Value *reg_value = irb.CreateLoad(reg_pointer);
+  llvm::Value *reg_value = nullptr;
 
-  if (maybe_value) {
+  // If we have a concrete value that is being provided for this value, then
+  // save it into the `State` structure. This improves our ability to optimize.
+  if (options.store_inferred_register_values && maybe_value) {
+    reg_value = irb.CreateLoad(reg_pointer);
     reg_value = llvm::ConstantInt::get(reg->type, *maybe_value);
     irb.CreateStore(reg_value, reg_pointer);
+  }
+
+  if (!type->isPointerTy()) {
+    return;
+  }
+
+  if (!reg_value) {
+    reg_value = irb.CreateLoad(reg_pointer);
   }
 
   // Creates a function that returns a higher-level type, as provided by a
