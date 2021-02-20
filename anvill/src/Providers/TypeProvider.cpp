@@ -38,7 +38,7 @@ class ProgramTypeProvider final : public TypeProvider {
 
   explicit ProgramTypeProvider(llvm::LLVMContext &context_,
                                const Program &program_)
-      : context(context_),
+      : TypeProvider(context_),
         program(program_) {}
 
   // Try to return the type of a function starting at address `address`. This
@@ -57,7 +57,6 @@ class ProgramTypeProvider final : public TypeProvider {
  private:
   ProgramTypeProvider(void) = delete;
 
-  llvm::LLVMContext &context;
   const Program &program;
 };
 
@@ -130,13 +129,16 @@ void ProgramTypeProvider::QueryRegisterStateAtInstruction(
   }
 
   for (const auto &decl : types_it->second) {
-    typed_reg_cb(decl.reg, decl.type, decl.value);
+    typed_reg_cb(decl.reg->name, decl.type, decl.value);
   }
 }
 
 }  // namespace
 
 TypeProvider::~TypeProvider(void) {}
+
+TypeProvider::TypeProvider(llvm::LLVMContext &context_)
+    : context(context_) {}
 
 // Try to get the type of the register named `reg_name` on entry to the
 // instruction at `inst_address` inside the function beginning at

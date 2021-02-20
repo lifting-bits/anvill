@@ -37,9 +37,12 @@ class Value;
 namespace remill {
 class Arch;
 class Instruction;
-class Register;
+struct Register;
 }  // namespace remill
 namespace anvill {
+
+class MemoryProvider;
+class TypeProvider;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
@@ -66,6 +69,9 @@ class FunctionLifter {
 
   // Address of the function currently being lifted.
   uint64_t func_address{0};
+
+  // The higher-level C/C++-like function that we're trying to lift.
+  llvm::Function *native_func{nullptr};
 
   // Three-argument Remill function into which instructions are lifted.
   llvm::Function *lifted_func{nullptr};
@@ -290,6 +296,17 @@ class FunctionLifter {
   // delay slot of another instruction.
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out);
+
+  // Set up `native_func` to be able to call `lifted_func`. This means
+  // marshalling high-level argument types into lower-level values to pass into
+  // a stack-allocated `State` structure. This also involves providing initial
+  // default values for registers.
+  void CallLiftedFunctionFromNativeFunction(void);
+
+  // In practice, lifted functions are not workable as is; we need to emulate
+  // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
+  // that all semantics and helpers are completely inlined.
+  void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 };
 
 }  // namespace anvill

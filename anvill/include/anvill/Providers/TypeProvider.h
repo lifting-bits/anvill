@@ -38,8 +38,6 @@ class Program;
 // Provides bytes of memory from some source.
 class TypeProvider {
  public:
-  explicit TypeProvider(llvm::LLVMContext &context_);
-
   virtual ~TypeProvider(void);
 
   // Try to return the type of a function starting at address `address`. This
@@ -58,6 +56,11 @@ class TypeProvider {
   // Sources bytes from an `anvill::Program`.
   static std::shared_ptr<TypeProvider> CreateProgramTypeProvider(
       llvm::LLVMContext &context_, const Program &program);
+
+ protected:
+  explicit TypeProvider(llvm::LLVMContext &context_);
+
+  llvm::LLVMContext &context;
 
  private:
   TypeProvider(const TypeProvider &) = delete;

@@ -15,8 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
 #include "EntityLifter.h"
 
 #include <anvill/Providers/MemoryProvider.h>
@@ -139,7 +137,6 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
       return nullptr;
   }
 
-  auto &context = impl->target_module.getContext();
   llvm::Constant *ret = nullptr;
 
   switch (permission) {

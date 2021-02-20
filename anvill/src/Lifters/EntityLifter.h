@@ -61,6 +61,7 @@ class EntityLifterImpl {
                               llvm::Type *data_type);
 
  private:
+  friend class EntityLifter;
   friend class ValueLifter;
 
   EntityLifterImpl(void) = delete;

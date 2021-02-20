@@ -49,7 +49,6 @@
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
-#include "anvill/Lift.h"
 #include "anvill/Program.h"
 #include "anvill/RecoverMemRefs.h"
 #include "anvill/Util.h"

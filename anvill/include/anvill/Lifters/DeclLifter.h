@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Trail of Bits, Inc.
+ * Copyright (c) 2021 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,37 +17,19 @@
 
 #pragma once
 
-#include <remill/BC/Lifter.h>
-
-#include <memory>
-#include <string>
-
 namespace llvm {
+class BasicBlock;
 class Module;
+class Type;
+class Value;
 }  // namespace llvm
-
 namespace remill {
+class Arch;
 class IntrinsicTable;
 }  // namespace remill
-
 namespace anvill {
 
-class Program;
 struct ValueDecl;
-
-// Manages lifting of machine code functions from the input
-// program.
-class TraceManager : public remill::TraceManager {
- public:
-  virtual ~TraceManager(void);
-
-  static std::unique_ptr<TraceManager> Create(llvm::Module &semantics_module,
-                                              const Program &);
-};
-
-// Name of the high-level function at `addr`. This is not the name of the
-// 3-argument Remill version of the function.
-std::string CreateFunctionName(uint64_t addr);
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
@@ -63,5 +45,6 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
+
 
 }  // namespace anvill

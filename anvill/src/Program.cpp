@@ -615,7 +615,7 @@ GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address,
                                              const llvm::DataLayout &layout) {
 
   GlobalVarDecl *closest_match = nullptr;
-  for (const auto [var_address, var] : ea_to_var) {
+  for (auto [var_address, var] : ea_to_var) {
     if (var_address <= address) {
       closest_match = var;
     } else {

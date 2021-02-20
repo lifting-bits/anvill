@@ -37,17 +37,19 @@ llvm::APInt ValueLifterImpl::ConsumeValue(std::string_view &data,
     result <<= 8u;
     result |= data[i];
   }
-  if (dl.isLittleEndian() && 1u < num_bytes) {
-    result.byteSwap();
-  }
   data = data.substr(num_bytes);
-  return result;
+
+  if (dl.isLittleEndian() && 1u < num_bytes) {
+    return result.byteSwap();
+  } else {
+    return result;
+  }
 }
 
 llvm::Constant *ValueLifterImpl::Lift(
     std::string_view data, llvm::Type *type, const EntityLifter &ent_lifter) {
-  auto dl = module.getDataLayout();
-  llvm::Constant *result{nullptr};
+
+  const auto &dl = module.getDataLayout();
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
       const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));

@@ -21,6 +21,7 @@
 #include <glog/logging.h>
 
 #include <anvill/Decl.h>
+#include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
 
@@ -28,6 +29,7 @@
 #include <remill/Arch/Instruction.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 #include <remill/OS/OS.h>
 
 #include <llvm/IR/BasicBlock.h>
@@ -36,16 +38,68 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Utils.h>
+#include <llvm/Transforms/Utils/Cloning.h>
+
 #include <sstream>
 
+// TODO(pag): Externalize this into some kind of `LifterOptions` struct.
 DEFINE_bool(print_registers_before_instuctions, false,
             "Inject calls to printf (into the lifted bitcode) to log integer "
             "register state to stdout.");
 
 namespace anvill {
+namespace {
+
+// Clear out LLVM variable names. They're usually not helpful.
+static void ClearVariableNames(llvm::Function *func) {
+  for (auto &block : *func) {
+    block.setName(llvm::Twine::createNull());
+    for (auto &inst : block) {
+      if (inst.hasName()) {
+        inst.setName(llvm::Twine::createNull());
+      }
+    }
+  }
+}
+
+// Compatibility function for performing a single step of inlining.
+static llvm::InlineResult InlineFunction(llvm::CallBase *call,
+                                         llvm::InlineFunctionInfo &info) {
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
+  return llvm::InlineFunction(call, info);
+#else
+  return llvm::InlineFunction(*call, info);
+#endif
+}
+
+// A function that ensures that the memory pointer escapes, and thus none of
+// the memory writes at the end of a function are lost.
+static llvm::Function *
+GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
+  const auto module = intrinsics.error->getParent();
+  auto &context = module->getContext();
+
+  const auto name = "__anvill_memory_escape";
+  if (auto func = module->getFunction(name)) {
+    return func;
+  }
+
+  llvm::Type *params[] = {
+      remill::NthArgument(intrinsics.error, remill::kMemoryPointerArgNum)
+          ->getType()};
+  auto type =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context), params, false);
+  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, name,
+                                module);
+}
+
+}  // namespace
 
 FunctionLifter::~FunctionLifter(void) {}
 
@@ -602,7 +656,10 @@ void FunctionLifter::VisitInstruction(
   // pointer lifting.
   type_provider.QueryRegisterStateAtInstruction(
       func_address, inst.pc,
-      std::bind(&FunctionLifter::VisitTypedHintedRegister, this, block));
+      [=] (const std::string &reg_name, llvm::Type *type,
+           std::optional<uint64_t> maybe_value) {
+        VisitTypedHintedRegister(block, reg_name, type, maybe_value);
+      });
 
   switch (inst.category) {
 
@@ -678,7 +735,7 @@ llvm::Value *FunctionLifter::CallNativeFunction(
   auto mem_ptr_ref = remill::LoadMemoryPointerRef(block);
   llvm::IRBuilder<> irb(block);
 
-  auto mem_ptr = irb.CreateLoad(mem_ptr_ref);
+  llvm::Value *mem_ptr = irb.CreateLoad(mem_ptr_ref);
   mem_ptr = decl.CallFromLiftedBlock(native_func->getName().str(), intrinsics,
                                      block, state_ptr, mem_ptr, true);
   irb.SetInsertPoint(block);
@@ -787,6 +844,210 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(
   return native_func;
 }
 
+// Set up `native_func` to be able to call `lifted_func`. This means
+// marshalling high-level argument types into lower-level values to pass into
+// a stack-allocated `State` structure. This also involves providing initial
+// default values for registers.
+void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
+  if (!native_func->isDeclaration()) {
+    return;
+  }
+
+  // Get a `FunctionDecl` for `native_func`, which we can use to figure out
+  // how to marshal its parameters into the emulated `State` and `Memory *`
+  // of Remill lifted code, and marshal out the return value, if any.
+  auto &decl = addr_to_decl[func_address];
+  if (!decl.address) {
+    auto maybe_decl = FunctionDecl::Create(*native_func, arch);
+    if (remill::IsError(maybe_decl)) {
+      LOG(ERROR)
+          << "Unable to create FunctionDecl for "
+          << remill::LLVMThingToString(native_func->getFunctionType())
+          << " with calling convention " << native_func->getCallingConv()
+          << ": " << remill::GetErrorString(maybe_decl);
+      return;
+    }
+
+    decl = std::move(remill::GetReference(maybe_decl));
+  }
+
+  // Create a state structure and a stack frame in the native function
+  // and we'll call the lifted function with that. The lifted function
+  // will get inlined into this function.
+  auto block = llvm::BasicBlock::Create(context, "", native_func);
+  llvm::IRBuilder<> ir(block);
+
+  const auto i8_type = llvm::Type::getInt8Ty(context);
+  const auto i8_val = llvm::Constant::getNullValue(i8_type);
+
+  // Create a memory pointer.
+  const auto mem_ptr_type = llvm::dyn_cast<llvm::PointerType>(
+      remill::RecontextualizeType(arch->MemoryPointerType(), context));
+  llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
+
+  // Stack-allocate a state pointer.
+  const auto state_ptr_type = llvm::dyn_cast<llvm::PointerType>(
+      remill::RecontextualizeType(arch->StatePointerType(), context));
+  const auto state_type = state_ptr_type->getElementType();
+  auto state_ptr = ir.CreateAlloca(state_type);
+
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+
+  arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      ss << "__anvill_reg_" << reg->name;
+      const auto reg_name = ss.str();
+
+      auto reg_global = module.getGlobalVariable(reg_name);
+      if (!reg_global) {
+        reg_global = new llvm::GlobalVariable(
+            module, reg->type, false, llvm::GlobalValue::InternalLinkage,
+            llvm::Constant::getNullValue(reg->type), reg_name);
+      }
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+    }
+  });
+
+  // Store the program counter into the state.
+  auto pc_reg = arch->RegisterByName(arch->ProgramCounterRegisterName());
+  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
+
+  auto base_pc = module.getGlobalVariable("__anvill_pc");
+  if (!base_pc) {
+    base_pc = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
+        "__anvill_pc");
+  }
+
+  auto pc = llvm::ConstantExpr::getAdd(
+      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
+      llvm::ConstantInt::get(pc_reg->type, func_address, false));
+  ir.SetInsertPoint(block);
+  ir.CreateStore(pc, pc_reg_ptr);
+
+  // Initialize the stack pointer.
+  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
+  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
+
+  auto base_sp = module.getGlobalVariable("__anvill_sp");
+  if (!base_sp) {
+    base_sp = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
+        "__anvill_sp");
+  }
+
+  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
+  ir.SetInsertPoint(block);
+  ir.CreateStore(sp, sp_reg_ptr);
+
+  // Put the function's return address wherever it needs to go.
+  auto base_ra = module.getGlobalVariable("__anvill_ra");
+  if (!base_ra) {
+    base_ra = new llvm::GlobalVariable(
+        module, i8_type, false, llvm::GlobalValue::ExternalLinkage, i8_val,
+        "__anvill_ra");
+  }
+
+  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
+
+
+  mem_ptr = StoreNativeValue(ret_addr, decl.return_address, intrinsics, block,
+                             state_ptr, mem_ptr);
+
+  // Store the function parameters either into the state struct
+  // or into memory (likely the stack).
+  auto arg_index = 0u;
+  for (auto &arg : native_func->args()) {
+    const auto &param_decl = decl.params[arg_index++];
+    mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
+                               mem_ptr);
+  }
+
+  llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
+  lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
+  lifted_func_args[remill::kMemoryPointerArgNum] = mem_ptr;
+  lifted_func_args[remill::kPCArgNum] = pc;
+  auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
+  mem_ptr = call_to_lifted_func;
+
+  llvm::Value *ret_val = nullptr;
+
+  if (decl.returns.size() == 1) {
+    ret_val = LoadLiftedValue(decl.returns.front(), intrinsics, block,
+                              state_ptr, mem_ptr);
+    ir.SetInsertPoint(block);
+
+  } else if (1 < decl.returns.size()) {
+    ret_val = llvm::UndefValue::get(native_func->getReturnType());
+    auto index = 0u;
+    for (auto &ret_decl : decl.returns) {
+      auto partial_ret_val =
+          LoadLiftedValue(ret_decl, intrinsics, block, state_ptr, mem_ptr);
+      ir.SetInsertPoint(block);
+      unsigned indexes[] = {index};
+      ret_val = ir.CreateInsertValue(ret_val, partial_ret_val, indexes);
+      index += 1;
+    }
+  }
+
+  auto memory_escape = GetMemoryEscapeFunc(intrinsics);
+  llvm::Value *escape_args[] = {mem_ptr};
+  ir.CreateCall(memory_escape, escape_args);
+
+  if (ret_val) {
+    ir.CreateRet(ret_val);
+  } else {
+    ir.CreateRetVoid();
+  }
+}
+
+// In practice, lifted functions are not workable as is; we need to emulate
+// `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
+// that all semantics and helpers are completely inlined.
+void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
+  std::vector<llvm::CallInst *> calls_to_inline;
+  for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
+    calls_to_inline.clear();
+
+    for (auto &block : *native_func) {
+      for (auto &inst : block) {
+        if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
+          if (auto called_func = call_inst->getCalledFunction();
+              called_func && !called_func->isDeclaration() &&
+              !called_func->hasFnAttribute(llvm::Attribute::NoInline)) {
+            calls_to_inline.push_back(call_inst);
+          }
+        }
+      }
+    }
+
+    for (auto call_inst : calls_to_inline) {
+      llvm::InlineFunctionInfo info;
+      InlineFunction(call_inst, info);
+    }
+  }
+
+  // Initialize cleanup optimizations
+  llvm::legacy::FunctionPassManager fpm(&module);
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createPromoteMemoryToRegisterPass());
+  fpm.add(llvm::createReassociatePass());
+  fpm.add(llvm::createDeadStoreEliminationPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createSROAPass());
+  fpm.doInitialization();
+  fpm.run(*native_func);
+  fpm.doFinalization();
+
+  ClearVariableNames(native_func);
+}
+
 llvm::Function *FunctionLifter::LiftFunction(
     uint64_t address, llvm::FunctionType *func_type_,
     llvm::CallingConv::ID calling_convention) {
@@ -800,7 +1061,12 @@ llvm::Function *FunctionLifter::LiftFunction(
   state_ptr = nullptr;
   func_address = address;
 
-  const auto native_func = GetOrDeclareFunction(
+  // This is our higher-level function, i.e. it presents itself more like
+  // a function compiled from C/C++, rather than being a three-argument Remill
+  // function. In this function, we will stack-allocate a `State` structure,
+  // then call a `lifted_func` below, which will embed the instruction
+  // semantics.
+  native_func = GetOrDeclareFunction(
       address, func_type_, calling_convention);
 
   // Check if we already lifted this function. If so, do not re-lift it.
@@ -838,7 +1104,16 @@ llvm::Function *FunctionLifter::LiftFunction(
   llvm::BranchInst::Create(GetOrCreateBlock(address),
                            &(lifted_func->getEntryBlock()));
 
+  // Go lift all instructions!
   VisitInstructions(address);
+
+  // Fill up `native_func` with a basic block and make it call `lifted_func`.
+  // This creates things like the stack-allocated `State` structure.
+  CallLiftedFunctionFromNativeFunction();
+
+  // The last stage is that we need to recursively inline all calls to semantics
+  // functions into `native_func`.
+  RecursivelyInlineLiftedFunctionIntoNativeFunction();
 
   return native_func;
 }

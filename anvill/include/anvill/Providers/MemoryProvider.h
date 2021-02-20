@@ -57,6 +57,9 @@ class MemoryProvider {
   static std::shared_ptr<MemoryProvider> CreateProgramMemoryProvider(
       const Program &program);
 
+ protected:
+  MemoryProvider(void) = default;
+
  private:
   MemoryProvider(const MemoryProvider &) = delete;
   MemoryProvider(MemoryProvider &&) noexcept = delete;

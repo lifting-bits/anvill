@@ -49,7 +49,6 @@
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
-#include "anvill/Lift.h"
 #include "anvill/Optimize.h"
 #include "anvill/Program.h"
 #include "anvill/TypeParser.h"
@@ -665,7 +664,7 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
-  llvm::Module module;
+  llvm::Module module("lifted_code", context);
 
   // Get a unique pointer to a remill architecture object. The architecture
   // object knows how to deal with everything for this specific architecture,
@@ -678,6 +677,15 @@ int main(int argc, char *argv[]) {
 
   anvill::Program program;
 
+  auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
+  auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+
+  // NOTE(pag): Unfortunately, we need to load the semantics module first,
+  //            which happens deep inside the `EntityLifter`. Only then does
+  //            Remill properly know about register information, which
+  //            subsequently allows it to parse value decls in specs :-(
+  anvill::EntityLifter lifter(memory, types, arch.get(), module);
+
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
   // anvill::Program object, which is effectively a representation of the spec
@@ -685,23 +693,23 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
-  auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
-
-  anvill::EntityLifter lifter(memory, types, arch.get(), module);
-
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     (void) lifter.TryLiftEntity(decl->address);
     return true;
   });
 
   // Lift functions.
-  program.ForEachVariable(callback)([&](const anvill::FunctionDecl *decl) {
+  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
     (void) lifter.TryLiftEntity(decl->address);
     return true;
   });
 
-//
+  module.dump();
+
+  // Verify the module
+  CHECK(remill::VerifyModule(&module));
+
+
 //  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
 //  anvill::OptimizeModule(arch.get(), program, *semantics);
 //
@@ -728,13 +736,13 @@ int main(int argc, char *argv[]) {
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
+    if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
       LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
+    if (!remill::StoreModuleToFile(&module, FLAGS_bc_out, true)) {
       LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
       ret = EXIT_FAILURE;
     }

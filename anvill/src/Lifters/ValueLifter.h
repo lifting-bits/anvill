@@ -32,10 +32,10 @@ class ValueLifterImpl {
   explicit ValueLifterImpl(llvm::Module &module_);
 
   // Consume `num_bytes` of bytes from `data`, and update `data` in place.
-  llvm::APInt ConsumeValue(std::string_view data, unsigned num_bytes);
+  llvm::APInt ConsumeValue(std::string_view &data, unsigned num_bytes);
 
   // Consume `size` bytes of data from `data`, and update `data` in place.
-  inline llvm::APInt ConsumeValue(std::string_view data, llvm::TypeSize size) {
+  inline llvm::APInt ConsumeValue(std::string_view &data, llvm::TypeSize size) {
     return ConsumeValue(
         data, static_cast<unsigned>(static_cast<uint64_t>(size)));
   }

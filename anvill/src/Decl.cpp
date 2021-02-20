@@ -17,7 +17,7 @@
 
 #include "anvill/Decl.h"
 
-#include <anvill/Lift.h>
+#include <anvill/Lifters/DeclLifter.h>
 #include <anvill/TypePrinter.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>

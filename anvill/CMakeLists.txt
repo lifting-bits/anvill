@@ -39,9 +39,6 @@ add_library(anvill STATIC
   include/anvill/Decl.h
   src/Decl.cpp
 
-  include/anvill/Lift.h
-  src/Lift.cpp
-
   include/anvill/Optimize.h
   src/Optimize.cpp
 
@@ -58,6 +55,9 @@ add_library(anvill STATIC
   include/anvill/Lifters/EntityLifter.h
   src/Lifters/EntityLifter.h
   src/Lifters/EntityLifter.cpp
+  
+  include/anvill/Lifters/DeclLifter.h
+  src/Lifters/DeclLifter.cpp
   
   src/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.cpp
