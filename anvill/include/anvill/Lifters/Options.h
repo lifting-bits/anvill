@@ -34,7 +34,8 @@ class LifterOptions {
         module(&module_),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
-        symbolic_return_address(true) {
+        symbolic_return_address(true),
+        symbolic_register_types(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -71,6 +72,23 @@ class LifterOptions {
   //
   //      llvm.returnaddress(0)
   bool symbolic_return_address:1;
+
+  // Should we ask the type provider to provide us with typing hints for
+  // registers on entry to instructions? If so, then if there's a register
+  // at a specific address whose type is known, then the lifter performs
+  // roughly the following:
+  //
+  //      state->reg = __anvill_type_func_<hex address>_<type>(state->reg)
+  //
+  // The `__anvill_type_func_*` functions are basically uninterpreted functions,
+  // similar to Remill intrinsic functions, and serves to communicate the
+  // equivalent of a bitcast, but where the cast itself cannot be folded
+  // away by optimizations.
+  //
+  // TODO(pag): Convert this into using a global variable approach, like
+  //            with `__anvill_pc`. Then it will compose nicely with
+  //            `__anvill_sp`, which it currently does not.
+  bool symbolic_register_types:1;
 
  private:
   LifterOptions(void) = delete;

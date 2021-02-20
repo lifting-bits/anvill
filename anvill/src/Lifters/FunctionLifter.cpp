@@ -666,12 +666,14 @@ void FunctionLifter::VisitInstruction(
 
   // Try to find any register type hints that we can use later to improve
   // pointer lifting.
-  type_provider.QueryRegisterStateAtInstruction(
-      func_address, inst.pc,
-      [=] (const std::string &reg_name, llvm::Type *type,
-           std::optional<uint64_t> maybe_value) {
-        VisitTypedHintedRegister(block, reg_name, type, maybe_value);
-      });
+  if (options.symbolic_register_types) {
+    type_provider.QueryRegisterStateAtInstruction(
+        func_address, inst.pc,
+        [=] (const std::string &reg_name, llvm::Type *type,
+             std::optional<uint64_t> maybe_value) {
+          VisitTypedHintedRegister(block, reg_name, type, maybe_value);
+        });
+  }
 
   switch (inst.category) {
 
