@@ -321,6 +321,15 @@ class FunctionLifter {
   // that all semantics and helpers are completely inlined.
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 
+  // Allocate and initialize the state structure.
+  void AllocateAndInitializeStateStructure(llvm::BasicBlock *block);
+
+  // Initialize the state structure with default values, loaded from global
+  // variables. The purpose of these global variables is to show that there are
+  // some unmodelled external dependencies inside of a lifted function.
+  void InitializeStateStructureFromGlobalRegisterVariables(
+      llvm::BasicBlock *block);
+
   // Initialize a symbolic program counter value in a lifted function. This
   // mechanism is used to improve cross-reference discovery by using a
   // relocatable constant expression as the initial value for a program counter.

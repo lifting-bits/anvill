@@ -46,6 +46,7 @@
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
 
 #include <sstream>
 
@@ -789,26 +790,28 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     // those by way of enqueuing those addresses with `GetOrCreateBlock`, and
     // then recover from the tail-calliness here, instead of spreading that
     // logic into all the control-flow visitors.
-    const auto [other_func_type, other_func_cc] =
-        type_provider.TryGetFunctionType(inst_addr);
-    if (other_func_type) {
-      llvm::Function * const other_decl = GetOrDeclareFunction(
-          inst_addr, other_func_type, other_func_cc);
+    if (inst_addr != func_address) {
+      const auto [other_func_type, other_func_cc] =
+          type_provider.TryGetFunctionType(inst_addr);
+      if (other_func_type) {
+        llvm::Function * const other_decl = GetOrDeclareFunction(
+            inst_addr, other_func_type, other_func_cc);
 
-      const auto mem_ptr_from_call =
-          CallNativeFunction(inst_addr, other_decl, block);
-      if (mem_ptr_from_call) {
-        llvm::ReturnInst::Create(context, mem_ptr_from_call, block);
-        continue;
+        const auto mem_ptr_from_call =
+            CallNativeFunction(inst_addr, other_decl, block);
+        if (mem_ptr_from_call) {
+          llvm::ReturnInst::Create(context, mem_ptr_from_call, block);
+          continue;
+        }
+
+        LOG(ERROR)
+            << "Failed to call native function at " << std::hex << inst_addr
+            << " via fall-through or tail call from function " << func_address
+            << std::dec;
+
+        // NOTE(pag): Recover by falling through and just try to decode/lift
+        //            the instructions.
       }
-
-      LOG(ERROR)
-          << "Failed to call native function at " << std::hex << inst_addr
-          << " via fall-through or tail call from function " << func_address
-          << std::dec;
-
-      // NOTE(pag): Recover by falling through and just try to decode/lift the
-      //            instructions.
     }
 
     // Decode.
@@ -862,6 +865,63 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(
   native_func->removeFnAttr(llvm::Attribute::AlwaysInline);
   native_func->addFnAttr(llvm::Attribute::NoInline);
   return native_func;
+}
+
+// Allocate and initialize the state structure.
+void FunctionLifter::AllocateAndInitializeStateStructure(
+    llvm::BasicBlock *block) {
+  llvm::IRBuilder<> ir(block);
+  const auto state_type = state_ptr_type->getElementType();
+  switch (options.state_struct_init_procedure) {
+    case StateStructureInitializationProcedure::kNone:
+      state_ptr = ir.CreateAlloca(state_type);
+      break;
+    case StateStructureInitializationProcedure::kZeroes:
+      state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), state_ptr);
+      break;
+    case StateStructureInitializationProcedure::kUndef:
+      state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), state_ptr);
+      break;
+    case StateStructureInitializationProcedure::kGlobalRegisterVariables:
+      state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), state_ptr);
+      InitializeStateStructureFromGlobalRegisterVariables(block);
+      break;
+  }
+}
+
+// Initialize the state structure with default values, loaded from global
+// variables. The purpose of these global variables is to show that there are
+// some unmodelled external dependencies inside of a lifted function.
+void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
+    llvm::BasicBlock *block) {
+
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+
+  llvm::IRBuilder<> ir(block);
+
+  options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+      std::stringstream ss;
+      ss << "__anvill_reg_" << reg->name;
+      const auto reg_name = ss.str();
+
+      auto reg_global = module.getGlobalVariable(reg_name);
+      if (!reg_global) {
+        reg_global = new llvm::GlobalVariable(
+            module, reg->type, false, llvm::GlobalValue::ExternalLinkage,
+            nullptr, reg_name);
+      }
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+    }
+  });
 }
 
 // Initialize a symbolic program counter value in a lifted function. This
@@ -998,37 +1058,12 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   // and we'll call the lifted function with that. The lifted function
   // will get inlined into this function.
   auto block = llvm::BasicBlock::Create(context, "", native_func);
-  llvm::IRBuilder<> ir(block);
 
   // Create a memory pointer.
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
-  // Stack-allocate a state pointer.
-  const auto state_type = state_ptr_type->getElementType();
-  state_ptr = ir.CreateAlloca(state_type);
-
-  // Get or create globals for all top-level registers. The idea here is that
-  // the spec could feasibly miss some dependencies, and so after optimization,
-  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
-  // them appropriately.
-
-  options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-      std::stringstream ss;
-      ss << "__anvill_reg_" << reg->name;
-      const auto reg_name = ss.str();
-
-      auto reg_global = module.getGlobalVariable(reg_name);
-      if (!reg_global) {
-        reg_global = new llvm::GlobalVariable(
-            module, reg->type, false, llvm::GlobalValue::InternalLinkage,
-            llvm::Constant::getNullValue(reg->type), reg_name);
-      }
-
-      const auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
-    }
-  });
+  // Stack-allocate and initialize the state pointer.
+  AllocateAndInitializeStateStructure(block);
 
   llvm::Value *pc = nullptr;
   if (options.symbolic_program_counter) {
@@ -1059,6 +1094,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
     mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
                                mem_ptr);
   }
+
+  llvm::IRBuilder<> ir(block);
 
   llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
   lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
@@ -1132,6 +1169,8 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   fpm.add(llvm::createDeadStoreEliminationPass());
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(llvm::createSROAPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createInstructionCombiningPass());
   fpm.doInitialization();
   fpm.run(*native_func);
   fpm.doFinalization();

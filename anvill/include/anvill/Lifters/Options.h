@@ -25,6 +25,20 @@ class Arch;
 }  // namespace remill
 namespace anvill {
 
+enum class StateStructureInitializationProcedure {
+  // Don't do anything with the `alloca State`.
+  kNone,
+
+  // Store an LLVM constant aggregate zero into the `alloca State`.
+  kZeroes,
+
+  // Stoe an LLVM undefined value to the `alloca State`.
+  kUndef,
+
+  // Initialize with global register variables.
+  kGlobalRegisterVariables
+};
+
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
@@ -32,6 +46,8 @@ class LifterOptions {
                                 llvm::Module &module_)
       : arch(arch_),
         module(&module_),
+        state_struct_init_procedure(
+            StateStructureInitializationProcedure::kGlobalRegisterVariables),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
@@ -45,6 +61,18 @@ class LifterOptions {
 
   // Target module into which code will be lifted.
   llvm::Module * const module;
+
+  // Should the registers of the `State` structure be initialized from many
+  // loads of global variables? If so, then the lifted bitcode takes on the
+  // form:
+  //
+  //      state->rax = __anvill_reg_RAX
+  //      state->rbx = __anvill_reg_RBX
+  //      ...
+  //
+  // The purpose here is to show that there are unmodelled dependencies. If
+  // this option is `false`, then the `State` structure is *not* initialized.
+  StateStructureInitializationProcedure state_struct_init_procedure;
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
