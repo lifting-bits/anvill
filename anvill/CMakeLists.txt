@@ -85,7 +85,6 @@ endmacro()
 target_public_headers(anvill
   include/anvill/Analyze.h
   include/anvill/Decl.h
-  include/anvill/Lift.h
   include/anvill/Optimize.h
   include/anvill/Program.h
   include/anvill/RecoverMemRefs.h
