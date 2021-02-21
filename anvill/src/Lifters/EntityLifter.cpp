@@ -34,9 +34,7 @@
 
 namespace anvill {
 
-EntityLifterImpl::~EntityLifterImpl(void) {
-
-}
+EntityLifterImpl::~EntityLifterImpl(void) {}
 
 EntityLifterImpl::EntityLifterImpl(
     const LifterOptions &options_,
@@ -45,48 +43,10 @@ EntityLifterImpl::EntityLifterImpl(
     : options(options_),
       memory_provider(mem_provider_),
       type_provider(type_provider_),
-      semantics_module(remill::LoadArchSemantics(options.arch)),
       value_lifter(options),
-      function_lifter(options, *mem_provider_, *type_provider_,
-                      *semantics_module) {
+      function_lifter(options, *mem_provider_, *type_provider_) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
-}
-
-// Tries to lift the function at `address` and return an `llvm::Function *`.
-// The parameter are return types are defined in terms of the function type,
-// `type`, and the calling convention is set to `calling_convention`. A
-// lifter-default name is provided for the function, `sub_<hexaddr>`.
-llvm::Constant *EntityLifterImpl::TryLiftFunction(
-    uint64_t address, llvm::FunctionType *func_type,
-    llvm::CallingConv::ID calling_convention) {
-
-  auto &semantics_context = semantics_module->getContext();
-  auto &module_context = options.module->getContext();
-
-  // First, go lift the function in the semantics module.
-  const auto sem_func_version =
-      function_lifter.LiftFunction(address, func_type, calling_convention);
-  const auto name = sem_func_version->getName().str();
-
-  // Now that we've lifted the function, we're left with some pretty brutal
-  // bitcode, and its in the wrong module too. So, we need to go and move or
-  // copy the lifted function into the target module.
-  if (&semantics_context == &module_context) {
-    remill::MoveFunctionIntoModule(sem_func_version, options.module);
-    return options.module->getFunction(name);
-
-  } else {
-    const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(func_type, module_context));
-
-    const auto target_func_version = llvm::Function::Create(
-        module_func_type, llvm::GlobalValue::ExternalLinkage, name,
-        options.module);
-
-    remill::CloneFunctionInto(sem_func_version, target_func_version);
-    return target_func_version;
-  }
 }
 
 // Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
@@ -143,9 +103,9 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
     case BytePermission::kUnknown:
     case BytePermission::kReadableExecutable:
     case BytePermission::kReadableWritableExecutable:
-      if (auto func = impl->type_provider->TryGetFunctionType(address);
-          func.first) {
-        ret = impl->TryLiftFunction(address, func.first, func.second);
+      if (auto maybe_decl = impl->type_provider->TryGetFunctionType(address);
+          maybe_decl) {
+        ret = impl->function_lifter.LiftFunction(*maybe_decl);
         break;
       }
       [[clang::fallthrough]];

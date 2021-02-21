@@ -46,13 +46,6 @@ class EntityLifterImpl {
       const std::shared_ptr<MemoryProvider> &mem_provider_,
       const std::shared_ptr<TypeProvider> &type_provider_);
 
-  // Tries to lift the function at `address` and return an `llvm::Function *`.
-  // The parameter are return types are defined in terms of the function type,
-  // `type`, and the calling convention is set to `calling_convention`. A
-  // lifter-default name is provided for the function, `sub_<hexaddr>`.
-  llvm::Constant *TryLiftFunction(uint64_t address, llvm::FunctionType *type,
-                                  llvm::CallingConv::ID calling_convention);
-
   // Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
   //
   // A key issue with `TryLiftData` is that we might be requesting `address`,
@@ -75,9 +68,6 @@ class EntityLifterImpl {
 
   // Provider of type information when asking for function prototypes.
   const std::shared_ptr<TypeProvider> type_provider;
-
-  // Semantics module containing all instruction semantics.
-  std::unique_ptr<llvm::Module> semantics_module;
 
   // Lifts initializers of global variables.
   ValueLifter value_lifter;

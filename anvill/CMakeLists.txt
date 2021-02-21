@@ -62,6 +62,7 @@ add_library(anvill STATIC
   include/anvill/Lifters/DeclLifter.h
   src/Lifters/DeclLifter.cpp
   
+  include/anvill/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.cpp
     

@@ -27,6 +27,8 @@
 
 #include <remill/BC/Util.h>
 
+#include <glog/logging.h>
+
 namespace anvill {
 namespace {
 
@@ -43,8 +45,7 @@ class ProgramTypeProvider final : public TypeProvider {
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  std::pair<llvm::FunctionType *, llvm::CallingConv::ID>
-  TryGetFunctionType(uint64_t address) final;
+  std::optional<FunctionDecl> TryGetFunctionType(uint64_t address) final;
 
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
@@ -62,52 +63,17 @@ class ProgramTypeProvider final : public TypeProvider {
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
-std::pair<llvm::FunctionType *, llvm::CallingConv::ID>
+std::optional<FunctionDecl>
 ProgramTypeProvider::TryGetFunctionType(uint64_t address) {
   const auto decl = program.FindFunction(address);
   if (!decl) {
-    return {nullptr, llvm::CallingConv::C};
+    return std::nullopt;
   }
 
-  llvm::FunctionType *func_type = nullptr;
+  CHECK_NOTNULL(decl->type);
+  CHECK_EQ(decl->address, address);
 
-  if (!decl->type) {
-    // Figure out the return type of this function based off the return
-    // values.
-    llvm::Type *ret_type = nullptr;
-    if (decl->returns.empty()) {
-      ret_type = llvm::Type::getVoidTy(context);
-
-    } else if (decl->returns.size() == 1) {
-      ret_type = decl->returns[0].type;
-
-    // The multiple return value case is most interesting, and somewhere
-    // where we see some divergence between C and what we will decompile.
-    // For example, on 32-bit x86, a 64-bit return value might be spread
-    // across EAX:EDX. Instead of representing this by a single value, we
-    // represent it as a structure if two 32-bit ints, and make sure to say
-    // that one part is in EAX, and the other is in EDX.
-    } else {
-      llvm::SmallVector<llvm::Type *, 8> ret_types;
-      for (auto &ret_val : decl->returns) {
-        ret_types.push_back(ret_val.type);
-      }
-      ret_type = llvm::StructType::get(context, ret_types, true);
-    }
-
-    llvm::SmallVector<llvm::Type *, 8> param_types;
-    for (auto &param_val : decl->params) {
-      param_types.push_back(param_val.type);
-    }
-
-    func_type = llvm::FunctionType::get(ret_type, param_types, decl->is_variadic);
-
-  } else {
-    func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(decl->type, context));
-  }
-
-  return {func_type, decl->calling_convention};
+  return *decl;
 }
 
 // Try to get the type of the register named `reg_name` on entry to the

@@ -24,7 +24,7 @@
 #include <string>
 #include <utility>
 
-#include <llvm/IR/CallingConv.h>
+#include <anvill/Decl.h>
 
 namespace llvm {
 class FunctionType;
@@ -42,7 +42,7 @@ class TypeProvider {
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  virtual std::pair<llvm::FunctionType *, llvm::CallingConv::ID>
+  virtual std::optional<FunctionDecl>
   TryGetFunctionType(uint64_t address) = 0;
 
   // Try to get the type of the register named `reg_name` on entry to the

@@ -706,8 +706,6 @@ int main(int argc, char *argv[]) {
     return true;
   });
 
-  module.dump();
-
   // Verify the module
   CHECK(remill::VerifyModule(&module));
 

@@ -17,39 +17,40 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
-#include <string_view>
+
+#include <anvill/Lifters/Options.h>
 
 namespace llvm {
-class Constant;
-class Module;
-class Type;
+class Function;
 }  // namespace llvm
 namespace anvill {
 
-class ValueLifterImpl;
+struct FunctionDecl;
+class MemoryProvider;
+class TypeProvider;
 
-class EntityLifter;
-class LifterOptions;
+class FunctionLifterImpl;
 
-// The value lifter is responsible for lifting raw data, as taken from
-// memory, and producing `llvm::Constant` values that can be used to initialize
-// global variables.
-class ValueLifter {
+// Orchestrates lifting of instructions and control-flow between instructions.
+class FunctionLifter {
  public:
-  ~ValueLifter(void);
+  ~FunctionLifter(void);
 
-  explicit ValueLifter(const LifterOptions &options_);
+  explicit FunctionLifter(const LifterOptions &options_,
+                          MemoryProvider &memory_provider_,
+                          TypeProvider &type_provider_);
 
-  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       const EntityLifter &entity_lifter) const;
+  // Lifts the machine code function starting at address `address`, and using
+  // `options_.arch` as the architecture for lifting, into `options_.module`.
+  // Returns an `llvm::Function *` that is part of `options_.module`.
+  llvm::Function *LiftFunction(const FunctionDecl &decl);
 
  private:
-  friend class DataLifter;
-  friend class FunctionLifterImpl;
+  FunctionLifter(void) = delete;
 
-  ValueLifter(void) = delete;
-  std::shared_ptr<ValueLifterImpl> impl;
+  std::unique_ptr<FunctionLifterImpl> impl;
 };
 
 }  // namespace anvill

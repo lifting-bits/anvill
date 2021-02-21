@@ -17,12 +17,14 @@
 
 #pragma once
 
+#include <memory>
+
 #include <cstdint>
 #include <set>
 #include <unordered_map>
 #include <anvill/Decl.h>
 
-#include <anvill/Lifters/Options.h>
+#include <anvill/Lifters/FunctionLifter.h>
 
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -47,42 +49,31 @@ class MemoryProvider;
 class TypeProvider;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
-class FunctionLifter {
+class FunctionLifterImpl {
  public:
-  ~FunctionLifter(void);
+  ~FunctionLifterImpl(void);
 
-  FunctionLifter(const LifterOptions &options_, MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_, llvm::Module &semantics_module_);
+  FunctionLifterImpl(const LifterOptions &options_,
+                     MemoryProvider &memory_provider_,
+                     TypeProvider &type_provider_);
 
-  llvm::Function *LiftFunction(uint64_t address, llvm::FunctionType *func_type,
-                               llvm::CallingConv::ID calling_convention);
+  // Lift a function.
+  //
+  // TODO(pag): Make this operate on a `FunctionDecl`.
+  llvm::Function *LiftFunction(const FunctionDecl &decl);
 
  private:
+  friend class FunctionLifter;
+
   const LifterOptions options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
 
-  // Semantics module containing instruction semantics functions that can be
-  // associated with `remill::Insruction::function` names.
-  llvm::Module &module;
+  // Semantics module containing all instruction semantics.
+  std::unique_ptr<llvm::Module> semantics_module;
 
   // Context associated with `module`.
   llvm::LLVMContext &context;
-
-  // Address of the function currently being lifted.
-  uint64_t func_address{0};
-
-  // The higher-level C/C++-like function that we're trying to lift.
-  llvm::Function *native_func{nullptr};
-
-  // Three-argument Remill function into which instructions are lifted.
-  llvm::Function *lifted_func{nullptr};
-
-  // State pointer in `lifted_func`.
-  llvm::Value *state_ptr{nullptr};
-
-  // Current instruction being lifted.
-  remill::Instruction *curr_inst{nullptr};
 
   // Remill instrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
@@ -98,6 +89,21 @@ class FunctionLifter {
   llvm::Type * const i32_type;
   llvm::PointerType * const mem_ptr_type;
   llvm::PointerType * const state_ptr_type;
+
+  // Address of the function currently being lifted.
+  uint64_t func_address{0};
+
+  // The higher-level C/C++-like function that we're trying to lift.
+  llvm::Function *native_func{nullptr};
+
+  // Three-argument Remill function into which instructions are lifted.
+  llvm::Function *lifted_func{nullptr};
+
+  // State pointer in `lifted_func`.
+  llvm::Value *state_ptr{nullptr};
+
+  // Current instruction being lifted.
+  remill::Instruction *curr_inst{nullptr};
 
   llvm::Function *log_printf{nullptr};
   llvm::Value *log_format_str{nullptr};
@@ -118,9 +124,7 @@ class FunctionLifter {
 
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
-  llvm::Function *GetOrDeclareFunction(
-      uint64_t address, llvm::FunctionType *func_type,
-      llvm::CallingConv::ID calling_convention);
+  llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
 
   // Helper to get the basic block to contain the instruction at `addr`. This
   // function drives a work list, where the first time we ask for the
@@ -289,7 +293,7 @@ class FunctionLifter {
   // to know how to adapt one native return type into another native return
   // type, and instead we let LLVM's optimizations figure it out later during
   // scalar replacement of aggregates (SROA).
-  llvm::Value *CallNativeFunction(uint64_t native_addr,
+  llvm::Value *TryCallNativeFunction(uint64_t native_addr,
                                   llvm::Function *native_func,
                                   llvm::BasicBlock *block);
 
@@ -300,7 +304,7 @@ class FunctionLifter {
   // optimization process.
   llvm::Function *
   GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
-                             llvm::Module &mod, llvm::BasicBlock *curr_block,
+                             llvm::BasicBlock *curr_block,
                              const remill::Register *reg, uint64_t pc);
 
   // Try to decode an instruction at address `addr` into `*inst_out`. Returns
