@@ -46,8 +46,17 @@ class EntityLifter {
                         const std::shared_ptr<TypeProvider> &type_provider_);
 
   // Tries to lift the entity at `address` and return an `llvm::Function *`
-  // or `llvm::GlobalAlias *` relating to that address.
+  // or `llvm::GlobalAlias *` relating to that address. The returned entity,
+  // if any, will reside in `options.module`.
   llvm::Constant *TryLiftEntity(uint64_t address) const;
+
+  // Return the options being used by this entity lifter.
+  const LifterOptions &Options(void) const;
+
+  EntityLifter(const EntityLifter &) = default;
+  EntityLifter(EntityLifter &&) noexcept = default;
+  EntityLifter &operator=(const EntityLifter &) = default;
+  EntityLifter &operator=(EntityLifter &&) noexcept = default;
 
  private:
   friend class ValueLifter;

@@ -1284,13 +1284,13 @@ FunctionLifter::~FunctionLifter(void) {}
 FunctionLifter::FunctionLifter(const LifterOptions &options_,
                                MemoryProvider &memory_provider_,
                                TypeProvider &type_provider_)
-    : impl(std::make_unique<FunctionLifterImpl>(options_, memory_provider_,
+    : impl(std::make_shared<FunctionLifterImpl>(options_, memory_provider_,
                                                 type_provider_)) {}
 
 // Lifts the machine code function starting at address `address`, and using
 // `options_.arch` as the architecture for lifting, into `options_.module`.
 // Returns an `llvm::Function *` that is part of `options_.module`.
-llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
+llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
 
   const auto semantics_module = impl->semantics_module.get();
   const auto target_module = impl->options.module;

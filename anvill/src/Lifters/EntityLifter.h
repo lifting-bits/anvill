@@ -35,6 +35,8 @@ class Function;
 }  // namespace llvm
 namespace anvill {
 
+class ValueLifterImpl;
+
 // An entity lifter is responsible for lifting functions and data (variables)
 // into a target LLVM module.
 class EntityLifterImpl {
@@ -54,6 +56,11 @@ class EntityLifterImpl {
   llvm::Constant *TryLiftData(uint64_t address, uint64_t data_address,
                               llvm::Type *data_type);
 
+  // Tries to lift the entity at `address` and return an `llvm::Function *`
+  // or `llvm::GlobalAlias *` relating to that address. The returned entity,
+  // if any, will reside in `options.module`.
+  llvm::Constant *TryLiftEntity(uint64_t address);
+
  private:
   friend class EntityLifter;
   friend class ValueLifter;
@@ -70,10 +77,12 @@ class EntityLifterImpl {
   const std::shared_ptr<TypeProvider> type_provider;
 
   // Lifts initializers of global variables.
-  ValueLifter value_lifter;
+  //
+  // TODO(pag): This is a bit dumb, but there's a circular dependency here :-/
+  ValueLifterImpl value_lifter;
 
   // Used to lift functions.
-  FunctionLifter function_lifter;
+  const FunctionLifter function_lifter;
 
   std::unordered_map<uint64_t, llvm::Constant *> entities;
 

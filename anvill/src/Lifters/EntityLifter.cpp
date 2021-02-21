@@ -32,6 +32,8 @@
 
 #include <glog/logging.h>
 
+#include "ValueLifter.h"
+
 namespace anvill {
 
 EntityLifterImpl::~EntityLifterImpl(void) {}
@@ -67,24 +69,16 @@ llvm::Constant *EntityLifterImpl::TryLiftData(
   return nullptr;
 }
 
-EntityLifter::~EntityLifter(void) {}
-
-EntityLifter::EntityLifter(const LifterOptions &options_,
-                           const std::shared_ptr<MemoryProvider> &mem_provider_,
-                           const std::shared_ptr<TypeProvider> &type_provider_)
-    : impl(std::make_shared<EntityLifterImpl>(
-          options_, mem_provider_, type_provider_)) {}
-
 // Tries to lift the entity at `address` and return an `llvm::Function *`
-// or `llvm::GlobalAlias *` relating to that address.
-llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
-  auto ent_it = impl->entities.find(address);
-  if (ent_it != impl->entities.end()) {
+// or `llvm::GlobalAlias *` relating to that address. The returned entity,
+// if any, will reside in `options.module`.
+llvm::Constant *EntityLifterImpl::TryLiftEntity(uint64_t address) {
+  auto ent_it = entities.find(address);
+  if (ent_it != entities.end()) {
     return ent_it->second;
   }
 
-  auto [byte, availability, permission] =
-      impl->memory_provider->Query(address);
+  auto [byte, availability, permission] = memory_provider->Query(address);
 
   switch (availability) {
     case ByteAvailability::kUnknown:
@@ -103,9 +97,9 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
     case BytePermission::kUnknown:
     case BytePermission::kReadableExecutable:
     case BytePermission::kReadableWritableExecutable:
-      if (auto maybe_decl = impl->type_provider->TryGetFunctionType(address);
+      if (auto maybe_decl = type_provider->TryGetFunctionType(address);
           maybe_decl) {
-        ret = impl->function_lifter.LiftFunction(*maybe_decl);
+        ret = function_lifter.LiftFunction(*maybe_decl);
         break;
       }
       [[clang::fallthrough]];
@@ -115,12 +109,32 @@ llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
     }
   }
 
-  auto [new_ent_it, added] = impl->entities.emplace(address, ret);
+  auto [new_ent_it, added] = entities.emplace(address, ret);
   if (added) {
-    impl->new_entities.emplace_back(address, ret);
+    new_entities.emplace_back(address, ret);
   }
 
   return ret;
+}
+
+EntityLifter::~EntityLifter(void) {}
+
+EntityLifter::EntityLifter(const LifterOptions &options_,
+                           const std::shared_ptr<MemoryProvider> &mem_provider_,
+                           const std::shared_ptr<TypeProvider> &type_provider_)
+    : impl(std::make_shared<EntityLifterImpl>(
+          options_, mem_provider_, type_provider_)) {}
+
+// Tries to lift the entity at `address` and return an `llvm::Function *`
+// or `llvm::GlobalAlias *` relating to that address. The returned entity,
+// if any, will reside in `options.module`.
+llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
+  return impl->TryLiftEntity(address);
+}
+
+// Return the options being used by this entity lifter.
+const LifterOptions &EntityLifter::Options(void) const {
+  return impl->options;
 }
 
 }  // namespace anvill

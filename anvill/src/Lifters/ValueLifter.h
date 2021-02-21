@@ -18,6 +18,8 @@
 #pragma once
 
 #include <anvill/Lifters/ValueLifter.h>
+
+#include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
 
 #include <llvm/ADT/APInt.h>
@@ -25,9 +27,19 @@
 
 namespace llvm {
 class DataLayout;
+class LLVMContext;
 }  // namespace llvm
 namespace anvill {
 
+// Implementation of the `ValueLifter`.
+//
+// NOTE(pag): Due to the cyclic dependencies between `ValueLifter` and
+//            `EntityLifter`, the `ValueLifter::impl` is actually a shared
+//            reference to an `EntityLifterImpl`, and `EntityLifterImpl`
+//            actually owns the memory (by value) of a `ValueLifterImpl`.
+//            There is a bit of a song and dance to pass around the right
+//            references, and this is why we see a reference to
+//            `EntityLifterImpl` passed along to `ValueLifterImpl::Lift`.
 class ValueLifterImpl {
  public:
   explicit ValueLifterImpl(const LifterOptions &options_);
@@ -41,11 +53,13 @@ class ValueLifterImpl {
         data, static_cast<unsigned>(static_cast<uint64_t>(size)));
   }
 
+  // Do the actual lifting.
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       const EntityLifter &entity_lifter);
+                       EntityLifterImpl &ent_lifter);
 
   const LifterOptions options;
   const llvm::DataLayout &dl;
+  llvm::LLVMContext &context;
 };
 
 }  // namespace anvill

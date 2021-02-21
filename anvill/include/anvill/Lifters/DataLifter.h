@@ -32,6 +32,11 @@ class DataLifter {
   ~DataLifter(void);
 
 
+  DataLifter(const DataLifter &) = default;
+  DataLifter(DataLifter &&) noexcept = default;
+  DataLifter &operator=(const DataLifter &) = default;
+  DataLifter &operator=(DataLifter &&) noexcept = default;
+
  private:
   std::shared_ptr<DataLifterImpl> impl;
 };

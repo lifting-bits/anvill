@@ -45,12 +45,17 @@ class FunctionLifter {
   // Lifts the machine code function starting at address `address`, and using
   // `options_.arch` as the architecture for lifting, into `options_.module`.
   // Returns an `llvm::Function *` that is part of `options_.module`.
-  llvm::Function *LiftFunction(const FunctionDecl &decl);
+  llvm::Function *LiftFunction(const FunctionDecl &decl) const;
+
+  FunctionLifter(const FunctionLifter &) = default;
+  FunctionLifter(FunctionLifter &&) noexcept = default;
+  FunctionLifter &operator=(const FunctionLifter &) = default;
+  FunctionLifter &operator=(FunctionLifter &&) noexcept = default;
 
  private:
   FunctionLifter(void) = delete;
 
-  std::unique_ptr<FunctionLifterImpl> impl;
+  std::shared_ptr<FunctionLifterImpl> impl;
 };
 
 }  // namespace anvill

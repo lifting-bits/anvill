@@ -27,6 +27,8 @@
 #include <remill/BC/Util.h>
 #include <remill/BC/Compat/VectorType.h>
 
+#include "EntityLifter.h"
+
 namespace anvill {
 
 // Consume `num_bytes` of bytes from `data`, and update `data` in place.
@@ -46,8 +48,8 @@ llvm::APInt ValueLifterImpl::ConsumeValue(std::string_view &data,
   }
 }
 
-llvm::Constant *ValueLifterImpl::Lift(
-    std::string_view data, llvm::Type *type, const EntityLifter &ent_lifter) {
+llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
+                                      EntityLifterImpl &ent_lifter) {
 
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
@@ -123,19 +125,28 @@ llvm::Constant *ValueLifterImpl::Lift(
   }
 }
 
-ValueLifter::ValueLifter(const LifterOptions &options_)
-    : impl(std::make_shared<ValueLifterImpl>(options_)) {}
-
 ValueLifterImpl::ValueLifterImpl(const LifterOptions &options_)
     : options(options_),
-      dl(options.module->getDataLayout()) {}
+      dl(options.module->getDataLayout()),
+      context(options.module->getContext()) {}
 
 ValueLifter::~ValueLifter(void) {}
 
+ValueLifter::ValueLifter(const EntityLifter &entity_lifter_)
+    : impl(entity_lifter_.impl) {}
+
+// Lift the bytes in `data` as an `llvm::Constant` into the module associated
+// with `entity_lifter_`s options. This may produce an `llvm::Constant`
+// that requires relocations, i.e. that depends on aliases or functions in
+// `options_.module`, i.e. if we're lifting some data where the types contain
+// pointer types, and thus we need to interpret bytes from `data` as being
+// addresses and then lift them to pointers.
 llvm::Constant *ValueLifter::Lift(
-    std::string_view data, llvm::Type *type_of_data,
-    const EntityLifter &entity_lifter) const {
-  return impl->Lift(data, type_of_data, entity_lifter);
+    std::string_view data, llvm::Type *type_of_data) const {
+  type_of_data = remill::RecontextualizeType(
+      type_of_data, impl->value_lifter.context);
+
+  return impl->value_lifter.Lift(data, type_of_data, *impl);
 }
 
 }  // namespace anvill
