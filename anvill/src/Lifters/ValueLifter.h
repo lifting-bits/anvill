@@ -19,11 +19,11 @@
 
 #include <anvill/Lifters/ValueLifter.h>
 
-#include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
+#include "../../include/anvill/Lifters/Context.h"
 
 namespace llvm {
 class DataLayout;
@@ -55,7 +55,7 @@ class ValueLifterImpl {
 
   // Do the actual lifting.
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       EntityLifterImpl &ent_lifter);
+                       ContextImpl &ent_lifter);
 
   const LifterOptions options;
   const llvm::DataLayout &dl;

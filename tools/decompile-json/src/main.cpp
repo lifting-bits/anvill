@@ -43,10 +43,11 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
+#include <anvill/Lifters/Context.h>
+#include <anvill/Lifters/FunctionLifter.h>
+#include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
-#include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Lifters/Options.h>
 
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
@@ -686,7 +687,8 @@ int main(int argc, char *argv[]) {
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(options, memory, types);
+  anvill::Context lifter(options, memory, types);
+  anvill::FunctionLifter func_lifter(lifter);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -696,13 +698,13 @@ int main(int argc, char *argv[]) {
   }
 
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    (void) lifter.TryLiftEntity(decl->address);
+    //(void) lifter.TryLiftEntity(decl->address);
     return true;
   });
 
   // Lift functions.
   program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-    (void) lifter.TryLiftEntity(decl->address);
+    (void) func_lifter.LiftFunction(*decl);
     return true;
   });
 

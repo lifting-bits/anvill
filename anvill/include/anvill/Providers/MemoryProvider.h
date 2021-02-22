@@ -49,6 +49,30 @@ class MemoryProvider {
  public:
   virtual ~MemoryProvider(void);
 
+  inline static bool HasByte(ByteAvailability availability) {
+    return ByteAvailability::kAvailable == availability;
+  }
+
+  inline static bool IsValidAddress(ByteAvailability availability) {
+    switch (availability) {
+      case ByteAvailability::kUnknown:
+      case ByteAvailability::kAvailable:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  inline static bool IsExecutable(BytePermission perms) {
+    switch (perms) {
+      case BytePermission::kReadableWritableExecutable:
+      case BytePermission::kReadableExecutable:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   // Query for the value, availability, and permission of a byte.
   virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
   Query(uint64_t address) = 0;

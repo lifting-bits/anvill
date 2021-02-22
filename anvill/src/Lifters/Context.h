@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Lifters/Context.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -39,11 +39,11 @@ class ValueLifterImpl;
 
 // An entity lifter is responsible for lifting functions and data (variables)
 // into a target LLVM module.
-class EntityLifterImpl {
+class ContextImpl {
  public:
-  ~EntityLifterImpl(void);
+  ~ContextImpl(void);
 
-  explicit EntityLifterImpl(
+  explicit ContextImpl(
       const LifterOptions &options_,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
       const std::shared_ptr<TypeProvider> &type_provider_);
@@ -56,16 +56,19 @@ class EntityLifterImpl {
   llvm::Constant *TryLiftData(uint64_t address, uint64_t data_address,
                               llvm::Type *data_type);
 
-  // Tries to lift the entity at `address` and return an `llvm::Function *`
-  // or `llvm::GlobalAlias *` relating to that address. The returned entity,
-  // if any, will reside in `options.module`.
-  llvm::Constant *TryLiftEntity(uint64_t address);
+  // Tells the entity lifter that `func` is the lifted function at `address`.
+  // There is some collusion between the `EntityLifter` and the `FunctionLifter`
+  // to ensure their view of the world remains consistent.
+  void SetLiftedFunction(uint64_t address, llvm::Function *func);
+
+  llvm::Function *GetLiftedFunction(uint64_t address) const;
 
  private:
-  friend class EntityLifter;
+  friend class Context;
+  friend class FunctionLifter;
   friend class ValueLifter;
 
-  EntityLifterImpl(void) = delete;
+  ContextImpl(void) = delete;
 
   // Options used to guide how lifting should occur.
   const LifterOptions options;
@@ -82,12 +85,14 @@ class EntityLifterImpl {
   ValueLifterImpl value_lifter;
 
   // Used to lift functions.
-  const FunctionLifter function_lifter;
+  FunctionLifterImpl function_lifter;
 
-  std::unordered_map<uint64_t, llvm::Constant *> entities;
+  // Maps native code addresses to lifted entities. The lifted entities reside
+  // in the `options.module` module.
+  std::unordered_map<uint64_t, llvm::GlobalValue *> address_to_entity;
 
-  // Work list of functions that need to be optimized.
-  std::vector<std::pair<uint64_t, llvm::Constant *>> new_entities;
+  // Maps lifted entities to native addresses. The lifted
+  std::unordered_map<llvm::GlobalValue *, uint64_t> entity_to_address;
 };
 
 }  // namespace anvill

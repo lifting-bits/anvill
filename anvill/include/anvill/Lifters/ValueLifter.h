@@ -27,9 +27,9 @@ class Type;
 }  // namespace llvm
 namespace anvill {
 
-class EntityLifterImpl;
+class ContextImpl;
 
-class EntityLifter;
+class Context;
 class LifterOptions;
 
 // The value lifter is responsible for lifting raw data, as taken from
@@ -39,7 +39,7 @@ class ValueLifter {
  public:
   ~ValueLifter(void);
 
-  explicit ValueLifter(const EntityLifter &entity_lifter_);
+  explicit ValueLifter(const Context &entity_lifter_);
 
   // Lift the bytes in `data` as an `llvm::Constant` into the module associated
   // with `entity_lifter_`s options. This may produce an `llvm::Constant`
@@ -56,14 +56,14 @@ class ValueLifter {
 
  private:
   friend class DataLifter;
-  friend class EntityLifter;
+  friend class Context;
   friend class FunctionLifterImpl;
 
-  inline ValueLifter(const std::shared_ptr<EntityLifterImpl> &impl_)
+  inline ValueLifter(const std::shared_ptr<ContextImpl> &impl_)
       : impl(impl_) {}
 
   ValueLifter(void) = delete;
-  std::shared_ptr<EntityLifterImpl> impl;
+  std::shared_ptr<ContextImpl> impl;
 };
 
 }  // namespace anvill

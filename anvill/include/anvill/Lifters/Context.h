@@ -19,9 +19,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace llvm {
 class Constant;
+class GlobalValue;
 class Module;
 }  // namespace llvm
 namespace remill {
@@ -29,41 +31,44 @@ class Arch;
 }  // namespace remill
 namespace anvill {
 
-class EntityLifterImpl;
+class ContextImpl;
+class FunctionLifter;
 class LifterOptions;
-class ValueLifter;
 class MemoryProvider;
 class TypeProvider;
+class ValueLifter;
 
-// An entity lifter is responsible for lifting functions and data (variables)
-// into a target LLVM module.
-class EntityLifter {
+// Lifting context for ANVILL. The lifting context keeps track of the options
+// used for lifting, the module into which lifted objects are placed, and
+// a the mapping between lifted objects and their original addresses in the
+// binary.
+class Context {
  public:
-  ~EntityLifter(void);
+  ~Context(void);
 
-  explicit EntityLifter(const LifterOptions &options,
-                        const std::shared_ptr<MemoryProvider> &mem_provider_,
-                        const std::shared_ptr<TypeProvider> &type_provider_);
+  explicit Context(const LifterOptions &options,
+                   const std::shared_ptr<MemoryProvider> &mem_provider_,
+                   const std::shared_ptr<TypeProvider> &type_provider_);
 
-  // Tries to lift the entity at `address` and return an `llvm::Function *`
-  // or `llvm::GlobalAlias *` relating to that address. The returned entity,
-  // if any, will reside in `options.module`.
-  llvm::Constant *TryLiftEntity(uint64_t address) const;
+  // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
+  // then return the address of that entity in the binary being lifted.
+  std::optional<uint64_t> AddressOfEntity(llvm::GlobalValue *entity) const;
 
   // Return the options being used by this entity lifter.
   const LifterOptions &Options(void) const;
 
-  EntityLifter(const EntityLifter &) = default;
-  EntityLifter(EntityLifter &&) noexcept = default;
-  EntityLifter &operator=(const EntityLifter &) = default;
-  EntityLifter &operator=(EntityLifter &&) noexcept = default;
+  Context(const Context &) = default;
+  Context(Context &&) noexcept = default;
+  Context &operator=(const Context &) = default;
+  Context &operator=(Context &&) noexcept = default;
 
  private:
+  friend class FunctionLifter;
   friend class ValueLifter;
 
-  EntityLifter(void) = default;
+  Context(void) = default;
 
-  std::shared_ptr<EntityLifterImpl> impl;
+  std::shared_ptr<ContextImpl> impl;
 };
 
 }  // namespace anvill

@@ -27,7 +27,7 @@
 #include <remill/BC/Util.h>
 #include <remill/BC/Compat/VectorType.h>
 
-#include "EntityLifter.h"
+#include "Context.h"
 
 namespace anvill {
 
@@ -49,7 +49,7 @@ llvm::APInt ValueLifterImpl::ConsumeValue(std::string_view &data,
 }
 
 llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
-                                      EntityLifterImpl &ent_lifter) {
+                                      ContextImpl &ent_lifter) {
 
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
@@ -132,7 +132,7 @@ ValueLifterImpl::ValueLifterImpl(const LifterOptions &options_)
 
 ValueLifter::~ValueLifter(void) {}
 
-ValueLifter::ValueLifter(const EntityLifter &entity_lifter_)
+ValueLifter::ValueLifter(const Context &entity_lifter_)
     : impl(entity_lifter_.impl) {}
 
 // Lift the bytes in `data` as an `llvm::Constant` into the module associated

@@ -31,20 +31,22 @@ struct FunctionDecl;
 class MemoryProvider;
 class TypeProvider;
 
-class FunctionLifterImpl;
+class Context;
+class ContextImpl;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
  public:
   ~FunctionLifter(void);
 
-  explicit FunctionLifter(const LifterOptions &options_,
-                          MemoryProvider &memory_provider_,
-                          TypeProvider &type_provider_);
+  explicit FunctionLifter(const Context &entity_lfiter_);
 
   // Lifts the machine code function starting at address `address`, and using
   // `options_.arch` as the architecture for lifting, into `options_.module`.
   // Returns an `llvm::Function *` that is part of `options_.module`.
+  //
+  // NOTE(pag): If this function returns `nullptr` then it means that we cannot
+  //            lift the function (e.g. bad address, or non-executable memory).
   llvm::Function *LiftFunction(const FunctionDecl &decl) const;
 
   FunctionLifter(const FunctionLifter &) = default;
@@ -55,7 +57,7 @@ class FunctionLifter {
  private:
   FunctionLifter(void) = delete;
 
-  std::shared_ptr<FunctionLifterImpl> impl;
+  std::shared_ptr<ContextImpl> impl;
 };
 
 }  // namespace anvill

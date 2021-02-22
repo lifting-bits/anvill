@@ -62,6 +62,10 @@ class FunctionLifterImpl {
   // TODO(pag): Make this operate on a `FunctionDecl`.
   llvm::Function *LiftFunction(const FunctionDecl &decl);
 
+  // Returns the address of a named function.
+  std::optional<uint64_t> AddressOfNamedFunction(
+      const std::string &func_name) const;
+
  private:
   friend class FunctionLifter;
 
@@ -107,6 +111,9 @@ class FunctionLifterImpl {
 
   llvm::Function *log_printf{nullptr};
   llvm::Value *log_format_str{nullptr};
+
+  // Mapping of function names to addresses.
+  std::unordered_map<std::string, uint64_t> func_name_to_address;
 
   // A work list of instructions to lift. The first entry in the work list
   // is the instruction PC; the second entry is the PC of how we got to even

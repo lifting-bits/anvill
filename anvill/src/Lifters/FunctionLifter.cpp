@@ -24,6 +24,7 @@
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/TypePrinter.h>
 
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Instruction.h>
@@ -49,6 +50,8 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 
 #include <sstream>
+
+#include "Context.h"
 
 // TODO(pag): Externalize this into some kind of `LifterOptions` struct.
 DEFINE_bool(print_registers_before_instuctions, false,
@@ -787,7 +790,12 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
     // those by way of enqueuing those addresses with `GetOrCreateBlock`, and
     // then recover from the tail-calliness here, instead of spreading that
     // logic into all the control-flow visitors.
-    if (inst_addr != func_address) {
+    //
+    // NOTE(pag): In the case of `inst_addr == func_address && from_addr != 0`,
+    //            it means we have a control-flow edge or fall-through edge
+    //            back to the entrypoint of our function. In this case, treat it
+    //            like a tail-call.
+    if (inst_addr != func_address || from_addr) {
       auto maybe_decl = type_provider.TryGetFunctionType(inst_addr);
       if (maybe_decl) {
         llvm::Function * const other_decl = GetOrDeclareFunction(*maybe_decl);
@@ -836,58 +844,23 @@ llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
     return native_func;
   }
 
+  const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
+      remill::RecontextualizeType(decl.type, context));
+
   // By default we do not want to deal with function names until the very end of
-  // lifting. Instead, lets assign a temporary name based on the function's
-  // starting address.
+  // lifting. Instead, we assign a temporary name based on the function's
+  // starting address, its type, and its calling convention.
   std::stringstream ss;
-  ss << "sub_" << std::hex << decl.address;
+  ss << "sub_" << std::hex << decl.address << '_'
+     << TranslateType(*func_type, semantics_module->getDataLayout())
+     << '_' << std::dec << decl.calling_convention;
+
   const auto base_name = ss.str();
+  func_name_to_address.emplace(base_name, decl.address);
 
   native_func = semantics_module->getFunction(base_name);
   if (native_func) {
     return native_func;
-  }
-
-  llvm::FunctionType *func_type = nullptr;
-
-  // TODO(pag): Probably don't need this.
-  if (!decl.type) {
-
-    // Figure out the return type of this function based off the return
-    // values.
-    llvm::Type *ret_type = nullptr;
-    if (decl.returns.empty()) {
-      ret_type = llvm::Type::getVoidTy(context);
-
-    } else if (decl.returns.size() == 1) {
-      ret_type = remill::RecontextualizeType(decl.returns[0].type, context);
-
-    // The multiple return value case is most interesting, and somewhere
-    // where we see some divergence between C and what we will decompile.
-    // For example, on 32-bit x86, a 64-bit return value might be spread
-    // across EAX:EDX. Instead of representing this by a single value, we
-    // represent it as a structure if two 32-bit ints, and make sure to say
-    // that one part is in EAX, and the other is in EDX.
-    } else {
-      llvm::SmallVector<llvm::Type *, 8> ret_types;
-      for (auto &ret_val : decl.returns) {
-        ret_types.push_back(remill::RecontextualizeType(ret_val.type, context));
-      }
-      ret_type = llvm::StructType::get(context, ret_types, true);
-    }
-
-    llvm::SmallVector<llvm::Type *, 8> param_types;
-    for (auto &param_val : decl.params) {
-      param_types.push_back(
-          remill::RecontextualizeType(param_val.type, context));
-    }
-
-    func_type = llvm::FunctionType::get(
-        ret_type, param_types, decl.is_variadic);
-
-  } else {
-    func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(decl.type, context));
   }
 
   native_func = llvm::Function::Create(
@@ -1214,7 +1187,7 @@ void FunctionLifterImpl::RecursivelyInlineLiftedFunctionIntoNativeFunction(void)
 // Lift a function.
 llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
 
-  // NOTE(pag): `addr_to_decl` is relatively safe, so we don't need to clear it.
+  addr_to_decl.clear();
   addr_to_func.clear();
   work_list.clear();
   addr_to_block.clear();
@@ -1222,6 +1195,14 @@ llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
   curr_inst = nullptr;
   state_ptr = nullptr;
   func_address = decl.address;
+
+  // Not a valid address, or memory isn't executable.
+  auto [first_byte, first_byte_avail, first_byte_perms] =
+      memory_provider.Query(func_address);
+  if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
+      !MemoryProvider::IsExecutable(first_byte_perms)) {
+    return nullptr;
+  }
 
   // This is our higher-level function, i.e. it presents itself more like
   // a function compiled from C/C++, rather than being a three-argument Remill
@@ -1235,10 +1216,9 @@ llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
     return native_func;
   }
 
-  // Check if there's any instruction bytes to lift. If not, don't proceed.
-  auto [first_byte, first_byte_avail, first_byte_perms] =
-      memory_provider.Query(func_address);
-  if (ByteAvailability::kUnknown == first_byte_avail) {
+  // The address is valid, the memory is executable, but we don't actually have
+  // the data available for lifting, so leave us with just a declaration.
+  if (!MemoryProvider::HasByte(first_byte_avail)) {
     return native_func;
   }
 
@@ -1279,47 +1259,67 @@ llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
   return native_func;
 }
 
+// Returns the address of a named function.
+std::optional<uint64_t> FunctionLifterImpl::AddressOfNamedFunction(
+    const std::string &func_name) const {
+  auto it = func_name_to_address.find(func_name);
+  if (it == func_name_to_address.end()) {
+    return std::nullopt;
+  } else {
+    return it->second;
+  }
+}
+
 FunctionLifter::~FunctionLifter(void) {}
 
-FunctionLifter::FunctionLifter(const LifterOptions &options_,
-                               MemoryProvider &memory_provider_,
-                               TypeProvider &type_provider_)
-    : impl(std::make_shared<FunctionLifterImpl>(options_, memory_provider_,
-                                                type_provider_)) {}
+FunctionLifter::FunctionLifter(const Context &entity_lfiter_)
+    : impl(entity_lfiter_.impl) {}
 
 // Lifts the machine code function starting at address `address`, and using
 // `options_.arch` as the architecture for lifting, into `options_.module`.
 // Returns an `llvm::Function *` that is part of `options_.module`.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
+  auto &func_lifter = impl->function_lifter;
 
-  const auto semantics_module = impl->semantics_module.get();
+  const auto semantics_module = func_lifter.semantics_module.get();
   const auto target_module = impl->options.module;
 
   auto &semantics_context = semantics_module->getContext();
   auto &module_context = target_module->getContext();
 
   // First, go lift the function in the semantics module.
-  auto sem_func_version = impl->LiftFunction(decl);
+  auto sem_func_version = func_lifter.LiftFunction(decl);
+  if (!sem_func_version) {
+    return nullptr;
+  }
+
   const auto name = sem_func_version->getName().str();
+
+  llvm::Function *new_version = nullptr;
 
   // Now that we've lifted the function, we're left with some pretty brutal
   // bitcode, and its in the wrong module too. So, we need to go and move or
   // copy the lifted function into the target module.
   if (&semantics_context == &module_context) {
     remill::MoveFunctionIntoModule(sem_func_version, target_module);
-    return target_module->getFunction(name);
+    new_version = target_module->getFunction(name);
 
   } else {
     const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
         remill::RecontextualizeType(decl.type, module_context));
 
-    const auto target_func_version = llvm::Function::Create(
+    new_version = llvm::Function::Create(
         module_func_type, llvm::GlobalValue::ExternalLinkage, name,
         target_module);
 
-    remill::CloneFunctionInto(sem_func_version, target_func_version);
-    return target_func_version;
+    remill::CloneFunctionInto(sem_func_version, new_version);
   }
+
+  // Update the entity lifter to keep its internal concepts of what LLVM objects
+  // correspond with which native binary addresses.
+  impl->SetLiftedFunction(decl.address, new_version);
+
+  return new_version;
 }
 
 }  // namespace anvill

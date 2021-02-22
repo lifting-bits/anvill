@@ -55,9 +55,9 @@ add_library(anvill STATIC
   src/Lifters/ValueLifter.h
   src/Lifters/ValueLifter.cpp
   
-  include/anvill/Lifters/EntityLifter.h
-  src/Lifters/EntityLifter.h
-  src/Lifters/EntityLifter.cpp
+  include/anvill/Lifters/Context.h
+  src/Lifters/Context.h
+  src/Lifters/Context.cpp
   
   include/anvill/Lifters/DeclLifter.h
   src/Lifters/DeclLifter.cpp

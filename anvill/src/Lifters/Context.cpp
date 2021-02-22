@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "EntityLifter.h"
+#include "Context.h"
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -36,9 +36,9 @@
 
 namespace anvill {
 
-EntityLifterImpl::~EntityLifterImpl(void) {}
+ContextImpl::~ContextImpl(void) {}
 
-EntityLifterImpl::EntityLifterImpl(
+ContextImpl::ContextImpl(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
     const std::shared_ptr<TypeProvider> &type_provider_)
@@ -56,7 +56,7 @@ EntityLifterImpl::EntityLifterImpl(
 // A key issue with `TryLiftData` is that we might be requesting `address`,
 // but `address` may be inside of another piece of data, which begins
 // at `data_address`.
-llvm::Constant *EntityLifterImpl::TryLiftData(
+llvm::Constant *ContextImpl::TryLiftData(
     uint64_t address, uint64_t data_address, llvm::Type *data_type) {
   auto &context = options.module->getContext();
   data_type = remill::RecontextualizeType(data_type, context);
@@ -69,71 +69,54 @@ llvm::Constant *EntityLifterImpl::TryLiftData(
   return nullptr;
 }
 
-// Tries to lift the entity at `address` and return an `llvm::Function *`
-// or `llvm::GlobalAlias *` relating to that address. The returned entity,
-// if any, will reside in `options.module`.
-llvm::Constant *EntityLifterImpl::TryLiftEntity(uint64_t address) {
-  auto ent_it = entities.find(address);
-  if (ent_it != entities.end()) {
-    return ent_it->second;
-  }
+// Tells the entity lifter that `func` is the lifted function at `address`.
+// There is some collusion between the `EntityLifter` and the `FunctionLifter`
+// to ensure their view of the world remains consistent.
+void ContextImpl::SetLiftedFunction(uint64_t address, llvm::Function *func) {
 
-  auto [byte, availability, permission] = memory_provider->Query(address);
+  address_to_entity[address] = func;
+  entity_to_address[func] = address;
 
-  switch (availability) {
-    case ByteAvailability::kUnknown:
-    case ByteAvailability::kAvailable:
-      break;
-
-    // If the byte isn't available, then it's not part of the address space
-    // to which the memory provider provides access.
-    case ByteAvailability::kUnavailable:
-      return nullptr;
-  }
-
-  llvm::Constant *ret = nullptr;
-
-  switch (permission) {
-    case BytePermission::kUnknown:
-    case BytePermission::kReadableExecutable:
-    case BytePermission::kReadableWritableExecutable:
-      if (auto maybe_decl = type_provider->TryGetFunctionType(address);
-          maybe_decl) {
-        ret = function_lifter.LiftFunction(*maybe_decl);
-        break;
+  // This function might call other functions, so make sure the entity lifter
+  // knows about the addresses of those other functions.
+  for (const auto &block : *func) {
+    for (const auto &inst : block) {
+      if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+        if (auto called_func = call->getCalledFunction(); called_func) {
+          const auto called_func_name = called_func->getName().str();
+          auto called_func_addr = function_lifter.AddressOfNamedFunction(
+              called_func_name);
+          if (called_func_addr) {
+            entity_to_address.emplace(called_func, *called_func_addr);
+          }
+        }
       }
-      [[clang::fallthrough]];
-    case BytePermission::kReadable:
-    case BytePermission::kReadableWritable: {
-
     }
   }
-
-  auto [new_ent_it, added] = entities.emplace(address, ret);
-  if (added) {
-    new_entities.emplace_back(address, ret);
-  }
-
-  return ret;
 }
 
-EntityLifter::~EntityLifter(void) {}
+Context::~Context(void) {}
 
-EntityLifter::EntityLifter(const LifterOptions &options_,
+Context::Context(const LifterOptions &options_,
                            const std::shared_ptr<MemoryProvider> &mem_provider_,
                            const std::shared_ptr<TypeProvider> &type_provider_)
-    : impl(std::make_shared<EntityLifterImpl>(
+    : impl(std::make_shared<ContextImpl>(
           options_, mem_provider_, type_provider_)) {}
 
-// Tries to lift the entity at `address` and return an `llvm::Function *`
-// or `llvm::GlobalAlias *` relating to that address. The returned entity,
-// if any, will reside in `options.module`.
-llvm::Constant *EntityLifter::TryLiftEntity(uint64_t address) const {
-  return impl->TryLiftEntity(address);
+// Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
+// then return the address of that entity in the binary being lifted.
+std::optional<uint64_t> Context::AddressOfEntity(
+    llvm::GlobalValue *entity) const {
+  auto it = impl->entity_to_address.find(entity);
+  if (it == impl->entity_to_address.end()) {
+    return std::nullopt;
+  } else {
+    return it->second;
+  }
 }
 
 // Return the options being used by this entity lifter.
-const LifterOptions &EntityLifter::Options(void) const {
+const LifterOptions &Context::Options(void) const {
   return impl->options;
 }
 
