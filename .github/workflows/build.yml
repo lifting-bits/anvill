@@ -598,6 +598,18 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
     steps:
+      - name: Clone the anvill repository
+        uses: actions/checkout@v2
+        with:
+          path: anvill
+          fetch-depth: 0
+
+      - name: Generate the changelog
+        shell: bash
+        working-directory: anvill
+        run: |
+          ./scripts/generate_changelog.sh changelog.md
+
       - name: Download all artifacts
         uses: actions/download-artifact@v2
 
@@ -611,6 +623,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Version ${{ github.ref }}
+          body_path: anvill/changelog.md
           draft: true
           prerelease: true
 
