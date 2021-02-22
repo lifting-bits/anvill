@@ -41,6 +41,8 @@
 #include <remill/BC/Optimizer.h>
 #include <remill/BC/Util.h>
 
+#include <anvill/Lifters/Context.h>
+
 #include <map>
 #include <set>
 #include <tuple>
@@ -55,8 +57,11 @@
 
 namespace anvill {
 
-XrefExprFolder::XrefExprFolder(const Program &program_, llvm::Module &module_)
+XrefExprFolder::XrefExprFolder(const Context &context_, const Program &program_,
+                               llvm::Module &module_)
     : program(program_),
+      lifter_context(context_),
+      function_lifter(lifter_context),
       module(module_),
       error(llvm::Error::success()) {}
 
@@ -528,11 +533,20 @@ uint64_t XrefExprFolder::VisitTrunc(llvm::Value *op, llvm::Type *type) {
 
 std::pair<bool, uint64_t>
 XrefExprFolder::TryResolveGlobal(llvm::GlobalValue *gv) {
-  std::pair<bool, uint64_t> ret = {false, 0};
+  auto addr = lifter_context.AddressOfEntity(gv);
+  if (addr) {
+    return {true, *addr};
+  }
 
+  std::pair<bool, uint64_t> ret = {false, 0};
   program.ForEachAddressOfName(
       gv->getName().str(),
       [&ret](uint64_t ea, const FunctionDecl *, const GlobalVarDecl *) {
+
+        LOG(WARNING)
+            << "Falling back to Program to resolve xref at address "
+            << std::hex << ea << std::dec;
+
         ret.first = true;
         ret.second = ea;
         return false;
@@ -669,7 +683,8 @@ static bool ClassifyCell(const llvm::DataLayout &dl, Cell &cell) {
 }
 
 static void FindPossibleCrossReferences(
-    const Program &program, llvm::Module &module, llvm::StringRef gv_name,
+    const Context &lifter_context, const Program &program,
+    llvm::Module &module, llvm::StringRef gv_name,
     std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &ptr_fixups,
     std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &maybe_fixups,
     std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> &imm_fixups) {
@@ -685,7 +700,7 @@ static void FindPossibleCrossReferences(
     return;
   }
 
-  XrefExprFolder folder(program, module);
+  XrefExprFolder folder(lifter_context, program, module);
   std::unordered_set<llvm::Use *> seen;
 
   while (!next_work_list.empty()) {
@@ -1130,30 +1145,39 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
+void RecoverStackMemoryAccesses(const Context &lifter_context,
+                                const Program &program,
+                                llvm::Module &module) {
 
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
   std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> sp_fixups;
   std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> ci_fixups;
 
-  FindPossibleCrossReferences(program, module, "__anvill_sp", fixups,
-                              maybe_fixups, sp_fixups);
+  FindPossibleCrossReferences(lifter_context, program, module, "__anvill_sp",
+                              fixups, maybe_fixups, sp_fixups);
 
   RecoverStackMemoryAccesses(sp_fixups, module);
+}
 
-  fixups.clear();
-  maybe_fixups.clear();
-  sp_fixups.clear();
+// Recover higher-level memory accesses in the lifted functions declared
+// in `program` and defined in `module`.
+void RecoverMemoryAccesses(const Context &lifter_context,
+                           const Program &program,
+                           llvm::Module &module) {
 
-  FindPossibleCrossReferences(program, module, "__anvill_pc", fixups,
-                              maybe_fixups, ci_fixups);
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
+  std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> sp_fixups;
+  std::vector<std::tuple<llvm::Use *, uint64_t, llvm::Type *>> ci_fixups;
+
+  FindPossibleCrossReferences(lifter_context, program, module, "__anvill_pc",
+                              fixups, maybe_fixups, ci_fixups);
 
   for (auto &var : module.globals()) {
     if (var.getName().startswith("__anvill_type")) {
-
-      FindPossibleCrossReferences(program, module, var.getName(), fixups,
-                                  maybe_fixups, ci_fixups);
+      FindPossibleCrossReferences(lifter_context, program, module, var.getName(),
+                                  fixups, maybe_fixups, ci_fixups);
     }
   }
 
@@ -1164,8 +1188,8 @@ void RecoverMemoryAccesses(const Program &program, llvm::Module &module) {
 
   fixups.clear();
   ci_fixups.clear();
-  FindPossibleCrossReferences(program, module, "__anvill_ra", fixups, fixups,
-                              ci_fixups);
+  FindPossibleCrossReferences(lifter_context, program, module, "__anvill_ra",
+                              fixups, fixups, ci_fixups);
   for (auto [use, byte, type] : fixups) {
     ci_fixups.emplace_back(use, byte.Address(), type);
   }

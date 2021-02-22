@@ -42,12 +42,15 @@ class FunctionLifter {
   explicit FunctionLifter(const Context &entity_lfiter_);
 
   // Lifts the machine code function starting at address `address`, and using
-  // `options_.arch` as the architecture for lifting, into `options_.module`.
+  // `options_.arch` as the architecture for lifting, into the context's module.
   // Returns an `llvm::Function *` that is part of `options_.module`.
   //
   // NOTE(pag): If this function returns `nullptr` then it means that we cannot
   //            lift the function (e.g. bad address, or non-executable memory).
   llvm::Function *LiftFunction(const FunctionDecl &decl) const;
+
+  // Declare the function associated with `decl` in the context's module.
+  llvm::Function *DeclareFunction(const FunctionDecl &decl) const;
 
   FunctionLifter(const FunctionLifter &) = default;
   FunctionLifter(FunctionLifter &&) noexcept = default;
@@ -56,6 +59,10 @@ class FunctionLifter {
 
  private:
   FunctionLifter(void) = delete;
+
+  // Update the associated context (`impl`) with information about this
+  // function, and move the function into the context's module.
+  void AddFunctionToContext(llvm::Function *func, uint64_t address) const;
 
   std::shared_ptr<ContextImpl> impl;
 };

@@ -134,7 +134,8 @@ FunctionLifterImpl::FunctionLifterImpl(
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
 llvm::BasicBlock *FunctionLifterImpl::GetOrCreateBlock(uint64_t addr) {
-  auto &block = addr_to_block[addr];
+  const auto from_pc = curr_inst ? curr_inst->pc : 0;
+  auto &block = edge_to_dest_block[{from_pc, addr}];
   if (block) {
     return block;
   }
@@ -145,7 +146,7 @@ llvm::BasicBlock *FunctionLifterImpl::GetOrCreateBlock(uint64_t addr) {
 
   // Missed an instruction?! This can happen when IDA merges two instructions
   // into one larger synthetic instruction. This might also be a tail-call.
-  work_list.emplace(addr, curr_inst ? curr_inst->pc : 0);
+  edge_work_list.emplace(addr, from_pc);
 
   return block;
 }
@@ -281,20 +282,27 @@ void FunctionLifterImpl::VisitDirectFunctionCall(
       type_provider.TryGetFunctionType(inst.branch_taken_pc);
 
   if (maybe_other_decl) {
-    llvm::Function * const other_decl = GetOrDeclareFunction(
-        *maybe_other_decl);
+    if (const auto other_decl = DeclareFunction(*maybe_other_decl)) {
+      const auto mem_ptr_from_call = TryCallNativeFunction(
+          inst.branch_taken_pc, other_decl, block);
 
-    const auto mem_ptr_from_call = TryCallNativeFunction(
-        inst.branch_taken_pc, other_decl, block);
+      if (!mem_ptr_from_call) {
+        LOG(ERROR)
+            << "Failed to call native function at address " << std::hex
+            << inst.branch_taken_pc << " via call at address " << inst.pc
+            << " in function at address " << func_address << std::dec;
 
-    if (!mem_ptr_from_call) {
+        // If we fail to create an ABI specification for this function then
+        // treat this as a call to an unknown address.
+        remill::AddCall(block, intrinsics.function_call);
+      }
+    } else {
       LOG(ERROR)
-          << "Failed to call native function at address " << std::hex
-          << inst.branch_taken_pc << " via call at address " << inst.pc
-          << " in function at address " << func_address << std::dec;
+          << "Failed to call non-executable memory or invalid address "
+          << std::hex << inst.branch_taken_pc << " via call at address "
+          << inst.pc << " in function at address " << func_address << std::dec;
 
-      // If we fail to create an ABI specification for this function then treat
-      // this as a call to an unknown address.
+      // TODO(pag): Make call `intrinsics.error`?
       remill::AddCall(block, intrinsics.function_call);
     }
   } else {
@@ -302,7 +310,6 @@ void FunctionLifterImpl::VisitDirectFunctionCall(
         << "Missing type information for function at address " << std::hex
         << inst.branch_taken_pc << ", called at address "
         << inst.pc << " in function at address " << func_address << std::dec;
-
 
     // If we do not have a function declaration, treat this as a call
     // to an unknown address.
@@ -769,16 +776,12 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
   remill::Instruction inst;
 
   // Recursively decode and lift all instructions that we come across.
-  while (!work_list.empty()) {
+  while (!edge_work_list.empty()) {
+    const auto [inst_addr, from_addr] = *(edge_work_list.begin());
+    edge_work_list.erase(edge_work_list.begin());
 
-    const auto ent = *(work_list.begin());
-    work_list.erase(ent);
-    const auto inst_addr = ent.first;
-    const auto from_addr = ent.second;
-
-    const auto block = addr_to_block[inst_addr];
-    CHECK_NOTNULL(block);
-
+    llvm::BasicBlock * const block = edge_to_dest_block[{from_addr, inst_addr}];
+    DCHECK_NOTNULL(block);
     if (!block->empty()) {
       continue;  // Already handled.
     }
@@ -798,7 +801,7 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
     if (inst_addr != func_address || from_addr) {
       auto maybe_decl = type_provider.TryGetFunctionType(inst_addr);
       if (maybe_decl) {
-        llvm::Function * const other_decl = GetOrDeclareFunction(*maybe_decl);
+        llvm::Function * const other_decl = DeclareFunction(*maybe_decl);
 
         if (const auto mem_ptr_from_call = TryCallNativeFunction(
                 inst_addr, other_decl, block)) {
@@ -814,6 +817,16 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
         // NOTE(pag): Recover by falling through and just try to decode/lift
         //            the instructions.
       }
+    }
+
+    llvm::BasicBlock *&inst_block = addr_to_block[inst_addr];
+    if (!inst_block) {
+      inst_block = block;
+
+    // We've already lifted this instruction via another control-flow edge.
+    } else {
+      llvm::BranchInst::Create(inst_block, block);
+      continue;
     }
 
     // Decode.
@@ -893,7 +906,16 @@ void FunctionLifterImpl::AllocateAndInitializeStateStructure(
       break;
     case StateStructureInitializationProcedure::kGlobalRegisterVariables:
       state_ptr = ir.CreateAlloca(state_type);
+      InitializeStateStructureFromGlobalRegisterVariables(block);
+      break;
+    case StateStructureInitializationProcedure::kGlobalRegisterVariablesAndZeroes:
+      state_ptr = ir.CreateAlloca(state_type);
       ir.CreateStore(llvm::Constant::getNullValue(state_type), state_ptr);
+      InitializeStateStructureFromGlobalRegisterVariables(block);
+      break;
+    case StateStructureInitializationProcedure::kGlobalRegisterVariablesAndUndef:
+      state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), state_ptr);
       InitializeStateStructureFromGlobalRegisterVariables(block);
       break;
   }
@@ -1185,17 +1207,40 @@ void FunctionLifterImpl::RecursivelyInlineLiftedFunctionIntoNativeFunction(void)
   ClearVariableNames(native_func);
 }
 
-// Lift a function.
+// Lift a function. Will return `nullptr` if the memory is
+// not accessible or executable.
+llvm::Function *FunctionLifterImpl::DeclareFunction(const FunctionDecl &decl) {
+
+  // Not a valid address, or memory isn't executable.
+  auto [first_byte, first_byte_avail, first_byte_perms] =
+      memory_provider.Query(decl.address);
+  if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
+      !MemoryProvider::IsExecutable(first_byte_perms)) {
+    return nullptr;
+  }
+
+  // This is our higher-level function, i.e. it presents itself more like
+  // a function compiled from C/C++, rather than being a three-argument Remill
+  // function. In this function, we will stack-allocate a `State` structure,
+  // then call a `lifted_func` below, which will embed the instruction
+  // semantics.
+  return GetOrDeclareFunction(decl);
+}
+
+// Lift a function. Will return `nullptr` if the memory is
+// not accessible or executable.
 llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
 
   addr_to_decl.clear();
   addr_to_func.clear();
-  work_list.clear();
+  edge_work_list.clear();
+  edge_to_dest_block.clear();
   addr_to_block.clear();
   inst_lifter.ClearCache();
   curr_inst = nullptr;
   state_ptr = nullptr;
   func_address = decl.address;
+  native_func = DeclareFunction(decl);
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =
@@ -1280,21 +1325,41 @@ FunctionLifter::FunctionLifter(const Context &entity_lfiter_)
 // `options_.arch` as the architecture for lifting, into `options_.module`.
 // Returns an `llvm::Function *` that is part of `options_.module`.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
-  auto &func_lifter = impl->function_lifter;
+  const auto func = impl->function_lifter.LiftFunction(decl);
+  if (func) {
+    AddFunctionToContext(func, decl.address);
+  }
+  return func;
+}
 
+// Declare the function associated with `decl` in the context's module.
+llvm::Function *FunctionLifter::DeclareFunction(
+    const FunctionDecl &decl) const {
+  const auto func = impl->function_lifter.DeclareFunction(decl);
+  if (func) {
+    if (auto existing_func =
+            impl->options.module->getFunction(func->getName())) {
+      impl->AddFunction(func, decl.address);
+      return existing_func;
+
+    } else {
+      AddFunctionToContext(func, decl.address);
+    }
+  }
+  return func;
+}
+
+// Update the associated context (`impl`) with information about this
+// function, and move the function into the context's module.
+void FunctionLifter::AddFunctionToContext(llvm::Function *func,
+                                          uint64_t address) const {
+  auto &func_lifter = impl->function_lifter;
   const auto semantics_module = func_lifter.semantics_module.get();
   const auto target_module = impl->options.module;
 
   auto &semantics_context = semantics_module->getContext();
   auto &module_context = target_module->getContext();
-
-  // First, go lift the function in the semantics module.
-  auto sem_func_version = func_lifter.LiftFunction(decl);
-  if (!sem_func_version) {
-    return nullptr;
-  }
-
-  const auto name = sem_func_version->getName().str();
+  const auto name = func->getName().str();
 
   llvm::Function *new_version = nullptr;
 
@@ -1302,25 +1367,23 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
   // bitcode, and its in the wrong module too. So, we need to go and move or
   // copy the lifted function into the target module.
   if (&semantics_context == &module_context) {
-    remill::MoveFunctionIntoModule(sem_func_version, target_module);
+    remill::MoveFunctionIntoModule(func, target_module);
     new_version = target_module->getFunction(name);
 
   } else {
     const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(decl.type, module_context));
+        remill::RecontextualizeType(func->getFunctionType(), module_context));
 
     new_version = llvm::Function::Create(
         module_func_type, llvm::GlobalValue::ExternalLinkage, name,
         target_module);
 
-    remill::CloneFunctionInto(sem_func_version, new_version);
+    remill::CloneFunctionInto(func, new_version);
   }
 
-  // Update the entity lifter to keep its internal concepts of what LLVM objects
+  // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
-  impl->SetLiftedFunction(decl.address, new_version);
-
-  return new_version;
+  impl->AddFunction(new_version, address);
 }
 
 }  // namespace anvill

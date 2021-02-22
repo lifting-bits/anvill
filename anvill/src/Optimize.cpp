@@ -56,29 +56,6 @@
 namespace anvill {
 namespace {
 
-// Get a list of all ISELs.
-static std::vector<llvm::GlobalVariable *> FindISELs(llvm::Module &module) {
-  std::vector<llvm::GlobalVariable *> isels;
-  remill::ForEachISel(&module,
-                      [&](llvm::GlobalVariable *isel, llvm::Function *) {
-                        isels.push_back(isel);
-                      });
-  return isels;
-}
-
-// Remove the ISEL variables used for finding the instruction semantics.
-static void PrivatizeISELs(std::vector<llvm::GlobalVariable *> &isels) {
-  for (auto isel : isels) {
-    isel->setInitializer(nullptr);
-    isel->setExternallyInitialized(false);
-    isel->setLinkage(llvm::GlobalValue::PrivateLinkage);
-
-    if (!isel->hasNUsesOrMore(2)) {
-      isel->eraseFromParent();
-    }
-  }
-}
-
 // Replace all uses of a specific intrinsic with an undefined value. We actually
 // don't use LLVM's `undef` values because those can behave unpredictably
 // across different LLVM versions with different optimization levels. Instead,
@@ -105,12 +82,6 @@ static void RemoveFunction(llvm::Function *func) {
   }
 }
 
-static void RemoveFunction(llvm::Module &module, const char *name) {
-  if (auto func = module.getFunction(name)) {
-    func->setLinkage(llvm::GlobalValue::PrivateLinkage);
-    RemoveFunction(func);
-  }
-}
 
 // Remove calls to the various undefined value intrinsics.
 static void RemoveUndefFuncCalls(llvm::Module &module) {
@@ -181,74 +152,6 @@ RemoveUnusedCalls(llvm::Module &module, const char *func_name,
     auto in_func = in_block->getParent();
     changed_funcs.insert(in_func);
 
-    call_inst->eraseFromParent();
-  }
-}
-
-// Remove calls to memory read functions that have undefined
-// addresses.
-static void
-RemoveUndefMemoryReads(llvm::Module &module, const char *func_name,
-                       std::unordered_set<llvm::Function *> &changed_funcs) {
-  auto func = module.getFunction(func_name);
-  if (!func) {
-    return;
-  }
-
-  std::vector<llvm::CallInst *> to_remove;
-
-  for (auto user : func->users()) {
-    if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(user)) {
-      auto addr = call_inst->getArgOperand(1);
-      if (llvm::isa<llvm::UndefValue>(addr)) {
-        call_inst->replaceAllUsesWith(
-            llvm::UndefValue::get(call_inst->getType()));
-        to_remove.push_back(call_inst);
-      }
-    }
-  }
-
-  for (auto call_inst : to_remove) {
-    auto in_block = call_inst->getParent();
-    auto in_func = in_block->getParent();
-    changed_funcs.insert(in_func);
-
-    call_inst->eraseFromParent();
-  }
-}
-
-// Remove calls to memory write functions that have undefined addresses
-// or undefined values.
-static void
-RemoveUndefMemoryWrites(llvm::Module &module, const char *func_name,
-                        std::unordered_set<llvm::Function *> &changed_funcs) {
-  auto func = module.getFunction(func_name);
-  if (!func) {
-    return;
-  }
-
-  std::vector<llvm::CallInst *> to_remove;
-
-  for (auto user : func->users()) {
-    if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(user)) {
-      auto mem_ptr = call_inst->getArgOperand(0);
-      auto addr = call_inst->getArgOperand(1);
-      auto val = call_inst->getArgOperand(2);
-      if (llvm::isa<llvm::UndefValue>(addr)) {
-        call_inst->replaceAllUsesWith(mem_ptr);
-        to_remove.push_back(call_inst);
-
-      } else if (llvm::isa<llvm::UndefValue>(val)) {
-        call_inst->replaceAllUsesWith(mem_ptr);
-        to_remove.push_back(call_inst);
-      }
-    }
-  }
-
-  for (auto call_inst : to_remove) {
-    auto in_block = call_inst->getParent();
-    auto in_func = in_block->getParent();
-    changed_funcs.insert(in_func);
     call_inst->eraseFromParent();
   }
 }
@@ -846,7 +749,8 @@ static void LowerMemOps(const Program &program, llvm::Module &module) {
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const remill::Arch *arch, const Program &program,
+void OptimizeModule(const Context &lifter_context,
+                    const remill::Arch *arch, const Program &program,
                     llvm::Module &module) {
 
   if (auto err = module.materializeAll(); remill::IsError(err)) {
@@ -858,39 +762,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
     used->eraseFromParent();
   }
 
-  auto isels = FindISELs(module);
   LOG(INFO) << "Optimizing module.";
-
-  PrivatizeISELs(isels);
-  RemoveFunction(module, "__remill_basic_block");
-  RemoveFunction(module, "__remill_intrinsics");
-  RemoveFunction(module, "__remill_mark_as_used");
-
-  std::vector<llvm::GlobalVariable *> vars_to_remove;
-  for (auto &gv : module.globals()) {
-    if (gv.getName().startswith("ISEL_") || gv.getName().startswith("COND_") ||
-        gv.getName().startswith("DR")) {
-      gv.setInitializer(nullptr);
-      gv.replaceAllUsesWith(llvm::UndefValue::get(gv.getType()));
-      vars_to_remove.push_back(&gv);
-    }
-  }
-
-  for (auto var : vars_to_remove) {
-    var->eraseFromParent();
-  }
-
-  std::vector<llvm::Function *> funcs_to_remove;
-  for (auto &func : module) {
-    if (!func.hasNUsesOrMore(1) && (func.getName().startswith("__remill_") ||
-                                    !func.hasValidDeclarationLinkage())) {
-      funcs_to_remove.push_back(&func);
-    }
-  }
-
-  for (auto func : funcs_to_remove) {
-    func->eraseFromParent();
-  }
 
   if (auto memory_escape = module.getFunction("__anvill_memory_escape")) {
     for (auto call : remill::CallersOf(memory_escape)) {
@@ -928,7 +800,7 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   }
   fpm.doFinalization();
 
-  RecoverMemoryAccesses(program, module);
+  RecoverMemoryAccesses(lifter_context, program, module);
 
   std::unordered_set<llvm::Function *> changed_funcs;
 
@@ -944,41 +816,8 @@ void OptimizeModule(const remill::Arch *arch, const Program &program,
   RemoveUnusedCalls(module, "__fpclassifyf", changed_funcs);
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
 
-
-  for (auto changed = true; changed;) {
-
-    RemoveUndefMemoryReads(module, "__remill_read_memory_8", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_16", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_32", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_64", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f32", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f64", changed_funcs);
-    RemoveUndefMemoryReads(module, "__remill_read_memory_f80", changed_funcs);
-
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_8", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_16", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_32", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_64", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f32", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f64", changed_funcs);
-    RemoveUndefMemoryWrites(module, "__remill_write_memory_f80", changed_funcs);
-
-    llvm::legacy::FunctionPassManager pm(&module);
-    pm.add(llvm::createDeadCodeEliminationPass());
-    pm.add(llvm::createSROAPass());
-    pm.add(llvm::createPromoteMemoryToRegisterPass());
-
-    pm.doInitialization();
-    for (auto func : changed_funcs) {
-      pm.run(*func);
-    }
-    pm.doFinalization();
-
-    changed = !changed_funcs.empty();
-    changed_funcs.clear();
-  }
-
   LowerMemOps(program, module);
+  RecoverStackMemoryAccesses(lifter_context, program, module);
 
   LowerTypeOps(program, module);
 

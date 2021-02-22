@@ -17,14 +17,14 @@
 
 #pragma once
 
-#include <memory>
+#include <anvill/Lifters/FunctionLifter.h>
 
 #include <cstdint>
+#include <memory>
+#include <map>
 #include <set>
 #include <unordered_map>
 #include <anvill/Decl.h>
-
-#include <anvill/Lifters/FunctionLifter.h>
 
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -57,9 +57,13 @@ class FunctionLifterImpl {
                      MemoryProvider &memory_provider_,
                      TypeProvider &type_provider_);
 
-  // Lift a function.
-  //
-  // TODO(pag): Make this operate on a `FunctionDecl`.
+
+  // Declare a lifted a function. Will return `nullptr` if the memory is
+  // not accessible or executable.
+  llvm::Function *DeclareFunction(const FunctionDecl &decl);
+
+  // Lift a function. Will return `nullptr` if the memory is
+  // not accessible or executable.
   llvm::Function *LiftFunction(const FunctionDecl &decl);
 
   // Returns the address of a named function.
@@ -118,9 +122,18 @@ class FunctionLifterImpl {
   // A work list of instructions to lift. The first entry in the work list
   // is the instruction PC; the second entry is the PC of how we got to even
   // ask about the first entry (provenance).
-  std::set<std::pair<uint64_t, uint64_t>> work_list;
+  //
+  // NOTE(pag): The destination PC of the edge comes first in the work list so
+  //            that the ordering of the `std::set` processes the instructions
+  //            roughly in order.
+  std::set<std::pair<uint64_t, uint64_t>> edge_work_list;
 
-  // Result maps
+  // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
+  // with `to_pc`.
+  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *> edge_to_dest_block;
+
+  // Maps an instruction address to a basic block that will hold the lifted code
+  // for that instruction.
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
 
   // Maps program counters to lifted functions.

@@ -45,7 +45,9 @@ enum class StateStructureInitializationProcedure : char {
   //
   // The purpose here is to show that there are unmodelled dependencies. If
   // this option is `false`, then the `State` structure is *not* initialized.
-  kGlobalRegisterVariables
+  kGlobalRegisterVariables,
+  kGlobalRegisterVariablesAndZeroes,
+  kGlobalRegisterVariablesAndUndef
 };
 
 // Options that direct the behavior of the code and data lifters.

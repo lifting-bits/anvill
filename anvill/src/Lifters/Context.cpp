@@ -72,7 +72,7 @@ llvm::Constant *ContextImpl::TryLiftData(
 // Tells the entity lifter that `func` is the lifted function at `address`.
 // There is some collusion between the `EntityLifter` and the `FunctionLifter`
 // to ensure their view of the world remains consistent.
-void ContextImpl::SetLiftedFunction(uint64_t address, llvm::Function *func) {
+void ContextImpl::AddFunction(llvm::Function *func, uint64_t address) {
 
   address_to_entity[address] = func;
   entity_to_address[func] = address;

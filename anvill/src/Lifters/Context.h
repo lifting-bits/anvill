@@ -59,7 +59,7 @@ class ContextImpl {
   // Tells the entity lifter that `func` is the lifted function at `address`.
   // There is some collusion between the `EntityLifter` and the `FunctionLifter`
   // to ensure their view of the world remains consistent.
-  void SetLiftedFunction(uint64_t address, llvm::Function *func);
+  void AddFunction(llvm::Function *func, uint64_t address);
 
   llvm::Function *GetLiftedFunction(uint64_t address) const;
 

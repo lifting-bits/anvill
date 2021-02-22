@@ -687,8 +687,8 @@ int main(int argc, char *argv[]) {
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::Context lifter(options, memory, types);
-  anvill::FunctionLifter func_lifter(lifter);
+  anvill::Context lifter_context(options, memory, types);
+  anvill::FunctionLifter func_lifter(lifter_context);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -711,29 +711,26 @@ int main(int argc, char *argv[]) {
   // Verify the module
   CHECK(remill::VerifyModule(&module));
 
+  // OLD: Apply optimizations.
+  anvill::OptimizeModule(lifter_context, arch.get(), program, module);
 
-//  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
-//  anvill::OptimizeModule(arch.get(), program, *semantics);
-//
-//  // Apply symbol names to functions if we have the names.
-//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-//                                  const anvill::FunctionDecl *fdecl,
-//                                  const anvill::GlobalVarDecl *vdecl) {
-//    llvm::Value *gval{nullptr};
-//    if (vdecl) {
+  // Apply symbol names to functions if we have the names.
+  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+                                  const anvill::FunctionDecl *fdecl,
+                                  const anvill::GlobalVarDecl *vdecl) {
+    if (vdecl) {
+      // TODO(pag): Need the data lifter.
 //      gval = semantics->getGlobalVariable(anvill::CreateVariableName(addr));
-//    } else if (fdecl) {
-//      gval = semantics->getFunction(anvill::CreateFunctionName(addr));
-//    } else {
-//      return true;
-//    }
-//
-//    if (gval) {
-//      gval->setName(name);
-//    }
-//
-//    return true;
-//  });
+    } else if (fdecl) {
+      if (auto func = func_lifter.DeclareFunction(*fdecl)) {
+        func->setName(name);
+      }
+    } else {
+      return true;
+    }
+
+    return true;
+  });
 
   int ret = EXIT_SUCCESS;
 
