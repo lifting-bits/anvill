@@ -858,6 +858,7 @@ llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
   const auto base_name = ss.str();
   func_name_to_address.emplace(base_name, decl.address);
 
+  // Try to get it as an already named function.
   native_func = semantics_module->getFunction(base_name);
   if (native_func) {
     return native_func;

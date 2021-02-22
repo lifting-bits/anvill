@@ -63,8 +63,12 @@ class Context {
   Context &operator=(Context &&) noexcept = default;
 
  private:
+  friend class DataLifter;
   friend class FunctionLifter;
   friend class ValueLifter;
+
+  inline Context(const std::shared_ptr<ContextImpl> &impl_)
+      : impl(impl_) {}
 
   Context(void) = default;
 

@@ -18,12 +18,11 @@
 #pragma once
 
 #include <anvill/Lifters/ValueLifter.h>
-
+#include <anvill/Lifters/Context.h>
 #include <anvill/Lifters/Options.h>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
-#include "../../include/anvill/Lifters/Context.h"
 
 namespace llvm {
 class DataLayout;
