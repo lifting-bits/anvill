@@ -129,12 +129,11 @@ void MCToIRLifter::VisitConditionalIndirectJump(const remill::Instruction &inst,
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
-  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
   const auto not_taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_taken_pc), taken_block);
   llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
                            not_taken_block);
 }
@@ -246,25 +245,29 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
   VisitAfterFunctionCall(inst, block);
 }
 
-void MCToIRLifter::VisitConditionalDirectFunctionCall(const remill::Instruction &inst,
+void MCToIRLifter::VisitConditionalDirectFunctionCall(
+                               const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block) {
   const auto lifted_func = block->getParent();
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
   auto do_cond_call = llvm::BasicBlock::Create(ctx, "", lifted_func);
   auto next_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
   llvm::BranchInst::Create(do_cond_call, next_block,
                            remill::LoadBranchTaken(block), block);
+  VisitDelayedInstruction(inst, delayed_inst, do_cond_call, true);
+  VisitDelayedInstruction(inst, delayed_inst, next_block, false);
   if (auto decl = program.FindFunction(inst.branch_taken_pc); decl) {
     const auto entry = GetOrDeclareFunction(*decl);
-    remill::AddCall(block, entry.lifted_to_native);
+    remill::AddCall(do_cond_call, entry.lifted_to_native);
   } else {
     LOG(ERROR) << "Missing declaration for function at " << std::hex
                << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
 
     // If we do not have a function declaration, treat this as a call to an unknown address.
-    remill::AddCall(block, intrinsics.function_call);
+    remill::AddCall(do_cond_call, intrinsics.function_call);
   }
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           next_block);
   VisitAfterFunctionCall(inst, block);
 }
 
@@ -278,9 +281,10 @@ void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
   VisitAfterFunctionCall(inst, block);
 }
 
-void MCToIRLifter::VisitConditionalIndirectFunctionCall(const remill::Instruction &inst,
-                                 remill::Instruction *delayed_inst,
-                                 llvm::BasicBlock *block) {
+void MCToIRLifter::VisitConditionalIndirectFunctionCall(
+                                              const remill::Instruction &inst,
+                                              remill::Instruction *delayed_inst,
+                                              llvm::BasicBlock *block) {
   const auto lifted_func = block->getParent();
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   auto do_cond_call = llvm::BasicBlock::Create(ctx, "", lifted_func);
@@ -289,10 +293,7 @@ void MCToIRLifter::VisitConditionalIndirectFunctionCall(const remill::Instructio
                            remill::LoadBranchTaken(block), block);
   remill::AddCall(block, intrinsics.function_call);
   VisitAfterFunctionCall(inst, block);
-
-
 }
-
 
 void MCToIRLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
