@@ -17,7 +17,8 @@
 
 #pragma once
 
-#include <anvill/Lifters/Context.h>
+#include <anvill/Lifters/EntityLifter.h>
+
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -33,20 +34,20 @@
 #include "ValueLifter.h"
 
 namespace llvm {
-class GlobalAlias;
+class GlobalValue;
 class Function;
 }  // namespace llvm
 namespace anvill {
 
-class ValueLifterImpl;
+class ValueLifter;
 
 // An entity lifter is responsible for lifting functions and data (variables)
 // into a target LLVM module.
-class ContextImpl {
+class EntityLifterImpl {
  public:
-  ~ContextImpl(void);
+  ~EntityLifterImpl(void);
 
-  explicit ContextImpl(
+  explicit EntityLifterImpl(
       const LifterOptions &options_,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
       const std::shared_ptr<TypeProvider> &type_provider_);
@@ -74,12 +75,12 @@ class ContextImpl {
   std::optional<uint64_t> AddressOfEntity(llvm::GlobalValue *entity) const;
 
  private:
-  friend class Context;
+  friend class EntityLifter;
   friend class DataLifter;
   friend class FunctionLifter;
   friend class ValueLifter;
 
-  ContextImpl(void) = delete;
+  EntityLifterImpl(void) = delete;
 
   // Options used to guide how lifting should occur.
   const LifterOptions options;
@@ -93,14 +94,14 @@ class ContextImpl {
   // Lifts initializers of global variables. Talks with the `data_lifter`
   // and the `function_lifter` when its trying to resolve cross-references
   // embedded in initialziers.
-  ValueLifterImpl value_lifter;
+  ValueLifter value_lifter;
 
   // Used to lift functions.
-  FunctionLifterImpl function_lifter;
+  FunctionLifter function_lifter;
 
   // Used to lift data references. Talks with the `value_lifter` to initialize
   // global variables.
-  DataLifterImpl data_lifter;
+  DataLifter data_lifter;
 
   // Maps native code addresses to lifted entities. The lifted entities reside
   // in the `options.module` module.

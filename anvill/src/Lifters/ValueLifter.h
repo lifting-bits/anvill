@@ -17,44 +17,44 @@
 
 #pragma once
 
-#include <anvill/Lifters/ValueLifter.h>
-#include <anvill/Lifters/Context.h>
 #include <anvill/Lifters/Options.h>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
 
 namespace llvm {
+class Constant;
 class DataLayout;
 class LLVMContext;
+class Type;
 }  // namespace llvm
 namespace anvill {
 
-// Implementation of the `ValueLifter`.
-//
-// NOTE(pag): Due to the cyclic dependencies between `ValueLifter` and
-//            `EntityLifter`, the `ValueLifter::impl` is actually a shared
-//            reference to an `EntityLifterImpl`, and `EntityLifterImpl`
-//            actually owns the memory (by value) of a `ValueLifterImpl`.
-//            There is a bit of a song and dance to pass around the right
-//            references, and this is why we see a reference to
-//            `EntityLifterImpl` passed along to `ValueLifterImpl::Lift`.
-class ValueLifterImpl {
- public:
-  explicit ValueLifterImpl(const LifterOptions &options_);
+class EntityLifterImpl;
 
-  // Consume `num_bytes` of bytes from `data`, and update `data` in place.
-  llvm::APInt ConsumeValue(std::string_view &data, unsigned num_bytes);
+// Implementation of the `ValueLifter`.
+class ValueLifter {
+ public:
+  explicit ValueLifter(const LifterOptions &options_);
+
+  // Consume `num_bytes` of bytes from `data`, interpreting them as an integer,
+  // and update `data` in place, bumping out the first `num_bytes` of consumed
+  // data.
+  llvm::APInt ConsumeBytesAsInt(std::string_view &data,
+                                unsigned num_bytes) const;
 
   // Consume `size` bytes of data from `data`, and update `data` in place.
-  inline llvm::APInt ConsumeValue(std::string_view &data, llvm::TypeSize size) {
-    return ConsumeValue(
+  inline llvm::APInt ConsumeBytesAsInt(std::string_view &data,
+                                       llvm::TypeSize size) const {
+    return ConsumeBytesAsInt(
         data, static_cast<unsigned>(static_cast<uint64_t>(size)));
   }
 
-  // Do the actual lifting.
+  // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
+  // of type `type_of_data`. This requires access to `ent_lifter` to be able
+  // to lift pointer types that will reference declared data/functions.
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       ContextImpl &ent_lifter);
+                       EntityLifterImpl &ent_lifter) const;
 
   const LifterOptions options;
   const llvm::DataLayout &dl;

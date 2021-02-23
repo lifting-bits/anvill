@@ -36,8 +36,6 @@ namespace {
 class ProgramTypeProvider final : public TypeProvider {
  public:
 
-  virtual ~ProgramTypeProvider(void) = default;
-
   explicit ProgramTypeProvider(llvm::LLVMContext &context_,
                                const Program &program_)
       : TypeProvider(context_),

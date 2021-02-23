@@ -20,7 +20,6 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include <anvill/Decl.h>
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -51,7 +50,7 @@
 
 #include <sstream>
 
-#include "Context.h"
+#include "EntityLifter.h"
 
 // TODO(pag): Externalize this into some kind of `LifterOptions` struct.
 DEFINE_bool(print_registers_before_instuctions, false,
@@ -106,9 +105,9 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
 
 }  // namespace
 
-FunctionLifterImpl::~FunctionLifterImpl(void) {}
+FunctionLifter::~FunctionLifter(void) {}
 
-FunctionLifterImpl::FunctionLifterImpl(
+FunctionLifter::FunctionLifter(
     const LifterOptions &options_, MemoryProvider &memory_provider_,
     TypeProvider &type_provider_)
     : options(options_),
@@ -133,7 +132,7 @@ FunctionLifterImpl::FunctionLifterImpl(
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
-llvm::BasicBlock *FunctionLifterImpl::GetOrCreateBlock(uint64_t addr) {
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
   const auto from_pc = curr_inst ? curr_inst->pc : 0;
   auto &block = edge_to_dest_block[{from_pc, addr}];
   if (block) {
@@ -155,7 +154,7 @@ llvm::BasicBlock *FunctionLifterImpl::GetOrCreateBlock(uint64_t addr) {
 // `true` is successful and `false` otherwise. `is_delayed` tells the decoder
 // whether or not the instruction being decoded is being decoded inside of a
 // delay slot of another instruction.
-bool FunctionLifterImpl::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
+bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                                            remill::Instruction *inst_out) {
   static const auto max_inst_size = options.arch->MaxInstructionSize();
   inst_out->Reset();
@@ -200,7 +199,7 @@ found_all_bytes:
 
 // Visit an invalid instruction. An invalid instruction is a sequence of
 // bytes which cannot be decoded, or an empty byte sequence.
-void FunctionLifterImpl::VisitInvalid(const remill::Instruction &inst,
+void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                 llvm::BasicBlock *block) {
   remill::AddTerminatingTailCall(block, intrinsics.error);
 }
@@ -210,7 +209,7 @@ void FunctionLifterImpl::VisitInvalid(const remill::Instruction &inst,
 // similarly to invalid instructions, with the exception that they can have
 // delay slots, and therefore the subsequent instruction may actually execute
 // prior to the error.
-void FunctionLifterImpl::VisitError(const remill::Instruction &inst,
+void FunctionLifter::VisitError(const remill::Instruction &inst,
                               remill::Instruction *delayed_inst,
                               llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
@@ -220,14 +219,14 @@ void FunctionLifterImpl::VisitError(const remill::Instruction &inst,
 // Visit a normal instruction. Normal instructions have straight line control-
 // flow semantics, i.e. after executing the instruction, execution proceeds
 // to the next instruction (`inst.next_pc`).
-void FunctionLifterImpl::VisitNormal(const remill::Instruction &inst,
+void FunctionLifter::VisitNormal(const remill::Instruction &inst,
                                llvm::BasicBlock *block) {
   llvm::BranchInst::Create(GetOrCreateBlock(inst.next_pc), block);
 }
 
 // Visit a no-op instruction. These behave identically to normal instructions
 // from a control-flow perspective.
-void FunctionLifterImpl::VisitNoOp(const remill::Instruction &inst,
+void FunctionLifter::VisitNoOp(const remill::Instruction &inst,
                              llvm::BasicBlock *block) {
   VisitNormal(inst, block);
 }
@@ -236,7 +235,7 @@ void FunctionLifterImpl::VisitNoOp(const remill::Instruction &inst,
 // known at decode time, and the target address is available in
 // `inst.branch_taken_pc`. Execution thus needs to transfer to the instruction
 // (and thus `llvm::BasicBlock`) associated with `inst.branch_taken_pc`.
-void FunctionLifterImpl::VisitDirectJump(const remill::Instruction &inst,
+void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                                    remill::Instruction *delayed_inst,
                                    llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
@@ -248,7 +247,7 @@ void FunctionLifterImpl::VisitDirectJump(const remill::Instruction &inst,
 // not know a priori and our default mechanism for handling this is to perform
 // a tail-call to the `__remill_jump` function, whose role is to be a stand-in
 // something that enacts the effect of "transfer to target."
-void FunctionLifterImpl::VisitIndirectJump(const remill::Instruction &inst,
+void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                      remill::Instruction *delayed_inst,
                                      llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
@@ -259,7 +258,7 @@ void FunctionLifterImpl::VisitIndirectJump(const remill::Instruction &inst,
 // indirect control-flow, but with a certain semantic associated with
 // returning from a function. This is treated similarly to indirect jumps,
 // except the `__remill_function_return` function is tail-called.
-void FunctionLifterImpl::VisitFunctionReturn(const remill::Instruction &inst,
+void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
@@ -270,7 +269,7 @@ void FunctionLifterImpl::VisitFunctionReturn(const remill::Instruction &inst,
 // at decode time, and its realized address is stored in
 // `inst.branch_taken_pc`. In practice, what we do in this situation is try
 // to call the lifted function function at the target address.
-void FunctionLifterImpl::VisitDirectFunctionCall(
+void FunctionLifter::VisitDirectFunctionCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
 
@@ -325,7 +324,7 @@ void FunctionLifterImpl::VisitDirectFunctionCall(
 // we continue lifting at the instruction where execution will resume after
 // the callee returns. Thus, lifted bitcode maintains the call graph structure
 // as it presents itself in the binary.
-void FunctionLifterImpl::VisitIndirectFunctionCall(const remill::Instruction &inst,
+void FunctionLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block) {
 
@@ -343,7 +342,7 @@ void FunctionLifterImpl::VisitIndirectFunctionCall(const remill::Instruction &in
 // that instruction, and present the following address for where execution
 // should resume after a `call`.
 std::pair<uint64_t, llvm::Value *>
-FunctionLifterImpl::LoadFunctionReturnAddress(const remill::Instruction &inst,
+FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
                                         llvm::BasicBlock *block) {
 
   const auto pc = inst.branch_not_taken_pc;
@@ -430,7 +429,7 @@ FunctionLifterImpl::LoadFunctionReturnAddress(const remill::Instruction &inst,
 // Enact relevant control-flow changed after a function call. This figures
 // out the return address targeted by the callee and links it into the
 // control-flow graph.
-void FunctionLifterImpl::VisitAfterFunctionCall(const remill::Instruction &inst,
+void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
   const auto next_pc_ptr =
@@ -447,7 +446,7 @@ void FunctionLifterImpl::VisitAfterFunctionCall(const remill::Instruction &inst,
 // Here we need to orchestrate the two-way control-flow, as well as the
 // possible execution of a delayed instruction on either or both paths,
 // depending on the presence/absence of delay slot annulment bits.
-void FunctionLifterImpl::VisitConditionalBranch(const remill::Instruction &inst,
+void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                           remill::Instruction *delayed_inst,
                                           llvm::BasicBlock *block) {
 
@@ -466,7 +465,7 @@ void FunctionLifterImpl::VisitConditionalBranch(const remill::Instruction &inst,
 // Visit an asynchronous hyper call control-flow instruction. These are non-
 // local control-flow transfers, such as system calls. We treat them like
 // indirect function calls.
-void FunctionLifterImpl::VisitAsyncHyperCall(const remill::Instruction &inst,
+void FunctionLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
@@ -475,7 +474,7 @@ void FunctionLifterImpl::VisitAsyncHyperCall(const remill::Instruction &inst,
 
 // Visit conditional asynchronous hyper calls. These are conditional, non-
 // local control-flow transfers, e.g. `bound` on x86.
-void FunctionLifterImpl::VisitConditionalAsyncHyperCall(
+void FunctionLifter::VisitConditionalAsyncHyperCall(
     const remill::Instruction &inst, remill::Instruction *delayed_inst,
     llvm::BasicBlock *block) {
   const auto lifted_func = block->getParent();
@@ -498,7 +497,7 @@ void FunctionLifterImpl::VisitConditionalAsyncHyperCall(
 // after some instructions, but execute logically before them in the
 // CPU pipeline. They are basically a way for hardware designers to push
 // the effort of keeping the pipeline full to compiler developers.
-void FunctionLifterImpl::VisitDelayedInstruction(const remill::Instruction &inst,
+void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block,
                                              bool on_taken_path) {
@@ -521,7 +520,7 @@ void FunctionLifterImpl::VisitDelayedInstruction(const remill::Instruction &inst
 //    %1 = add %4, 1
 //    %2 = __anvill_type_<uid>(<%4's type> %4)
 //    %3 = ptrtoint %2 goal_type
-llvm::Function *FunctionLifterImpl::GetOrCreateTaintedFunction(
+llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type,
     llvm::BasicBlock *curr_block, const remill::Register *reg,
     uint64_t pc) {
@@ -549,7 +548,7 @@ llvm::Function *FunctionLifterImpl::GetOrCreateTaintedFunction(
 //            lifting configuration decisions out of here so that we can pass
 //            in a kind of `LiftingOptions` type that changes the lifter's
 //            behavior.
-void FunctionLifterImpl::InstrumentInstruction(llvm::BasicBlock *block) {
+void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   if (!log_printf) {
     llvm::Type *args[] = {llvm::Type::getInt8PtrTy(context, 0)};
     auto fty =
@@ -594,7 +593,7 @@ void FunctionLifterImpl::InstrumentInstruction(llvm::BasicBlock *block) {
 // Visit a type hinted register at the current instruction. We use this
 // information to try to improve lifting of possible pointers later on
 // in the optimization process.
-void FunctionLifterImpl::VisitTypedHintedRegister(
+void FunctionLifter::VisitTypedHintedRegister(
     llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
     std::optional<uint64_t> maybe_value) {
 
@@ -641,7 +640,7 @@ void FunctionLifterImpl::VisitTypedHintedRegister(
 // Visit an instruction, and lift it into a basic block. Then, based off of
 // the category of the instruction, invoke one of the category-specific
 // lifters to enact a change in control-flow.
-void FunctionLifterImpl::VisitInstruction(
+void FunctionLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block) {
   curr_inst = &inst;
 
@@ -743,7 +742,7 @@ void FunctionLifterImpl::VisitInstruction(
 // to know how to adapt one native return type into another native return
 // type, and instead we let LLVM's optimizations figure it out later during
 // scalar replacement of aggregates (SROA).
-llvm::Value *FunctionLifterImpl::TryCallNativeFunction(
+llvm::Value *FunctionLifter::TryCallNativeFunction(
     uint64_t native_addr, llvm::Function *native_func,
     llvm::BasicBlock *block) {
   auto &decl = addr_to_decl[native_addr];
@@ -772,7 +771,7 @@ llvm::Value *FunctionLifterImpl::TryCallNativeFunction(
 }
 
 // Visit all instructions. This runs the work list and lifts instructions.
-void FunctionLifterImpl::VisitInstructions(uint64_t address) {
+void FunctionLifter::VisitInstructions(uint64_t address) {
   remill::Instruction inst;
 
   // Recursively decode and lift all instructions that we come across.
@@ -849,7 +848,7 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
 }
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
-llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
+llvm::Function *FunctionLifter::GetOrDeclareFunction(
     const FunctionDecl &decl) {
 
   const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
@@ -893,7 +892,7 @@ llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
 }
 
 // Allocate and initialize the state structure.
-void FunctionLifterImpl::AllocateAndInitializeStateStructure(
+void FunctionLifter::AllocateAndInitializeStateStructure(
     llvm::BasicBlock *block) {
   llvm::IRBuilder<> ir(block);
   const auto state_type = state_ptr_type->getElementType();
@@ -929,7 +928,7 @@ void FunctionLifterImpl::AllocateAndInitializeStateStructure(
 // Initialize the state structure with default values, loaded from global
 // variables. The purpose of these global variables is to show that there are
 // some unmodelled external dependencies inside of a lifted function.
-void FunctionLifterImpl::InitializeStateStructureFromGlobalRegisterVariables(
+void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
     llvm::BasicBlock *block) {
 
   // Get or create globals for all top-level registers. The idea here is that
@@ -964,7 +963,7 @@ void FunctionLifterImpl::InitializeStateStructureFromGlobalRegisterVariables(
 // After optimizations, the net effect is that anything derived from this
 // initial program counter is "tainted" by this initial constant expression,
 // and therefore can be found.
-llvm::Value *FunctionLifterImpl::InitializeSymbolicProgramCounter(
+llvm::Value *FunctionLifter::InitializeSymbolicProgramCounter(
     llvm::BasicBlock *block) {
 
   auto pc_reg = options.arch->RegisterByName(
@@ -988,7 +987,7 @@ llvm::Value *FunctionLifterImpl::InitializeSymbolicProgramCounter(
 }
 
 // Initialize the program value with a concrete integer address.
-llvm::Value *FunctionLifterImpl::InitializeConcreteProgramCounter(
+llvm::Value *FunctionLifter::InitializeConcreteProgramCounter(
     llvm::BasicBlock *block) {
   auto pc_reg = options.arch->RegisterByName(
       options.arch->ProgramCounterRegisterName());
@@ -1002,7 +1001,7 @@ llvm::Value *FunctionLifterImpl::InitializeConcreteProgramCounter(
 // Initialize a symbolic stack pointer value in a lifted function. This
 // mechanism is used to improve stack frame recovery, in a similar way that
 // a symbolic PC improves cross-reference discovery.
-void FunctionLifterImpl::InitialzieSymbolicStackPointer(llvm::BasicBlock *block) {
+void FunctionLifter::InitialzieSymbolicStackPointer(llvm::BasicBlock *block) {
   auto sp_reg = options.arch->RegisterByName(
       options.arch->StackPointerRegisterName());
   auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
@@ -1021,7 +1020,7 @@ void FunctionLifterImpl::InitialzieSymbolicStackPointer(llvm::BasicBlock *block)
 
 // Initialize a symbolic return address. This is similar to symbolic program
 // counters/stack pointers.
-llvm::Value *FunctionLifterImpl::InitializeSymbolicReturnAddress(
+llvm::Value *FunctionLifter::InitializeSymbolicReturnAddress(
     llvm::BasicBlock *block, llvm::Value *mem_ptr,
     const ValueDecl &ret_address) {
   auto base_ra = semantics_module->getGlobalVariable("__anvill_ra");
@@ -1040,7 +1039,7 @@ llvm::Value *FunctionLifterImpl::InitializeSymbolicReturnAddress(
 }
 
 // Initialize a concrete return address. This is an intrinsic function call.
-llvm::Value *FunctionLifterImpl::InitializeConcreteReturnAddress(
+llvm::Value *FunctionLifter::InitializeConcreteReturnAddress(
     llvm::BasicBlock *block, llvm::Value *mem_ptr,
     const ValueDecl &ret_address) {
   auto ret_addr_func = llvm::Intrinsic::getDeclaration(
@@ -1065,7 +1064,7 @@ llvm::Value *FunctionLifterImpl::InitializeConcreteReturnAddress(
 // marshalling high-level argument types into lower-level values to pass into
 // a stack-allocated `State` structure. This also involves providing initial
 // default values for registers.
-void FunctionLifterImpl::CallLiftedFunctionFromNativeFunction(void) {
+void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   if (!native_func->isDeclaration()) {
     return;
   }
@@ -1172,7 +1171,7 @@ void FunctionLifterImpl::CallLiftedFunctionFromNativeFunction(void) {
 // In practice, lifted functions are not workable as is; we need to emulate
 // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
 // that all semantics and helpers are completely inlined.
-void FunctionLifterImpl::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
+void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   std::vector<llvm::CallInst *> calls_to_inline;
   for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
     calls_to_inline.clear();
@@ -1214,7 +1213,7 @@ void FunctionLifterImpl::RecursivelyInlineLiftedFunctionIntoNativeFunction(void)
 
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
-llvm::Function *FunctionLifterImpl::DeclareFunction(const FunctionDecl &decl) {
+llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =
@@ -1234,7 +1233,7 @@ llvm::Function *FunctionLifterImpl::DeclareFunction(const FunctionDecl &decl) {
 
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
-llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
+llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   addr_to_decl.clear();
   addr_to_func.clear();
@@ -1311,7 +1310,7 @@ llvm::Function *FunctionLifterImpl::LiftFunction(const FunctionDecl &decl) {
 }
 
 // Returns the address of a named function.
-std::optional<uint64_t> FunctionLifterImpl::AddressOfNamedFunction(
+std::optional<uint64_t> FunctionLifter::AddressOfNamedFunction(
     const std::string &func_name) const {
   auto it = func_name_to_address.find(func_name);
   if (it == func_name_to_address.end()) {
@@ -1321,11 +1320,6 @@ std::optional<uint64_t> FunctionLifterImpl::AddressOfNamedFunction(
   }
 }
 
-FunctionLifter::~FunctionLifter(void) {}
-
-FunctionLifter::FunctionLifter(const Context &entity_lfiter_)
-    : impl(entity_lfiter_.impl) {}
-
 // Lifts the machine code function starting at address `decl.address`, and
 // using the architecture of the lifter context, lifts the bytes into the
 // context's module.
@@ -1334,12 +1328,69 @@ FunctionLifter::FunctionLifter(const Context &entity_lfiter_)
 //
 // NOTE(pag): If this function returns `nullptr` then it means that we cannot
 //            lift the function (e.g. bad address, or non-executable memory).
-llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
-  const auto func = impl->function_lifter.LiftFunction(decl);
-  if (func) {
-    AddFunctionToContext(func, decl.address);
+llvm::Function *EntityLifter::LiftEntity(const FunctionDecl &decl) const {
+  auto &func_lifter = impl->function_lifter;
+  llvm::Module * const module = impl->options.module;
+  llvm::LLVMContext &context = module->getContext();
+  llvm::FunctionType *module_func_type = llvm::dyn_cast<llvm::FunctionType>(
+      remill::RecontextualizeType(decl.type, context));
+  llvm::Function *found_by_type = nullptr;
+  llvm::Function *found_by_address = nullptr;
+
+  // Go try to figure out if we've already got a declaration for this specific
+  // function at the corresponding address.
+  impl->ForEachEntityAtAddress(
+      decl.address,
+      [&] (llvm::GlobalValue *gv) {
+        if (auto func = llvm::dyn_cast<llvm::Function>(gv)) {
+          if (func->getFunctionType() == module_func_type) {
+            found_by_type = func;
+
+          } else if (!found_by_address) {
+            found_by_address = func;
+          }
+        }
+      });
+
+  LOG_IF(ERROR, found_by_address != nullptr)
+      << "Ignoring existing version of function at address " << std::hex
+      << decl.address << " with type "
+      << remill::LLVMThingToString(found_by_address->getFunctionType())
+      << " and lifting function with type "
+      << remill::LLVMThingToString(module_func_type);
+
+  // Try to lift the function. If we failed then return the function found
+  // with a matching type, if any.
+  const auto func = func_lifter.LiftFunction(decl);
+  if (!func) {
+    return found_by_type;
   }
-  return func;
+
+  // Make sure the names match up so that when we copy `func` into
+  // `options.module`, we end up copying into the right function.
+  std::string old_name;
+  if (found_by_type && found_by_type->getName() != func->getName()) {
+    old_name = found_by_type->getName().str();
+    found_by_type->setName(func->getName());
+  }
+
+  // Add the function to the entity lifter's target module.
+  const auto func_in_target_module = func_lifter.AddFunctionToContext(
+      func, decl.address, *impl);
+
+  // If we had a previous declaration/definition, then we want to make sure
+  // that we replaced its body, and we also want to make sure that if our
+  // default function naming scheme is not using the same name as the function
+  // then we fixup its name to be its prior name. This could happen if the
+  // user renames a function between lifts/declares.
+  if (found_by_type) {
+    CHECK_EQ(func_in_target_module, found_by_type);
+    if (func_in_target_module->getName() != old_name) {
+      func_in_target_module->setName(old_name);
+    }
+  }
+
+  return func_in_target_module;
 }
 
 // Declare the function associated with `decl` in the context's module.
@@ -1347,20 +1398,51 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
 // NOTE(pag): If this function returns `nullptr` then it means that we cannot
 //            declare the function (e.g. bad address, or non-executable
 //            memory).
-llvm::Function *FunctionLifter::DeclareFunction(
-    const FunctionDecl &decl) const {
-  const auto func = impl->function_lifter.DeclareFunction(decl);
-  if (func) {
-    if (auto existing_func =
-            impl->options.module->getFunction(func->getName())) {
-      impl->AddEntity(func, decl.address);
-      return existing_func;
+llvm::Function *EntityLifter::DeclareEntity(const FunctionDecl &decl) const {
+  auto &func_lifter = impl->function_lifter;
+  llvm::Module * const module = impl->options.module;
+  llvm::LLVMContext &context = module->getContext();
+  llvm::FunctionType *module_func_type = llvm::dyn_cast<llvm::FunctionType>(
+      remill::RecontextualizeType(decl.type, context));
 
-    } else {
-      AddFunctionToContext(func, decl.address);
-    }
+  llvm::Function *found_by_type = nullptr;
+  llvm::Function *found_by_address = nullptr;
+
+  // Go try to figure out if we've already got a declaration for this specific
+  // function at the corresponding address.
+  //
+  // TODO(pag): Refactor out this copypasta.
+  impl->ForEachEntityAtAddress(
+      decl.address,
+      [&] (llvm::GlobalValue *gv) {
+        if (auto func = llvm::dyn_cast<llvm::Function>(gv)) {
+          if (func->getFunctionType() == module_func_type) {
+            found_by_type = func;
+
+          } else if (!found_by_address) {
+            found_by_address = func;
+          }
+        }
+      });
+
+  // We've already got a declaration for this function; return it.
+  if (found_by_type) {
+    return found_by_type;
   }
-  return func;
+
+  LOG_IF(ERROR, found_by_address != nullptr)
+      << "Ignoring existing version of function at address " << std::hex
+      << decl.address << " with type "
+      << remill::LLVMThingToString(found_by_address->getFunctionType())
+      << " and declaring function with type "
+      << remill::LLVMThingToString(module_func_type);
+
+  if (const auto func = func_lifter.DeclareFunction(decl)) {
+    DCHECK(!module->getFunction(func->getName()));
+    return func_lifter.AddFunctionToContext(func, decl.address, *impl);
+  } else {
+    return nullptr;
+  }
 }
 
 namespace {
@@ -1397,11 +1479,14 @@ static void EraseFunctionBody(llvm::Function *func) {
 
 }  // namespace
 
-// Update the associated context (`impl`) with information about this
-// function, and move the function into the context's module.
-void FunctionLifter::AddFunctionToContext(llvm::Function *func,
-                                          uint64_t address) const {
-  const auto target_module = impl->options.module;
+// Update the associated entity lifter with information about this
+// function, and copy the function into the context's module. Returns the
+// version of `func` inside the module of the lifter context.
+llvm::Function *FunctionLifter::AddFunctionToContext(
+    llvm::Function *func, uint64_t address,
+    EntityLifterImpl &lifter_context) const {
+
+  const auto target_module = options.module;
   auto &module_context = target_module->getContext();
   const auto name = func->getName().str();
   const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
@@ -1422,7 +1507,7 @@ void FunctionLifter::AddFunctionToContext(llvm::Function *func,
   // It's possible that we've lifted this function before, but that it was
   // renamed by user code, and so the above check failed. Go check for that.
   } else {
-    impl->ForEachEntityAtAddress(address, [&] (llvm::GlobalValue *gv) {
+    lifter_context.ForEachEntityAtAddress(address, [&] (llvm::GlobalValue *gv) {
       if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);
           gv_func && gv_func->getFunctionType() == module_func_type) {
         CHECK(!new_version);
@@ -1448,7 +1533,7 @@ void FunctionLifter::AddFunctionToContext(llvm::Function *func,
 
   // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
-  impl->AddEntity(new_version, address);
+  lifter_context.AddEntity(new_version, address);
 
   // The function we just lifted may call other functions, so we need to go
   // find those and also use them to update the context.
@@ -1462,15 +1547,15 @@ void FunctionLifter::AddFunctionToContext(llvm::Function *func,
       }
       if (called_func) {
         const auto called_func_name = called_func->getName().str();
-        auto called_func_addr = impl->function_lifter.AddressOfNamedFunction(
-            called_func_name);
-
+        auto called_func_addr = AddressOfNamedFunction(called_func_name);
         if (called_func_addr) {
-          impl->AddEntity(called_func, *called_func_addr);
+          lifter_context.AddEntity(called_func, *called_func_addr);
         }
       }
     }
   }
+
+  return new_version;
 }
 
 }  // namespace anvill

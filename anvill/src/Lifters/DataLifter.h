@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include <anvill/Lifters/DataLifter.h>
-
 #include <cstdint>
 #include <memory>
 #include <map>
@@ -37,38 +35,29 @@ class Value;
 }  // namespace llvm
 namespace anvill {
 
+class EntityLifterImpl;
 class LifterOptions;
 class MemoryProvider;
 class TypeProvider;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
-class DataLifterImpl {
+class DataLifter {
  public:
-  ~DataLifterImpl(void);
+  ~DataLifter(void);
 
-  DataLifterImpl(const LifterOptions &options_,
-                 MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_);
-
-  // Declare a lifted a variable. Will return `nullptr` if the memory is
-  // not accessible.
-  llvm::GlobalValue *DeclareData(const GlobalVarDecl &decl,
-                                 ContextImpl &lifter_context);
+  DataLifter(const LifterOptions &options_, MemoryProvider &memory_provider_,
+             TypeProvider &type_provider_);
 
   // Lift a function. Will return `nullptr` if the memory is not accessible.
   llvm::GlobalValue *LiftData(const GlobalVarDecl &decl,
-                              ContextImpl &lifter_context);
-
-  // Returns the address of a named function.
-  std::optional<uint64_t> AddressOfNamedData(
-      const std::string &data_name) const;
-
- private:
-  friend class FunctionLifter;
+                              EntityLifterImpl &lifter_context);
 
   // Declare a lifted a variable. Will not return `nullptr`.
   llvm::GlobalValue *GetOrDeclareData(const GlobalVarDecl &decl,
-                                      ContextImpl &lifter_context);
+                                      EntityLifterImpl &lifter_context);
+
+ private:
+  friend class FunctionLifter;
 
   const LifterOptions options;
   MemoryProvider &memory_provider;

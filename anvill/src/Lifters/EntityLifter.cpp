@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Context.h"
+#include "EntityLifter.h"
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -34,9 +34,9 @@
 
 namespace anvill {
 
-ContextImpl::~ContextImpl(void) {}
+EntityLifterImpl::~EntityLifterImpl(void) {}
 
-ContextImpl::ContextImpl(
+EntityLifterImpl::EntityLifterImpl(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
     const std::shared_ptr<TypeProvider> &type_provider_)
@@ -55,7 +55,7 @@ ContextImpl::ContextImpl(
 // A key issue with `TryLiftData` is that we might be requesting `address`,
 // but `address` may be inside of another piece of data, which begins
 // at `data_address`.
-llvm::Constant *ContextImpl::TryLiftData(
+llvm::Constant *EntityLifterImpl::TryLiftData(
     uint64_t address, uint64_t data_address, llvm::Type *data_type) {
   auto &context = options.module->getContext();
   data_type = remill::RecontextualizeType(data_type, context);
@@ -72,14 +72,14 @@ llvm::Constant *ContextImpl::TryLiftData(
 // `address`. There is some collusion between the `Context`, the
 // `FunctionLifter`, the `DataLifter`, and the `ValueLifter` to ensure their
 // view of the world remains consistent.
-void ContextImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
+void EntityLifterImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
   address_to_entity[address].insert(entity);
   entity_to_address[entity] = address;
 }
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
-std::optional<uint64_t> ContextImpl::AddressOfEntity(
+std::optional<uint64_t> EntityLifterImpl::AddressOfEntity(
     llvm::GlobalValue *entity) const {
   auto it = entity_to_address.find(entity);
   if (it == entity_to_address.end()) {
@@ -90,7 +90,7 @@ std::optional<uint64_t> ContextImpl::AddressOfEntity(
 }
 
 // Applies a callback `cb` to each entity at a specified address.
-void ContextImpl::ForEachEntityAtAddress(
+void EntityLifterImpl::ForEachEntityAtAddress(
     uint64_t address, std::function<void(llvm::GlobalValue *)> cb) const {
   if (auto it = address_to_entity.find(address);
       it != address_to_entity.end()) {
@@ -100,23 +100,23 @@ void ContextImpl::ForEachEntityAtAddress(
   }
 }
 
-Context::~Context(void) {}
+EntityLifter::~EntityLifter(void) {}
 
-Context::Context(const LifterOptions &options_,
+EntityLifter::EntityLifter(const LifterOptions &options_,
                            const std::shared_ptr<MemoryProvider> &mem_provider_,
                            const std::shared_ptr<TypeProvider> &type_provider_)
-    : impl(std::make_shared<ContextImpl>(
+    : impl(std::make_shared<EntityLifterImpl>(
           options_, mem_provider_, type_provider_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
-std::optional<uint64_t> Context::AddressOfEntity(
+std::optional<uint64_t> EntityLifter::AddressOfEntity(
     llvm::GlobalValue *entity) const {
   return impl->AddressOfEntity(entity);
 }
 
 // Return the options being used by this entity lifter.
-const LifterOptions &Context::Options(void) const {
+const LifterOptions &EntityLifter::Options(void) const {
   return impl->options;
 }
 

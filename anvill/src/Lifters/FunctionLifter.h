@@ -17,14 +17,14 @@
 
 #pragma once
 
-#include <anvill/Lifters/FunctionLifter.h>
-
 #include <cstdint>
 #include <memory>
 #include <map>
 #include <set>
 #include <unordered_map>
+
 #include <anvill/Decl.h>
+#include <anvill/Lifters/Options.h>
 
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -45,18 +45,18 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+class EntityLifterImpl;
 class MemoryProvider;
 class TypeProvider;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
-class FunctionLifterImpl {
+class FunctionLifter {
  public:
-  ~FunctionLifterImpl(void);
+  ~FunctionLifter(void);
 
-  FunctionLifterImpl(const LifterOptions &options_,
-                     MemoryProvider &memory_provider_,
-                     TypeProvider &type_provider_);
-
+  FunctionLifter(const LifterOptions &options_,
+                 MemoryProvider &memory_provider_,
+                 TypeProvider &type_provider_);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -70,8 +70,14 @@ class FunctionLifterImpl {
   std::optional<uint64_t> AddressOfNamedFunction(
       const std::string &func_name) const;
 
+  // Update the associated entity lifter with information about this
+  // function, and copy the function into the context's module. Returns the
+  // version of `func` inside the module of the lifter context.
+  llvm::Function *AddFunctionToContext(
+      llvm::Function *func, uint64_t address,
+      EntityLifterImpl &lifter_context) const;
+
  private:
-  friend class FunctionLifter;
 
   const LifterOptions options;
   MemoryProvider &memory_provider;

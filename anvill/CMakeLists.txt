@@ -51,22 +51,19 @@ add_library(anvill STATIC
   include/anvill/Lifters/Options.h
   src/Lifters/Options.cpp
   
-  include/anvill/Lifters/ValueLifter.h
   src/Lifters/ValueLifter.h
   src/Lifters/ValueLifter.cpp
   
-  include/anvill/Lifters/Context.h
-  src/Lifters/Context.h
-  src/Lifters/Context.cpp
+  include/anvill/Lifters/EntityLifter.h
+  src/Lifters/EntityLifter.h
+  src/Lifters/EntityLifter.cpp
   
   include/anvill/Lifters/DeclLifter.h
   src/Lifters/DeclLifter.cpp
   
-  include/anvill/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.cpp
   
-  include/anvill/Lifters/DataLifter.h
   src/Lifters/DataLifter.h
   src/Lifters/DataLifter.cpp
     

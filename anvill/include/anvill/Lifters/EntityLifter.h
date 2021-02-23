@@ -23,6 +23,7 @@
 
 namespace llvm {
 class Constant;
+class Function;
 class GlobalValue;
 class Module;
 }  // namespace llvm
@@ -31,7 +32,10 @@ class Arch;
 }  // namespace remill
 namespace anvill {
 
-class ContextImpl;
+struct FunctionDecl;
+struct GlobalVarDecl;
+
+class EntityLifterImpl;
 class FunctionLifter;
 class LifterOptions;
 class MemoryProvider;
@@ -42,13 +46,13 @@ class ValueLifter;
 // used for lifting, the module into which lifted objects are placed, and
 // a the mapping between lifted objects and their original addresses in the
 // binary.
-class Context {
+class EntityLifter {
  public:
-  ~Context(void);
+  ~EntityLifter(void);
 
-  explicit Context(const LifterOptions &options,
-                   const std::shared_ptr<MemoryProvider> &mem_provider_,
-                   const std::shared_ptr<TypeProvider> &type_provider_);
+  explicit EntityLifter(const LifterOptions &options,
+                        const std::shared_ptr<MemoryProvider> &mem_provider_,
+                        const std::shared_ptr<TypeProvider> &type_provider_);
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.
@@ -57,22 +61,34 @@ class Context {
   // Return the options being used by this entity lifter.
   const LifterOptions &Options(void) const;
 
-  Context(const Context &) = default;
-  Context(Context &&) noexcept = default;
-  Context &operator=(const Context &) = default;
-  Context &operator=(Context &&) noexcept = default;
+  // Lift a function and return it. Returns `nullptr` if there was a failure.
+  llvm::Function *LiftEntity(const FunctionDecl &decl) const;
+
+  // Lift a function and return it. Returns `nullptr` if there was a failure.
+  llvm::Function *DeclareEntity(const FunctionDecl &decl) const;
+
+  // Lift a variable and return it. Returns `nullptr` if there was a failure.
+  llvm::GlobalValue *LiftEntity(const GlobalVarDecl &decl) const;
+
+  // Lift a variable and return it. Returns `nullptr` if there was a failure.
+  llvm::GlobalValue *DeclareEntity(const GlobalVarDecl &decl) const;
+
+  EntityLifter(const EntityLifter &) = default;
+  EntityLifter(EntityLifter &&) noexcept = default;
+  EntityLifter &operator=(const EntityLifter &) = default;
+  EntityLifter &operator=(EntityLifter &&) noexcept = default;
 
  private:
   friend class DataLifter;
   friend class FunctionLifter;
   friend class ValueLifter;
 
-  inline Context(const std::shared_ptr<ContextImpl> &impl_)
+  inline EntityLifter(const std::shared_ptr<EntityLifterImpl> &impl_)
       : impl(impl_) {}
 
-  Context(void) = default;
+  EntityLifter(void) = default;
 
-  std::shared_ptr<ContextImpl> impl;
+  std::shared_ptr<EntityLifterImpl> impl;
 };
 
 }  // namespace anvill

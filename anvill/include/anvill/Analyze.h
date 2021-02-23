@@ -20,10 +20,10 @@
 #include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Compat/Error.h>
 
-#include <anvill/Lifters/Context.h>
-#include <anvill/Lifters/FunctionLifter.h>
+#include <anvill/Lifters/EntityLifter.h>
 
 #include <cstdint>
+#include "Lifters/EntityLifter.h"
 
 namespace llvm {
 class Constant;
@@ -39,18 +39,17 @@ class DataLayout;
 }  // namespace llvm
 namespace anvill {
 
-class Context;
+class EntityLifter;
 class Program;
 
 // Fold constant expressions into possible cross-references.
 class XrefExprFolder {
  public:
-  XrefExprFolder(const Context &lifter_context,
+  XrefExprFolder(const EntityLifter &lifter_context,
                  const Program &program_, llvm::Module &module_);
 
   const Program &program;
-  Context lifter_context;
-  FunctionLifter function_lifter;
+  EntityLifter lifter_context;
 
   llvm::Module &module;
 
@@ -123,11 +122,11 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoverMemoryAccesses(const Context &lifter_context,
+void RecoverMemoryAccesses(const EntityLifter &lifter_context,
                            const Program &program, llvm::Module &module);
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoverStackMemoryAccesses(const Context &lifter_context,
+void RecoverStackMemoryAccesses(const EntityLifter &lifter_context,
                                 const Program &program, llvm::Module &module);
 }  // namespace anvill

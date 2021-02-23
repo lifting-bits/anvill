@@ -43,8 +43,7 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
-#include <anvill/Lifters/Context.h>
-#include <anvill/Lifters/FunctionLifter.h>
+#include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -687,8 +686,7 @@ int main(int argc, char *argv[]) {
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::Context lifter_context(options, memory, types);
-  anvill::FunctionLifter func_lifter(lifter_context);
+  anvill::EntityLifter lifter(options, memory, types);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -698,13 +696,13 @@ int main(int argc, char *argv[]) {
   }
 
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-    //(void) lifter.TryLiftEntity(decl->address);
+    (void) lifter.LiftEntity(*decl);
     return true;
   });
 
   // Lift functions.
   program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-    (void) func_lifter.LiftFunction(*decl);
+    (void) lifter.LiftEntity(*decl);
     return true;
   });
 
@@ -712,23 +710,21 @@ int main(int argc, char *argv[]) {
   CHECK(remill::VerifyModule(&module));
 
   // OLD: Apply optimizations.
-  anvill::OptimizeModule(lifter_context, arch.get(), program, module);
+  anvill::OptimizeModule(lifter, arch.get(), program, module);
 
   // Apply symbol names to functions if we have the names.
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
     if (vdecl) {
-      // TODO(pag): Need the data lifter.
-//      gval = semantics->getGlobalVariable(anvill::CreateVariableName(addr));
+      if (auto var = lifter.DeclareEntity(*vdecl)) {
+        var->setName(name);
+      }
     } else if (fdecl) {
-      if (auto func = func_lifter.DeclareFunction(*fdecl)) {
+      if (auto func = lifter.DeclareEntity(*fdecl)) {
         func->setName(name);
       }
-    } else {
-      return true;
     }
-
     return true;
   });
 

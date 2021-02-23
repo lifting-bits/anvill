@@ -18,7 +18,6 @@
 #include "DataLifter.h"
 
 #include <anvill/Decl.h>
-#include <anvill/Lifters/Context.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/TypePrinter.h>
 
@@ -32,7 +31,7 @@
 
 #include <sstream>
 
-#include "Context.h"
+#include "EntityLifter.h"
 
 namespace anvill {
 namespace {
@@ -76,9 +75,9 @@ FindBaseAndOffset(const llvm::DataLayout &dl, llvm::Value *ptr) {
 
 }  // namespace
 
-DataLifterImpl::~DataLifterImpl(void) {}
+DataLifter::~DataLifter(void) {}
 
-DataLifterImpl::DataLifterImpl(const LifterOptions &options_,
+DataLifter::DataLifter(const LifterOptions &options_,
                                MemoryProvider &memory_provider_,
                                TypeProvider &type_provider_)
     : options(options_),
@@ -88,8 +87,8 @@ DataLifterImpl::DataLifterImpl(const LifterOptions &options_,
 
 // Declare a lifted a variable. Will not return `nullptr`. One issue that we
 // face is that we want to
-llvm::GlobalValue *DataLifterImpl::GetOrDeclareData(
-    const GlobalVarDecl &decl, ContextImpl &lifter_context) {
+llvm::GlobalValue *DataLifter::GetOrDeclareData(
+    const GlobalVarDecl &decl, EntityLifterImpl &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
@@ -137,10 +136,10 @@ llvm::GlobalValue *DataLifterImpl::GetOrDeclareData(
      << TranslateType(*type, dl, true);
 
   const auto name = ss.str();
-  const auto gv = llvm::GlobalAlias::create(
+  const auto ga = llvm::GlobalAlias::create(
       type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
 
-  lifter_context.AddEntity(gv, decl.address);
+  lifter_context.AddEntity(ga, decl.address);
 
   // TODO(pag,alessandro): If we're down here then we don't have any other
   //                       aliases for this exact piece of data. However, there
@@ -161,26 +160,38 @@ llvm::GlobalValue *DataLifterImpl::GetOrDeclareData(
   //                            do we know about them ahead of time? The use of
   //                            aliases enables us to swap out initializers.
 
-  return gv;
+  // !!! TEMPORARY because we need all aliasees to have an initializer!!!
+  std::stringstream ss2;
+  ss2 << "var_" << std::hex << decl.address << '_'
+     << TranslateType(*type, dl, true);
+
+  const auto gv = new llvm::GlobalVariable(
+      *options.module, type, false, llvm::GlobalValue::ExternalLinkage,
+      llvm::Constant::getNullValue(type), ss2.str());
+
+  ga->setAliasee(gv);
+  lifter_context.AddEntity(gv, decl.address);
+
+  return ga;
 }
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.
-llvm::GlobalValue *DataLifterImpl::DeclareData(
-    const GlobalVarDecl &decl, ContextImpl &lifter_context) {
+llvm::GlobalValue *EntityLifter::DeclareEntity(
+    const GlobalVarDecl &decl) const {
+
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =
-      memory_provider.Query(decl.address);
+      impl->memory_provider->Query(decl.address);
   if (!MemoryProvider::IsValidAddress(first_byte_avail)) {
     return nullptr;
   }
 
-  return GetOrDeclareData(decl, lifter_context);
+  return impl->data_lifter.GetOrDeclareData(decl, *impl);
 }
 
 // Lift a function. Will return `nullptr` if the memory is not accessible.
-llvm::GlobalValue *DataLifterImpl::LiftData(
-    const GlobalVarDecl &decl, ContextImpl &lifter_context) {
+llvm::GlobalValue *EntityLifter::LiftEntity(const GlobalVarDecl &decl) const {
 
   // TODO(pag,alessandro): Inspect the pointer returned from `DeclareData`.
   //                       Use `FindBaseAndOffset` to find the base. If the
@@ -191,31 +202,7 @@ llvm::GlobalValue *DataLifterImpl::LiftData(
   //                       contains `decl.address`. If bytes aren't readable,
   //                       then fine.
 
-  return DeclareData(decl, lifter_context);
-}
-
-// Returns the address of a named function.
-std::optional<uint64_t> DataLifterImpl::AddressOfNamedData(
-    const std::string &data_name) const {
-  return std::nullopt;
-}
-
-DataLifter::~DataLifter(void) {}
-
-DataLifter::DataLifter(const Context &lifter_context)
-    : impl(lifter_context.impl) {}
-
-// Lifts the raw bytes at address `decl.address`, and using
-//
-// NOTE(pag): If this function returns `nullptr` then it means that we cannot
-//            lift the function (e.g. bad address, or non-executable memory).
-llvm::GlobalValue *DataLifter::LiftData(const GlobalVarDecl &decl) const {
-  return impl->data_lifter.LiftData(decl, *impl);
-}
-
-// Declare the function associated with `decl` in the context's module.
-llvm::GlobalValue *DataLifter::DeclareData(const GlobalVarDecl &decl) const {
-  return nullptr;
+  return impl->data_lifter.GetOrDeclareData(decl, *impl);
 }
 
 }  // namespace anvill

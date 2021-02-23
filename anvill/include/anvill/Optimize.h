@@ -26,12 +26,12 @@ class Arch;
 
 namespace anvill {
 
-class Context;
+class EntityLifter;
 class Program;
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const Context &lifter_context,
+void OptimizeModule(const EntityLifter &lifter_context,
                     const remill::Arch *arch, const Program &program,
                     llvm::Module &module);
 

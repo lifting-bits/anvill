@@ -26,8 +26,6 @@ namespace {
 class ProgramMemoryProvider final : public MemoryProvider {
  public:
 
-  virtual ~ProgramMemoryProvider(void) = default;
-
   explicit ProgramMemoryProvider(const Program &program_)
       : program(program_) {}
 

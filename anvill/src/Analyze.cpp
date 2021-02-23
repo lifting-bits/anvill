@@ -41,8 +41,6 @@
 #include <remill/BC/Optimizer.h>
 #include <remill/BC/Util.h>
 
-#include <anvill/Lifters/Context.h>
-
 #include <map>
 #include <set>
 #include <tuple>
@@ -51,17 +49,17 @@
 #include <utility>
 #include <vector>
 
+#include "../include/anvill/Lifters/EntityLifter.h"
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
 namespace anvill {
 
-XrefExprFolder::XrefExprFolder(const Context &context_, const Program &program_,
+XrefExprFolder::XrefExprFolder(const EntityLifter &context_, const Program &program_,
                                llvm::Module &module_)
     : program(program_),
       lifter_context(context_),
-      function_lifter(lifter_context),
       module(module_),
       error(llvm::Error::success()) {}
 
@@ -683,7 +681,7 @@ static bool ClassifyCell(const llvm::DataLayout &dl, Cell &cell) {
 }
 
 static void FindPossibleCrossReferences(
-    const Context &lifter_context, const Program &program,
+    const EntityLifter &lifter_context, const Program &program,
     llvm::Module &module, llvm::StringRef gv_name,
     std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &ptr_fixups,
     std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> &maybe_fixups,
@@ -1145,7 +1143,7 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoverStackMemoryAccesses(const Context &lifter_context,
+void RecoverStackMemoryAccesses(const EntityLifter &lifter_context,
                                 const Program &program,
                                 llvm::Module &module) {
 
@@ -1162,7 +1160,7 @@ void RecoverStackMemoryAccesses(const Context &lifter_context,
 
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
-void RecoverMemoryAccesses(const Context &lifter_context,
+void RecoverMemoryAccesses(const EntityLifter &lifter_context,
                            const Program &program,
                            llvm::Module &module) {
 
