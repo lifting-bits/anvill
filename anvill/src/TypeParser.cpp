@@ -65,7 +65,90 @@ ParseType(llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
   llvm::StructType *struct_type = nullptr;
 
   while (i < spec.size()) {
-    switch (spec[i]) {
+    auto ch = spec[i];
+    bool in_retry = false;
+  retry:
+    switch (ch) {
+
+      // An underscore is a prefix to re-interpret the subsequent letter/digit
+      // as a different character. This lets us have a type encoding that is
+      // purely alphanumeric, and thus well-suited toward embedding in symbol
+      // names.
+      case '_':
+        if ((i + 1) >= spec.size()) {
+          return llvm::createStringError(
+              std::make_error_code(std::errc::invalid_argument),
+              "Unterminated continuation character '_' at end of type "
+              "specification '%s'",
+              spec.str().c_str());
+
+        } else if (in_retry) {
+          return llvm::createStringError(
+              std::make_error_code(std::errc::invalid_argument),
+              "Cannot have continuation '_' following a continuation '_' in "
+              "type specification '%s'",
+              spec.str().c_str());
+
+        } else {
+          in_retry = true;
+          switch (spec[++i]) {
+
+            // `_M` -> `%`.
+            case 'M':
+              ch = '%';
+              goto retry;
+
+            // `_S` -> `*`.
+            case 'S':
+              ch = '*';
+              goto retry;
+
+            // `_A` -> `(`.
+            case 'A':
+              ch = '(';
+              goto retry;
+
+            // `_B` -> `)`.
+            case 'B':
+              ch = ')';
+              goto retry;
+
+            // `_C` -> `[`.
+            case 'C':
+              ch = '[';
+              goto retry;
+
+            // `_D` -> `]`.
+            case 'D':
+              ch = ']';
+              goto retry;
+
+            // `_E` -> `{`.
+            case 'E':
+              ch = '[';
+              goto retry;
+
+            // `_F` -> `}`.
+            case 'F':
+              ch = ']';
+              goto retry;
+
+            // `_G` -> `<`.
+            case 'G':
+              ch = '<';
+              goto retry;
+
+            // `_H` -> `>`.
+            case 'H':
+              ch = '>';
+              goto retry;
+
+            // `_V` -> `&`.
+            case 'V':
+              ch = '&';
+              goto retry;
+          }
+        }
 
       // Parse a structure type.
       case '{': {

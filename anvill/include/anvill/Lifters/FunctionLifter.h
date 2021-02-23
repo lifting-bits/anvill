@@ -41,8 +41,10 @@ class FunctionLifter {
 
   explicit FunctionLifter(const Context &entity_lfiter_);
 
-  // Lifts the machine code function starting at address `address`, and using
-  // `options_.arch` as the architecture for lifting, into the context's module.
+  // Lifts the machine code function starting at address `decl.address`, and
+  // using the architecture of the lifter context, lifts the bytes into the
+  // context's module.
+  //
   // Returns an `llvm::Function *` that is part of `options_.module`.
   //
   // NOTE(pag): If this function returns `nullptr` then it means that we cannot
@@ -50,6 +52,10 @@ class FunctionLifter {
   llvm::Function *LiftFunction(const FunctionDecl &decl) const;
 
   // Declare the function associated with `decl` in the context's module.
+  //
+  // NOTE(pag): If this function returns `nullptr` then it means that we cannot
+  //            declare the function (e.g. bad address, or non-executable
+  //            memory).
   llvm::Function *DeclareFunction(const FunctionDecl &decl) const;
 
   FunctionLifter(const FunctionLifter &) = default;

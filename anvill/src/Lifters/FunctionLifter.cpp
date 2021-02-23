@@ -852,20 +852,24 @@ void FunctionLifterImpl::VisitInstructions(uint64_t address) {
 llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
     const FunctionDecl &decl) {
 
-  auto &native_func = addr_to_func[decl.address];
-  if (native_func) {
-    return native_func;
-  }
-
   const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
       remill::RecontextualizeType(decl.type, context));
+
+  // NOTE(pag): This may find declarations from prior lifts that have been
+  //            left around in the semantics module.
+  auto &native_func = addr_to_func[decl.address];
+  if (native_func) {
+    CHECK_EQ(native_func->getFunctionType(), func_type);
+    return native_func;
+  }
 
   // By default we do not want to deal with function names until the very end of
   // lifting. Instead, we assign a temporary name based on the function's
   // starting address, its type, and its calling convention.
   std::stringstream ss;
   ss << "sub_" << std::hex << decl.address << '_'
-     << TranslateType(*func_type, semantics_module->getDataLayout())
+     << TranslateType(*func_type, semantics_module->getDataLayout(),
+                      true)
      << '_' << std::dec << decl.calling_convention;
 
   const auto base_name = ss.str();
@@ -874,6 +878,7 @@ llvm::Function *FunctionLifterImpl::GetOrDeclareFunction(
   // Try to get it as an already named function.
   native_func = semantics_module->getFunction(base_name);
   if (native_func) {
+    CHECK_EQ(native_func->getFunctionType(), func_type);
     return native_func;
   }
 
@@ -1321,9 +1326,14 @@ FunctionLifter::~FunctionLifter(void) {}
 FunctionLifter::FunctionLifter(const Context &entity_lfiter_)
     : impl(entity_lfiter_.impl) {}
 
-// Lifts the machine code function starting at address `address`, and using
-// `options_.arch` as the architecture for lifting, into `options_.module`.
+// Lifts the machine code function starting at address `decl.address`, and
+// using the architecture of the lifter context, lifts the bytes into the
+// context's module.
+//
 // Returns an `llvm::Function *` that is part of `options_.module`.
+//
+// NOTE(pag): If this function returns `nullptr` then it means that we cannot
+//            lift the function (e.g. bad address, or non-executable memory).
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
   const auto func = impl->function_lifter.LiftFunction(decl);
   if (func) {
@@ -1333,13 +1343,17 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) const {
 }
 
 // Declare the function associated with `decl` in the context's module.
+//
+// NOTE(pag): If this function returns `nullptr` then it means that we cannot
+//            declare the function (e.g. bad address, or non-executable
+//            memory).
 llvm::Function *FunctionLifter::DeclareFunction(
     const FunctionDecl &decl) const {
   const auto func = impl->function_lifter.DeclareFunction(decl);
   if (func) {
     if (auto existing_func =
             impl->options.module->getFunction(func->getName())) {
-      impl->AddFunction(func, decl.address);
+      impl->AddEntity(func, decl.address);
       return existing_func;
 
     } else {
@@ -1349,41 +1363,114 @@ llvm::Function *FunctionLifter::DeclareFunction(
   return func;
 }
 
+namespace {
+
+// Erase the body of a function.
+static void EraseFunctionBody(llvm::Function *func) {
+  std::vector<llvm::BasicBlock *> blocks_to_erase;
+  std::vector<llvm::Instruction *> insts_to_erase;
+
+  // Collect stuff for erasure.
+  for (auto &block : *func) {
+    blocks_to_erase.emplace_back(&block);
+    for (auto &inst : block) {
+      insts_to_erase.emplace_back(&inst);
+    }
+  }
+
+  // Erase instructions first, as they use basic blocks. Before erasing, replace
+  // all their uses with something reasonable.
+  for (auto inst : insts_to_erase) {
+    if (!inst->getType()->isVoidTy()) {
+      inst->replaceAllUsesWith(llvm::UndefValue::get(inst->getType()));
+    }
+    inst->eraseFromParent();
+  }
+
+  // Now, erase blocks.
+  for (auto block : blocks_to_erase) {
+    block->getType();
+    CHECK(block->empty());
+    block->eraseFromParent();
+  }
+}
+
+}  // namespace
+
 // Update the associated context (`impl`) with information about this
 // function, and move the function into the context's module.
 void FunctionLifter::AddFunctionToContext(llvm::Function *func,
                                           uint64_t address) const {
-  auto &func_lifter = impl->function_lifter;
-  const auto semantics_module = func_lifter.semantics_module.get();
   const auto target_module = impl->options.module;
-
-  auto &semantics_context = semantics_module->getContext();
   auto &module_context = target_module->getContext();
   const auto name = func->getName().str();
+  const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
+      remill::RecontextualizeType(func->getFunctionType(), module_context));
 
-  llvm::Function *new_version = nullptr;
+  // Try to get the old version of the function by name. If it exists and has
+  // a body then erase it. As much as possible, we want to maintain referential
+  // transparency w.r.t. user code, and not suddenly delete things out from
+  // under them.
+  auto new_version = target_module->getFunction(name);
+  if (new_version) {
+    CHECK_EQ(module_func_type, new_version->getFunctionType());
+    if (!new_version->isDeclaration()) {
+      EraseFunctionBody(new_version);
+      CHECK(new_version->isDeclaration());
+    }
 
-  // Now that we've lifted the function, we're left with some pretty brutal
-  // bitcode, and its in the wrong module too. So, we need to go and move or
-  // copy the lifted function into the target module.
-  if (&semantics_context == &module_context) {
-    remill::MoveFunctionIntoModule(func, target_module);
-    new_version = target_module->getFunction(name);
-
+  // It's possible that we've lifted this function before, but that it was
+  // renamed by user code, and so the above check failed. Go check for that.
   } else {
-    const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(func->getFunctionType(), module_context));
+    impl->ForEachEntityAtAddress(address, [&] (llvm::GlobalValue *gv) {
+      if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);
+          gv_func && gv_func->getFunctionType() == module_func_type) {
+        CHECK(!new_version);
+        new_version = gv_func;
+      }
+    });
+  }
 
+  // This is the first time we're lifting this function, or even the first time
+  // we're seeing a reference to it, so we will need to make the function in
+  // the target module.
+  if (!new_version) {
     new_version = llvm::Function::Create(
         module_func_type, llvm::GlobalValue::ExternalLinkage, name,
         target_module);
-
-    remill::CloneFunctionInto(func, new_version);
   }
+
+  remill::CloneFunctionInto(func, new_version);
+
+  // Now that we're done, erase the body of `func`. We keep `func` around
+  // just in case it will be needed in future lifts.
+  EraseFunctionBody(func);
 
   // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
-  impl->AddFunction(new_version, address);
+  impl->AddEntity(new_version, address);
+
+  // The function we just lifted may call other functions, so we need to go
+  // find those and also use them to update the context.
+  for (const auto &block : *func) {
+    for (const auto &inst : block) {
+      llvm::Function *called_func = nullptr;
+      if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+        called_func = call->getCalledFunction();
+      } else if (auto invoke = llvm::dyn_cast<llvm::InvokeInst>(&inst)) {
+        called_func = invoke->getCalledFunction();
+      }
+      if (called_func) {
+        const auto called_func_name = called_func->getName().str();
+        auto called_func_addr = impl->function_lifter.AddressOfNamedFunction(
+            called_func_name);
+
+        if (called_func_addr) {
+          impl->AddEntity(called_func, *called_func_addr);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace anvill

@@ -65,6 +65,10 @@ add_library(anvill STATIC
   include/anvill/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.h
   src/Lifters/FunctionLifter.cpp
+  
+  include/anvill/Lifters/DataLifter.h
+  src/Lifters/DataLifter.h
+  src/Lifters/DataLifter.cpp
     
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp

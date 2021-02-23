@@ -32,8 +32,6 @@
 
 #include <glog/logging.h>
 
-#include "ValueLifter.h"
-
 namespace anvill {
 
 ContextImpl::~ContextImpl(void) {}
@@ -46,7 +44,8 @@ ContextImpl::ContextImpl(
       memory_provider(mem_provider_),
       type_provider(type_provider_),
       value_lifter(options),
-      function_lifter(options, *mem_provider_, *type_provider_) {
+      function_lifter(options, *mem_provider_, *type_provider_),
+      data_lifter(options, *mem_provider_, *type_provider_) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
 }
@@ -69,28 +68,34 @@ llvm::Constant *ContextImpl::TryLiftData(
   return nullptr;
 }
 
-// Tells the entity lifter that `func` is the lifted function at `address`.
-// There is some collusion between the `EntityLifter` and the `FunctionLifter`
-// to ensure their view of the world remains consistent.
-void ContextImpl::AddFunction(llvm::Function *func, uint64_t address) {
+// Tells the entity lifter that `entity` is the lifted function/data at
+// `address`. There is some collusion between the `Context`, the
+// `FunctionLifter`, the `DataLifter`, and the `ValueLifter` to ensure their
+// view of the world remains consistent.
+void ContextImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
+  address_to_entity[address].insert(entity);
+  entity_to_address[entity] = address;
+}
 
-  address_to_entity[address] = func;
-  entity_to_address[func] = address;
+// Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
+// then return the address of that entity in the binary being lifted.
+std::optional<uint64_t> ContextImpl::AddressOfEntity(
+    llvm::GlobalValue *entity) const {
+  auto it = entity_to_address.find(entity);
+  if (it == entity_to_address.end()) {
+    return std::nullopt;
+  } else {
+    return it->second;
+  }
+}
 
-  // This function might call other functions, so make sure the entity lifter
-  // knows about the addresses of those other functions.
-  for (const auto &block : *func) {
-    for (const auto &inst : block) {
-      if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-        if (auto called_func = call->getCalledFunction(); called_func) {
-          const auto called_func_name = called_func->getName().str();
-          auto called_func_addr = function_lifter.AddressOfNamedFunction(
-              called_func_name);
-          if (called_func_addr) {
-            entity_to_address.emplace(called_func, *called_func_addr);
-          }
-        }
-      }
+// Applies a callback `cb` to each entity at a specified address.
+void ContextImpl::ForEachEntityAtAddress(
+    uint64_t address, std::function<void(llvm::GlobalValue *)> cb) const {
+  if (auto it = address_to_entity.find(address);
+      it != address_to_entity.end()) {
+    for (auto gv : it->second) {
+      cb(gv);
     }
   }
 }
@@ -107,12 +112,7 @@ Context::Context(const LifterOptions &options_,
 // then return the address of that entity in the binary being lifted.
 std::optional<uint64_t> Context::AddressOfEntity(
     llvm::GlobalValue *entity) const {
-  auto it = impl->entity_to_address.find(entity);
-  if (it == impl->entity_to_address.end()) {
-    return std::nullopt;
-  } else {
-    return it->second;
-  }
+  return impl->AddressOfEntity(entity);
 }
 
 // Return the options being used by this entity lifter.
