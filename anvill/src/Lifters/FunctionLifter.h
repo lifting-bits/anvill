@@ -203,6 +203,13 @@ class FunctionLifter {
                          remill::Instruction *delayed_inst,
                          llvm::BasicBlock *block);
 
+  // Visit a conditional indirect jump control-flow instruction. This is a mix
+  // between indirect jumps and conditional jumps that appears on the
+  // ARMv7 (AArch32) architecture, where many instructions are predicated.
+  void VisitConditionalIndirectJump(const remill::Instruction &inst,
+                                    remill::Instruction *delayed_inst,
+                                    llvm::BasicBlock *block);
+
   // Visit a function return control-flow instruction, which is a form of
   // indirect control-flow, but with a certain semantic associated with
   // returning from a function. This is treated similarly to indirect jumps,
@@ -211,6 +218,18 @@ class FunctionLifter {
                            remill::Instruction *delayed_inst,
                            llvm::BasicBlock *block);
 
+  // Visit a conditional function return control-flow instruction, which is a
+  // variant that is half-way between a return and a conditional jump. These
+  // are possible on ARMv7 (AArch32).
+  void VisitConditionalFunctionReturn(const remill::Instruction &inst,
+                                      remill::Instruction *delayed_inst,
+                                      llvm::BasicBlock *block);
+
+  // Try to resolve `inst.branch_taken_pc` to a lifted function, and introduce
+  // a function call to that address in `block`. Failing this, add a call
+  // to `__remill_function_call`.
+  void CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block);
+
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
   // `inst.branch_taken_pc`. In practice, what we do in this situation is try
@@ -218,6 +237,16 @@ class FunctionLifter {
   void VisitDirectFunctionCall(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block);
+
+  // Visit a conditional direct function call control-flow instruction. The
+  // target is known at decode time, and its realized address is stored in
+  // `inst.branch_taken_pc`. In practice, what we do in this situation is try
+  // to call the lifted function function at the target address if the condition
+  // is satisfied. Note that it is up to the semantics of the conditional call
+  // instruction to "tell us" if the condition is met.
+  void VisitConditionalDirectFunctionCall(const remill::Instruction &inst,
+                                          remill::Instruction *delayed_inst,
+                                          llvm::BasicBlock *block);
 
   // Visit an indirect function call control-flow instruction. Similar to
   // indirect jumps, we invoke an intrinsic function, `__remill_function_call`;
@@ -228,6 +257,13 @@ class FunctionLifter {
   void VisitIndirectFunctionCall(const remill::Instruction &inst,
                                  remill::Instruction *delayed_inst,
                                  llvm::BasicBlock *block);
+
+
+  // Visit a conditional indirect function call control-flow instruction.
+  // This is a cross between conditional jumps and indirect function calls.
+  void VisitConditionalIndirectFunctionCall(const remill::Instruction &inst,
+                                            remill::Instruction *delayed_inst,
+                                            llvm::BasicBlock *block);
 
   // Helper to figure out the address where execution will resume after a
   // function call. In practice this is the instruction following the function

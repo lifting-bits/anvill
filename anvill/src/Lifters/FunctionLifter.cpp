@@ -100,6 +100,19 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
                                 module);
 }
 
+// We're calling a remill intrinsic and we want to "mute" the escape of the
+// `State` pointer by replacing it with an `undef` value. This permits
+// optimizations while allowing us to still observe what reaches the `pc`
+// argument of the intrinsic. This is valuable for function return intrinsics,
+// because it lets us verify that the value that we initialize into the return
+// address location actually reaches the `pc` parameter of the
+// `__remill_function_return`.
+static void MuteStateEscape(llvm::CallInst *call) {
+  auto state_ptr_arg = call->getArgOperand(remill::kStatePointerArgNum);
+  auto undef_val = llvm::UndefValue::get(state_ptr_arg->getType());
+  call->setArgOperand(remill::kStatePointerArgNum, undef_val);
+}
+
 }  // namespace
 
 FunctionLifter::~FunctionLifter(void) {}
@@ -196,7 +209,8 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
 // bytes which cannot be decoded, or an empty byte sequence.
 void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                   llvm::BasicBlock *block) {
-  remill::AddTerminatingTailCall(block, intrinsics.error);
+  MuteStateEscape(
+      remill::AddTerminatingTailCall(block, intrinsics.error));
 }
 
 // Visit an error instruction. An error instruction is guaranteed to trap
@@ -208,7 +222,8 @@ void FunctionLifter::VisitError(const remill::Instruction &inst,
                                 remill::Instruction *delayed_inst,
                                 llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  remill::AddTerminatingTailCall(block, intrinsics.error);
+  MuteStateEscape(
+      remill::AddTerminatingTailCall(block, intrinsics.error));
 }
 
 // Visit a normal instruction. Normal instructions have straight line control-
@@ -249,6 +264,26 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   remill::AddTerminatingTailCall(block, intrinsics.jump);
 }
 
+// Visit a conditional indirect jump control-flow instruction. This is a mix
+// between indirect jumps and conditional jumps that appears on the
+// ARMv7 (AArch32) architecture, where many instructions are predicated.
+void FunctionLifter::VisitConditionalIndirectJump(
+    const remill::Instruction &inst, remill::Instruction *delayed_inst,
+    llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           not_taken_block);
+}
+
 // Visit a function return control-flow instruction, which is a form of
 // indirect control-flow, but with a certain semantic associated with
 // returning from a function. This is treated similarly to indirect jumps,
@@ -257,20 +292,36 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                          remill::Instruction *delayed_inst,
                                          llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::ReturnInst::Create(llvm_context, remill::LoadMemoryPointer(block),
-                           block);
+  MuteStateEscape(
+      remill::AddTerminatingTailCall(block, intrinsics.function_return));
 }
 
-// Visit a direct function call control-flow instruction. The target is known
-// at decode time, and its realized address is stored in
-// `inst.branch_taken_pc`. In practice, what we do in this situation is try
-// to call the lifted function function at the target address.
-void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
-                                             remill::Instruction *delayed_inst,
-                                             llvm::BasicBlock *block) {
+// Visit a conditional function return control-flow instruction, which is a
+// variant that is half-way between a return and a conditional jump. These
+// are possible on ARMv7 (AArch32).
+void FunctionLifter::VisitConditionalFunctionReturn(
+    const remill::Instruction &inst, remill::Instruction *delayed_inst,
+    llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  MuteStateEscape(
+      remill::AddTerminatingTailCall(taken_block, intrinsics.function_return));
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           not_taken_block);
+}
 
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-
+// Try to resolve `inst.branch_taken_pc` to a lifted function, and introduce
+// a function call to that address in `block`. Failing this, add a call
+// to `__remill_function_call`.
+void FunctionLifter::CallFunction(const remill::Instruction &inst,
+                                  llvm::BasicBlock *block) {
   // First, try to see if it's actually related to another function. This is
   // equivalent to a tail-call in the original code.
   const auto maybe_other_decl =
@@ -309,8 +360,43 @@ void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
     // to an unknown address.
     remill::AddCall(block, intrinsics.function_call);
   }
+}
 
+// Visit a direct function call control-flow instruction. The target is known
+// at decode time, and its realized address is stored in
+// `inst.branch_taken_pc`. In practice, what we do in this situation is try
+// to call the lifted function function at the target address.
+void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
+                                             remill::Instruction *delayed_inst,
+                                             llvm::BasicBlock *block) {
+
+  VisitDelayedInstruction(inst, delayed_inst, block, true);
+  CallFunction(inst, block);
   VisitAfterFunctionCall(inst, block);
+}
+
+// Visit a conditional direct function call control-flow instruction. The
+// target is known at decode time, and its realized address is stored in
+// `inst.branch_taken_pc`. In practice, what we do in this situation is try
+// to call the lifted function function at the target address if the condition
+// is satisfied. Note that it is up to the semantics of the conditional call
+// instruction to "tell us" if the condition is met.
+void FunctionLifter::VisitConditionalDirectFunctionCall(
+    const remill::Instruction &inst, remill::Instruction *delayed_inst,
+    llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  CallFunction(inst, taken_block);
+  VisitAfterFunctionCall(inst, taken_block);
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           not_taken_block);
 }
 
 // Visit an indirect function call control-flow instruction. Similar to
@@ -326,6 +412,26 @@ void FunctionLifter::VisitIndirectFunctionCall(
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddCall(block, intrinsics.function_call);
   VisitAfterFunctionCall(inst, block);
+}
+
+// Visit a conditional indirect function call control-flow instruction.
+// This is a cross between conditional jumps and indirect function calls.
+void FunctionLifter::VisitConditionalIndirectFunctionCall(
+    const remill::Instruction &inst, remill::Instruction *delayed_inst,
+    llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  remill::AddCall(taken_block, intrinsics.function_call);
+  VisitAfterFunctionCall(inst, taken_block);
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           not_taken_block);
 }
 
 // Helper to figure out the address where execution will resume after a
@@ -441,7 +547,6 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
 void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                             remill::Instruction *delayed_inst,
                                             llvm::BasicBlock *block) {
-
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block =
@@ -702,14 +807,26 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
     case remill::Instruction::kCategoryIndirectJump:
       VisitIndirectJump(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalIndirectJump:
+      VisitConditionalIndirectJump(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryFunctionReturn:
       VisitFunctionReturn(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalFunctionReturn:
+      VisitConditionalFunctionReturn(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryDirectFunctionCall:
       VisitDirectFunctionCall(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalDirectFunctionCall:
+      VisitDirectFunctionCall(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryIndirectFunctionCall:
       VisitIndirectFunctionCall(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalIndirectFunctionCall:
+      VisitConditionalIndirectFunctionCall(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryConditionalBranch:
       VisitConditionalBranch(inst, delayed_inst, block);
