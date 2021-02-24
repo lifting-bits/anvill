@@ -113,9 +113,17 @@ class MCToIRLifter {
   void VisitIndirectJump(const remill::Instruction &inst,
                          remill::Instruction *delayed_inst,
                          llvm::BasicBlock *block);
+  void VisitConditionalIndirectJump(const remill::Instruction &inst,
+                           remill::Instruction *delayed_inst,
+                           llvm::BasicBlock *block);
+
   void VisitFunctionReturn(const remill::Instruction &inst,
                            remill::Instruction *delayed_inst,
                            llvm::BasicBlock *block);
+
+  void VisitConditionalFunctionReturn(const remill::Instruction &inst,
+                             remill::Instruction *delayed_inst,
+                             llvm::BasicBlock *block);
 
   std::pair<uint64_t, llvm::Value *>
   LoadFunctionReturnAddress(const remill::Instruction &inst,
@@ -124,9 +132,18 @@ class MCToIRLifter {
   void VisitDirectFunctionCall(const remill::Instruction &inst,
                                remill::Instruction *delayed_inst,
                                llvm::BasicBlock *block);
+
+  void VisitConditionalDirectFunctionCall(const remill::Instruction &inst,
+                                 remill::Instruction *delayed_inst,
+                                 llvm::BasicBlock *block);
+
   void VisitIndirectFunctionCall(const remill::Instruction &inst,
                                  remill::Instruction *delayed_inst,
                                  llvm::BasicBlock *block);
+
+  void VisitConditionalIndirectFunctionCall(const remill::Instruction &inst,
+                                   remill::Instruction *delayed_inst,
+                                   llvm::BasicBlock *block);
 
   void VisitAfterFunctionCall(const remill::Instruction &inst,
                               llvm::BasicBlock *block);
