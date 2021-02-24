@@ -17,14 +17,14 @@
 
 #pragma once
 
+#include <anvill/Decl.h>
+#include <anvill/Lifters/Options.h>
+
 #include <cstdint>
-#include <memory>
 #include <map>
+#include <memory>
 #include <set>
 #include <unordered_map>
-#include <anvill/Decl.h>
-
-#include <anvill/Lifters/Options.h>
 
 namespace llvm {
 class GlobalAlias;

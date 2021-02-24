@@ -94,59 +94,37 @@ ParseType(llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
           switch (spec[++i]) {
 
             // `_M` -> `%`.
-            case 'M':
-              ch = '%';
-              goto retry;
+            case 'M': ch = '%'; goto retry;
 
             // `_S` -> `*`.
-            case 'S':
-              ch = '*';
-              goto retry;
+            case 'S': ch = '*'; goto retry;
 
             // `_A` -> `(`.
-            case 'A':
-              ch = '(';
-              goto retry;
+            case 'A': ch = '('; goto retry;
 
             // `_B` -> `)`.
-            case 'B':
-              ch = ')';
-              goto retry;
+            case 'B': ch = ')'; goto retry;
 
             // `_C` -> `[`.
-            case 'C':
-              ch = '[';
-              goto retry;
+            case 'C': ch = '['; goto retry;
 
             // `_D` -> `]`.
-            case 'D':
-              ch = ']';
-              goto retry;
+            case 'D': ch = ']'; goto retry;
 
             // `_E` -> `{`.
-            case 'E':
-              ch = '[';
-              goto retry;
+            case 'E': ch = '['; goto retry;
 
             // `_F` -> `}`.
-            case 'F':
-              ch = ']';
-              goto retry;
+            case 'F': ch = ']'; goto retry;
 
             // `_G` -> `<`.
-            case 'G':
-              ch = '<';
-              goto retry;
+            case 'G': ch = '<'; goto retry;
 
             // `_H` -> `>`.
-            case 'H':
-              ch = '>';
-              goto retry;
+            case 'H': ch = '>'; goto retry;
 
             // `_V` -> `&`.
-            case 'V':
-              ch = '&';
-              goto retry;
+            case 'V': ch = '&'; goto retry;
           }
         }
 

@@ -15,19 +15,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Providers/TypeProvider.h>
-
-#include <anvill/Program.h>
 #include <anvill/Decl.h>
-
+#include <anvill/Program.h>
+#include <anvill/Providers/TypeProvider.h>
+#include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
-
 #include <remill/BC/Util.h>
-
-#include <glog/logging.h>
 
 namespace anvill {
 namespace {
@@ -35,7 +31,6 @@ namespace {
 // Provider of memory wrapping around an `anvill::Program`.
 class ProgramTypeProvider final : public TypeProvider {
  public:
-
   explicit ProgramTypeProvider(llvm::LLVMContext &context_,
                                const Program &program_)
       : TypeProvider(context_),
@@ -51,7 +46,8 @@ class ProgramTypeProvider final : public TypeProvider {
   void QueryRegisterStateAtInstruction(
       uint64_t func_address, uint64_t inst_address,
       std::function<void(const std::string &, llvm::Type *,
-                         std::optional<uint64_t>)> typed_reg_cb) final;
+                         std::optional<uint64_t>)>
+          typed_reg_cb) final;
 
  private:
   ProgramTypeProvider(void) = delete;
@@ -80,7 +76,8 @@ ProgramTypeProvider::TryGetFunctionType(uint64_t address) {
 void ProgramTypeProvider::QueryRegisterStateAtInstruction(
     uint64_t func_address, uint64_t inst_address,
     std::function<void(const std::string &, llvm::Type *,
-                       std::optional<uint64_t>)> typed_reg_cb) {
+                       std::optional<uint64_t>)>
+        typed_reg_cb) {
 
   auto decl = program.FindFunction(func_address);
   if (!decl) {
@@ -101,8 +98,7 @@ void ProgramTypeProvider::QueryRegisterStateAtInstruction(
 
 TypeProvider::~TypeProvider(void) {}
 
-TypeProvider::TypeProvider(llvm::LLVMContext &context_)
-    : context(context_) {}
+TypeProvider::TypeProvider(llvm::LLVMContext &context_) : context(context_) {}
 
 // Try to get the type of the register named `reg_name` on entry to the
 // instruction at `inst_address` inside the function beginning at
@@ -113,8 +109,9 @@ void TypeProvider::QueryRegisterStateAtInstruction(
                        std::optional<uint64_t>)>) {}
 
 // Sources bytes from an `anvill::Program`.
-std::shared_ptr<TypeProvider> TypeProvider::CreateProgramTypeProvider(
-    llvm::LLVMContext &context_, const Program &program) {
+std::shared_ptr<TypeProvider>
+TypeProvider::CreateProgramTypeProvider(llvm::LLVMContext &context_,
+                                        const Program &program) {
   return std::make_shared<ProgramTypeProvider>(context_, program);
 }
 

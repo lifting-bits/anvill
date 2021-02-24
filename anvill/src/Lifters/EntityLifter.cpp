@@ -19,18 +19,15 @@
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
-
-#include <remill/Arch/Arch.h>
-#include <remill/BC/Util.h>
-
+#include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <remill/Arch/Arch.h>
+#include <remill/BC/Util.h>
 
 #include <sstream>
-
-#include <glog/logging.h>
 
 namespace anvill {
 
@@ -55,8 +52,9 @@ EntityLifterImpl::EntityLifterImpl(
 // A key issue with `TryLiftData` is that we might be requesting `address`,
 // but `address` may be inside of another piece of data, which begins
 // at `data_address`.
-llvm::Constant *EntityLifterImpl::TryLiftData(
-    uint64_t address, uint64_t data_address, llvm::Type *data_type) {
+llvm::Constant *EntityLifterImpl::TryLiftData(uint64_t address,
+                                              uint64_t data_address,
+                                              llvm::Type *data_type) {
   auto &context = options.module->getContext();
   data_type = remill::RecontextualizeType(data_type, context);
 
@@ -64,7 +62,7 @@ llvm::Constant *EntityLifterImpl::TryLiftData(
   ss << "data_" << std::hex << data_address;
   const auto ref_name = ss.str();
 
-//  auto alias = llvm::GlobalAlias
+  //  auto alias = llvm::GlobalAlias
   return nullptr;
 }
 
@@ -79,8 +77,8 @@ void EntityLifterImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
-std::optional<uint64_t> EntityLifterImpl::AddressOfEntity(
-    llvm::GlobalValue *entity) const {
+std::optional<uint64_t>
+EntityLifterImpl::AddressOfEntity(llvm::GlobalValue *entity) const {
   auto it = entity_to_address.find(entity);
   if (it == entity_to_address.end()) {
     return std::nullopt;
@@ -105,13 +103,13 @@ EntityLifter::~EntityLifter(void) {}
 EntityLifter::EntityLifter(const LifterOptions &options_,
                            const std::shared_ptr<MemoryProvider> &mem_provider_,
                            const std::shared_ptr<TypeProvider> &type_provider_)
-    : impl(std::make_shared<EntityLifterImpl>(
-          options_, mem_provider_, type_provider_)) {}
+    : impl(std::make_shared<EntityLifterImpl>(options_, mem_provider_,
+                                              type_provider_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
-std::optional<uint64_t> EntityLifter::AddressOfEntity(
-    llvm::GlobalValue *entity) const {
+std::optional<uint64_t>
+EntityLifter::AddressOfEntity(llvm::GlobalValue *entity) const {
   return impl->AddressOfEntity(entity);
 }
 

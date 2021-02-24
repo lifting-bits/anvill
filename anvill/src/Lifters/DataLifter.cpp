@@ -20,14 +20,11 @@
 #include <anvill/Decl.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/TypePrinter.h>
-
-#include <remill/BC/Util.h>
-
+#include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/GlobalAlias.h>
 #include <llvm/IR/Module.h>
-
-#include <glog/logging.h>
+#include <remill/BC/Util.h>
 
 #include <sstream>
 
@@ -66,9 +63,8 @@ FindBaseAndOffset(const llvm::DataLayout &dl, llvm::Value *ptr) {
     return FindBaseAndOffset(dl, bc->getOperand(0));
 
   } else {
-    LOG(ERROR)
-        << "Unable to drill down to underlying value for "
-        << remill::LLVMThingToString(ptr);
+    LOG(ERROR) << "Unable to drill down to underlying value for "
+               << remill::LLVMThingToString(ptr);
     return {ptr, 0};
   }
 }
@@ -78,8 +74,8 @@ FindBaseAndOffset(const llvm::DataLayout &dl, llvm::Value *ptr) {
 DataLifter::~DataLifter(void) {}
 
 DataLifter::DataLifter(const LifterOptions &options_,
-                               MemoryProvider &memory_provider_,
-                               TypeProvider &type_provider_)
+                       MemoryProvider &memory_provider_,
+                       TypeProvider &type_provider_)
     : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
@@ -87,8 +83,9 @@ DataLifter::DataLifter(const LifterOptions &options_,
 
 // Declare a lifted a variable. Will not return `nullptr`. One issue that we
 // face is that we want to
-llvm::GlobalValue *DataLifter::GetOrDeclareData(
-    const GlobalVarDecl &decl, EntityLifterImpl &lifter_context) {
+llvm::GlobalValue *
+DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
+                             EntityLifterImpl &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
@@ -98,8 +95,7 @@ llvm::GlobalValue *DataLifter::GetOrDeclareData(
   // Go try to figure out if we've already got a declaration for this specific
   // piece of data at the corresponding address. All data is versioned
   lifter_context.ForEachEntityAtAddress(
-      decl.address,
-      [&] (llvm::GlobalValue *gv) {
+      decl.address, [&](llvm::GlobalValue *gv) {
         if (gv->getValueType() == type) {
           found_by_type = gv;
           found_by_address = gv;
@@ -119,6 +115,7 @@ llvm::GlobalValue *DataLifter::GetOrDeclareData(
   // We'll use an existing declaration, create a new GEP, and cast as
   // necessary.
   if (auto [base, offset] = FindBaseAndOffset(dl, found_by_address); base) {
+
     // TODO(pag,alessandro): Something related to `remill::BuildPointerToOffset`
     //                       or `remill::BuildIndexes` to return an initialized
     //                       global alias.
@@ -163,7 +160,7 @@ llvm::GlobalValue *DataLifter::GetOrDeclareData(
   // !!! TEMPORARY because we need all aliasees to have an initializer!!!
   std::stringstream ss2;
   ss2 << "var_" << std::hex << decl.address << '_'
-     << TranslateType(*type, dl, true);
+      << TranslateType(*type, dl, true);
 
   const auto gv = new llvm::GlobalVariable(
       *options.module, type, false, llvm::GlobalValue::ExternalLinkage,
@@ -177,8 +174,8 @@ llvm::GlobalValue *DataLifter::GetOrDeclareData(
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.
-llvm::GlobalValue *EntityLifter::DeclareEntity(
-    const GlobalVarDecl &decl) const {
+llvm::GlobalValue *
+EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =

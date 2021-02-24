@@ -40,8 +40,7 @@ namespace {
 static void
 TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
                       std::unordered_map<llvm::StructType *, size_t> &ids,
-                      const llvm::DataLayout &dl,
-                      bool alphanum) {
+                      const llvm::DataLayout &dl, bool alphanum) {
   switch (type.getTypeID()) {
     case llvm::Type::VoidTyID: ss << 'v'; break;
 
@@ -201,7 +200,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     case llvm::Type::ArrayTyID: {
       const auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
       ss << (alphanum ? "_C" : "[");
-      TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl, alphanum);
+      TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl,
+                            alphanum);
       ss << 'x' << array_ptr->getNumElements() << (alphanum ? "_D" : "]");
       break;
     }
@@ -230,10 +230,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       const auto type_size = dl.getTypeStoreSize(&type);
       const auto aligned_size = dl.getTypeAllocSize(&type);
       if (aligned_size > type_size) {
-        ss << (alphanum ? "_E_C" : "{[")
-           << "Bx" << type_size
-           << (alphanum ? "_D_C" : "][")
-           << "Bx" << (aligned_size - type_size)
+        ss << (alphanum ? "_E_C" : "{[") << "Bx" << type_size
+           << (alphanum ? "_D_C" : "][") << "Bx" << (aligned_size - type_size)
            << (alphanum ? "_D_F" : "]}");
       } else {
         ss << (alphanum ? "_C" : "[") << "Bx" << type_size

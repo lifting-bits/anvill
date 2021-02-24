@@ -18,7 +18,6 @@
 #pragma once
 
 #include <anvill/Lifters/Options.h>
-
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
 

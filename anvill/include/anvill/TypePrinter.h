@@ -26,6 +26,6 @@ class DataLayout;
 namespace anvill {
 
 std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl,
-                          bool alphanum=false);
+                          bool alphanum = false);
 
 }  // namespace anvill

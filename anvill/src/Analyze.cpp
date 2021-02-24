@@ -56,8 +56,8 @@
 
 namespace anvill {
 
-XrefExprFolder::XrefExprFolder(const EntityLifter &context_, const Program &program_,
-                               llvm::Module &module_)
+XrefExprFolder::XrefExprFolder(const EntityLifter &context_,
+                               const Program &program_, llvm::Module &module_)
     : program(program_),
       lifter_context(context_),
       module(module_),
@@ -540,10 +540,8 @@ XrefExprFolder::TryResolveGlobal(llvm::GlobalValue *gv) {
   program.ForEachAddressOfName(
       gv->getName().str(),
       [&ret](uint64_t ea, const FunctionDecl *, const GlobalVarDecl *) {
-
-        LOG(WARNING)
-            << "Falling back to Program to resolve xref at address "
-            << std::hex << ea << std::dec;
+        LOG(WARNING) << "Falling back to Program to resolve xref at address "
+                     << std::hex << ea << std::dec;
 
         ret.first = true;
         ret.second = ea;
@@ -1144,8 +1142,7 @@ llvm::Constant *GetAddress(const Program &program, llvm::Module &module,
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
 void RecoverStackMemoryAccesses(const EntityLifter &lifter_context,
-                                const Program &program,
-                                llvm::Module &module) {
+                                const Program &program, llvm::Module &module) {
 
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
@@ -1161,8 +1158,7 @@ void RecoverStackMemoryAccesses(const EntityLifter &lifter_context,
 // Recover higher-level memory accesses in the lifted functions declared
 // in `program` and defined in `module`.
 void RecoverMemoryAccesses(const EntityLifter &lifter_context,
-                           const Program &program,
-                           llvm::Module &module) {
+                           const Program &program, llvm::Module &module) {
 
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> fixups;
   std::vector<std::tuple<llvm::Use *, Byte, llvm::Type *>> maybe_fixups;
@@ -1174,8 +1170,9 @@ void RecoverMemoryAccesses(const EntityLifter &lifter_context,
 
   for (auto &var : module.globals()) {
     if (var.getName().startswith("__anvill_type")) {
-      FindPossibleCrossReferences(lifter_context, program, module, var.getName(),
-                                  fixups, maybe_fixups, ci_fixups);
+      FindPossibleCrossReferences(lifter_context, program, module,
+                                  var.getName(), fixups, maybe_fixups,
+                                  ci_fixups);
     }
   }
 

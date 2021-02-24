@@ -17,19 +17,17 @@
 
 #pragma once
 
-#include <cstdint>
-#include <memory>
-#include <map>
-#include <set>
-#include <unordered_map>
-
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
-
+#include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
-#include <llvm/IR/CallingConv.h>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
+#include <unordered_map>
 
 namespace llvm {
 class Function;
@@ -67,18 +65,16 @@ class FunctionLifter {
   llvm::Function *LiftFunction(const FunctionDecl &decl);
 
   // Returns the address of a named function.
-  std::optional<uint64_t> AddressOfNamedFunction(
-      const std::string &func_name) const;
+  std::optional<uint64_t>
+  AddressOfNamedFunction(const std::string &func_name) const;
 
   // Update the associated entity lifter with information about this
   // function, and copy the function into the context's module. Returns the
   // version of `func` inside the module of the lifter context.
-  llvm::Function *AddFunctionToContext(
-      llvm::Function *func, uint64_t address,
-      EntityLifterImpl &lifter_context) const;
+  llvm::Function *AddFunctionToContext(llvm::Function *func, uint64_t address,
+                                       EntityLifterImpl &lifter_context) const;
 
  private:
-
   const LifterOptions options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
@@ -98,11 +94,11 @@ class FunctionLifter {
   const bool is_sparc;
 
   // Convenient to keep around.
-  llvm::Type * const i8_type;
-  llvm::Constant * const i8_zero;
-  llvm::Type * const i32_type;
-  llvm::PointerType * const mem_ptr_type;
-  llvm::PointerType * const state_ptr_type;
+  llvm::Type *const i8_type;
+  llvm::Constant *const i8_zero;
+  llvm::Type *const i32_type;
+  llvm::PointerType *const mem_ptr_type;
+  llvm::PointerType *const state_ptr_type;
 
   // Address of the function currently being lifted.
   uint64_t func_address{0};
@@ -136,7 +132,8 @@ class FunctionLifter {
 
   // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
   // with `to_pc`.
-  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *> edge_to_dest_block;
+  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *>
+      edge_to_dest_block;
 
   // Maps an instruction address to a basic block that will hold the lifted code
   // for that instruction.
@@ -300,15 +297,14 @@ class FunctionLifter {
   // Visit a type hinted register at the current instruction. We use this
   // information to try to improve lifting of possible pointers later on
   // in the optimization process.
-  void VisitTypedHintedRegister(
-      llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
-      std::optional<uint64_t> maybe_value);
+  void VisitTypedHintedRegister(llvm::BasicBlock *block,
+                                const std::string &reg_name, llvm::Type *type,
+                                std::optional<uint64_t> maybe_value);
 
   // Visit an instruction, and lift it into a basic block. Then, based off of
   // the category of the instruction, invoke one of the category-specific
   // lifters to enact a change in control-flow.
-  void VisitInstruction(
-      remill::Instruction &inst, llvm::BasicBlock *block);
+  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block);
 
   // In the process of lifting code, we may want to call another native
   // function, `native_func`, for which we have high-level type info. The main
@@ -320,8 +316,8 @@ class FunctionLifter {
   // type, and instead we let LLVM's optimizations figure it out later during
   // scalar replacement of aggregates (SROA).
   llvm::Value *TryCallNativeFunction(uint64_t native_addr,
-                                  llvm::Function *native_func,
-                                  llvm::BasicBlock *block);
+                                     llvm::Function *native_func,
+                                     llvm::BasicBlock *block);
 
   // Visit all instructions. This runs the work list and lifts instructions.
   void VisitInstructions(uint64_t address);
@@ -357,8 +353,8 @@ class FunctionLifter {
   // Initialize the state structure with default values, loaded from global
   // variables. The purpose of these global variables is to show that there are
   // some unmodelled external dependencies inside of a lifted function.
-  void InitializeStateStructureFromGlobalRegisterVariables(
-      llvm::BasicBlock *block);
+  void
+  InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
 
   // Initialize a symbolic program counter value in a lifted function. This
   // mechanism is used to improve cross-reference discovery by using a
@@ -378,14 +374,14 @@ class FunctionLifter {
 
   // Initialize a symbolic return address. This is similar to symbolic program
   // counters/stack pointers.
-  llvm::Value *InitializeSymbolicReturnAddress(
-      llvm::BasicBlock *block, llvm::Value *mem_ptr,
-      const ValueDecl &ret_address);
+  llvm::Value *InitializeSymbolicReturnAddress(llvm::BasicBlock *block,
+                                               llvm::Value *mem_ptr,
+                                               const ValueDecl &ret_address);
 
   // Initialize a concrete return address. This is an intrinsic function call.
-  llvm::Value *InitializeConcreteReturnAddress(
-      llvm::BasicBlock *block, llvm::Value *mem_ptr,
-      const ValueDecl &ret_address);
+  llvm::Value *InitializeConcreteReturnAddress(llvm::BasicBlock *block,
+                                               llvm::Value *mem_ptr,
+                                               const ValueDecl &ret_address);
 };
 
 }  // namespace anvill

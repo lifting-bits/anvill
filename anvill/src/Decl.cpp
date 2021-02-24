@@ -301,8 +301,8 @@ ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
 #endif
 
 // Create a Function Declaration from an `llvm::Function`.
-llvm::Expected<FunctionDecl>
-FunctionDecl::Create(llvm::Function &func, const remill::Arch *arch) {
+llvm::Expected<FunctionDecl> FunctionDecl::Create(llvm::Function &func,
+                                                  const remill::Arch *arch) {
 
   FunctionDecl decl;
   decl.arch = arch;

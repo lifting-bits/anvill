@@ -17,12 +17,12 @@
 
 #pragma once
 
+#include <anvill/Lifters/EntityLifter.h>
 #include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Compat/Error.h>
 
-#include <anvill/Lifters/EntityLifter.h>
-
 #include <cstdint>
+
 #include "Lifters/EntityLifter.h"
 
 namespace llvm {
@@ -45,8 +45,8 @@ class Program;
 // Fold constant expressions into possible cross-references.
 class XrefExprFolder {
  public:
-  XrefExprFolder(const EntityLifter &lifter_context,
-                 const Program &program_, llvm::Module &module_);
+  XrefExprFolder(const EntityLifter &lifter_context, const Program &program_,
+                 llvm::Module &module_);
 
   const Program &program;
   EntityLifter lifter_context;

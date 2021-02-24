@@ -26,6 +26,7 @@ class Arch;
 namespace anvill {
 
 enum class StateStructureInitializationProcedure : char {
+
   // Don't do anything with the `alloca State`.
   kNone,
 
@@ -68,10 +69,10 @@ class LifterOptions {
   }
 
   // What is the architecture being used for lifting?
-  const remill::Arch * const arch;
+  const remill::Arch *const arch;
 
   // Target module into which code will be lifted.
-  llvm::Module * const module;
+  llvm::Module *const module;
 
   // The function lifter produces functions with Remill's state structure
   // allocated on the stack. This configuration option determines how the
@@ -84,7 +85,7 @@ class LifterOptions {
   //      (add (ptrtoint __anvill_pc) <address>)
   //
   // Otherwise, a concrete integer is used, i.e. `<address>`.
-  bool symbolic_program_counter:1;
+  bool symbolic_program_counter : 1;
 
   // Should the stack pointer in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
@@ -93,7 +94,7 @@ class LifterOptions {
   //
   // Otherwise, the initial value of the stack pointer is loaded from a global
   // variable, `__anvill_reg_<stack pointer name>`.
-  bool symbolic_stack_pointer:1;
+  bool symbolic_stack_pointer : 1;
 
   // Should the return address in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
@@ -104,7 +105,7 @@ class LifterOptions {
   // will be the result of the intrinsic function call:
   //
   //      llvm.returnaddress(0)
-  bool symbolic_return_address:1;
+  bool symbolic_return_address : 1;
 
   // Should we ask the type provider to provide us with typing hints for
   // registers on entry to instructions? If so, then if there's a register
@@ -121,7 +122,7 @@ class LifterOptions {
   // TODO(pag): Convert this into using a global variable approach, like
   //            with `__anvill_pc`. Then it will compose nicely with
   //            `__anvill_sp`, which it currently does not.
-  bool symbolic_register_types:1;
+  bool symbolic_register_types : 1;
 
   // If `symbolic_register_types` is `true`, and if the type provider gives us
   // a concrete value that it believes resides in a register at a specific point
@@ -138,7 +139,7 @@ class LifterOptions {
   // time of eliminating accesses to the `State` structure. Second, from `B`s
   // perspective, `state->reg` is now a constant value, allowing store-to-load
   // forwarding.
-  bool store_inferred_register_values:1;
+  bool store_inferred_register_values : 1;
 
  private:
   LifterOptions(void) = delete;

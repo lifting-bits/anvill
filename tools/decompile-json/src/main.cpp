@@ -177,7 +177,8 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 //
 static bool ParseTypedRegister(
     const remill::Arch *arch, llvm::LLVMContext &context,
-    std::unordered_map<uint64_t, std::vector<anvill::TypedRegisterDecl>> &reg_map,
+    std::unordered_map<uint64_t, std::vector<anvill::TypedRegisterDecl>>
+        &reg_map,
     llvm::json::Object *obj) {
 
   auto maybe_address = obj->getInteger("address");
@@ -678,7 +679,8 @@ int main(int argc, char *argv[]) {
 
   anvill::Program program;
   auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
-  auto types = anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+  auto types =
+      anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
   anvill::LifterOptions options(arch.get(), module);
 

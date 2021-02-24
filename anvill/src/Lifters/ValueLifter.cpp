@@ -18,16 +18,14 @@
 #include "ValueLifter.h"
 
 #include <glog/logging.h>
-
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-#include <llvm/IR/DerivedTypes.h>
-
-#include <remill/BC/Util.h>
 #include <remill/BC/Compat/VectorType.h>
+#include <remill/BC/Util.h>
 
 #include "EntityLifter.h"
 

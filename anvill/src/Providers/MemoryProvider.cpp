@@ -15,9 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Providers/MemoryProvider.h>
-
 #include <anvill/Program.h>
+#include <anvill/Providers/MemoryProvider.h>
 
 namespace anvill {
 namespace {
@@ -25,9 +24,7 @@ namespace {
 // Provider of memory wrapping around an `anvill::Program`.
 class ProgramMemoryProvider final : public MemoryProvider {
  public:
-
-  explicit ProgramMemoryProvider(const Program &program_)
-      : program(program_) {}
+  explicit ProgramMemoryProvider(const Program &program_) : program(program_) {}
 
   std::tuple<uint8_t, ByteAvailability, BytePermission>
   Query(uint64_t address) final {
@@ -66,8 +63,8 @@ class ProgramMemoryProvider final : public MemoryProvider {
 MemoryProvider::~MemoryProvider(void) {}
 
 // Sources bytes from an `anvill::Program`.
-std::shared_ptr<MemoryProvider> MemoryProvider::CreateProgramMemoryProvider(
-    const Program &program) {
+std::shared_ptr<MemoryProvider>
+MemoryProvider::CreateProgramMemoryProvider(const Program &program) {
   return std::make_shared<ProgramMemoryProvider>(program);
 }
 

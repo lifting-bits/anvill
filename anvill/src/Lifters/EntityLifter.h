@@ -18,7 +18,6 @@
 #pragma once
 
 #include <anvill/Lifters/EntityLifter.h>
-
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -67,8 +66,9 @@ class EntityLifterImpl {
   void AddEntity(llvm::GlobalValue *entity, uint64_t address);
 
   // Applies a callback `cb` to each entity at a specified address.
-  void ForEachEntityAtAddress(
-      uint64_t address, std::function<void(llvm::GlobalValue *)> cb) const;
+  void
+  ForEachEntityAtAddress(uint64_t address,
+                         std::function<void(llvm::GlobalValue *)> cb) const;
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.

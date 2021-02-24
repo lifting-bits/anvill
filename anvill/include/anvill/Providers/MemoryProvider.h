@@ -34,6 +34,7 @@ enum class BytePermission : uint8_t {
 };
 
 enum class ByteAvailability : uint8_t {
+
   // The address is valid, but a value for the byte is not available.
   kUnknown,
 
@@ -56,20 +57,16 @@ class MemoryProvider {
   inline static bool IsValidAddress(ByteAvailability availability) {
     switch (availability) {
       case ByteAvailability::kUnknown:
-      case ByteAvailability::kAvailable:
-        return true;
-      default:
-        return false;
+      case ByteAvailability::kAvailable: return true;
+      default: return false;
     }
   }
 
   inline static bool IsExecutable(BytePermission perms) {
     switch (perms) {
       case BytePermission::kReadableWritableExecutable:
-      case BytePermission::kReadableExecutable:
-        return true;
-      default:
-        return false;
+      case BytePermission::kReadableExecutable: return true;
+      default: return false;
     }
   }
 
@@ -78,8 +75,8 @@ class MemoryProvider {
   Query(uint64_t address) = 0;
 
   // Sources bytes from an `anvill::Program`.
-  static std::shared_ptr<MemoryProvider> CreateProgramMemoryProvider(
-      const Program &program);
+  static std::shared_ptr<MemoryProvider>
+  CreateProgramMemoryProvider(const Program &program);
 
  protected:
   MemoryProvider(void) = default;

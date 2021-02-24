@@ -16,10 +16,9 @@
  */
 
 #include <anvill/Lifters/Options.h>
-
+#include <glog/logging.h>
 #include <llvm/IR/Module.h>
 #include <remill/Arch/Arch.h>
-#include <glog/logging.h>
 
 namespace anvill {
 
@@ -28,4 +27,3 @@ void LifterOptions::CheckModuleContextMatchesArch(void) const {
 }
 
 }  // namespace anvill
-

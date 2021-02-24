@@ -15,23 +15,19 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Lifters/DeclLifter.h>
-
 #include <anvill/Decl.h>
-
-#include <remill/BC/IntrinsicTable.h>
-#include <remill/BC/Util.h>
-
+#include <anvill/Lifters/DeclLifter.h>
+#include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
-#include <llvm/IR/Instruction.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-
-#include <glog/logging.h>
+#include <remill/BC/IntrinsicTable.h>
+#include <remill/BC/Util.h>
 
 namespace anvill {
 namespace {
