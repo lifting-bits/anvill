@@ -1539,17 +1539,13 @@ llvm::Function *FunctionLifter::AddFunctionToContext(
   // The function we just lifted may call other functions, so we need to go
   // find those and also use them to update the context.
   for (auto &inst : llvm::instructions(*func)) {
-    llvm::Function *called_func = nullptr;
-    if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-      called_func = call->getCalledFunction();
-    } else if (auto invoke = llvm::dyn_cast<llvm::InvokeInst>(&inst)) {
-      called_func = invoke->getCalledFunction();
-    }
-    if (called_func) {
-      const auto called_func_name = called_func->getName().str();
-      auto called_func_addr = AddressOfNamedFunction(called_func_name);
-      if (called_func_addr) {
-        lifter_context.AddEntity(called_func, *called_func_addr);
+    if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst)) {
+      if (auto called_func = call->getCalledFunction()) {
+        const auto called_func_name = called_func->getName().str();
+        auto called_func_addr = AddressOfNamedFunction(called_func_name);
+        if (called_func_addr) {
+          lifter_context.AddEntity(called_func, *called_func_addr);
+        }
       }
     }
   }
