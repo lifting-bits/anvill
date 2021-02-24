@@ -164,30 +164,31 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
   // architecture. For x86(-64), this is 15 bytes, whereas for fixed-width
   // architectures like AArch32/AArch64 and SPARC32/SPARC64, this is 4 bytes.
   inst_out->bytes.reserve(max_inst_size);
-  for (auto i = 0u; i < max_inst_size; ++i) {
-    auto [byte, accessible, perms] = memory_provider.Query(addr + i);
+
+  auto accumulate_inst_byte = [=] (auto byte, auto accessible, auto perms) {
     switch (accessible) {
       case ByteAvailability::kUnknown:
       case ByteAvailability::kUnavailable:
-        goto found_all_bytes;
-
+        return false;
       default:
-        break;
+        switch (perms) {
+          case BytePermission::kUnknown:
+          case BytePermission::kReadableExecutable:
+          case BytePermission::kReadableWritableExecutable:
+            inst_out->bytes.push_back(static_cast<char>(byte));
+            return true;
+          case BytePermission::kReadable:
+          case BytePermission::kReadableWritable:
+            return false;
+        }
     }
+  };
 
-    switch (perms) {
-      case BytePermission::kUnknown:
-      case BytePermission::kReadableExecutable:
-      case BytePermission::kReadableWritableExecutable:
-        inst_out->bytes.push_back(static_cast<char>(byte));
-        break;
-      case BytePermission::kReadable:
-      case BytePermission::kReadableWritable:
-        goto found_all_bytes;
+  for (auto i = 0u; i < max_inst_size; ++i) {
+    if (!std::apply(accumulate_inst_byte, memory_provider.Query(addr + i))) {
+      break;
     }
   }
-
-found_all_bytes:
 
   if (is_delayed) {
     return options.arch->DecodeDelayedInstruction(
