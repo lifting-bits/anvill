@@ -115,19 +115,19 @@ FunctionLifter::FunctionLifter(
       memory_provider(memory_provider_),
       type_provider(type_provider_),
       semantics_module(remill::LoadArchSemantics(options.arch)),
-      context(semantics_module->getContext()),
+      llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
       inst_lifter(options.arch, intrinsics),
       is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
-      i8_type(llvm::Type::getInt8Ty(context)),
+      i8_type(llvm::Type::getInt8Ty(llvm_context)),
       i8_zero(llvm::Constant::getNullValue(i8_type)),
-      i32_type(llvm::Type::getInt32Ty(context)),
+      i32_type(llvm::Type::getInt32Ty(llvm_context)),
       mem_ptr_type(llvm::dyn_cast<llvm::PointerType>(
           remill::RecontextualizeType(options.arch->MemoryPointerType(),
-                                      context))),
+                                      llvm_context))),
       state_ptr_type(llvm::dyn_cast<llvm::PointerType>(
           remill::RecontextualizeType(options.arch->StatePointerType(),
-                                      context))) {}
+                                      llvm_context))) {}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -142,7 +142,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
 
   std::stringstream ss;
   ss << "inst_" << std::hex << addr;
-  block = llvm::BasicBlock::Create(context, ss.str(), lifted_func);
+  block = llvm::BasicBlock::Create(llvm_context, ss.str(), lifted_func);
 
   // Missed an instruction?! This can happen when IDA merges two instructions
   // into one larger synthetic instruction. This might also be a tail-call.
@@ -264,7 +264,7 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::ReturnInst::Create(context, remill::LoadMemoryPointer(block), block);
+  llvm::ReturnInst::Create(llvm_context, remill::LoadMemoryPointer(block), block);
 }
 
 // Visit a direct function call control-flow instruction. The target is known
@@ -454,8 +454,8 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
 
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
-  const auto not_taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
+  const auto taken_block = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
@@ -481,8 +481,8 @@ void FunctionLifter::VisitConditionalAsyncHyperCall(
     llvm::BasicBlock *block) {
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
-  const auto not_taken_block = llvm::BasicBlock::Create(context, "", lifted_func);
+  const auto taken_block = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
@@ -552,9 +552,9 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
 //            behavior.
 void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
   if (!log_printf) {
-    llvm::Type *args[] = {llvm::Type::getInt8PtrTy(context, 0)};
+    llvm::Type *args[] = {llvm::Type::getInt8PtrTy(llvm_context, 0)};
     auto fty =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(context), args, true);
+        llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_context), args, true);
 
     log_printf = llvm::dyn_cast<llvm::Function>(
         semantics_module->getOrInsertFunction("printf", fty).getCallee());
@@ -568,7 +568,7 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
     });
     ss << '\n';
     const auto format_str =
-        llvm::ConstantDataArray::getString(context, ss.str(), true);
+        llvm::ConstantDataArray::getString(llvm_context, ss.str(), true);
     const auto format_var = new llvm::GlobalVariable(
         *semantics_module, format_str->getType(), true,
         llvm::GlobalValue::InternalLinkage, format_str);
@@ -806,7 +806,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
         if (const auto mem_ptr_from_call = TryCallNativeFunction(
                 inst_addr, other_decl, block)) {
-          llvm::ReturnInst::Create(context, mem_ptr_from_call, block);
+          llvm::ReturnInst::Create(llvm_context, mem_ptr_from_call, block);
           continue;
         }
 
@@ -854,7 +854,7 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(
     const FunctionDecl &decl) {
 
   const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
-      remill::RecontextualizeType(decl.type, context));
+      remill::RecontextualizeType(decl.type, llvm_context));
 
   // NOTE(pag): This may find declarations from prior lifts that have been
   //            left around in the semantics module.
@@ -1092,7 +1092,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   // Create a state structure and a stack frame in the native function
   // and we'll call the lifted function with that. The lifted function
   // will get inlined into this function.
-  auto block = llvm::BasicBlock::Create(context, "", native_func);
+  auto block = llvm::BasicBlock::Create(llvm_context, "", native_func);
 
   // Create a memory pointer.
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);

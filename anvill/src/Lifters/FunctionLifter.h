@@ -87,7 +87,7 @@ class FunctionLifter {
   std::unique_ptr<llvm::Module> semantics_module;
 
   // Context associated with `module`.
-  llvm::LLVMContext &context;
+  llvm::LLVMContext &llvm_context;
 
   // Remill instrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
