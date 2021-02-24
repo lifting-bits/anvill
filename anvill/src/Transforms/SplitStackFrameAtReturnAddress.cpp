@@ -17,8 +17,35 @@
 
 #include <anvill/Transforms.h>
 
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/Module.h>
+
+#include <llvm/Pass.h>
+
 namespace anvill {
 namespace {
+
+class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass {
+ public:
+
+  SplitStackFrameAtReturnAddress(void)
+      : llvm::FunctionPass(ID) {}
+
+  bool runOnFunction(llvm::Function &func) final;
+
+ private:
+  static char ID;
+};
+
+char SplitStackFrameAtReturnAddress::ID = '\0';
+
+// Try to split return address uses in `func`.
+bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &func) {
+  return false;
+}
 
 }  // namespace
 

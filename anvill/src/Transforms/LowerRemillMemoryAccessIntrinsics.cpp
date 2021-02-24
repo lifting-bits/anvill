@@ -17,15 +17,131 @@
 
 #include <anvill/Transforms.h>
 
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/Pass.h>
+
+#include <glog/logging.h>
+
+#include "Utils.h"
+
 namespace anvill {
 namespace {
+
+class LowerRemillMemoryAccessIntrinsics final : public llvm::FunctionPass {
+ public:
+
+  LowerRemillMemoryAccessIntrinsics(void)
+      : llvm::FunctionPass(ID) {}
+
+  bool runOnFunction(llvm::Function &func) final;
+
+ private:
+  static char ID;
+};
+
+char LowerRemillMemoryAccessIntrinsics::ID = '\0';
+
+
+// Lower a memory read intrinsic into a `load` instruction.
+static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
+  auto addr = call_inst->getArgOperand(1);
+  llvm::IRBuilder<> ir(call_inst);
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  llvm::Value *val = ir.CreateLoad(ptr);
+  if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
+    val = ir.CreateFPTrunc(val, call_inst->getType());
+  }
+  call_inst->replaceAllUsesWith(val);
+  call_inst->eraseFromParent();
+}
+
+// Lower a memory write intrinsic into a `store` instruction.
+static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
+  auto mem_ptr = call_inst->getArgOperand(0);
+  auto addr = call_inst->getArgOperand(1);
+  auto val = call_inst->getArgOperand(2);
+
+  llvm::IRBuilder<> ir(call_inst);
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
+    val = ir.CreateFPExt(val, val_type);
+  }
+
+  (void) ir.CreateStore(val, ptr);
+  call_inst->replaceAllUsesWith(mem_ptr);
+  call_inst->eraseFromParent();
+}
+
+// Dispatch to the proper memory replacement function given a function call.
+static bool ReplaceMemoryOp(llvm::CallBase *call) {
+  const auto func = call->getCalledFunction();
+  const auto func_name = func->getName();
+
+  // Perform a value type adjustment. Remill re-interprets loads/stores of
+  // extended precision and quad precision floating point values as operating
+  // on double precision floats, then opaquely performing the necessary
+  // conversions at the memory boundary.
+  auto adjust_val_type = [=] (llvm::Type *val_type) -> llvm::Type * {
+    auto &context = val_type->getContext();
+    if (func_name.endswith("f80")) {
+      return llvm::Type::getX86_FP80Ty(context);
+    } else if (func_name.endswith("f128")) {
+      return llvm::Type::getFP128Ty(context);
+    } else {
+      return val_type;
+    }
+  };
+
+  // `val = __remill_read_memory_NN(mem, addr)`.
+  if (func_name.startswith("__remill_read_memory_")) {
+    const auto val_type = adjust_val_type(call->getType());
+    ReplaceMemReadOp(call, val_type);
+    return true;
+
+  // `mem = __remill_write_memory_NN(mem, addr, val)`.
+  } else if (func_name.startswith("__remill_write_memory_")) {
+    const auto val_type = adjust_val_type(call->getArgOperand(2)->getType());
+    ReplaceMemWriteOp(call, val_type);
+    return true;
+
+  } else {
+    LOG(ERROR)
+        << "Missing support for lowering memory operation " << func_name.str();
+    return false;
+  }
+}
+
+// Try to lower remill memory access intrinsics.
+bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
+  auto calls = FindFunctionCalls(func, [] (llvm::CallBase *call) -> bool {
+    const auto func = call->getCalledFunction();
+    if (!func) {
+      return false;
+    }
+
+    // TODO(pag): Add support for atomic read-modify-write intrinsics.
+    const auto name = func->getName();
+    return name.startswith("__remill_read_memory_") ||
+           name.startswith("__remill_write_memory_");
+  });
+
+  auto ret = false;
+  for (auto call : calls) {
+    ret = ReplaceMemoryOp(call) || ret;
+  }
+
+  return ret;
+}
 
 }  // namespace
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
 llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void) {
-  return nullptr;
+  return new LowerRemillMemoryAccessIntrinsics;
 }
 
 }  // namespace anvill

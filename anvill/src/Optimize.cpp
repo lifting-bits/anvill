@@ -53,6 +53,8 @@
 #include "anvill/RecoverMemRefs.h"
 #include "anvill/Util.h"
 
+#include <anvill/Transforms.h>
+
 namespace anvill {
 namespace {
 
@@ -603,66 +605,6 @@ llvm::Value *GetPointer(const Program &program, llvm::Module &module,
   }
 }
 
-// Lower a memory read intrinsic into a `load` instruction.
-static void ReplaceMemReadOp(const Program &program, llvm::Module &module,
-                             const char *name, llvm::Type *val_type) {
-  auto func = module.getFunction(name);
-  if (!func) {
-    return;
-  }
-
-  CHECK(func->isDeclaration())
-      << "Cannot lower already implemented memory intrinsic " << name;
-
-  auto callers = remill::CallersOf(func);
-  for (auto call_inst : callers) {
-    auto addr = call_inst->getArgOperand(1);
-    llvm::IRBuilder<> ir(call_inst);
-    llvm::Value *ptr = GetPointer(program, module, ir, addr, val_type, 0);
-    llvm::Value *val = ir.CreateLoad(ptr);
-    if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
-      val = ir.CreateFPTrunc(val, func->getReturnType());
-    }
-    call_inst->replaceAllUsesWith(val);
-  }
-  for (auto call_inst : callers) {
-    call_inst->eraseFromParent();
-  }
-  RemoveFunction(func);
-}
-
-// Lower a memory write intrinsic into a `store` instruction.
-static void ReplaceMemWriteOp(const Program &program, llvm::Module &module,
-                              const char *name, llvm::Type *val_type) {
-  auto func = module.getFunction(name);
-  if (!func) {
-    return;
-  }
-
-  CHECK(func->isDeclaration())
-      << "Cannot lower already implemented memory intrinsic " << name;
-
-  auto callers = remill::CallersOf(func);
-
-  for (auto call_inst : callers) {
-    auto mem_ptr = call_inst->getArgOperand(0);
-    auto addr = call_inst->getArgOperand(1);
-    auto val = call_inst->getArgOperand(2);
-
-    llvm::IRBuilder<> ir(call_inst);
-    llvm::Value *ptr = GetPointer(program, module, ir, addr, val_type, 0);
-    if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
-      val = ir.CreateFPExt(val, val_type);
-    }
-
-    (void) ir.CreateStore(val, ptr);
-    call_inst->replaceAllUsesWith(mem_ptr);
-  }
-  for (auto call_inst : callers) {
-    call_inst->eraseFromParent();
-  }
-  RemoveFunction(func);
-}
 
 // Lower an anvill type function into an `inttoptr` instructions
 static void ReplaceTypeOp(const Program &program, llvm::Module &module,
@@ -703,46 +645,6 @@ static void LowerTypeOps(const Program &program, llvm::Module &mod) {
       ReplaceTypeOp(program, mod, func);
     }
   }
-}
-
-static void LowerMemOps(const Program &program, llvm::Module &module) {
-  auto &context = module.getContext();
-
-  ReplaceMemReadOp(program, module, "__remill_read_memory_8",
-                   llvm::Type::getInt8Ty(context));
-  ReplaceMemReadOp(program, module, "__remill_read_memory_16",
-                   llvm::Type::getInt16Ty(context));
-  ReplaceMemReadOp(program, module, "__remill_read_memory_32",
-                   llvm::Type::getInt32Ty(context));
-  ReplaceMemReadOp(program, module, "__remill_read_memory_64",
-                   llvm::Type::getInt64Ty(context));
-  ReplaceMemReadOp(program, module, "__remill_read_memory_f32",
-                   llvm::Type::getFloatTy(context));
-  ReplaceMemReadOp(program, module, "__remill_read_memory_f64",
-                   llvm::Type::getDoubleTy(context));
-
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_8",
-                    llvm::Type::getInt8Ty(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_16",
-                    llvm::Type::getInt16Ty(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_32",
-                    llvm::Type::getInt32Ty(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_64",
-                    llvm::Type::getInt64Ty(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_f32",
-                    llvm::Type::getFloatTy(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_f64",
-                    llvm::Type::getDoubleTy(context));
-
-  ReplaceMemReadOp(program, module, "__remill_read_memory_f80",
-                   llvm::Type::getX86_FP80Ty(context));
-  ReplaceMemReadOp(program, module, "__remill_write_memory_f128",
-                   llvm::Type::getFP128Ty(context));
-
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_f80",
-                    llvm::Type::getX86_FP80Ty(context));
-  ReplaceMemWriteOp(program, module, "__remill_write_memory_f128",
-                    llvm::Type::getFP128Ty(context));
 }
 
 }  // namespace
@@ -816,7 +718,19 @@ void OptimizeModule(const EntityLifter &lifter_context,
   RemoveUnusedCalls(module, "__fpclassifyf", changed_funcs);
   RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
 
-  LowerMemOps(program, module);
+  // TODO(pag):
+  // IN-PROGRESS: As code in this file is converted to passes, move it here.
+  do {
+    llvm::legacy::FunctionPassManager transforms(&module);
+    fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
+
+    fpm.doInitialization();
+    for (auto &func : module) {
+     fpm.run(func);
+    }
+    fpm.doFinalization();
+  } while (false);
+
   RecoverStackMemoryAccesses(lifter_context, program, module);
 
   LowerTypeOps(program, module);
