@@ -66,6 +66,11 @@ add_library(anvill STATIC
   
   src/Lifters/DataLifter.h
   src/Lifters/DataLifter.cpp
+  
+  include/anvill/Transforms.h
+  src/Transforms/BrightenPointerOperations.cpp
+  src/Transforms/LowerRemillMemoryAccessIntrinsics.cpp
+  src/Transforms/SplitStackFrameAtReturnAddress.cpp
     
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp
