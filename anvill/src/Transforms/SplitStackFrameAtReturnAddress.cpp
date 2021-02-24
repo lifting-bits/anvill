@@ -43,10 +43,8 @@ namespace {
 // frame. This approach is very convenient, but comes at the cost of having
 // to do this particular transformation in order to recover more typical stack
 // frame structures.
-//
-// Returns `true` if anything is changed.
-bool SplitStackFrameAtReturnAddress(llvm::Function &func) {
-  return false;
+llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(void) {
+  return nullptr;
 }
 
 }  // namespace anvill

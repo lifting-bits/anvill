@@ -23,10 +23,9 @@ namespace {
 }  // namespace
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
-// various atomic read-modify-write variants into LLVM loads and stores. Returns
-// `true` if anything in `func` was changed.
-bool LowerRemillMemoryAccessIntrinsics(llvm::Function &func) {
-  return false;
+// various atomic read-modify-write variants into LLVM loads and stores.
+llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void) {
+  return nullptr;
 }
 
 }  // namespace anvill

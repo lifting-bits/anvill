@@ -40,11 +40,9 @@ namespace {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-//
-// Returns `true` if anything in `func` was changed.
-bool BrightenPointerOperations(const ConstantCrossReferenceResolver &resolver,
-                               llvm::Function &func) {
-  return false;
+llvm::FunctionPass *CreateBrightenPointerOperations(
+    const ConstantCrossReferenceResolver &resolver) {
+  return nullptr;
 }
 
 }  // namespace anvill

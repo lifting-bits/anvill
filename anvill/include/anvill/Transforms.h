@@ -19,6 +19,7 @@
 
 namespace llvm {
 class Function;
+class FunctionPass;
 }  // namespace llvm
 namespace anvill {
 
@@ -34,7 +35,7 @@ class ConstantCrossReferenceResolver;
 //    3) One for everything else.
 //
 // The `arch` is consulted to determine the default stack growth direction,
-// which informs the behaviour of the function in the presence of multiple
+// which informs the behavior of the function in the presence of multiple
 // stores of the return address into a stack frame.
 //
 // Anvill's approach to stack frame recovery is slightly atypical: if a
@@ -45,14 +46,11 @@ class ConstantCrossReferenceResolver;
 // frame. This approach is very convenient, but comes at the cost of having
 // to do this particular transformation in order to recover more typical stack
 // frame structures.
-//
-// Returns `true` if anything is changed.
-bool SplitStackFrameAtReturnAddress(llvm::Function &func);
+llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(void);
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
-// various atomic read-modify-write variants into LLVM loads and stores. Returns
-// `true` if anything in `func` was changed.
-bool LowerRemillMemoryAccessIntrinsics(llvm::Function &func);
+// various atomic read-modify-write variants into LLVM loads and stores.
+llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 
 // Anvill-lifted bitcode operates at a very low level, swapping between integer
 // and pointer representations. It is typically for just-lifted bitcode to
@@ -72,17 +70,15 @@ bool LowerRemillMemoryAccessIntrinsics(llvm::Function &func);
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-//
-// Returns `true` if anything in `func` was changed.
-bool BrightenPointerOperations(const ConstantCrossReferenceResolver &resolver,
-                               llvm::Function &func);
+llvm::FunctionPass *CreateBrightenPointerOperations(
+    const ConstantCrossReferenceResolver &resolver);
 
 // Transforms the bitcode in `func`, looking for uses of the
 // `llvm.returnaddress` intrinsic function. If the return value of this function
 // is stored into memory, then we try to identify any loads from the same
 // memory region, and forward the stored value to those loads. Note that the
 // stores themselves are retained.
-//bool ForwardReturnAddressStoresToLoads(llvm::Function &func);
+//llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
 
 
 }  // namespace anvill
