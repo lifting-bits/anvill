@@ -31,45 +31,6 @@
 #include "EntityLifter.h"
 
 namespace anvill {
-namespace {
-
-// Drill down on the underlying object behind some value/alias, and our byte
-// offset away from it.
-static std::pair<llvm::Value *, uint64_t>
-FindBaseAndOffset(const llvm::DataLayout &dl, llvm::Value *ptr) {
-  if (!ptr) {
-    return {nullptr, 0};
-
-  } else if (auto var = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
-    return {var, 0};
-
-  } else if (auto alias = llvm::dyn_cast<llvm::GlobalAlias>(ptr)) {
-    if (auto aliasee = alias->getAliasee()) {
-      return FindBaseAndOffset(dl, alias);
-    } else {
-      return {alias, 0};
-    }
-
-  } else if (auto gep = llvm::dyn_cast<llvm::GEPOperator>(ptr)) {
-    llvm::APInt ap(64, 0);
-    auto ret = FindBaseAndOffset(dl, gep->getPointerOperand());
-    CHECK(gep->accumulateConstantOffset(dl, ap));
-    return {ret.first, ret.second + ap.getZExtValue()};
-
-  } else if (auto bc = llvm::dyn_cast<llvm::BitCastOperator>(ptr)) {
-    return FindBaseAndOffset(dl, bc->getOperand(0));
-
-  } else if (auto ac = llvm::dyn_cast<llvm::AddrSpaceCastOperator>(ptr)) {
-    return FindBaseAndOffset(dl, bc->getOperand(0));
-
-  } else {
-    LOG(ERROR) << "Unable to drill down to underlying value for "
-               << remill::LLVMThingToString(ptr);
-    return {ptr, 0};
-  }
-}
-
-}  // namespace
 
 DataLifter::~DataLifter(void) {}
 
@@ -114,7 +75,9 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
   // We'll use an existing declaration, create a new GEP, and cast as
   // necessary.
-  if (auto [base, offset] = FindBaseAndOffset(dl, found_by_address); base) {
+  const auto [base, offset] = remill::StripAndAccumulateConstantOffsets(
+      dl, found_by_address);
+  if (base) {
 
     // TODO(pag,alessandro): Something related to `remill::BuildPointerToOffset`
     //                       or `remill::BuildIndexes` to return an initialized
