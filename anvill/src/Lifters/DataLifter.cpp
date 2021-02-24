@@ -162,6 +162,20 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
   ss2 << "var_" << std::hex << decl.address << '_'
       << TranslateType(*type, dl, true);
 
+  // TODO(akshay): use `dl` to figure out the size in bytes of the type. Make
+  //               a `std::string` and initialize it to that size. Use the
+  //               `MemoryProvider` to query each byte offset from
+  //               `decl.address`, and if the byte is available, then write it
+  //               into the string. Inspect the permissions as you read/write
+  //               bytes. Be careful about crossing permission boundaries; i.e.
+  //               if we cross from writable into non-writable, then we should
+  //               treat that as a failure to get the needed bytes. Log a
+  //               warning/error, and we'll treat the var as an uninitialized
+  //               external. Use that same permissions tracking to set whether
+  //               or not the global var is constant. Try to factor this out
+  //               into one or more functions and not do it all right here.
+  //               Finally, if and when all bytes are read, and no permission
+  //               boundaries are crossed, go and invoke the data lifter.
   const auto gv = new llvm::GlobalVariable(
       *options.module, type, false, llvm::GlobalValue::ExternalLinkage,
       llvm::Constant::getNullValue(type), ss2.str());
