@@ -64,6 +64,7 @@ class MemoryProvider {
 
   inline static bool IsExecutable(BytePermission perms) {
     switch (perms) {
+      case BytePermission::kUnknown:
       case BytePermission::kReadableWritableExecutable:
       case BytePermission::kReadableExecutable: return true;
       default: return false;
