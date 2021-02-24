@@ -104,30 +104,6 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
   }
 }
 
-// Looks for calls to a function like `__remill_function_return`, and
-// replace its state pointer with a null pointer so that the state
-// pointer never escapes.
-static void
-MuteStateEscape(llvm::Module &module, const char *func_name,
-                std::unordered_set<llvm::Function *> &changed_funcs) {
-  auto func = module.getFunction(func_name);
-  if (!func) {
-    return;
-  }
-
-  for (auto user : func->users()) {
-    if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(user)) {
-      auto arg_op = call_inst->getArgOperand(remill::kStatePointerArgNum);
-      call_inst->setArgOperand(remill::kStatePointerArgNum,
-                               llvm::UndefValue::get(arg_op->getType()));
-
-      auto in_block = call_inst->getParent();
-      auto in_func = in_block->getParent();
-      changed_funcs.insert(in_func);
-    }
-  }
-}
-
 // Used to remove the calls to functions that don't really have a big
 // side-effect, but which Clang can't just remove because it can't be
 // sure, e.g. `fpclassify`.
@@ -702,15 +678,10 @@ void OptimizeModule(const EntityLifter &lifter_context,
   }
   fpm.doFinalization();
 
+  RecoverStackMemoryAccesses(lifter_context, program, module);
   RecoverMemoryAccesses(lifter_context, program, module);
 
   std::unordered_set<llvm::Function *> changed_funcs;
-
-  // These improve optimizability.
-  // MuteStateEscape(module, "__remill_jump", changed_funcs);
-  MuteStateEscape(module, "__remill_function_return", changed_funcs);
-  MuteStateEscape(module, "__remill_error", changed_funcs);
-  MuteStateEscape(module, "__remill_missing_block", changed_funcs);
 
   // We can remove these when they are not used.
   RemoveUnusedCalls(module, "fpclassify", changed_funcs);
@@ -722,16 +693,15 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // IN-PROGRESS: As code in this file is converted to passes, move it here.
   do {
     llvm::legacy::FunctionPassManager transforms(&module);
-    fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
+    transforms.add(CreateLowerRemillMemoryAccessIntrinsics());
 
-    fpm.doInitialization();
+    transforms.doInitialization();
     for (auto &func : module) {
-     fpm.run(func);
+      transforms.run(func);
     }
-    fpm.doFinalization();
+    transforms.doFinalization();
   } while (false);
 
-  RecoverStackMemoryAccesses(lifter_context, program, module);
 
   LowerTypeOps(program, module);
 
