@@ -129,12 +129,40 @@ void MCToIRLifter::VisitIndirectJump(const remill::Instruction &inst,
   remill::AddTerminatingTailCall(block, intrinsics.jump);
 }
 
+void MCToIRLifter::VisitConditionalIndirectJump(const remill::Instruction &inst,
+                         remill::Instruction *delayed_inst,
+                         llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  const auto not_taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           not_taken_block);
+}
+
+
 void MCToIRLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   llvm::ReturnInst::Create(ctx, remill::LoadMemoryPointer(block), block);
 }
+
+void MCToIRLifter::VisitConditionalFunctionReturn(const remill::Instruction &inst,
+                           remill::Instruction *delayed_inst,
+                           llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+  const auto not_taken_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+}
+
 
 // Figure out the fall-through return address for a function call. There are
 // annoying SPARC-isms to deal with due to their awful ABI choices.
@@ -223,11 +251,52 @@ void MCToIRLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
   VisitAfterFunctionCall(inst, block);
 }
 
+void MCToIRLifter::VisitConditionalDirectFunctionCall(
+                               const remill::Instruction &inst,
+                               remill::Instruction *delayed_inst,
+                               llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  auto do_cond_call = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  auto next_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  llvm::BranchInst::Create(do_cond_call, next_block,
+                           remill::LoadBranchTaken(block), block);
+  VisitDelayedInstruction(inst, delayed_inst, do_cond_call, true);
+  VisitDelayedInstruction(inst, delayed_inst, next_block, false);
+  if (auto decl = program.FindFunction(inst.branch_taken_pc); decl) {
+    const auto entry = GetOrDeclareFunction(*decl);
+    remill::AddCall(do_cond_call, entry.lifted_to_native);
+  } else {
+    LOG(ERROR) << "Missing declaration for function at " << std::hex
+               << inst.branch_taken_pc << " called at " << inst.pc << std::dec;
+
+    // If we do not have a function declaration, treat this as a call to an unknown address.
+    remill::AddCall(do_cond_call, intrinsics.function_call);
+  }
+  llvm::BranchInst::Create(GetOrCreateBlock(inst.branch_not_taken_pc),
+                           next_block);
+  VisitAfterFunctionCall(inst, block);
+}
+
+
 void MCToIRLifter::VisitIndirectFunctionCall(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
+  remill::AddCall(block, intrinsics.function_call);
+  VisitAfterFunctionCall(inst, block);
+}
+
+void MCToIRLifter::VisitConditionalIndirectFunctionCall(
+                                              const remill::Instruction &inst,
+                                              remill::Instruction *delayed_inst,
+                                              llvm::BasicBlock *block) {
+  const auto lifted_func = block->getParent();
+  VisitDelayedInstruction(inst, delayed_inst, block, true);
+  auto do_cond_call = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  auto next_block = llvm::BasicBlock::Create(ctx, "", lifted_func);
+  llvm::BranchInst::Create(do_cond_call, next_block,
+                           remill::LoadBranchTaken(block), block);
   remill::AddCall(block, intrinsics.function_call);
   VisitAfterFunctionCall(inst, block);
 }
@@ -451,14 +520,26 @@ void MCToIRLifter::VisitInstruction(
     case remill::Instruction::kCategoryIndirectJump:
       VisitIndirectJump(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalIndirectJump:
+      VisitConditionalIndirectJump(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryFunctionReturn:
       VisitFunctionReturn(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalFunctionReturn:
+      VisitConditionalFunctionReturn(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryDirectFunctionCall:
       VisitDirectFunctionCall(inst, delayed_inst, block);
       break;
+    case remill::Instruction::kCategoryConditionalDirectFunctionCall:
+      VisitConditionalDirectFunctionCall(inst, delayed_inst, block);
+      break;
     case remill::Instruction::kCategoryIndirectFunctionCall:
       VisitIndirectFunctionCall(inst, delayed_inst, block);
+      break;
+    case remill::Instruction::kCategoryConditionalIndirectFunctionCall:
+      VisitConditionalIndirectFunctionCall(inst, delayed_inst, block);
       break;
     case remill::Instruction::kCategoryConditionalBranch:
       VisitConditionalBranch(inst, delayed_inst, block);
