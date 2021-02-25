@@ -111,6 +111,11 @@ With the IDA plugin:
 ./build/anvill-decompile-json-*.0 --spec spec.json --bc_out out.bc
 ```
 
+### Running tests
+
+1. Configure with the following parameter: `-DANVILL_ENABLE_TESTS=true`
+2. Run the **test** target: `cmake --build build_folder --target test`
+
 ### Docker image
 
 To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:

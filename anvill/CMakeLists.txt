@@ -70,17 +70,6 @@ add_library(anvill STATIC
   include/anvill/ABI.h
   src/ABI.cpp
   
-  include/anvill/Transforms.h
-  src/Transforms/BrightenPointerOperations.cpp
-  src/Transforms/LowerRemillMemoryAccessIntrinsics.cpp
-  src/Transforms/RemoveCompilerBarriers.cpp
-  src/Transforms/RemoveRemillFunctionReturns.cpp
-  src/Transforms/RemoveUnusedFPClassificationCalls.cpp
-  src/Transforms/SinkSelectionsIntoBranchTargets.cpp
-  src/Transforms/SplitStackFrameAtReturnAddress.cpp
-  src/Transforms/Utils.h
-  src/Transforms/Utils.cpp
-  
   include/anvill/Analysis/CrossReferenceResolver.h  
   include/anvill/Analysis/Utils.h
   src/Analysis/Utils.cpp
@@ -100,7 +89,12 @@ target_include_directories(anvill PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(anvill PUBLIC remill_settings remill anvill_version)
+target_link_libraries(anvill PUBLIC
+  remill_settings
+  remill
+  anvill_version
+  anvill_passes
+)
 
 macro(target_public_headers TARGET)
   set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")

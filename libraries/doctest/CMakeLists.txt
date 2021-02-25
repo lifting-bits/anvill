@@ -6,6 +6,7 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-add_subdirectory("version")
-add_subdirectory("anvill_passes")
-add_subdirectory("doctest")
+add_library(thirdparty_doctest INTERFACE)
+target_include_directories(thirdparty_doctest INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/doctest"
+)

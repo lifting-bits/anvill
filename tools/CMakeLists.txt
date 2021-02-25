@@ -31,7 +31,6 @@ if(ANVILL_LLVM_SUPPORTS_JSON)
   message(STATUS "anvill: LLVM JSON support was found, enabling targets: anvill-decompile-json, anvill-specify-bitcode")
 
   add_subdirectory("decompile-json")
-  add_subdirectory("pointer-lifter")
   add_subdirectory("specify-bitcode")
 
 else()
