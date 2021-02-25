@@ -99,6 +99,7 @@ class FunctionLifter {
   llvm::Type *const i32_type;
   llvm::PointerType *const mem_ptr_type;
   llvm::PointerType *const state_ptr_type;
+  llvm::IntegerType *const address_type;
 
   // Address of the function currently being lifted.
   uint64_t func_address{0};
@@ -329,6 +330,11 @@ class FunctionLifter {
   //            in a kind of `LiftingOptions` type that changes the lifter's
   //            behavior.
   void InstrumentInstruction(llvm::BasicBlock *block);
+
+  // Adds a 'breakpoint' instrumentation, which calls functions that are named
+  // with an instruction's address just before that instruction executes. These
+  // are nifty to spot checking bitcode.
+  void InstrumentCallBreakpointFunction(llvm::BasicBlock *block);
 
   // Visit a type hinted register at the current instruction. We use this
   // information to try to improve lifting of possible pointers later on

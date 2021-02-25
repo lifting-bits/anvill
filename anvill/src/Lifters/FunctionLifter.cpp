@@ -54,6 +54,8 @@ DEFINE_bool(print_registers_before_instuctions, false,
             "Inject calls to printf (into the lifted bitcode) to log integer "
             "register state to stdout.");
 
+DEFINE_bool(add_breakpoints, false, "Add breakpoint functions");
+
 namespace anvill {
 namespace {
 
@@ -136,7 +138,9 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
               options.arch->MemoryPointerType(), llvm_context))),
       state_ptr_type(
           llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
-              options.arch->StatePointerType(), llvm_context))) {}
+              options.arch->StatePointerType(), llvm_context))),
+      address_type(
+          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)) {}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -530,10 +534,13 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                             llvm::BasicBlock *block) {
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
+  const auto pc_ptr =
+      inst_lifter.LoadRegAddress(block, state_ptr, remill::kPCVariableName);
   const auto next_pc_ptr =
       inst_lifter.LoadRegAddress(block, state_ptr, remill::kNextPCVariableName);
 
   llvm::IRBuilder<> ir(block);
+  ir.CreateStore(ret_pc_val, pc_ptr, false);
   ir.CreateStore(ret_pc_val, next_pc_ptr, false);
   ir.CreateBr(GetOrCreateBlock(ret_pc));
 }
@@ -657,6 +664,7 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
         semantics_module->getOrInsertFunction("printf", fty).getCallee());
 
     std::stringstream ss;
+
     options.arch->ForEachRegister([&](const remill::Register *reg) {
       if (reg->EnclosingRegister() == reg &&
           reg->type->isIntegerTy(options.arch->address_size)) {
@@ -687,6 +695,47 @@ void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
 
   llvm::IRBuilder<> ir(block);
   ir.CreateCall(log_printf, args);
+}
+
+// Adds a 'breakpoint' instrumentation, which calls functions that are named
+// with an instruction's address just before that instruction executes. These
+// are nifty to spot checking bitcode. This function is used like:
+//
+//      mem = breakpoint_<hexaddr>(mem, PC, NEXT_PC)
+//
+// That way, we can look at uses and compare the second argument to the
+// hex address encoded in the function name, and also look at the third argument
+// and see if it corresponds to the subsequent instruction address.
+void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
+  std::stringstream ss;
+  ss << "breakpoint_" << std::hex << curr_inst->pc;
+
+  const auto func_name = ss.str();
+  auto module = block->getModule();
+  auto func = module->getFunction(func_name);
+  if (!func) {
+    llvm::Type *const params[] = {mem_ptr_type, address_type, address_type};
+    const auto fty = llvm::FunctionType::get(mem_ptr_type, params, false);
+    func = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage,
+                                  func_name, module);
+
+    // Make sure to keep this function around (along with `ExternalLinkage`).
+    func->addFnAttr(llvm::Attribute::OptimizeNone);
+    func->removeFnAttr(llvm::Attribute::AlwaysInline);
+    func->removeFnAttr(llvm::Attribute::InlineHint);
+    func->addFnAttr(llvm::Attribute::NoInline);
+    func->addFnAttr(llvm::Attribute::ReadNone);
+
+    llvm::IRBuilder<> ir(llvm::BasicBlock::Create(llvm_context, "", func));
+    ir.CreateRet(remill::NthArgument(func, 0));
+  }
+
+  llvm::Value *args[] = {
+      remill::LoadMemoryPointer(block),
+      inst_lifter.LoadRegValue(block, state_ptr, remill::kPCVariableName),
+      inst_lifter.LoadRegValue(block, state_ptr, remill::kNextPCVariableName)};
+  llvm::IRBuilder<> ir(block);
+  ir.CreateCall(func, args);
 }
 
 // Visit a type hinted register at the current instruction. We use this
@@ -747,6 +796,10 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
   //            structure.
   if (FLAGS_print_registers_before_instuctions) {
     InstrumentInstruction(block);
+  }
+
+  if (FLAGS_add_breakpoints) {
+    InstrumentCallBreakpointFunction(block);
   }
 
   // Reserve space for an instrucion that will go into a delay slot, in case it
@@ -1398,13 +1451,28 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
   lifted_func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
+  const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
+  const auto entry_block = &(lifted_func->getEntryBlock());
+  const auto pc_ptr = inst_lifter.LoadRegAddress(
+      entry_block, state_ptr, remill::kPCVariableName);
+  const auto next_pc_ptr = inst_lifter.LoadRegAddress(
+      entry_block, state_ptr, remill::kNextPCVariableName);
+
+  // Force initialize both the `PC` and `NEXT_PC` from the `pc` argument.
+  // On some architectures, `NEXT_PC` is a "pseudo-register", i.e. an `alloca`
+  // inside of `__remill_basic_block`, of which `lifted_func` is a clone, and
+  // so we want to ensure it gets reliably initialized before any lifted
+  // instructions may depend upon it.
+  llvm::IRBuilder<> ir(entry_block);
+  ir.CreateStore(pc, next_pc_ptr);
+  ir.CreateStore(pc, pc_ptr);
+
   // Add a branch between the first block of the lifted function, which sets
   // up some local variables, and the block that will contain the lifted
   // instruction.
   //
   // NOTE(pag): This also introduces the first element to the work list.
-  llvm::BranchInst::Create(GetOrCreateBlock(func_address),
-                           &(lifted_func->getEntryBlock()));
+  ir.CreateBr(GetOrCreateBlock(func_address));
 
   // Go lift all instructions!
   VisitInstructions(func_address);
