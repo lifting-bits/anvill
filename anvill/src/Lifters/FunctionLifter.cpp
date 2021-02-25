@@ -157,8 +157,10 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
   ss << "inst_" << std::hex << addr;
   block = llvm::BasicBlock::Create(llvm_context, ss.str(), lifted_func);
 
-  // Missed an instruction?! This can happen when IDA merges two instructions
-  // into one larger synthetic instruction. This might also be a tail-call.
+  // NOTE(pag): We always add to the work list without consulting/updating
+  //            `addr_to_block` so that we can observe self-tail-calls and
+  //            lift them as such, rather than as jumps back into the first
+  //            lifted block.
   edge_work_list.emplace(addr, from_pc);
 
   return block;
@@ -895,6 +897,8 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
   if (delayed_inst) {
     delayed_inst->~Instruction();
   }
+
+  curr_inst = nullptr;
 }
 
 // In the process of lifting code, we may want to call another native

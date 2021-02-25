@@ -413,6 +413,7 @@ uint64_t XrefExprFolder::VisitCall(llvm::CallInst *call) {
   } else {
     error = std::move(err);
   }
+
   return 0;
 }
 
@@ -449,6 +450,9 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
                                    llvm::Value *rhs_op) {
   const uint64_t lhs = Visit(lhs_op);
   const uint64_t rhs = Visit(rhs_op);
+  if (error) {
+    return 0;
+  }
   Reset();
   switch (pred) {
     case llvm::CmpInst::ICMP_EQ: return lhs == rhs;
@@ -481,16 +485,22 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
 
 uint64_t XrefExprFolder::VisitSelect(llvm::Value *cond, llvm::Value *if_true,
                                      llvm::Value *if_false) {
+  LOG(ERROR) << "entering select cond";
   const auto sel = Visit(cond);
   if (error) {
     return 0;
   }
+
+  LOG(ERROR) << "sel=" << sel << " on " << remill::LLVMThingToString(cond);
+
   Reset();
+  uint64_t ret = 0;
   if (sel) {
-    return Visit(if_true);
+    ret = Visit(if_true);
   } else {
-    return Visit(if_false);
+    ret = Visit(if_false);
   }
+  return ret;
 }
 
 uint64_t XrefExprFolder::VisitZExt(llvm::Value *op, llvm::Type *type) {

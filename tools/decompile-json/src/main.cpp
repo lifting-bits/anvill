@@ -712,7 +712,7 @@ int main(int argc, char *argv[]) {
   CHECK(remill::VerifyModule(&module));
 
   // OLD: Apply optimizations.
-//  anvill::OptimizeModule(lifter, arch.get(), program, module);
+  anvill::OptimizeModule(lifter, arch.get(), program, module);
 
   // Apply symbol names to functions if we have the names.
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,

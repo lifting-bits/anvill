@@ -52,7 +52,6 @@ bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
       return false;
     }
 
-    // TODO(pag): Add support for atomic read-modify-write intrinsics.
     const auto name = func->getName();
     return name == "fpclassify" || name == "__fpclassifyd" ||
            name == "__fpclassifyf" || name == "__fpclassifyld";
