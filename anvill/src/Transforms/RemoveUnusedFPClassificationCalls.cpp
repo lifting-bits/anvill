@@ -44,7 +44,7 @@ class RemoveUnusedFPClassificationCalls final : public llvm::FunctionPass {
 
 char RemoveUnusedFPClassificationCalls::ID = '\0';
 
-// Try to lower remill memory access intrinsics.
+// Try to remove unused floating point classification function calls.
 bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
   auto calls = FindFunctionCalls(func, [] (llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();

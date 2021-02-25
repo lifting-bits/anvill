@@ -25,6 +25,33 @@ namespace anvill {
 
 class ConstantCrossReferenceResolver;
 
+// When lifting conditional control-flow, we end up with the following pattern:
+//
+//        %25 = icmp eq i8 %24, 0
+//        %26 = select i1 %25, i64 TAKEN_PC, i64 NOT_TAKEN_PC
+//        br i1 %25, label %27, label %34
+//
+//        27:
+//        ... use of %26
+//
+//        34:
+//        ... use of %26
+//
+// This function pass transforms the above pattern into the following:
+//
+//        %25 = icmp eq i8 %24, 0
+//        br i1 %25, label %27, label %34
+//
+//        27:
+//        ... use of TAKEN_PC
+//
+//        34:
+//        ... use of NOT_TAKEN_PC
+//
+// When this happens, we're better able to fold cross-references at the targets
+// of conditional branches.
+llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(void);
+
 // Remill semantics sometimes contain compiler barriers (empty inline assembly
 // statements), especially related to floating point code (i.e. preventing
 // re-ordering of floating point operations so that we can capture the flags).

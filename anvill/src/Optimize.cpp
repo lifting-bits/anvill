@@ -563,6 +563,11 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createInstructionCombiningPass());
 
+  fpm.add(CreateSinkSelectionsIntoBranchTargets());
+  fpm.add(CreateRemoveUnusedFPClassificationCalls());
+  fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
+  fpm.add(CreateRemoveCompilerBarriers());
+
   fpm.doInitialization();
   for (auto &func : module) {
     fpm.run(func);
@@ -571,23 +576,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   RecoverStackMemoryAccesses(lifter_context, program, module);
   RecoverMemoryAccesses(lifter_context, program, module);
-
-  std::unordered_set<llvm::Function *> changed_funcs;
-
-  // TODO(pag):
-  // IN-PROGRESS: As code in this file is converted to passes, move it here.
-  do {
-    llvm::legacy::FunctionPassManager transforms(&module);
-    transforms.add(CreateRemoveUnusedFPClassificationCalls());
-    transforms.add(CreateLowerRemillMemoryAccessIntrinsics());
-    transforms.add(CreateRemoveCompilerBarriers());
-
-    transforms.doInitialization();
-    for (auto &func : module) {
-      transforms.run(func);
-    }
-    transforms.doFinalization();
-  } while (false);
 
 
   LowerTypeOps(program, module);
