@@ -683,6 +683,8 @@ int main(int argc, char *argv[]) {
       anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
   anvill::LifterOptions options(arch.get(), module);
+  options.state_struct_init_procedure =
+      anvill::StateStructureInitializationProcedure::kGlobalRegisterVariablesAndZeroes;
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does

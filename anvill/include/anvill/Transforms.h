@@ -119,6 +119,35 @@ llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 llvm::FunctionPass *CreateBrightenPointerOperations(
     const ConstantCrossReferenceResolver &resolver);
 
+// Transforms the bitcode to eliminate calls to `__remill_function_return`,
+// where appropriate. This will not succeed for all architectures, but is
+// likely to always succeed for x86(-64) and aarch64, due to their support
+// for the `llvm.addressofreturnaddress` intrinsic.
+//
+// When we lift bitcode, we represent the control-flow transfer semantics of
+// function returns with calls to `__remill_function_return`. This is another
+// three-argument Remill function, where the second argument is the program
+// counter. We're particularly interested in observing this program counter
+// value, as it can tell us if this function respects normal return conventions
+// (i.e. returns to its return address) or not. The way we try to observe this
+// is by inspecting the program counter argument, and seeing if it is
+// `__anvill_ra` or the (casted) value returned from the `llvm.returnaddress`
+// intrinsic.
+//
+// When we match the expected pattern, we can eliminate calls to
+// `__remill_function_return`. If we don't match the pattern, then it suggests
+// that it is possible that the function alters its return address, or that
+// something is preventing our analysis from deducing that the return address
+// reaches the `__remill_function_return` call's program counter argument.
+//
+// On x86(-64) and AArch64, we can use the `llvm.addressofreturnaddress` to
+// update the return address in place when we fail to match the pattern,
+// thereby letting us eliminate the call to `__remill_function_return`.
+//
+// NOTE(pag): This pass should be applied as late as possible, as the call to
+//            `__remill_function_return` depends upon the memory pointer.
+llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
+
 // Transforms the bitcode in `func`, looking for uses of the
 // `llvm.returnaddress` intrinsic function. If the return value of this function
 // is stored into memory, then we try to identify any loads from the same

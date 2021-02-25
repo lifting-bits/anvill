@@ -485,13 +485,10 @@ uint64_t XrefExprFolder::VisitICmp(unsigned pred, llvm::Value *lhs_op,
 
 uint64_t XrefExprFolder::VisitSelect(llvm::Value *cond, llvm::Value *if_true,
                                      llvm::Value *if_false) {
-  LOG(ERROR) << "entering select cond";
   const auto sel = Visit(cond);
   if (error) {
     return 0;
   }
-
-  LOG(ERROR) << "sel=" << sel << " on " << remill::LLVMThingToString(cond);
 
   Reset();
   uint64_t ret = 0;
