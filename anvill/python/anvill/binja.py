@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Union, List, Tuple, Optional, Set
+from typing import Final, Union, List, Tuple, Optional, Set
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -631,11 +631,11 @@ class BNVariable(Variable):
 
 
 class BNProgram(Program):
-    def __init__(self, path):
-        self._path = path
-        self._bv = bn.BinaryViewType.get_view_of_file(self._path)
-        self._type_cache = TypeCache(self._bv)
-        super(BNProgram, self).__init__(get_arch(self._bv), get_os(self._bv))
+    def __init__(self, bv: bn.BinaryView, path: str):
+        Program.__init__(self, get_arch(bv), get_os(bv))
+        self._path: Final[str] = path
+        self._bv: Final[bn.BinaryView] = bv
+        self._type_cache: Final[TypeCache] = TypeCache(self._bv)
 
     @property
     def bv(self):
@@ -762,18 +762,22 @@ class BNProgram(Program):
             yield (s.address, s.name)
 
 
-_PROGRAM = None
 
+def get_program(arg, cache=False):
+    if cache:
+        DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
-def get_program(*args, **kargs):
-    global _PROGRAM
-    if _PROGRAM:
-        return _PROGRAM
-    assert len(args) == 1
+    path: Optional[str] = None
+    bv: Optional[bn.BinaryView] = None
+    if isinstance(arg, str):
+        path = arg
+        bv = bn.BinaryViewType.get_view_of_file(path)
+    elif isinstance(arg, bn.BinaryView):
+        bv = arg
+        path = bv.file.original_filename
+    else:
+        return None
 
-    DEBUG("Recovering program {}".format(args[0]))
-
-    prog = BNProgram(args[0])
-    if "cache" not in kargs or kargs["cache"]:
-        _PROGRAM = prog
+    DEBUG("Recovering program {}".format(path))
+    prog = BNProgram(bv, path)
     return prog
