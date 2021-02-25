@@ -25,6 +25,12 @@ namespace anvill {
 
 class ConstantCrossReferenceResolver;
 
+// Remill semantics sometimes contain compiler barriers (empty inline assembly
+// statements), especially related to floating point code (i.e. preventing
+// re-ordering of floating point operations so that we can capture the flags).
+// This pass eliminates those empty inline assembly statements.
+llvm::FunctionPass *CreateRemoveCompilerBarriers(void);
+
 // Analyze `func` and determine if the function stores the return value of
 // the `llvm.returnaddress` intrinsic into an `alloca` (presumed to be the
 // stack frame). If so, split the stack frame into three separate `alloca`s:

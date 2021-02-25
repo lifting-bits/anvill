@@ -134,85 +134,6 @@ RemoveUnusedCalls(llvm::Module &module, const char *func_name,
   }
 }
 
-// Look for compiler barriers (empty inline asm statements marked
-// with side-effects) and try to remove them. If we see some barriers
-// bracketed by extern
-static void RemoveUnneededInlineAsm(const Program &program,
-                                    llvm::Module &module) {
-  std::vector<llvm::CallInst *> to_remove;
-
-  program.ForEachFunction([&](const FunctionDecl *decl) -> bool {
-    const auto func =
-        decl->DeclareInModule(CreateFunctionName(decl->address), module);
-    if (func->isDeclaration()) {
-      return true;
-    }
-
-    to_remove.clear();
-
-    for (llvm::BasicBlock &block : *func) {
-      auto prev_is_compiler_barrier = false;
-      llvm::CallInst *prev_barrier = nullptr;
-      for (auto &inst : block) {
-        if (llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-          const auto inline_asm =
-              llvm::dyn_cast<llvm::InlineAsm>(call_inst->getCalledOperand());
-          if (inline_asm) {
-
-            // It looks like a "fake" read from a register.
-            if (!call_inst->hasNUsesOrMore(1) &&
-                !inline_asm->getAsmString().find("# read register ")) {
-              to_remove.push_back(call_inst);
-              prev_is_compiler_barrier = false;
-              prev_barrier = nullptr;
-
-            } else if (inline_asm->hasSideEffects() &&
-                       call_inst->getType()->isVoidTy() &&
-                       inline_asm->getAsmString().empty()) {
-
-              if (prev_is_compiler_barrier) {
-                to_remove.push_back(call_inst);
-              } else {
-                prev_barrier = call_inst;
-              }
-              prev_is_compiler_barrier = true;
-
-            } else {
-              prev_is_compiler_barrier = false;
-              prev_barrier = nullptr;
-            }
-
-          } else if (auto target_func = call_inst->getCalledFunction()) {
-            if (target_func->hasExternalLinkage()) {
-              if (prev_is_compiler_barrier && prev_barrier) {
-                to_remove.push_back(prev_barrier);
-              }
-              prev_is_compiler_barrier = true;
-            } else {
-              prev_is_compiler_barrier = false;
-            }
-
-            prev_barrier = nullptr;
-
-          } else {
-            prev_is_compiler_barrier = false;
-            prev_barrier = nullptr;
-          }
-        } else {
-          prev_is_compiler_barrier = false;
-          prev_barrier = nullptr;
-        }
-      }
-    }
-
-    for (auto call_inst : to_remove) {
-      call_inst->eraseFromParent();
-    }
-
-    return true;
-  });
-}
-
 // Get the address space of a pointer value/type, using `addr_space` as our
 // backup if it doesn't seem like a pointer with a nown address space.
 static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
@@ -694,6 +615,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   do {
     llvm::legacy::FunctionPassManager transforms(&module);
     transforms.add(CreateLowerRemillMemoryAccessIntrinsics());
+    transforms.add(CreateRemoveCompilerBarriers());
 
     transforms.doInitialization();
     for (auto &func : module) {
@@ -712,8 +634,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
     fpm.run(func);
   }
   fpm.doFinalization();
-
-  RemoveUnneededInlineAsm(program, module);
 
   mpm.run(module);
 

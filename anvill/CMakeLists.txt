@@ -70,6 +70,7 @@ add_library(anvill STATIC
   include/anvill/Transforms.h
   src/Transforms/BrightenPointerOperations.cpp
   src/Transforms/LowerRemillMemoryAccessIntrinsics.cpp
+  src/Transforms/RemoveCompilerBarriers.cpp
   src/Transforms/SplitStackFrameAtReturnAddress.cpp
   src/Transforms/Utils.h
   src/Transforms/Utils.cpp
