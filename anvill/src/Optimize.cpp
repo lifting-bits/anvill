@@ -104,36 +104,6 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
   }
 }
 
-// Used to remove the calls to functions that don't really have a big
-// side-effect, but which Clang can't just remove because it can't be
-// sure, e.g. `fpclassify`.
-static void
-RemoveUnusedCalls(llvm::Module &module, const char *func_name,
-                  std::unordered_set<llvm::Function *> &changed_funcs) {
-  auto func = module.getFunction(func_name);
-  if (!func) {
-    return;
-  }
-
-  std::vector<llvm::CallInst *> to_remove;
-
-  for (auto user : func->users()) {
-    if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(user)) {
-      if (llvm::isInstructionTriviallyDead(call_inst)) {
-        to_remove.push_back(call_inst);
-      }
-    }
-  }
-
-  for (auto call_inst : to_remove) {
-    auto in_block = call_inst->getParent();
-    auto in_func = in_block->getParent();
-    changed_funcs.insert(in_func);
-
-    call_inst->eraseFromParent();
-  }
-}
-
 // Get the address space of a pointer value/type, using `addr_space` as our
 // backup if it doesn't seem like a pointer with a nown address space.
 static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
@@ -604,16 +574,11 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   std::unordered_set<llvm::Function *> changed_funcs;
 
-  // We can remove these when they are not used.
-  RemoveUnusedCalls(module, "fpclassify", changed_funcs);
-  RemoveUnusedCalls(module, "__fpclassifyd", changed_funcs);
-  RemoveUnusedCalls(module, "__fpclassifyf", changed_funcs);
-  RemoveUnusedCalls(module, "__fpclassifyld", changed_funcs);
-
   // TODO(pag):
   // IN-PROGRESS: As code in this file is converted to passes, move it here.
   do {
     llvm::legacy::FunctionPassManager transforms(&module);
+    transforms.add(CreateRemoveUnusedFPClassificationCalls());
     transforms.add(CreateLowerRemillMemoryAccessIntrinsics());
     transforms.add(CreateRemoveCompilerBarriers());
 

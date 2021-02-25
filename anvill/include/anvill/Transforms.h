@@ -54,6 +54,19 @@ llvm::FunctionPass *CreateRemoveCompilerBarriers(void);
 // frame structures.
 llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(void);
 
+// Remove unused calls to floating point classification functions. Calls to
+// these functions are present in a bunch of FPU-related instruction semantics
+// functions. It's frequently the case that instructions don't actually care
+// about the FPU state, though. In these cases, we won't observe the return
+// values of these classification functions being used. However, LLVM can't
+// eliminate the calls to these functions on its own because they are not
+// "pure" functions.
+//
+// NOTE(pag): This pass must be applied before any kind of renaming of lifted
+//            functions is performed, so that we don't accidentally remove
+//            calls to classification functions present in the target binary.
+llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void);
+
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
 llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);

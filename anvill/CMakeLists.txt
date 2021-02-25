@@ -71,6 +71,7 @@ add_library(anvill STATIC
   src/Transforms/BrightenPointerOperations.cpp
   src/Transforms/LowerRemillMemoryAccessIntrinsics.cpp
   src/Transforms/RemoveCompilerBarriers.cpp
+  src/Transforms/RemoveUnusedFPClassificationCalls.cpp
   src/Transforms/SplitStackFrameAtReturnAddress.cpp
   src/Transforms/Utils.h
   src/Transforms/Utils.cpp

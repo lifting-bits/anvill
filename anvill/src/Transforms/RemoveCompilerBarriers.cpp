@@ -23,10 +23,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
-#include <glog/logging.h>
-
-#include "Utils.h"
-
 namespace anvill {
 namespace {
 
