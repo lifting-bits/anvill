@@ -59,7 +59,7 @@ class LifterOptions {
       : arch(arch_),
         module(&module_),
         state_struct_init_procedure(
-            StateStructureInitializationProcedure::kGlobalRegisterVariables),
+            StateStructureInitializationProcedure::kGlobalRegisterVariablesAndZeroes),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),

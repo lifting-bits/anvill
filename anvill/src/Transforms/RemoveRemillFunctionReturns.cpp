@@ -50,24 +50,101 @@ class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
 char RemoveRemillFunctionReturns::ID = '\0';
 
 enum ReturnAddressResult {
+  // We've found a case where a value returned by `llvm.returnaddress`, or
+  // casted from `__anvill_ra`, reaches into the `pc` argument of the
+  // `__remill_function_return` intrinsic. This is the ideal case that we
+  // want to handle.
   kFoundReturnAddress,
+
+  // We've found a case where we're seeing a load from something derived from
+  // `__anvill_sp`, our "symbolic stack pointer", is reaching into the `pc`
+  // argument of `__remill_function_return`. This suggests that stack frame
+  // recovery has not happened yet, and thus we haven't really given stack
+  // frame recovery or stack frame splitting a chance to work.
   kFoundSymbolicStackPointerLoad,
+
+  // We've found a `load` or something else. This is probably a sign that
+  // stack frame recovery has happened, and that the actual return address
+  // is not necessarily the expected value, and so we need to try to swap
+  // out the return address with whatever we loaded.
   kUnclassifiableReturnAddress
 };
 
-static bool IsRelatedToStackPointer(llvm::Value *val) {
-  return true;
+// Returns `true` if it looks like `val` is derived from a symbolic stack
+// pointer representation.
+static bool IsRelatedToStackPointer(
+    const llvm::DataLayout &dl, llvm::Value *val) {
+
+  if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
+    return gv->getName() == "__anvill_sp";
+
+  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+    return IsRelatedToStackPointer(dl, pti->getOperand(0));
+
+  } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+    switch (ce->getOpcode()) {
+      case llvm::Instruction::IntToPtr:
+      case llvm::Instruction::PtrToInt:
+      case llvm::Instruction::BitCast:
+      case llvm::Instruction::GetElementPtr:
+      case llvm::Instruction::Shl:
+      case llvm::Instruction::LShr:
+      case llvm::Instruction::AShr:
+      case llvm::Instruction::UDiv:
+      case llvm::Instruction::SDiv:
+        return IsRelatedToStackPointer(dl, ce->getOperand(0));
+      case llvm::Instruction::Add:
+      case llvm::Instruction::Sub:
+      case llvm::Instruction::Mul:
+      case llvm::Instruction::And:
+      case llvm::Instruction::Or:
+      case llvm::Instruction::Xor:
+        return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
+               IsRelatedToStackPointer(dl, ce->getOperand(1));
+      case llvm::Instruction::Select:
+        return IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
+               IsRelatedToStackPointer(dl, ce->getOperand(2));
+      default:
+        return false;
+    }
+
+  } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
+    return IsRelatedToStackPointer(dl, op2->getOperand(0)) ||
+           IsRelatedToStackPointer(dl, op2->getOperand(1));
+
+  } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
+    return IsRelatedToStackPointer(dl, op1->getOperand(0));
+
+  } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
+    return IsRelatedToStackPointer(dl, sel->getTrueValue()) ||
+           IsRelatedToStackPointer(dl, sel->getFalseValue());
+
+  } else if (auto val2 = val->stripPointerCastsAndAliases();
+             val2 && val2 != val) {
+    return IsRelatedToStackPointer(dl, val2);
+
+  } else {
+    llvm::APInt ap(dl.getPointerSizeInBits(0), 0);
+    if (auto val3 = val->stripAndAccumulateConstantOffsets(dl, ap, true);
+        val3 && val3 != val) {
+      return IsRelatedToStackPointer(dl, val3);
+    } else {
+      return false;
+    }
+  }
 }
 
 // Returns `true` if `val` is a return address.
-static ReturnAddressResult QueryReturnAddress(llvm::Value *val) {
+static ReturnAddressResult QueryReturnAddress(
+    const llvm::DataLayout &dl, llvm::Value *val) {
+
   if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
     if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
       return kFoundReturnAddress;
     } else if (auto func = call->getCalledFunction()) {
       if (func->getName().startswith("__remill_read_memory_")) {
         auto addr = call->getArgOperand(1);  // Address
-        if (IsRelatedToStackPointer(addr)) {
+        if (IsRelatedToStackPointer(dl, addr)) {
           return kFoundSymbolicStackPointerLoad;
         } else {
           return kUnclassifiableReturnAddress;
@@ -77,7 +154,7 @@ static ReturnAddressResult QueryReturnAddress(llvm::Value *val) {
     return kUnclassifiableReturnAddress;
 
   } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
-    if (IsRelatedToStackPointer(li->getPointerOperand())) {
+    if (IsRelatedToStackPointer(dl, li->getPointerOperand())) {
       return kFoundSymbolicStackPointerLoad;
     } else {
       return kUnclassifiableReturnAddress;
@@ -91,13 +168,62 @@ static ReturnAddressResult QueryReturnAddress(llvm::Value *val) {
     }
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(pti->getOperand(0));
+    return QueryReturnAddress(dl, pti->getOperand(0));
 
   } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
-    return QueryReturnAddress(cast->getOperand(0));
+    return QueryReturnAddress(dl, cast->getOperand(0));
+
+  } else if (IsRelatedToStackPointer(dl, val)) {
+    return kFoundSymbolicStackPointerLoad;
 
   } else {
     return kUnclassifiableReturnAddress;
+  }
+}
+
+// Remove a single case of a call to `__remill_function_return` where the return
+// addresses reaches the `pc` argument of the call.
+static void FoldReturnAddressMatch(llvm::CallBase *call) {
+  auto ret_addr = llvm::dyn_cast<llvm::Instruction>(
+      call->getArgOperand(remill::kPCArgNum));
+  auto mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
+  call->replaceAllUsesWith(mem_ptr);
+  call->eraseFromParent();
+
+  // Work up the use list of casts back to the source of this return
+  // address, eliminating as many of those values as possible.
+  while (ret_addr && ret_addr->use_empty()) {
+
+    // Cast of `llvm.returnaddress`.
+    if (auto cast_inst = llvm::dyn_cast<llvm::CastInst>(ret_addr)) {
+      auto next_ret_addr = llvm::dyn_cast<llvm::Instruction>(
+          cast_inst->getOperand(0));
+      ret_addr->eraseFromParent();
+      ret_addr = next_ret_addr;
+
+    // Call to `llvm.returnaddress`.
+    } else if (auto call_inst = llvm::dyn_cast<llvm::CallBase>(ret_addr)) {
+      if (call_inst->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
+        call_inst->eraseFromParent();
+      }
+      break;
+
+    // Who knows?!
+    } else {
+      LOG(ERROR)
+          << "Encountered unexpected instruction when removing return address: "
+          << remill::LLVMThingToString(ret_addr);
+      break;
+    }
+  }
+}
+
+// Remove all cases of a call to `__remill_function_return` where the return
+// addresses reaches the `pc` argument of the call.
+static void FoldReturnAddressMatches(
+    const std::vector<llvm::CallBase *> &matches_pattern) {
+  for (auto call : matches_pattern) {
+    FoldReturnAddressMatch(call);
   }
 }
 
@@ -105,6 +231,7 @@ static ReturnAddressResult QueryReturnAddress(llvm::Value *val) {
 // remove.
 bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 
+  const auto &dl = func.getParent()->getDataLayout();
   std::vector<llvm::CallBase *> matches_pattern;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -113,7 +240,7 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
           func && func->getName() == "__remill_function_return") {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
-        switch (QueryReturnAddress(ret_addr)) {
+        switch (QueryReturnAddress(dl, ret_addr)) {
           case kFoundReturnAddress:
             matches_pattern.push_back(call);
             break;
@@ -125,6 +252,7 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 
           // Here we'll do an arch-specific fixup.
           case kUnclassifiableReturnAddress:
+            // TODO(pag): Add to list of stuff to process.
             break;
         }
       }
@@ -132,40 +260,7 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
   }
 
   // Go remove all the matches that we can.
-  for (auto call : matches_pattern) {
-    auto ret_addr = llvm::dyn_cast<llvm::Instruction>(
-        call->getArgOperand(remill::kPCArgNum));
-    auto mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
-    call->replaceAllUsesWith(mem_ptr);
-    call->eraseFromParent();
-
-    // Work up the use list of casts back to the source of this return
-    // address, eliminating as many of those values as possible.
-    while (ret_addr && ret_addr->use_empty()) {
-
-      // Cast of `llvm.returnaddress`.
-      if (auto cast_inst = llvm::dyn_cast<llvm::CastInst>(ret_addr)) {
-        auto next_ret_addr = llvm::dyn_cast<llvm::Instruction>(
-            cast_inst->getOperand(0));
-        ret_addr->eraseFromParent();
-        ret_addr = next_ret_addr;
-
-      // Call to `llvm.returnaddress`.
-      } else if (auto call_inst = llvm::dyn_cast<llvm::CallBase>(ret_addr)) {
-        if (call_inst->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
-          call_inst->eraseFromParent();
-        }
-        break;
-
-      // Who knows?!
-      } else {
-        LOG(ERROR)
-            << "Encountered unexpected instruction when removing return address: "
-            << remill::LLVMThingToString(ret_addr);
-        break;
-      }
-    }
-  }
+  FoldReturnAddressMatches(matches_pattern);
 
   return !matches_pattern.empty();
 }

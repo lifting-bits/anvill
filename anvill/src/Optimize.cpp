@@ -567,8 +567,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-
-//  fpm.add(CreateRemoveRemillFunctionReturns());
+  fpm.add(CreateRemoveRemillFunctionReturns());
 
   fpm.doInitialization();
   for (auto &func : module) {
