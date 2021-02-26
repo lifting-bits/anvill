@@ -49,6 +49,9 @@ enum class StateStructureInitializationProcedure : char {
   kGlobalRegisterVariables,
   kGlobalRegisterVariablesAndZeroes,
   kGlobalRegisterVariablesAndUndef
+
+  // TODO(pag): Add an option to read values using the `llvm.read_register`
+  //            intrinsic.
 };
 
 // Options that direct the behavior of the code and data lifters.

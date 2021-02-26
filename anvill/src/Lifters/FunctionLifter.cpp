@@ -804,6 +804,10 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
     InstrumentCallBreakpointFunction(block);
   }
 
+  // TODO(pag): Consider emitting calls to the `llvm.pcmarker` intrinsic. Figure
+  //            out if the `i32` parameter is different on 64-bit targets, or
+  //            if it's actually a metadata ID.
+
   // Reserve space for an instrucion that will go into a delay slot, in case it
   // is needed. This is an uncommon case, so avoid instantiating a new
   // Instruction unless it is actually needed. The instruction instantition into

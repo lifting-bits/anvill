@@ -17,11 +17,15 @@
 
 #include <anvill/Transforms.h>
 
+#include <llvm/ADT/Triple.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Metadata.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 
 #include <remill/BC/ABI.h>
@@ -77,6 +81,27 @@ static bool IsRelatedToStackPointer(
 
   if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     return gv->getName() == "__anvill_sp";
+
+  } else if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
+    const auto intrinsic_id = call->getIntrinsicID();
+
+    // This is only valid on AArch64.
+    if (intrinsic_id == llvm::Intrinsic::sponentry) {
+      return true;
+
+    // This intrinsic can be used for getting the address of the stack
+    // pointer.
+    } else if (intrinsic_id == llvm::Intrinsic::read_register) {
+      auto reg_val = call->getArgOperand(0);
+      auto reg_tuple_md = llvm::cast<llvm::MDTuple>(
+          llvm::cast<llvm::MetadataAsValue>(reg_val)->getMetadata());
+      auto reg_name_md = llvm::cast<llvm::MDString>(reg_tuple_md->getOperand(0));
+      auto reg_name = reg_name_md->getString().lower();
+      if (reg_name == "sp" || reg_name == "esp" || reg_name == "rsp") {
+        return true;
+      }
+    }
+    return false;
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
     return IsRelatedToStackPointer(dl, pti->getOperand(0));
@@ -218,12 +243,74 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
   }
 }
 
-// Remove all cases of a call to `__remill_function_return` where the return
-// addresses reaches the `pc` argument of the call.
-static void FoldReturnAddressMatches(
-    const std::vector<llvm::CallBase *> &matches_pattern) {
-  for (auto call : matches_pattern) {
-    FoldReturnAddressMatch(call);
+// Returns the pointer to the function that lets us overwrite the return
+// address. This is not available on all architectures / OSes.
+static llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
+  llvm::Triple triple(module->getTargetTriple());
+  const char *func_name = nullptr;
+  switch (triple.getArch()) {
+    case llvm::Triple::ArchType::x86:
+    case llvm::Triple::ArchType::x86_64:
+    case llvm::Triple::ArchType::aarch64:
+    case llvm::Triple::ArchType::aarch64_be:
+      func_name = "llvm.addressofreturnaddress.p0i8";
+      break;
+
+    // The Windows `_AddressOfReturnAddress` intrinsic function works on
+    // AArch32 / ARMv7 (as well as the above).
+    case llvm::Triple::ArchType::arm:
+    case llvm::Triple::ArchType::armeb:
+    case llvm::Triple::ArchType::aarch64_32:
+      if (triple.isOSWindows()) {
+        func_name = "_AddressOfReturnAddress";
+      }
+      break;
+    default:
+      break;
+  }
+
+  llvm::Function *func = nullptr;
+
+  // Common path to handle the Windows-specific case, or the slightly
+  // more general case uniformly.
+  if (func_name) {
+    func = module->getFunction(func_name);
+    if (!func) {
+      auto &context = module->getContext();
+      auto fty = llvm::FunctionType::get(
+          llvm::Type::getInt8PtrTy(context, 0), false);
+      func = llvm::Function::Create(
+          fty, llvm::GlobalValue::ExternalLinkage, func_name, module);
+    }
+  }
+
+  return func;
+}
+
+// Override the return address in the function `func` with values from
+// `fixups`.
+static void OverwriteReturnAddress(
+    llvm::Function &func, llvm::Function *addr_of_ret_addr_func,
+    std::vector<std::pair<llvm::CallBase *, llvm::Value *>> &fixups) {
+
+  // Get the address of our return address.
+  const auto addr_of_ret_addr = llvm::CallInst::Create(
+      addr_of_ret_addr_func, {}, llvm::None, llvm::Twine::createNull(),
+      &(func.getEntryBlock().front()));
+
+  for (auto &[call, ret_addr] : fixups) {
+    auto ret_addr_type = ret_addr->getType();
+
+    // Store the return address.
+    llvm::IRBuilder<> ir(call);
+    ir.CreateStore(
+        ret_addr,
+        ir.CreateBitCast(addr_of_ret_addr,
+                         llvm::PointerType::get(ret_addr_type, 0)));
+
+    // Get rid of the `__remill_function_return`.
+    call->replaceAllUsesWith(call->getArgOperand(remill::kMemoryPointerArgNum));
+    call->eraseFromParent();
   }
 }
 
@@ -231,8 +318,10 @@ static void FoldReturnAddressMatches(
 // remove.
 bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 
-  const auto &dl = func.getParent()->getDataLayout();
+  const auto module = func.getParent();
+  const auto &dl = module->getDataLayout();
   std::vector<llvm::CallBase *> matches_pattern;
+  std::vector<std::pair<llvm::CallBase *, llvm::Value *>> fixups;
 
   for (auto &inst : llvm::instructions(func)) {
     if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst)) {
@@ -252,17 +341,31 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 
           // Here we'll do an arch-specific fixup.
           case kUnclassifiableReturnAddress:
-            // TODO(pag): Add to list of stuff to process.
+            fixups.emplace_back(call, ret_addr);
             break;
         }
       }
     }
   }
 
-  // Go remove all the matches that we can.
-  FoldReturnAddressMatches(matches_pattern);
+  auto ret = false;
 
-  return !matches_pattern.empty();
+  // Go remove all the matches that we can.
+  for (auto call : matches_pattern) {
+    FoldReturnAddressMatch(call);
+    ret = true;
+  }
+
+  // Go use the `llvm.addressofreturnaddress` to store replace the return
+  // address.
+  if (!fixups.empty()) {
+    if (auto addr_of_ret_addr_func = AddressOfReturnAddressFunction(module)) {
+      OverwriteReturnAddress(func, addr_of_ret_addr_func, fixups);
+      ret = true;
+    }
+  }
+
+  return ret;
 }
 
 }  // namespace
