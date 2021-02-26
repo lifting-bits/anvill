@@ -28,6 +28,7 @@ class LLVMContext;
 class Type;
 }  // namespace llvm
 namespace anvill {
+class TypeProvider;
 
 class EntityLifterImpl;
 
@@ -53,8 +54,15 @@ class ValueLifter {
   // of type `type_of_data`. This requires access to `ent_lifter` to be able
   // to lift pointer types that will reference declared data/functions.
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
-                       EntityLifterImpl &ent_lifter) const;
+                       EntityLifterImpl &ent_lifter, uint64_t loc_ea) const;
 
+ private:
+  // Lift pointers at `ea` that is getting referred by the variable at `loc_ea`
+  llvm::Constant *GetPointer(uint64_t ea, llvm::Type *type,
+                             EntityLifterImpl &ent_lifter,
+                             uint64_t loc_ea) const;
+
+ private:
   const LifterOptions options;
   const llvm::DataLayout &dl;
   llvm::LLVMContext &context;

@@ -51,14 +51,6 @@ class EntityLifterImpl {
       const std::shared_ptr<MemoryProvider> &mem_provider_,
       const std::shared_ptr<TypeProvider> &type_provider_);
 
-  // Tries to lift the data at `address` and return an `llvm::GlobalAlias *`.
-  //
-  // A key issue with `TryLiftData` is that we might be requesting `address`,
-  // but `address` may be inside of another piece of data, which begins
-  // at `data_address`.
-  llvm::Constant *TryLiftData(uint64_t address, uint64_t data_address,
-                              llvm::Type *data_type);
-
   // Tells the entity lifter that `entity` is the lifted function/data at
   // `address`. There is some collusion between the `Context`, the
   // `FunctionLifter`, the `DataLifter`, and the `ValueLifter` to ensure their

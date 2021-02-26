@@ -44,6 +44,10 @@ class TypeProvider {
   // type is the prototype of the function.
   virtual std::optional<FunctionDecl> TryGetFunctionType(uint64_t address) = 0;
 
+  // Try to return the variable at given address or containing the address
+  virtual std::optional<GlobalVarDecl>
+  TryGetVariableType(uint64_t address, const llvm::DataLayout &layout) = 0;
+
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
   // `func_address`.

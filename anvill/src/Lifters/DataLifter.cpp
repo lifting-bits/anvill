@@ -17,6 +17,7 @@
 
 #include "DataLifter.h"
 
+#include <anvill/ABI.h>
 #include <anvill/Decl.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/TypePrinter.h>
@@ -73,81 +74,127 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
     return found_by_type;
   }
 
-  // We'll use an existing declaration, create a new GEP, and cast as
-  // necessary.
-  const auto [base, offset] =
-      remill::StripAndAccumulateConstantOffsets(dl, found_by_address);
-  if (base) {
-
-    // TODO(pag,alessandro): Something related to `remill::BuildPointerToOffset`
-    //                       or `remill::BuildIndexes` to return an initialized
-    //                       global alias.
-    //
-    // Key issues:
-    //
-    //    Need to recursively tell the `lifter_context` about all entities
-    //    along the way, kind of like how `FindBaseAndOffset` goes and finds
-    //    them.
-  }
-
-  // Create an address- and type-versioned named for this data reference.
   std::stringstream ss;
-  ss << "data_" << std::hex << decl.address << '_'
+  ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
      << TranslateType(*type, dl, true);
-
   const auto name = ss.str();
   const auto ga = llvm::GlobalAlias::create(
       type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
 
   lifter_context.AddEntity(ga, decl.address);
 
-  // TODO(pag,alessandro): If we're down here then we don't have any other
-  //                       aliases for this exact piece of data. However, there
-  //                       may we other globals that overlap this piece of data,
-  //                       and thus we want to set the initializer based off of
-  //                       those globals, similar to what we do in the base/
-  //                       offset situation.
-  //
-  //                       The biggest challenge is a design challenge:
-  //                          - What is a reasonable way of getting at this kind
-  //                            of information? Do we ask the type provider, and
-  //                            if so, how, and what do the results look like?
-  //
-  //                       The next challenge is data structures:
-  //                          - Managing what entities we know about and their
-  //                            extents.
-  //                          - Do we learn about overlaps as they come up, or
-  //                            do we know about them ahead of time? The use of
-  //                            aliases enables us to swap out initializers.
+  if (found_by_address) {
 
-  // !!! TEMPORARY because we need all aliasees to have an initializer!!!
-  std::stringstream ss2;
-  ss2 << "var_" << std::hex << decl.address << '_'
-      << TranslateType(*type, dl, true);
+    // We'll use an existing declaration, create a new GEP, and cast as necessary.
+    const auto [base, offset] =
+        remill::StripAndAccumulateConstantOffsets(dl, found_by_address);
+    if (base) {
 
-  // TODO(akshay): use `dl` to figure out the size in bytes of the type. Make
-  //               a `std::string` and initialize it to that size. Use the
-  //               `MemoryProvider` to query each byte offset from
-  //               `decl.address`, and if the byte is available, then write it
-  //               into the string. Inspect the permissions as you read/write
-  //               bytes. Be careful about crossing permission boundaries; i.e.
-  //               if we cross from writable into non-writable, then we should
-  //               treat that as a failure to get the needed bytes. Log a
-  //               warning/error, and we'll treat the var as an uninitialized
-  //               external. Use that same permissions tracking to set whether
-  //               or not the global var is constant. Try to factor this out
-  //               into one or more functions and not do it all right here.
-  //               Finally, if and when all bytes are read, and no permission
-  //               boundaries are crossed, go and invoke the data lifter.
-  const auto gv = new llvm::GlobalVariable(
-      *options.module, type, false, llvm::GlobalValue::ExternalLinkage,
-      llvm::Constant::getNullValue(type), ss2.str());
+      // TODO(pag,alessandro): Something related to `remill::BuildPointerToOffset`
+      //                       or `remill::BuildIndexes` to return an initialized
+      //                       global alias.
+      // Key issues:
+      //
+      //    Need to recursively tell the `lifter_context` about all entities
+      //    along the way, kind of like how `FindBaseAndOffset` goes and finds
+      //    them.
+
+      if (offset > 0) {
+
+        // dummy IRBuilder to reuse `remill::BuildPointerToOffset`
+        llvm::IRBuilder<> ir(options.module->getContext());
+        auto gv =
+            llvm::dyn_cast<llvm::GlobalValue>(llvm::dyn_cast<llvm::Constant>(
+                remill::BuildPointerToOffset(ir, base, offset, type)));
+        lifter_context.AddEntity(gv, decl.address);
+
+        ga->setAliasee(gv);
+      }
+    }
+
+    LOG_IF(ERROR, offset < 0)
+        << "Found negative offset for variable at " << std::hex << decl.address
+        << std::dec << " cast and return to the correct data type.";
+
+    // fallback to is base is null or offset < 0; bit cast to the
+    // correct type
+    auto gv = llvm::dyn_cast<llvm::GlobalValue>(
+        llvm::ConstantExpr::getBitCast(found_by_address, type));
+    lifter_context.AddEntity(gv, decl.address);
+
+    ga->setAliasee(gv);
+
+    return ga;
+  }
+
+  auto gv = LiftData(decl, lifter_context);
+  lifter_context.AddEntity(gv, decl.address);
 
   ga->setAliasee(gv);
-  lifter_context.AddEntity(gv, decl.address);
 
   return ga;
 }
+
+llvm::GlobalValue *DataLifter::LiftData(const GlobalVarDecl &decl,
+                                        EntityLifterImpl &lifter_context) {
+  const auto &dl = options.module->getDataLayout();
+  const auto type = remill::RecontextualizeType(decl.type, context);
+
+  std::vector<uint8_t> bytes;
+  llvm::Constant *value = nullptr;
+  bool bytes_accessable = false;
+
+  std::stringstream ss2;
+  ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
+      << TranslateType(*type, dl, true);
+
+  // Inspect the availability of first byte at `decl.address` and append
+  // it into the bytes vector
+  const auto data_size = dl.getTypeAllocSize(type);
+  auto [first_byte, first_byte_avail, first_byte_perms] =
+      memory_provider.Query(decl.address);
+  if (MemoryProvider::HasByte(first_byte_avail)) {
+    bytes.push_back(first_byte);
+    bytes_accessable = true;
+  }
+
+  // Inspect the read/write permission of bytes and check if it is crossing
+  // permission boundaries. Log error in such case
+  if (bytes_accessable) {
+    for (auto i = 1U; i < data_size; ++i) {
+      auto [byte, byte_avail, byte_perms] =
+          memory_provider.Query(decl.address + i);
+      if (!MemoryProvider::HasByte(byte_avail)) {
+
+        bytes_accessable = false;
+        LOG(ERROR) << "Variable at address " << std::hex << decl.address
+                   << " crosses into inaccessible bytes (Byte offset " << i
+                   << " )!" << std::dec;
+        break;
+      } else if (first_byte_perms != byte_perms) {
+        bytes_accessable = false;
+        LOG(ERROR) << "Variable at address " << std::hex << decl.address
+                   << " crosses permission (Byte offset " << i << " )!"
+                   << std::dec;
+        break;
+      }
+
+      bytes.push_back(byte);
+    }
+  }
+
+
+  if (bytes_accessable) {
+    value = lifter_context.value_lifter.Lift(
+        std::string_view(reinterpret_cast<char *>(bytes.data()), bytes.size()),
+        type, lifter_context, decl.address);
+  }
+
+  return new llvm::GlobalVariable(*options.module, type, false,
+                                  llvm::GlobalValue::ExternalLinkage, value,
+                                  ss2.str());
+}
+
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.

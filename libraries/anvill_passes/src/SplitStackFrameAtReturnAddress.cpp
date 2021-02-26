@@ -61,11 +61,13 @@ SplitStackFrameAtReturnAddress::execute(bool &function_was_updated,
   // patching
   const llvm::StructType *stack_frame_type{nullptr};
   if (!GetFunctionStackFrameType(stack_frame_type, function)) {
+
     // Not an error, there is not stack frame defined
     return Error::Success;
   }
 
   if (stack_frame_type->getNumElements() <= 1U) {
+
     // Not an error, the stack frame struct exists but it's either
     // empty or populated with a single element
     return Error::Success;
@@ -77,16 +79,19 @@ SplitStackFrameAtReturnAddress::execute(bool &function_was_updated,
   llvm::AllocaInst *frame_alloca{nullptr};
   if (!GetRetnAddressStoreInstructions(store_off_pairs, frame_alloca,
                                        function)) {
+
     // Not an error, nothing was found
     return Error::Success;
   }
 
   if (store_off_pairs.empty()) {
+
     // No error, the function does not need patching
     return Error::Success;
   }
 
   if (store_off_pairs.size() > 1) {
+
     // We only handle the first instance, so return an error if
     // we have more
     return Error::NotSupported;
@@ -117,6 +122,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
 
   auto elem_count = stack_frame_type->getNumElements();
   if (elem_count <= 1U) {
+
     // When we only have one element in the stack, there's nothing
     // we have to patch
     return Error::Success;
@@ -125,6 +131,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
   std::uint32_t elem_index{};
   if (!StructOffsetToElementIndex(elem_index, module, stack_frame_type,
                                   offset)) {
+
     // This is an error; we failed to translate the offset
     // into the stack frame to the element index of the StructType
     return Error::StackFrameOffsetError;
@@ -349,6 +356,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
 
   const llvm::StructType *stack_frame_type{nullptr};
   if (!GetFunctionStackFrameType(stack_frame_type, function)) {
+
     // This is an error, we failed to retrieve the StructType that
     // represents the stack frame we have to split
     return Error::InternalError;
@@ -360,11 +368,13 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
   if (auto error = SplitStackFrameTypeAtOffset(stack_frame_parts, function,
                                                offset, stack_frame_type);
       error != Error::Success) {
+
     // This is an error, as we failed to split the stack frame
     return error;
   }
 
   if (stack_frame_parts.empty()) {
+
     // This is not an error, the stack does not need splitting
     return Error::Success;
   }
@@ -398,6 +408,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
       TrackUsersOf<llvm::GetElementPtrInst>(orig_frame_alloca);
 
   if (gep_instr_list.empty()) {
+
     // This is an error. We already know that there is a write, so if
     // we end up inside here then we have failed to track down the
     // instructions we need
@@ -408,6 +419,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
   auto data_layout = module->getDataLayout();
 
   for (auto gep_instr : gep_instr_list) {
+
     // Translate the GEP instruction to a raw offset
     auto dest_value_offset =
         remill::StripAndAccumulateConstantOffsets(data_layout, gep_instr);
@@ -418,6 +430,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     std::uint32_t original_elem_index{};
     if (!StructOffsetToElementIndex(original_elem_index, module,
                                     stack_frame_type, offset)) {
+
       // This is an error, as we failed to map this GEP to a valid
       // index in the original stack frame type
       return Error::StackFrameOffsetError;
@@ -447,6 +460,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     }
 
     if (new_frame_part == nullptr) {
+
       // This is an error, we have failed to locate the alloca instruction
       // for the stack frame replacement
       return Error::InternalError;
