@@ -78,6 +78,7 @@ class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass {
  public:
   // Function pass outcome
   enum class Error {
+
     // The pass has either succeeded or decided that the function
     // does not need any patching
     Success,

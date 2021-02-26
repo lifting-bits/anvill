@@ -1003,14 +1003,12 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
-      MuteStateEscape(
-          remill::AddTerminatingTailCall(block, intrinsics.error));
+      MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
     // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
-      MuteStateEscape(
-          remill::AddTerminatingTailCall(block, intrinsics.error));
+      MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
     } else {
@@ -1571,7 +1569,7 @@ llvm::Function *EntityLifter::LiftEntity(const FunctionDecl &decl) const {
   // user renames a function between lifts/declares.
   if (found_by_type) {
     CHECK_EQ(func_in_target_module, found_by_type);
-    if (func_in_target_module->getName() != old_name) {
+    if (!old_name.empty() && func_in_target_module->getName() != old_name) {
       func_in_target_module->setName(old_name);
     }
   }

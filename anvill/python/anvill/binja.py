@@ -356,6 +356,7 @@ class TypeCache:
 
         else:
             DEBUG("WARNING: Unknown named type {} not handled".format(named_tinfo))
+            return VoidType()
 
     def _convert_bn_type(self, tinfo: bn.types.Type) -> Type:
         """Convert an bn `Type` instance into a `Type` instance."""
