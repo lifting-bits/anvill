@@ -67,6 +67,9 @@ add_library(anvill STATIC
   src/Lifters/DataLifter.h
   src/Lifters/DataLifter.cpp
   
+  include/anvill/ABI.h
+  src/ABI.cpp
+  
   include/anvill/Transforms.h
   src/Transforms/BrightenPointerOperations.cpp
   src/Transforms/LowerRemillMemoryAccessIntrinsics.cpp
@@ -77,6 +80,11 @@ add_library(anvill STATIC
   src/Transforms/SplitStackFrameAtReturnAddress.cpp
   src/Transforms/Utils.h
   src/Transforms/Utils.cpp
+  
+  include/anvill/Analysis/CrossReferenceResolver.h  
+  include/anvill/Analysis/Utils.h
+  src/Analysis/Utils.cpp
+  src/Analysis/CrossReferenceResolver.cpp
     
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp

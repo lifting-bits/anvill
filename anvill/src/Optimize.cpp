@@ -47,6 +47,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "anvill/ABI.h"
 #include "anvill/Analyze.h"
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
@@ -533,7 +534,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   LOG(INFO) << "Optimizing module.";
 
-  if (auto memory_escape = module.getFunction("__anvill_memory_escape")) {
+  if (auto memory_escape = module.getFunction(kMemoryPointerEscapeFunction)) {
     for (auto call : remill::CallersOf(memory_escape)) {
       call->eraseFromParent();
     }

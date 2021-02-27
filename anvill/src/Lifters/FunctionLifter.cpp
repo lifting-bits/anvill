@@ -17,6 +17,7 @@
 
 #include "FunctionLifter.h"
 
+#include <anvill/ABI.h>
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -88,8 +89,7 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
   const auto module = intrinsics.error->getParent();
   auto &context = module->getContext();
 
-  const auto name = "__anvill_memory_escape";
-  if (auto func = module->getFunction(name)) {
+  if (auto func = module->getFunction(kMemoryPointerEscapeFunction)) {
     return func;
   }
 
@@ -98,8 +98,8 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
           ->getType()};
   auto type =
       llvm::FunctionType::get(llvm::Type::getVoidTy(context), params, false);
-  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage, name,
-                                module);
+  return llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage,
+                                kMemoryPointerEscapeFunction.data(), module);
 }
 
 // We're calling a remill intrinsic and we want to "mute" the escape of the
@@ -1112,7 +1112,7 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
   options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
     if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
       std::stringstream ss;
-      ss << "__anvill_reg_" << reg->name;
+      ss << kUnmodelledRegisterPrefix << reg->name;
       const auto reg_name = ss.str();
 
       auto reg_global = semantics_module->getGlobalVariable(reg_name);
@@ -1141,11 +1141,11 @@ FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
       options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
   auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
 
-  auto base_pc = semantics_module->getGlobalVariable("__anvill_pc");
+  auto base_pc = semantics_module->getGlobalVariable(kSymbolicPCName);
   if (!base_pc) {
     base_pc = new llvm::GlobalVariable(*semantics_module, i8_type, false,
                                        llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, "__anvill_pc");
+                                       i8_zero, kSymbolicPCName);
   }
 
   auto pc = llvm::ConstantExpr::getAdd(
@@ -1177,11 +1177,11 @@ void FunctionLifter::InitialzieSymbolicStackPointer(llvm::BasicBlock *block) {
       options.arch->RegisterByName(options.arch->StackPointerRegisterName());
   auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
 
-  auto base_sp = semantics_module->getGlobalVariable("__anvill_sp");
+  auto base_sp = semantics_module->getGlobalVariable(kSymbolicSPName);
   if (!base_sp) {
     base_sp = new llvm::GlobalVariable(*semantics_module, i8_type, false,
                                        llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, "__anvill_sp");
+                                       i8_zero, kSymbolicSPName);
   }
 
   auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
@@ -1195,11 +1195,11 @@ llvm::Value *
 FunctionLifter::InitializeSymbolicReturnAddress(llvm::BasicBlock *block,
                                                 llvm::Value *mem_ptr,
                                                 const ValueDecl &ret_address) {
-  auto base_ra = semantics_module->getGlobalVariable("__anvill_ra");
+  auto base_ra = semantics_module->getGlobalVariable(kSymbolicRAName);
   if (!base_ra) {
     base_ra = new llvm::GlobalVariable(*semantics_module, i8_type, false,
                                        llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, "__anvill_ra");
+                                       i8_zero, kSymbolicRAName);
   }
 
   auto pc_reg =

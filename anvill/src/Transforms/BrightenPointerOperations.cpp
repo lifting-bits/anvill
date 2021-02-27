@@ -41,7 +41,7 @@ namespace {
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
 llvm::FunctionPass *CreateBrightenPointerOperations(
-    const ConstantCrossReferenceResolver &resolver) {
+    const CrossReferenceResolver &resolver) {
   return nullptr;
 }
 

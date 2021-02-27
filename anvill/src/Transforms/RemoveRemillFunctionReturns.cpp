@@ -17,6 +17,8 @@
 
 #include <anvill/Transforms.h>
 
+#include <anvill/Analysis/Utils.h>
+
 #include <llvm/ADT/Triple.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
@@ -74,91 +76,6 @@ enum ReturnAddressResult {
   kUnclassifiableReturnAddress
 };
 
-// Returns `true` if it looks like `val` is derived from a symbolic stack
-// pointer representation.
-static bool IsRelatedToStackPointer(
-    const llvm::DataLayout &dl, llvm::Value *val) {
-
-  if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
-    return gv->getName() == "__anvill_sp";
-
-  } else if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    const auto intrinsic_id = call->getIntrinsicID();
-
-    // This is only valid on AArch64.
-    if (intrinsic_id == llvm::Intrinsic::sponentry) {
-      return true;
-
-    // This intrinsic can be used for getting the address of the stack
-    // pointer.
-    } else if (intrinsic_id == llvm::Intrinsic::read_register) {
-      auto reg_val = call->getArgOperand(0);
-      auto reg_tuple_md = llvm::cast<llvm::MDTuple>(
-          llvm::cast<llvm::MetadataAsValue>(reg_val)->getMetadata());
-      auto reg_name_md = llvm::cast<llvm::MDString>(reg_tuple_md->getOperand(0));
-      auto reg_name = reg_name_md->getString().lower();
-      if (reg_name == "sp" || reg_name == "esp" || reg_name == "rsp") {
-        return true;
-      }
-    }
-    return false;
-
-  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return IsRelatedToStackPointer(dl, pti->getOperand(0));
-
-  } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
-    switch (ce->getOpcode()) {
-      case llvm::Instruction::IntToPtr:
-      case llvm::Instruction::PtrToInt:
-      case llvm::Instruction::BitCast:
-      case llvm::Instruction::GetElementPtr:
-      case llvm::Instruction::Shl:
-      case llvm::Instruction::LShr:
-      case llvm::Instruction::AShr:
-      case llvm::Instruction::UDiv:
-      case llvm::Instruction::SDiv:
-        return IsRelatedToStackPointer(dl, ce->getOperand(0));
-      case llvm::Instruction::Add:
-      case llvm::Instruction::Sub:
-      case llvm::Instruction::Mul:
-      case llvm::Instruction::And:
-      case llvm::Instruction::Or:
-      case llvm::Instruction::Xor:
-        return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(1));
-      case llvm::Instruction::Select:
-        return IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(2));
-      default:
-        return false;
-    }
-
-  } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
-    return IsRelatedToStackPointer(dl, op2->getOperand(0)) ||
-           IsRelatedToStackPointer(dl, op2->getOperand(1));
-
-  } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
-    return IsRelatedToStackPointer(dl, op1->getOperand(0));
-
-  } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
-    return IsRelatedToStackPointer(dl, sel->getTrueValue()) ||
-           IsRelatedToStackPointer(dl, sel->getFalseValue());
-
-  } else if (auto val2 = val->stripPointerCastsAndAliases();
-             val2 && val2 != val) {
-    return IsRelatedToStackPointer(dl, val2);
-
-  } else {
-    llvm::APInt ap(dl.getPointerSizeInBits(0), 0);
-    if (auto val3 = val->stripAndAccumulateConstantOffsets(dl, ap, true);
-        val3 && val3 != val) {
-      return IsRelatedToStackPointer(dl, val3);
-    } else {
-      return false;
-    }
-  }
-}
-
 // Returns `true` if `val` is a return address.
 static ReturnAddressResult QueryReturnAddress(
     const llvm::DataLayout &dl, llvm::Value *val) {
@@ -186,7 +103,7 @@ static ReturnAddressResult QueryReturnAddress(
     }
 
   } else if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
-    if (gv->getName() == "__anvill_ra") {
+    if (IsReturnAddress(gv)) {
       return kFoundReturnAddress;
     } else {
       return kUnclassifiableReturnAddress;
@@ -227,10 +144,8 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
       ret_addr = next_ret_addr;
 
     // Call to `llvm.returnaddress`.
-    } else if (auto call_inst = llvm::dyn_cast<llvm::CallBase>(ret_addr)) {
-      if (call_inst->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
-        call_inst->eraseFromParent();
-      }
+    } else if (IsReturnAddress(ret_addr)) {
+      ret_addr->eraseFromParent();
       break;
 
     // Who knows?!
