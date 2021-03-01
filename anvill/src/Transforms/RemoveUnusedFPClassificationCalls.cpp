@@ -16,14 +16,12 @@
  */
 
 #include <anvill/Transforms.h>
-
+#include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
-
-#include <glog/logging.h>
 
 #include "Utils.h"
 
@@ -32,9 +30,7 @@ namespace {
 
 class RemoveUnusedFPClassificationCalls final : public llvm::FunctionPass {
  public:
-
-  RemoveUnusedFPClassificationCalls(void)
-      : llvm::FunctionPass(ID) {}
+  RemoveUnusedFPClassificationCalls(void) : llvm::FunctionPass(ID) {}
 
   bool runOnFunction(llvm::Function &func) final;
 
@@ -46,7 +42,7 @@ char RemoveUnusedFPClassificationCalls::ID = '\0';
 
 // Try to remove unused floating point classification function calls.
 bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
-  auto calls = FindFunctionCalls(func, [] (llvm::CallBase *call) -> bool {
+  auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
       return false;

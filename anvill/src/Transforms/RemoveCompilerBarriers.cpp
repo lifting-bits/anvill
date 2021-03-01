@@ -16,7 +16,6 @@
  */
 
 #include <anvill/Transforms.h>
-
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/Instruction.h>
@@ -28,9 +27,7 @@ namespace {
 
 class RemoveCompilerBarriers final : public llvm::FunctionPass {
  public:
-
-  RemoveCompilerBarriers(void)
-      : llvm::FunctionPass(ID) {}
+  RemoveCompilerBarriers(void) : llvm::FunctionPass(ID) {}
 
   bool runOnFunction(llvm::Function &func) final;
 

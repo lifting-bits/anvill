@@ -16,7 +16,6 @@
  */
 
 #include <anvill/Transforms.h>
-
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
@@ -32,9 +31,7 @@ namespace {
 
 class SinkSelectionsIntoBranchTargets final : public llvm::FunctionPass {
  public:
-
-  SinkSelectionsIntoBranchTargets(void)
-      : llvm::FunctionPass(ID) {}
+  SinkSelectionsIntoBranchTargets(void) : llvm::FunctionPass(ID) {}
 
   bool runOnFunction(llvm::Function &func) final;
 

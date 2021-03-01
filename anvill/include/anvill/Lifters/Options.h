@@ -61,8 +61,8 @@ class LifterOptions {
                                 llvm::Module &module_)
       : arch(arch_),
         module(&module_),
-        state_struct_init_procedure(
-            StateStructureInitializationProcedure::kGlobalRegisterVariablesAndZeroes),
+        state_struct_init_procedure(StateStructureInitializationProcedure::
+                                        kGlobalRegisterVariablesAndZeroes),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),

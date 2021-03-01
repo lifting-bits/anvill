@@ -215,8 +215,7 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
 // bytes which cannot be decoded, or an empty byte sequence.
 void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                   llvm::BasicBlock *block) {
-  MuteStateEscape(
-      remill::AddTerminatingTailCall(block, intrinsics.error));
+  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
 }
 
 // Visit an error instruction. An error instruction is guaranteed to trap
@@ -228,8 +227,7 @@ void FunctionLifter::VisitError(const remill::Instruction &inst,
                                 remill::Instruction *delayed_inst,
                                 llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  MuteStateEscape(
-      remill::AddTerminatingTailCall(block, intrinsics.error));
+  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
 }
 
 // Visit a normal instruction. Normal instructions have straight line control-
@@ -328,6 +326,7 @@ void FunctionLifter::VisitConditionalFunctionReturn(
 // to `__remill_function_call`.
 void FunctionLifter::CallFunction(const remill::Instruction &inst,
                                   llvm::BasicBlock *block) {
+
   // First, try to see if it's actually related to another function. This is
   // equivalent to a tail-call in the original code.
   const auto maybe_other_decl =
@@ -1461,8 +1460,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
   const auto entry_block = &(lifted_func->getEntryBlock());
-  const auto pc_ptr = inst_lifter.LoadRegAddress(
-      entry_block, state_ptr, remill::kPCVariableName);
+  const auto pc_ptr = inst_lifter.LoadRegAddress(entry_block, state_ptr,
+                                                 remill::kPCVariableName);
   const auto next_pc_ptr = inst_lifter.LoadRegAddress(
       entry_block, state_ptr, remill::kNextPCVariableName);
 

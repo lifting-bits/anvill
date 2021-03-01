@@ -15,20 +15,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Analysis/CrossReferenceResolver.h>
-
 #include <anvill/ABI.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
-
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
-
 #include <remill/BC/Util.h>
 
 #include <unordered_map>
@@ -36,7 +33,8 @@
 namespace anvill {
 namespace {
 
-using ResolverFuncType = std::function<std::optional<uint64_t>(llvm::GlobalValue *)>;
+using ResolverFuncType =
+    std::function<std::optional<uint64_t>(llvm::GlobalValue *)>;
 
 // Convert an unsigned value `val` of size `size` bits into a signed `int64_t`.
 static int64_t Signed(uint64_t val, uint64_t size) {
@@ -77,15 +75,13 @@ class CrossReferenceResolverImpl {
   // `lhs` or `rhs` to promote pointerness.
   template <typename Op>
   ResolvedCrossReference Merge(ResolvedCrossReference lhs,
-                               ResolvedCrossReference rhs,
-                               Op &&merge_vals);
+                               ResolvedCrossReference rhs, Op &&merge_vals);
 
   // Merge and saturate the flags of `lhs` and `rhs`. It is acceptable for
   // `lhs` to promote pointerness, but not `rhs`.
   template <typename Op>
   ResolvedCrossReference MergeLeft(ResolvedCrossReference lhs,
-                                   ResolvedCrossReference rhs,
-                                   Op &&merge_vals);
+                                   ResolvedCrossReference rhs, Op &&merge_vals);
 
   // Return the size of the type `type`.
   uint64_t SizeOfType(llvm::Type *type);
@@ -94,19 +90,18 @@ class CrossReferenceResolverImpl {
 #define NO_WRAP(val, size) val
 #define SIGNED_WRAP(val, size) Signed(val, size)
 #define MAKE_BINOP_FOLDER(name, op, merge, wrap, allow_rhs_zero) \
-    ResolvedCrossReference Fold ## name(ResolvedCrossReference lhs_xr, \
-                                        ResolvedCrossReference rhs_xr, \
-                                        uint64_t mask, uint64_t size) { \
-      if (allow_rhs_zero || rhs_xr.u.address & mask) { \
-        return merge(lhs_xr, rhs_xr, \
-                     [=] (uint64_t lhs, uint64_t rhs) { \
-                        return static_cast<uint64_t>( \
-                            (wrap(lhs, size) op wrap(rhs, size))) & mask; \
-                     }); \
-      } else { \
-        return {}; \
-      } \
-    }
+  ResolvedCrossReference Fold##name(ResolvedCrossReference lhs_xr, \
+                                    ResolvedCrossReference rhs_xr, \
+                                    uint64_t mask, uint64_t size) { \
+    if (allow_rhs_zero || rhs_xr.u.address & mask) { \
+      return merge(lhs_xr, rhs_xr, [=](uint64_t lhs, uint64_t rhs) { \
+        return static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
+               mask; \
+      }); \
+    } else { \
+      return {}; \
+    } \
+  }
 
   MAKE_BINOP_FOLDER(Add, +, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(Sub, -, Merge, NO_WRAP, true)
@@ -123,7 +118,7 @@ class CrossReferenceResolverImpl {
   MAKE_BINOP_FOLDER(SRem, %, MergeLeft, SIGNED_WRAP, false)
   MAKE_BINOP_FOLDER(ICmpEq, ==, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpNe, !=, Merge, NO_WRAP, true)
-  MAKE_BINOP_FOLDER(ICmpUgt,>, Merge, NO_WRAP, true)
+  MAKE_BINOP_FOLDER(ICmpUgt, >, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpUge, >=, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpUlt, <, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpUle, <, Merge, NO_WRAP, true)
@@ -160,8 +155,7 @@ class CrossReferenceResolverImpl {
         return FoldICmpSlt(lhs_xr, rhs_xr, mask, size);
       case llvm::CmpInst::ICMP_SLE:
         return FoldICmpSle(lhs_xr, rhs_xr, mask, size);
-      default:
-        return {};
+      default: return {};
     }
   }
 
@@ -178,24 +172,26 @@ class CrossReferenceResolverImpl {
 // Merge and saturate the flags of `lhs` and `rhs`. It is acceptable for
 // `lhs` or `rhs` to promote pointerness.
 template <typename Op>
-ResolvedCrossReference CrossReferenceResolverImpl::Merge(
-    ResolvedCrossReference lhs, ResolvedCrossReference rhs, Op &&merge_vals) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::Merge(ResolvedCrossReference lhs,
+                                  ResolvedCrossReference rhs, Op &&merge_vals) {
   ResolvedCrossReference xr = {};
   xr.u.address = merge_vals(lhs.u.address, rhs.u.address);
   xr.is_valid = lhs.is_valid & rhs.is_valid;
   xr.references_entity = lhs.references_entity | rhs.references_entity;
-  xr.references_global_value = lhs.references_global_value |
-                               rhs.references_global_value;
-  xr.references_program_counter = lhs.references_program_counter |
-                                  rhs.references_program_counter;
-  xr.references_return_address = lhs.references_return_address |
-                                 rhs.references_return_address;
-  xr.references_stack_pointer = lhs.references_stack_pointer |
-                                rhs.references_stack_pointer;
+  xr.references_global_value =
+      lhs.references_global_value | rhs.references_global_value;
+  xr.references_program_counter =
+      lhs.references_program_counter | rhs.references_program_counter;
+  xr.references_return_address =
+      lhs.references_return_address | rhs.references_return_address;
+  xr.references_stack_pointer =
+      lhs.references_stack_pointer | rhs.references_stack_pointer;
   xr.hinted_value_type = nullptr;
   xr.displacement_from_hinted_value_type = 0;
 
   if (lhs.hinted_value_type && rhs.hinted_value_type) {
+
     // Not clear how to combine, so drop the type info. E.g. we could be
     // dealing with a `ptrdiff_t` logically, i.e. the distance between
     // two pointers.
@@ -240,8 +236,8 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
 }
 
 // Try to resolve a constant to a cross-reference.
-ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstant(
-    llvm::Constant *const_val) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
 
   auto it = xref_cache.find(const_val);
   if (it != xref_cache.end()) {
@@ -271,8 +267,8 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstant(
   return xr;
 }
 
-ResolvedCrossReference CrossReferenceResolverImpl::ResolveGlobalValue(
-    llvm::GlobalValue *gv) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
   ResolvedCrossReference xr = {};
 
@@ -315,8 +311,8 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveGlobalValue(
   return xr;
 }
 
-ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstantExpr(
-    llvm::ConstantExpr *ce) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
   const auto ptr_size = dl.getPointerSizeInBits(0);
   const uint64_t size = ce->getOperand(0)->getType()->getPrimitiveSizeInBits();
@@ -325,28 +321,26 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstantExpr(
   const uint64_t out_mask = out_size < 64 ? (1ull << out_size) - 1ull : ~0ull;
 
   switch (ce->getOpcode()) {
-    default:
-      break;
+    default: break;
 
 #define FOLD_CASE(name) \
-    case llvm::Instruction::name: \
-      return Fold ## name (ResolveConstant(ce->getOperand(0)), \
-                           ResolveConstant(ce->getOperand(1)), \
-                           mask, size);
+  case llvm::Instruction::name: \
+    return Fold##name(ResolveConstant(ce->getOperand(0)), \
+                      ResolveConstant(ce->getOperand(1)), mask, size);
 
-    FOLD_CASE(Add)
-    FOLD_CASE(Sub)
-    FOLD_CASE(Mul)
-    FOLD_CASE(And)
-    FOLD_CASE(Or)
-    FOLD_CASE(Xor)
-    FOLD_CASE(Shl)
-    FOLD_CASE(LShr)
-    FOLD_CASE(AShr)
-    FOLD_CASE(SDiv)
-    FOLD_CASE(UDiv)
-    FOLD_CASE(SRem)
-    FOLD_CASE(URem)
+      FOLD_CASE(Add)
+      FOLD_CASE(Sub)
+      FOLD_CASE(Mul)
+      FOLD_CASE(And)
+      FOLD_CASE(Or)
+      FOLD_CASE(Xor)
+      FOLD_CASE(Shl)
+      FOLD_CASE(LShr)
+      FOLD_CASE(AShr)
+      FOLD_CASE(SDiv)
+      FOLD_CASE(UDiv)
+      FOLD_CASE(SRem)
+      FOLD_CASE(URem)
 
 #undef FOLD_CASE
 
@@ -372,13 +366,12 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstantExpr(
     // TODO(pag): Mark as pointers?
     case llvm::Instruction::IntToPtr:
     case llvm::Instruction::PtrToInt:
-    case llvm::Instruction::BitCast:
-      return ResolveConstant(ce->getOperand(0));
+    case llvm::Instruction::BitCast: return ResolveConstant(ce->getOperand(0));
 
     case llvm::Instruction::ICmp: {
       return FoldICmp(ResolveConstant(ce->getOperand(0)),
-                      ResolveConstant(ce->getOperand(1)),
-                      mask, size, ce->getPredicate());
+                      ResolveConstant(ce->getOperand(1)), mask, size,
+                      ce->getPredicate());
     }
 
     case llvm::Instruction::GetElementPtr: {
@@ -386,7 +379,7 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstantExpr(
 
       // In the event that an index is non-constant, we'll try to also resolve
       // it using our value resolver.
-      auto visit = [=] (llvm::Value &val, llvm::APInt &ap) -> bool {
+      auto visit = [=](llvm::Value &val, llvm::APInt &ap) -> bool {
         if (const auto index_xr = ResolveValue(&val); index_xr.is_valid) {
           ap += static_cast<uint64_t>(Signed(index_xr.u.address, ptr_size));
           return true;
@@ -428,8 +421,8 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveConstantExpr(
 }
 
 // Try to resolve `val` as a cross-reference.
-ResolvedCrossReference CrossReferenceResolverImpl::ResolveValue(
-    llvm::Value *val) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
 
@@ -450,16 +443,16 @@ CrossReferenceResolver::~CrossReferenceResolver(void) {}
 // lifter that can resolve global references on our behalf.
 CrossReferenceResolver::CrossReferenceResolver(const EntityLifter &lifter)
     : impl(std::make_shared<CrossReferenceResolverImpl>(
-        lifter.Options().module->getDataLayout(),
-        [=] (llvm::GlobalValue *entity) {
-          return lifter.AddressOfEntity(entity);
-        })) {}
+          lifter.Options().module->getDataLayout(),
+          [=](llvm::GlobalValue *entity) {
+            return lifter.AddressOfEntity(entity);
+          })) {}
 
 // In the absence of an entity lifter, we need a DataLayout to determine
 // offsets, etc.
 CrossReferenceResolver::CrossReferenceResolver(const llvm::DataLayout &dl)
     : impl(std::make_shared<CrossReferenceResolverImpl>(
-          dl, [] (llvm::GlobalValue *) { return std::nullopt; })) {}
+          dl, [](llvm::GlobalValue *) { return std::nullopt; })) {}
 
 // Clear the internal cache.
 void CrossReferenceResolver::ClearCache(void) const {
@@ -467,8 +460,8 @@ void CrossReferenceResolver::ClearCache(void) const {
 }
 
 // Try to resolve `val` as a cross-reference.
-ResolvedCrossReference CrossReferenceResolver::TryResolveReference(
-    llvm::Value *val) const {
+ResolvedCrossReference
+CrossReferenceResolver::TryResolveReference(llvm::Value *val) const {
   return impl->ResolveValue(val);
 }
 

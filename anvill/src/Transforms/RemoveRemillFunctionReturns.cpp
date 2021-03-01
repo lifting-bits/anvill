@@ -15,25 +15,21 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Transforms.h>
-
 #include <anvill/Analysis/Utils.h>
-
+#include <anvill/Transforms.h>
+#include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
-#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
-
 #include <remill/BC/ABI.h>
 #include <remill/BC/Util.h>
-
-#include <glog/logging.h>
 
 #include <utility>
 #include <vector>
@@ -43,9 +39,7 @@ namespace {
 
 class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
  public:
-
-  RemoveRemillFunctionReturns(void)
-      : llvm::FunctionPass(ID) {}
+  RemoveRemillFunctionReturns(void) : llvm::FunctionPass(ID) {}
 
   bool runOnFunction(llvm::Function &func) final;
 
@@ -56,6 +50,7 @@ class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
 char RemoveRemillFunctionReturns::ID = '\0';
 
 enum ReturnAddressResult {
+
   // We've found a case where a value returned by `llvm.returnaddress`, or
   // casted from `__anvill_ra`, reaches into the `pc` argument of the
   // `__remill_function_return` intrinsic. This is the ideal case that we
@@ -77,8 +72,8 @@ enum ReturnAddressResult {
 };
 
 // Returns `true` if `val` is a return address.
-static ReturnAddressResult QueryReturnAddress(
-    const llvm::DataLayout &dl, llvm::Value *val) {
+static ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
+                                              llvm::Value *val) {
 
   if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
     if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
@@ -126,8 +121,8 @@ static ReturnAddressResult QueryReturnAddress(
 // Remove a single case of a call to `__remill_function_return` where the return
 // addresses reaches the `pc` argument of the call.
 static void FoldReturnAddressMatch(llvm::CallBase *call) {
-  auto ret_addr = llvm::dyn_cast<llvm::Instruction>(
-      call->getArgOperand(remill::kPCArgNum));
+  auto ret_addr =
+      llvm::dyn_cast<llvm::Instruction>(call->getArgOperand(remill::kPCArgNum));
   auto mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
   call->replaceAllUsesWith(mem_ptr);
   call->eraseFromParent();
@@ -138,8 +133,8 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
 
     // Cast of `llvm.returnaddress`.
     if (auto cast_inst = llvm::dyn_cast<llvm::CastInst>(ret_addr)) {
-      auto next_ret_addr = llvm::dyn_cast<llvm::Instruction>(
-          cast_inst->getOperand(0));
+      auto next_ret_addr =
+          llvm::dyn_cast<llvm::Instruction>(cast_inst->getOperand(0));
       ret_addr->eraseFromParent();
       ret_addr = next_ret_addr;
 
@@ -180,8 +175,7 @@ static llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
         func_name = "_AddressOfReturnAddress";
       }
       break;
-    default:
-      break;
+    default: break;
   }
 
   llvm::Function *func = nullptr;
@@ -192,10 +186,10 @@ static llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
     func = module->getFunction(func_name);
     if (!func) {
       auto &context = module->getContext();
-      auto fty = llvm::FunctionType::get(
-          llvm::Type::getInt8PtrTy(context, 0), false);
-      func = llvm::Function::Create(
-          fty, llvm::GlobalValue::ExternalLinkage, func_name, module);
+      auto fty =
+          llvm::FunctionType::get(llvm::Type::getInt8PtrTy(context, 0), false);
+      func = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage,
+                                    func_name, module);
     }
   }
 
@@ -218,10 +212,9 @@ static void OverwriteReturnAddress(
 
     // Store the return address.
     llvm::IRBuilder<> ir(call);
-    ir.CreateStore(
-        ret_addr,
-        ir.CreateBitCast(addr_of_ret_addr,
-                         llvm::PointerType::get(ret_addr_type, 0)));
+    ir.CreateStore(ret_addr,
+                   ir.CreateBitCast(addr_of_ret_addr,
+                                    llvm::PointerType::get(ret_addr_type, 0)));
 
     // Get rid of the `__remill_function_return`.
     call->replaceAllUsesWith(call->getArgOperand(remill::kMemoryPointerArgNum));
@@ -245,14 +238,11 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
         switch (QueryReturnAddress(dl, ret_addr)) {
-          case kFoundReturnAddress:
-            matches_pattern.push_back(call);
-            break;
+          case kFoundReturnAddress: matches_pattern.push_back(call); break;
 
           // Do nothing if it's a symbolic stack pointer load; we're probably
           // running this pass too early.
-          case kFoundSymbolicStackPointerLoad:
-            break;
+          case kFoundSymbolicStackPointerLoad: break;
 
           // Here we'll do an arch-specific fixup.
           case kUnclassifiableReturnAddress:

@@ -116,8 +116,8 @@ llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(
-    const CrossReferenceResolver &resolver);
+llvm::FunctionPass *
+CreateBrightenPointerOperations(const CrossReferenceResolver &resolver);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is
@@ -153,7 +153,7 @@ llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
 // is stored into memory, then we try to identify any loads from the same
 // memory region, and forward the stored value to those loads. Note that the
 // stores themselves are retained.
-//llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
+// llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
 
 
 }  // namespace anvill

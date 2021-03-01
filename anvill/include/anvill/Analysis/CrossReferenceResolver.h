@@ -32,6 +32,7 @@ class EntityLifter;
 
 struct ResolvedCrossReference {
   union {
+
     // The interpreted version of the address.
     uint64_t address;
 
@@ -63,27 +64,27 @@ struct ResolvedCrossReference {
 
   // Whether or not an entity known to the `EntityLifter` was referenced. This
   // is a good signal that `u.address` is an address.
-  bool references_entity:1;
+  bool references_entity : 1;
 
   // Whether or not a global value was referenced. This usually means we came
   // across an `llvm::GlobalVariable`, `llvm::GlobalAlias`, or `llvm::Function`.
   // This doesn't imply that the found value is a known entity.
-  bool references_global_value:1;
+  bool references_global_value : 1;
 
   // Whether or not we observed the stack pointer being used in the computation
   // of `u.displacement`.
-  bool references_stack_pointer:1;
+  bool references_stack_pointer : 1;
 
   // Whether or not we observed the program counter being used in the
   // computation of `u.address`.
-  bool references_program_counter:1;
+  bool references_program_counter : 1;
 
   // Whether or not we observed the return address being used in the computation
   // of `u.displacement`.
-  bool references_return_address:1;
+  bool references_return_address : 1;
 
   // Was folding successful or not?
-  bool is_valid:1;
+  bool is_valid : 1;
 
   // Returns `true` if the resolution appears valid.
   inline operator bool(void) const {
@@ -120,7 +121,8 @@ class CrossReferenceResolver {
   CrossReferenceResolver(const CrossReferenceResolver &) = default;
   CrossReferenceResolver(CrossReferenceResolver &&) noexcept = default;
   CrossReferenceResolver &operator=(const CrossReferenceResolver &) = default;
-  CrossReferenceResolver &operator=(CrossReferenceResolver &&) noexcept = default;
+  CrossReferenceResolver &
+  operator=(CrossReferenceResolver &&) noexcept = default;
 
  private:
   CrossReferenceResolver(void) = delete;

@@ -18,9 +18,7 @@
 #include <anvill/Transforms.h>
 
 namespace anvill {
-namespace {
-
-}  // namespace
+namespace {}  // namespace
 
 // Anvill-lifted bitcode operates at a very low level, swapping between integer
 // and pointer representations. It is typically for just-lifted bitcode to
@@ -40,8 +38,8 @@ namespace {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(
-    const CrossReferenceResolver &resolver) {
+llvm::FunctionPass *
+CreateBrightenPointerOperations(const CrossReferenceResolver &resolver) {
   return nullptr;
 }
 

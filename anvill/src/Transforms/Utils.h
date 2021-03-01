@@ -27,7 +27,8 @@ class Function;
 namespace anvill {
 
 // Find all function calls in `func` such that `pred(call)` returns `true`.
-std::vector<llvm::CallBase *> FindFunctionCalls(
-    llvm::Function &func, std::function<bool(llvm::CallBase *)> pred);
+std::vector<llvm::CallBase *>
+FindFunctionCalls(llvm::Function &func,
+                  std::function<bool(llvm::CallBase *)> pred);
 
 }  // namespace anvill

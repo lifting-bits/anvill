@@ -75,8 +75,8 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
   // We'll use an existing declaration, create a new GEP, and cast as
   // necessary.
-  const auto [base, offset] = remill::StripAndAccumulateConstantOffsets(
-      dl, found_by_address);
+  const auto [base, offset] =
+      remill::StripAndAccumulateConstantOffsets(dl, found_by_address);
   if (base) {
 
     // TODO(pag,alessandro): Something related to `remill::BuildPointerToOffset`

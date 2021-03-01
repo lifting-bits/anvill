@@ -15,10 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Analysis/Utils.h>
-
 #include <anvill/ABI.h>
-
+#include <anvill/Analysis/Utils.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/Instruction.h>
@@ -36,12 +34,11 @@ static bool IsStackPointerRegName(llvm::Module *module,
                                   const std::string &reg_name) {
   llvm::Triple triple(module->getTargetTriple());
   switch (triple.getArch()) {
-    case llvm::Triple::ArchType::x86:
-      return reg_name == "esp";
+    case llvm::Triple::ArchType::x86: return reg_name == "esp";
     case llvm::Triple::ArchType::x86_64:
       return reg_name == "rsp" || reg_name == "esp";
     case llvm::Triple::ArchType::aarch64:
-      return reg_name == "sp"|| reg_name == "xsp" || reg_name == "wsp";
+      return reg_name == "sp" || reg_name == "xsp" || reg_name == "wsp";
     case llvm::Triple::ArchType::aarch64_32:
     case llvm::Triple::ArchType::arm:
     case llvm::Triple::ArchType::armeb:
@@ -50,8 +47,7 @@ static bool IsStackPointerRegName(llvm::Module *module,
     case llvm::Triple::ArchType::sparcel:
     case llvm::Triple::ArchType::sparcv9:
       return reg_name == "o6" || reg_name == "sp";
-    default:
-      return false;
+    default: return false;
   }
 }
 
@@ -61,22 +57,19 @@ static bool IsProgramCounterRegName(llvm::Module *module,
                                     const std::string &reg_name) {
   llvm::Triple triple(module->getTargetTriple());
   switch (triple.getArch()) {
-    case llvm::Triple::ArchType::x86:
-      return reg_name == "eip";
+    case llvm::Triple::ArchType::x86: return reg_name == "eip";
     case llvm::Triple::ArchType::x86_64:
       return reg_name == "rip" || reg_name == "eip";
     case llvm::Triple::ArchType::aarch64:
       return reg_name == "pc" || reg_name == "wpc";
     case llvm::Triple::ArchType::aarch64_32:
     case llvm::Triple::ArchType::arm:
-    case llvm::Triple::ArchType::armeb:
-      return reg_name == "pc";
+    case llvm::Triple::ArchType::armeb: return reg_name == "pc";
     case llvm::Triple::ArchType::sparc:
     case llvm::Triple::ArchType::sparcel:
     case llvm::Triple::ArchType::sparcv9:
       return reg_name == "pc" || reg_name == "npc";
-    default:
-      return false;
+    default: return false;
   }
 }
 
@@ -85,13 +78,12 @@ static bool IsProgramCounterRegName(llvm::Module *module,
 // an unmodelled dependency on the native stack pointer on entry to a function.
 template <typename RegNamePred>
 static bool IsLoadOfUnmodelledRegister(llvm::LoadInst *load, RegNamePred pred) {
-  if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(
-          load->getPointerOperand())) {
+  if (auto gv =
+          llvm::dyn_cast<llvm::GlobalVariable>(load->getPointerOperand())) {
     if (const auto gv_name = gv->getName();
         gv_name.startswith(kUnmodelledRegisterPrefix)) {
-      return pred(
-          gv->getParent(),
-          gv_name.substr(kUnmodelledRegisterPrefix.size()).lower());
+      return pred(gv->getParent(),
+                  gv_name.substr(kUnmodelledRegisterPrefix.size()).lower());
     }
   }
   return false;
@@ -130,7 +122,7 @@ static bool IsCallRelatedToStackPointerItrinsic(llvm::CallBase *call) {
 // pointer representation.
 bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
 
-   if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+  if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
     return IsRelatedToStackPointer(dl, pti->getOperand(0));
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
@@ -156,8 +148,7 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
       case llvm::Instruction::Select:
         return IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
                IsRelatedToStackPointer(dl, ce->getOperand(2));
-      default:
-        return false;
+      default: return false;
     }
 
   } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {

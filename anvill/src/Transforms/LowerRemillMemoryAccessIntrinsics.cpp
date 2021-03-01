@@ -16,14 +16,12 @@
  */
 
 #include <anvill/Transforms.h>
-
+#include <glog/logging.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/IRBuilder.h>
 #include <llvm/Pass.h>
-
-#include <glog/logging.h>
 
 #include "Utils.h"
 
@@ -32,9 +30,7 @@ namespace {
 
 class LowerRemillMemoryAccessIntrinsics final : public llvm::FunctionPass {
  public:
-
-  LowerRemillMemoryAccessIntrinsics(void)
-      : llvm::FunctionPass(ID) {}
+  LowerRemillMemoryAccessIntrinsics(void) : llvm::FunctionPass(ID) {}
 
   bool runOnFunction(llvm::Function &func) final;
 
@@ -84,7 +80,7 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
   // extended precision and quad precision floating point values as operating
   // on double precision floats, then opaquely performing the necessary
   // conversions at the memory boundary.
-  auto adjust_val_type = [=] (llvm::Type *val_type) -> llvm::Type * {
+  auto adjust_val_type = [=](llvm::Type *val_type) -> llvm::Type * {
     auto &context = val_type->getContext();
     if (func_name.endswith("f80")) {
       return llvm::Type::getX86_FP80Ty(context);
@@ -108,15 +104,15 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
     return true;
 
   } else {
-    LOG(ERROR)
-        << "Missing support for lowering memory operation " << func_name.str();
+    LOG(ERROR) << "Missing support for lowering memory operation "
+               << func_name.str();
     return false;
   }
 }
 
 // Try to lower remill memory access intrinsics.
 bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
-  auto calls = FindFunctionCalls(func, [] (llvm::CallBase *call) -> bool {
+  auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
       return false;

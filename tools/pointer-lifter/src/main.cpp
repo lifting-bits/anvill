@@ -4,6 +4,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
+
 #include <fstream>
 #include <iostream>
 
@@ -23,8 +24,8 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   if (FLAGS_output.empty()) {
-      LOG(ERROR) << "Please specify a path to an output IR file with --output";
-      return EXIT_FAILURE;
+    LOG(ERROR) << "Please specify a path to an output IR file with --output";
+    return EXIT_FAILURE;
   }
   LOG(WARNING) << "Input file: " << FLAGS_input << std::endl;
   LOG(WARNING) << "Output file: " << FLAGS_output << std::endl;
@@ -36,11 +37,11 @@ int main(int argc, char *argv[]) {
   }
 
   anvill::PointerLifter pointer_lifter(*mod);
-  for (auto& func : *mod) {
-      if (func.hasName() && func.getName() == "main") {
-          LOG(WARNING) << "Lifting main!\n";
-          pointer_lifter.LiftFunction(&func);
-      }
+  for (auto &func : *mod) {
+    if (func.hasName() && func.getName() == "main") {
+      LOG(WARNING) << "Lifting main!\n";
+      pointer_lifter.LiftFunction(&func);
+    }
   }
   mod->print(llvm::errs(), nullptr);
   return 0;

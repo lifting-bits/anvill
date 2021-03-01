@@ -18,15 +18,16 @@
 #include "Utils.h"
 
 #include <llvm/IR/Function.h>
+#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/InstIterator.h>
 
 namespace anvill {
 
 // Find all function calls in `func` such that `pred(call)` returns `true`.
-std::vector<llvm::CallBase *> FindFunctionCalls(
-    llvm::Function &func, std::function<bool(llvm::CallBase *)> pred) {
+std::vector<llvm::CallBase *>
+FindFunctionCalls(llvm::Function &func,
+                  std::function<bool(llvm::CallBase *)> pred) {
   std::vector<llvm::CallBase *> found;
   for (auto &inst : llvm::instructions(func)) {
     if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst); call && pred(call)) {
