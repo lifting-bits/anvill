@@ -568,7 +568,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateRemoveRemillFunctionReturns());
+  fpm.add(CreateSplitStackFrameAtReturnAddress());
+  fpm.add(llvm::createSROAPass());
 
   fpm.doInitialization();
   for (auto &func : module) {
@@ -584,6 +585,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   RecoverMemoryReferences(program, module);
 
+  fpm.add(CreateRemoveRemillFunctionReturns());
   fpm.doInitialization();
   for (auto &func : module) {
     fpm.run(func);
