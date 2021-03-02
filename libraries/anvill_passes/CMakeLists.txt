@@ -19,6 +19,12 @@ add_library(anvill_passes STATIC
   src/SplitStackFrameAtReturnAddress.h
   src/SplitStackFrameAtReturnAddress.cpp
 
+  src/RecoverStackFrameInformation.h
+  src/RecoverStackFrameInformation.cpp
+
+  src/BaseFunctionPass.h
+  src/BaseFunctionPass.cpp
+
   src/Utils.h
   src/Utils.cpp
 )

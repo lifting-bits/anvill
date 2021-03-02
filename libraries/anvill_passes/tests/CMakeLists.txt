@@ -15,6 +15,7 @@ add_executable(test_anvil_passes
   src/BaseScenario.h
   src/BaseScenario.cpp
 
+  src/RecoverStackFrameInformation.cpp
   src/SplitStackFrameAtReturnAddress.cpp
 )
 

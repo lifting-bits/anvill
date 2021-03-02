@@ -17,8 +17,11 @@
 
 #include "Utils.h"
 
+#include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
+
+#include <iostream>
 
 namespace anvill {
 
@@ -34,6 +37,22 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
     throw std::runtime_error(
         "Failed to load the anvill_passes test data named " + data_name + ": " +
         error.getMessage().str());
+  }
+
+  std::string error_buffer;
+  llvm::raw_string_ostream error_stream(error_buffer);
+
+  auto succeeded = llvm::verifyModule(*llvm_module.get(), &error_stream) == 0;
+  error_stream.flush();
+
+  if (!succeeded) {
+    std::string error_message =
+        "Module verification failed for '" + data_name + "'";
+    if (!error_buffer.empty()) {
+      error_message += ": " + error_buffer;
+    }
+
+    std::cerr << error_message << std::endl;
   }
 
   return llvm_module;

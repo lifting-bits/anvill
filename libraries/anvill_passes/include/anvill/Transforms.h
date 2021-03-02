@@ -155,5 +155,8 @@ llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
 // stores themselves are retained.
 // llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
 
+// This function pass makes use of the __anvill_sp usages to create a StructType
+// that acts as a stack frame
+llvm::FunctionPass *CreateRecoverStackFrameInformation(void);
 
 }  // namespace anvill
