@@ -69,12 +69,13 @@ add_library(anvill STATIC
   
   include/anvill/ABI.h
   src/ABI.cpp
-  
-  include/anvill/Analysis/CrossReferenceResolver.h  
+
   include/anvill/Analysis/Utils.h
   src/Analysis/Utils.cpp
+
+  include/anvill/Analysis/CrossReferenceResolver.h  
   src/Analysis/CrossReferenceResolver.cpp
-    
+
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp
   
