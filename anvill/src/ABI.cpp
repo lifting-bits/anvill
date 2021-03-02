@@ -51,4 +51,6 @@ const std::string kUnmodelledRegisterPrefix("__anvill_reg_");
 // appear to be unused.
 const std::string kMemoryPointerEscapeFunction("__anvill_memory_escape");
 
+const std::string kStackFrameTypeNameSuffix(".frame_type");
+
 }  // namespace anvill
