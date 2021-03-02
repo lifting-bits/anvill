@@ -18,6 +18,7 @@
 #include "SplitStackFrameAtReturnAddress.h"
 
 #include <anvill/Transforms.h>
+#include <glog/logging.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
@@ -30,23 +31,43 @@
 namespace anvill {
 char SplitStackFrameAtReturnAddress::ID = '\0';
 
-SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create() {
+SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(void) {
   return new SplitStackFrameAtReturnAddress();
 }
 
 bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
+  bool function_was_updated{false};
+  if (auto error = execute(function_was_updated, function);
+      error != Error::Success) {
+    auto message = ErrorToString(error);
+
+    LOG(ERROR)
+        << "Failed to execute the SplitStackFrameAtReturnAddress function pass: "
+        << message;
+
+    return false;
+  }
+
+  return function_was_updated;
+}
+
+SplitStackFrameAtReturnAddress::Error
+SplitStackFrameAtReturnAddress::execute(bool &function_was_updated,
+                                        llvm::Function &function) {
+  function_was_updated = false;
+
   // Check whether the stack frame structure should be considered for
   // patching
   const llvm::StructType *stack_frame_type{nullptr};
   if (!GetFunctionStackFrameType(stack_frame_type, function)) {
     // Not an error, there is not stack frame defined
-    return false;
+    return Error::Success;
   }
 
   if (stack_frame_type->getNumElements() <= 1U) {
     // Not an error, the stack frame struct exists but it's either
     // empty or populated with a single element
-    return false;
+    return Error::Success;
   }
 
   // Enumerate the store instructions that identify a stack frame
@@ -55,26 +76,36 @@ bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
   llvm::AllocaInst *frame_alloca{nullptr};
   if (!GetRetnAddressStoreInstructions(store_off_pairs, frame_alloca,
                                        function)) {
-    return false;  // Not an error, nothing was found
+    // Not an error, nothing was found
+    return Error::Success;
   }
 
   if (store_off_pairs.empty()) {
-    return false;  // No error, the function does not need patching
+    // No error, the function does not need patching
+    return Error::Success;
   }
 
   if (store_off_pairs.size() > 1) {
     // We only handle the first instance, so return an error if
     // we have more
-    return false;
+    return Error::NotSupported;
   }
 
   const auto &store_off = store_off_pairs.front();
   auto retn_addr_offset = std::get<1>(store_off);
 
-  return SplitStackFrameAtOffset(function, retn_addr_offset, frame_alloca);
+  if (auto error =
+          SplitStackFrameAtOffset(function, retn_addr_offset, frame_alloca);
+      error != Error::Success) {
+    return error;
+  }
+
+  function_was_updated = true;
+  return Error::Success;
 }
 
-bool SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
+SplitStackFrameAtReturnAddress::Error
+SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
     std::vector<llvm::StructType *> &stack_frame_parts,
     const llvm::Function &function, std::int64_t offset,
     const llvm::StructType *stack_frame_type) {
@@ -87,7 +118,7 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
   if (elem_count <= 1U) {
     // When we only have one element in the stack, there's nothing
     // we have to patch
-    return true;
+    return Error::Success;
   }
 
   std::uint32_t elem_index{};
@@ -95,7 +126,7 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
                                   offset)) {
     // This is an error; we failed to translate the offset
     // into the stack frame to the element index of the StructType
-    return false;
+    return Error::StackFrameOffsetError;
   }
 
   // There are three different outcomes, depending on where the
@@ -154,10 +185,10 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
     ++part_name;
   }
 
-  return true;
+  return Error::Success;
 }
 
-llvm::StringRef SplitStackFrameAtReturnAddress::getPassName() const {
+llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
   return llvm::StringRef("SplitStackFrameAtReturnAddress");
 }
 
@@ -310,7 +341,8 @@ bool SplitStackFrameAtReturnAddress::StructOffsetToElementIndex(
   return false;
 }
 
-bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
+SplitStackFrameAtReturnAddress::Error
+SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     llvm::Function &function, std::int64_t offset,
     llvm::AllocaInst *orig_frame_alloca) {
 
@@ -318,21 +350,22 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
   if (!GetFunctionStackFrameType(stack_frame_type, function)) {
     // This is an error, we failed to retrieve the StructType that
     // represents the stack frame we have to split
-    return false;
+    return Error::InternalError;
   }
 
   // Attempt to split the function stack frame, isolating the element
   // containing the return address
   std::vector<llvm::StructType *> stack_frame_parts;
-  if (!SplitStackFrameTypeAtOffset(stack_frame_parts, function, offset,
-                                   stack_frame_type)) {
+  if (auto error = SplitStackFrameTypeAtOffset(stack_frame_parts, function,
+                                               offset, stack_frame_type);
+      error != Error::Success) {
     // This is an error, as we failed to split the stack frame
-    return false;
+    return error;
   }
 
   if (stack_frame_parts.empty()) {
     // This is not an error, the stack does not need splitting
-    return false;
+    return Error::Success;
   }
 
   // Replace the AllocaInst that creates the original stack frame
@@ -367,7 +400,7 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     // This is an error. We already know that there is a write, so if
     // we end up inside here then we have failed to track down the
     // instructions we need
-    return false;
+    return Error::InstructionTrackingError;
   }
 
   auto module = function.getParent();
@@ -386,7 +419,7 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
                                     stack_frame_type, offset)) {
       // This is an error, as we failed to map this GEP to a valid
       // index in the original stack frame type
-      return false;
+      return Error::StackFrameOffsetError;
     }
 
     // Determine where we need to reroute this GEP instruction
@@ -415,7 +448,7 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     if (new_frame_part == nullptr) {
       // This is an error, we have failed to locate the alloca instruction
       // for the stack frame replacement
-      return false;
+      return Error::InternalError;
     }
 
     // Overwrite the GEP instruction
@@ -430,7 +463,23 @@ bool SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
   // Now that there are no more usages, we can delete the old AllocaInst
   orig_frame_alloca->eraseFromParent();
 
-  return true;
+  return Error::Success;
+}
+
+const char *SplitStackFrameAtReturnAddress::ErrorToString(const Error &error) {
+  switch (error) {
+    case Error::Success: return "No error";
+    case Error::NotSupported: return "Function is not supported";
+    case Error::InternalError: return "Internal error";
+    case Error::InstructionTrackingError: return "Instruction tracking error";
+
+    case Error::StackFrameOffsetError:
+      return "Stack frame offset translation error";
+
+    default: break;
+  }
+
+  return "Unknown error";
 }
 
 llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(void) {

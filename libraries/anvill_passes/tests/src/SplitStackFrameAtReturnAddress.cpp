@@ -263,12 +263,12 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       WHEN("splitting the stack frame in the center") {
         std::vector<llvm::StructType *> stack_frame_parts;
 
-        auto succeeded =
+        auto error =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
                 stack_frame_parts, *base->Function(), 40LL, frame_type);
 
         THEN("success is returned, with three new valid frame types") {
-          CHECK(succeeded);
+          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
           REQUIRE(stack_frame_parts.size() == 3U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
@@ -294,12 +294,12 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       WHEN("splitting the stack frame at the first element") {
         std::vector<llvm::StructType *> stack_frame_parts;
 
-        auto succeeded =
+        auto error =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
                 stack_frame_parts, *base->Function(), 0LL, frame_type);
 
         THEN("success is returned, with two new valid frame types") {
-          CHECK(succeeded);
+          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
           REQUIRE(stack_frame_parts.size() == 2U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
@@ -319,12 +319,12 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       WHEN("splitting the stack frame at the last element") {
         std::vector<llvm::StructType *> stack_frame_parts;
 
-        auto succeeded =
+        auto error =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
                 stack_frame_parts, *base->Function(), 72LL, frame_type);
 
         THEN("success is returned, with two new valid frame types") {
-          CHECK(succeeded);
+          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
           REQUIRE(stack_frame_parts.size() == 2U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
