@@ -134,6 +134,7 @@ jobs:
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
           fetch-depth: 0
+          submodules: true
 
       - name: Clone the remill repository
         uses: actions/checkout@v2
@@ -416,6 +417,7 @@ jobs:
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
           fetch-depth: 0
+          submodules: true
 
       - name: Clone the remill repository
         uses: actions/checkout@v2
