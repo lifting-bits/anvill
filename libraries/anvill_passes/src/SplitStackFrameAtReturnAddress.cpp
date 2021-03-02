@@ -17,6 +17,7 @@
 
 #include "SplitStackFrameAtReturnAddress.h"
 
+#include <anvill/ABI.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -194,7 +195,7 @@ llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
 
 std::string SplitStackFrameAtReturnAddress::GetFunctionStackFrameTypeName(
     const llvm::Function &function) {
-  return function.getName().str() + ".frame_type";
+  return function.getName().str() + kStackFrameTypeNameSuffix;
 }
 
 bool SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(

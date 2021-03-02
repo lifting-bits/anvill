@@ -53,4 +53,7 @@ extern const std::string kUnmodelledRegisterPrefix;
 // appear to be unused.
 extern const std::string kMemoryPointerEscapeFunction;
 
+// This is the suffix used when naming stack frame types
+extern const std::string kStackFrameTypeNameSuffix;
+
 }  // namespace anvill
