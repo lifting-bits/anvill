@@ -29,6 +29,4 @@ std::unique_ptr<llvm::Module>
 RunFunctionPass(llvm::LLVMContext &context, const std::string &test_data_name,
                 llvm::FunctionPass *function_pass);
 
-std::string GetModuleIR(llvm::Module &module);
-
 }  // namespace anvill

@@ -57,14 +57,4 @@ RunFunctionPass(llvm::LLVMContext &context, const std::string &test_data_name,
   return module;
 }
 
-std::string GetModuleIR(llvm::Module &module) {
-  std::string module_ir;
-  llvm::raw_string_ostream output_stream(module_ir);
-
-  module.print(output_stream, nullptr);
-  output_stream.flush();
-
-  return module_ir;
-}
-
 }  // namespace anvill

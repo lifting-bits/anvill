@@ -34,10 +34,6 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
         RunFunctionPass(llvm_context, "SplitStackFrameAtReturnAddress.ll",
                         CreateSplitStackFrameAtReturnAddress());
 
-    // TODO: Remove this test print
-    auto ir = GetModuleIR(*module.get());
-    std::cerr << ir << std::endl;
-
     // Verify the module
     std::string error_buffer;
     llvm::raw_string_ostream error_stream(error_buffer);
