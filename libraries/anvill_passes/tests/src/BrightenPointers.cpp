@@ -1,7 +1,7 @@
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
-
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <iostream>
 
 #include "BaseScenario.h"
@@ -13,9 +13,13 @@ TEST_SUITE("BrightenPointers") {
   TEST_CASE("Run the whole pass on a well-formed function") {
     llvm::LLVMContext llvm_context;
 
+    auto mod = LoadTestData(llvm_context, "gep_add.ll");
+    
+    anvill::CrossReferenceResolver resolver(mod->getDataLayout());
+    
     auto module =
         RunFunctionPass(llvm_context, "gep_add.ll",
-                        CreateBrightenPointerOperations());
+                        CreateBrightenPointerOperations(resolver));
 
     // Verify the module
     std::string error_buffer;
@@ -34,5 +38,6 @@ TEST_SUITE("BrightenPointers") {
       std::cerr << error_message << std::endl;
     }
   }
+}
 
 }; // namespace anvill

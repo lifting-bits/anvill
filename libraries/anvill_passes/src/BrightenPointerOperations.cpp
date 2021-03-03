@@ -28,8 +28,7 @@
 #include <utility>
 
 namespace anvill {
-
-
+char PointerLifterPass::ID = '\0';
 
 // Creates a cast of val to a dest type.
 // This casts whatever value we want to a pointer, propagating the information
@@ -45,7 +44,9 @@ std::pair<llvm::Value *, bool>
 PointerLifter::visitInferInst(llvm::Instruction *inst,
                               llvm::Type *inferred_type) {
   inferred_types[inst] = inferred_type;
-  return visit(inst);
+  auto [ret_val, succ] = visit(inst);
+  inferred_types.erase(inst);
+  return {ret_val, succ};
 }
 
 
@@ -256,22 +257,29 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
   return {&inst, false};
 }
 
-// TODO (Carson) monday or later
 std::pair<llvm::Value *, bool>
 PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
-  if (inferred_types.find(&inst) != inferred_types.end()) {
-
-    // If there is an inferred type for this inst, our GEP type might be inaccurate
-    // https://releases.llvm.org/3.3/docs/LangRef.html#getelementptr-instruction
-    llvm::Type *inferred_type = inferred_types[&inst];
-    llvm::Instruction *pointer_inst =
-        llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0));
-    CHECK(pointer_inst != nullptr);
-    auto [new_pointer, changed] = visitInferInst(pointer_inst, inferred_type);
-    if (new_pointer->getType() != inferred_type) {
-    }
+  if (inferred_types.find(&inst) == inferred_types.end()) {
+    return {&inst, false};
   }
 
+  // If there is an inferred type for this inst, our GEP type might be inaccurate
+  // https://releases.llvm.org/3.3/docs/LangRef.html#getelementptr-instruction
+  llvm::Type *inferred_type = inferred_types[&inst];
+  llvm::Instruction *pointer_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0));
+  CHECK(pointer_inst != nullptr);
+  auto index = inst.getPointerOperandIndex();
+  LOG(ERROR) << "GEP IS: " << remill::LLVMThingToString(&inst) << "\n";
+  LOG(ERROR) << "GEP INDEX IS: " << index << "\n";
+  LOG(ERROR) << "GEP POINTER TYPE: " << remill::LLVMThingToString(inst.getPointerOperandType()) << "\n";
+  auto [new_pointer, promoted] = visitInferInst(pointer_inst, inferred_type);
+  if (!promoted) {
+    return {&inst, false};
+  }
+  // Can promote the gep! 
+  llvm::Type* promoted_type = new_pointer->getType();
+
+  
   return {&inst, false};
 }
 /*
@@ -619,6 +627,10 @@ bool PointerLifterPass::runOnFunction(llvm::Function &f) {
   auto mod = f.getParent();
   PointerLifter lifter(*mod, xref_resolver);
   lifter.LiftFunction(&f);
+  // TODO (Carson) have an analysis function which determines modifications
+  // Then use lift function to run those modifications 
+  // Can return true/false depending on what was modified
+  return true;
 }
 
 // Anvill-lifted bitcode operates at a very low level, swapping between integer

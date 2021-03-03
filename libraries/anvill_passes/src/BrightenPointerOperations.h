@@ -9,7 +9,8 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-
+#include <anvill/Transforms.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 
 namespace anvill {
 
@@ -69,9 +70,10 @@ class PointerLifter
 
 class PointerLifterPass : public llvm::FunctionPass {
   public:
-      PointerLifterPass(const CrossReferenceResolver &resolver): xref_resolver(resolver) {}
+      PointerLifterPass(const CrossReferenceResolver &resolver): xref_resolver(resolver), FunctionPass(ID) {}
       bool runOnFunction(llvm::Function &f);
   private:
+      static char ID;
       const CrossReferenceResolver &xref_resolver;
 
       
