@@ -24,6 +24,7 @@
 #include <llvm/IR/GlobalAlias.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
@@ -72,7 +73,10 @@ llvm::Constant *EntityLifterImpl::TryLiftData(uint64_t address,
 // view of the world remains consistent.
 void EntityLifterImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
   address_to_entity[address].insert(entity);
-  entity_to_address[entity] = address;
+  if (auto [it, added] = entity_to_address.emplace(entity, address); added) {
+    llvm::GlobalValue *used[] = {entity};
+    llvm::appendToCompilerUsed(*(options.module), used);
+  }
 }
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
