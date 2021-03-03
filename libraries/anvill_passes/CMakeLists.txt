@@ -9,7 +9,6 @@
 add_library(anvill_passes STATIC
   include/anvill/Transforms.h
 
-  src/BrightenPointerOperations.cpp
   src/LowerRemillMemoryAccessIntrinsics.cpp
   src/RemoveCompilerBarriers.cpp
   src/RemoveRemillFunctionReturns.cpp
@@ -18,6 +17,9 @@ add_library(anvill_passes STATIC
 
   src/SplitStackFrameAtReturnAddress.h
   src/SplitStackFrameAtReturnAddress.cpp
+
+  src/BrightenPointerOperations.h
+  src/BrightenPointerOperations.cpp
 
   src/Utils.h
   src/Utils.cpp
