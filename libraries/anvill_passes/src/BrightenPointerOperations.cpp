@@ -239,13 +239,13 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
   }
   llvm::Value *possible_pointer = inst.getOperand(0);
   if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(possible_pointer)) {
-    llvm::Type *possible_pointer_ty = pointer_inst->getType();
-    if (!possible_pointer_ty->isPointerTy()) {
+  
+    if (!inst.getDestTy()->isPointerTy()) {
       return {&inst, false};
     }
     // If we are bitcasting to a pointer, propagate that info!
     auto [new_var_type, opt_success] =
-        visitInferInst(pointer_inst, possible_pointer_ty);
+        visitInferInst(pointer_inst, inst.getDestTy());
     if (opt_success) {
       return {new_var_type, true};
     }
@@ -268,10 +268,11 @@ PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   // If there is an inferred type for this inst, our GEP type might be inaccurate
   // https://releases.llvm.org/3.3/docs/LangRef.html#getelementptr-instruction
   llvm::Type *inferred_type = inferred_types[&inst];
-  llvm::Instruction *pointer_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0));
+  llvm::Instruction *pointer_inst = llvm::dyn_cast<llvm::Instruction>(inst.getPointerOperand());
   CHECK(pointer_inst != nullptr);
   auto index = inst.getPointerOperandIndex();
   LOG(ERROR) << "GEP IS: " << remill::LLVMThingToString(&inst) << "\n";
+  LOG(ERROR) << "GEP INFERRED_TYPE IS: " << remill::LLVMThingToString(inferred_type);
   LOG(ERROR) << "GEP INDEX IS: " << index << "\n";
   LOG(ERROR) << "GEP POINTER TYPE: " << remill::LLVMThingToString(inst.getPointerOperandType()) << "\n";
   auto [new_pointer, promoted] = visitInferInst(pointer_inst, inferred_type);
@@ -343,20 +344,13 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
   return {&inst, false};
 }
 
-// // TODO (Carson) change func name, its not a true visitor.
-// // This function recursively iterates through a constant expression until it hits a constant int,
-// llvm::ConstantExpr *
-// PointerLifter::visitConstantExpr(llvm::ConstantExpr &constant_expr) {}
-
-// If you are visiting a load like this
 /*
   %4 = load i64, i64* inttoptr (i64 6295600 to i64*), align 16
   %5 = add i64 %4, 128
   %6 = inttoptr i64 %5 to i32*
-*/
 
-// In order to collapse the inttoptr, add into a GEP, the load also needs to have its type promoted to a pointer
-/*
+  In order to collapse the inttoptr, add into a GEP, the load also needs to have its type promoted to a pointer
+  
   %4 = load i32*, i32** %some_global/constant_expr, align 16
   %5 = GEP i32, %4, 32
 */
@@ -368,10 +362,6 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
   }
   llvm::Type *inferred_type = inferred_types[&inst];
 
-  // Here we know that the result of a load is a pointer
-  // So we must promote the load value to be that of a pointer value
-  llvm::Type *ptr_to_ptr = inferred_type;
-
   // Assert that the CURRENT type of the load (in the example i64) and the new promoted type (i32*)
   // Are of the same size in bytes.
   // This prevents us from accidentally truncating/extending when we don't want to
@@ -380,24 +370,25 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
            dl.getTypeAllocSizeInBits(inferred_type));
 
   // Load operand can be another instruction
-  if (llvm::Instruction *possible_mem_loc =
-          llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
-    LOG(ERROR) << "Load operand is an instruction! "
-               << remill::LLVMThingToString(possible_mem_loc) << "\n";
+  if (llvm::Instruction *possible_mem_loc = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
+    LOG(ERROR) << "Load operand is an instruction! " << remill::LLVMThingToString(possible_mem_loc) << "\n";
 
 
     // Load from potentially a new addr.
-    auto [maybe_new_addr, changed] =
-        visitInferInst(possible_mem_loc, ptr_to_ptr);
-    if (maybe_new_addr->getType() != ptr_to_ptr) {
+    auto [maybe_new_addr, changed] = visitInferInst(possible_mem_loc, inferred_type->getPointerTo());
+    if (!changed) {
       LOG(ERROR) << "Failed to promote load! Operand type not promoted "
                  << remill::LLVMThingToString(maybe_new_addr) << "\n";
       return {&inst, false};
     }
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type
     llvm::IRBuilder ir(&inst);
+    LOG(ERROR) << remill::LLVMThingToString(&inst) << "< current load\n";
+    LOG(ERROR) << remill::LLVMThingToString(inferred_type) << " < inferred type to load\n";
+    LOG(ERROR) << remill::LLVMThingToString(maybe_new_addr) << " < new inst\n";
+    LOG(ERROR) << remill::LLVMThingToString(maybe_new_addr->getType()) << " < new inst type, should be * to the first\n";
     llvm::Value *promoted_load = ir.CreateLoad(inferred_type, maybe_new_addr);
-
+    LOG(ERROR) << "new load: " << remill::LLVMThingToString(promoted_load) << "\n";
     // If we have done some optimization and have a new var to load from, replace operand with new value.
     // if (maybe_new_addr != possible_mem_loc) {
     //    inst.setOperand(0, maybe_new_addr);
@@ -419,7 +410,7 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     expr_as_inst->insertBefore(&inst);
     // Rather than passing in the inferred resulting type to this load, pass in the type that matches the load.
 
-    auto [new_const_ptr, changed] = visitInferInst(expr_as_inst, ptr_to_ptr);
+    auto [new_const_ptr, changed] = visitInferInst(expr_as_inst, inferred_type);
     
     // Here, the initial promotion failed. This could be because of any number of reasons
     // We can give up, but it might be best to actually do a "best effort" transform 
@@ -609,12 +600,173 @@ It creates a worklist out of the instructions in the original function and visit
 In order to do downstream pointer propagation, additional uses of updated values are added into the next_worklist
 Pointer lifting for a function is done when we reach a fixed point, when the next_worklist is empty.
 */
+
+// If the inferred type of this GEP isn't the same as its current type, then
+// we might be in the following situation:
+//
+//      define i64 @valid_test(i64* %0) local_unnamed_addr #1 {
+//        %2 = bitcast i64* %0 to i8**
+//        %3 = load i8*, i8** %2, align 8
+//        %4 = getelementptr i8, i8* %3, i64 36   <-- we're here
+//        %5 = bitcast i8* %4 to i32*             <-- inferred_type from here
+//        %6 = load i32, i32* %5, align 4
+//        %7 = zext i32 %6 to i64
+//        ret i64 %7
+//      }
+//
+// What we want to do is convert this GEP into something that is more
+// amenable to the bitcasted type. We'll try to peel off the last index,
+// bitcast the src absent this index, then adjust, and push the bitcast down.
+//
+//
+//      ; Function Attrs: noinline
+//      define i64 @valid_test(i32** %0) local_unnamed_addr #1 {
+//        %2 = bitcast i64* %0 to i8**
+//        %3 = load i8*, i8** %2, align 8
+//        %4 = bitcast i8* %3 to i32*             <-- Pushed down bitcast
+//        %5 = getelementptr i32, i32* %4, i32 9  <-- Peeled index
+//        %6 = load i32, i32* %4, align 4
+//        %7 = zext i32 %6 to i64
+//        ret i64 %7
+//      }
+//
+// Then we rely on the bitcast for pushing through.
+/*
+llvm::Value *PointerLifter::BrightenGEP_PeelLastIndex(
+      llvm::IRBuilder<> &ir, llvm::GEPOperator *dst,
+      llvm::PointerType *inferred_type) {
+  auto src = dst->getPointerOperand();
+  auto src_type = llvm::PointerType::get(dst->getSourceElementType(),
+                                         dst->getPointerAddressSpace());
+  auto dst_type = llvm::PointerType::get(dst->getResultElementType(),
+                                         dst->getPointerAddressSpace());
+  llvm::SmallVector<llvm::Value *, 4> indices;
+  for (auto it = dst->idx_begin(); it != dst->idx_end(); ++it) {
+    indices.push_back(it->get());
+  }
+  // If the last index isn't a constant then we can't peel it off.
+  auto last_index = llvm::dyn_cast<llvm::ConstantInt>(indices.pop_back_val());
+  if (!last_index) {
+    return nullptr;
+  }
+  // Figure out what the last index was represented in terms of a byte offset.
+  // We need to be careful about negative indices -- we want to maintain them,
+  // but we don't want division/remainder to produce different roundings.
+  const auto dst_elem_type_size =
+      dl->getTypeAllocSize(dst->getResultElementType()).getFixedSize();
+  const auto last_index_i = last_index->getSExtValue() *
+                            static_cast<int64_t>(dst_elem_type_size);
+  const auto last_index_ai = std::abs(last_index_i);
+  const auto last_index_sign = (last_index_i / std::max(last_index_ai, 1ll));
+  auto elem_size = static_cast<int64_t>(
+      dl->getTypeAllocSize(dst->getResultElementType()).getFixedSize());
+  // The last index does not evenly divide the size of the result
+  // element type.
+  if ((last_index_ai % elem_size)) {
+    return nullptr;
+  }
+  llvm::Value *new_src = nullptr;
+  // Generate a new `src` that has one less index.
+  if (indices.empty()) {
+    new_src = src;
+  } else {
+    new_src = ir.CreateGEP(src_type, src, indices);
+  }
+  // Convert that new `src` to have the correct type.
+  auto casted_src = Brighten(ir, new_src, inferred_type);
+  if (!casted_src) {
+    casted_src = ir.CreateBitCast(new_src, inferred_type);
+  }
+  MergeEquivalenceClasses(new_src, casted_src);
+  // Now that we have `src` casted to the corrected type, we can index into
+  // it, using an index that is scaled to the size of the
+  indices.clear();
+  indices.push_back(llvm::ConstantInt::get(
+      last_index->getType(),
+      last_index_sign * (last_index_ai / elem_size), true));
+  const auto new_dst = ir.CreateGEP(inferred_type, casted_src, indices);
+  MergeEquivalenceClasses(dst, new_dst);
+  return new_dst;
+}
+llvm::Value *PointerLifter::BrightenGEP(
+    llvm::IRBuilder<> &ir, llvm::GEPOperator *dst,
+    llvm::PointerType *inferred_type) {
+  auto src = dst->getPointerOperand();
+  auto src_type = llvm::PointerType::get(dst->getSourceElementType(),
+                                         dst->getPointerAddressSpace());
+  auto dst_type = llvm::PointerType::get(dst->getResultElementType(),
+                                         dst->getPointerAddressSpace());
+  auto goal_src_type = src_type;
+//  if (dst->hasAllZeroIndices()) {
+//    MergeEquivalenceClasses(src, dst);
+//
+//    if (auto new_dst = Brighten(ir, src, inferred_type);
+//        new_dst && new_dst != src) {
+//      MergeEquivalenceClasses(dst, new_dst);
+//      ReplaceAllUses(dst, new_dst);
+//      return new_dst;
+//    }
+//  }
+  llvm::SmallVector<llvm::Value *, 4> indices;
+  if (inferred_type != dst_type) {
+    if (auto new_dst = BrightenGEP_PeelLastIndex(ir, dst, inferred_type)) {
+      return new_dst;
+    }
+    // Worst-case: bitcast.
+    auto new_dst = ir.CreateBitCast(dst, inferred_type);
+    MergeEquivalenceClasses(dst, new_dst);
+    return new_dst;
+  } else {
+  }
+  // Top-down, try to brighten `src` into `src` type.
+  if (auto new_src = Brighten(ir, src, src_type);
+      new_src && new_src != src) {
+    src = new_src;
+    src_type = goal_src_type;
+  }
+  // If the source operand isn't a GEP then there's not much else to do.
+  auto src_gep = llvm::dyn_cast<llvm::GEPOperator>(src);
+  if (!src_gep) {
+    return nullptr;
+  }
+  indices.clear();
+  for (auto it = src_gep->idx_begin(); it != src_gep->idx_end(); ++it) {
+    indices.push_back(it->get());
+  }
+  // Merge by adding trailing indices of GEP.
+  if (src_type == dst_type) {
+    if (dst->getNumIndices() == 1) {
+      indices.back() = ir.CreateAdd(indices.back(), dst->getOperand(1));
+      auto new_dst = ir.CreateGEP(src_type, src, indices);
+      MergeEquivalenceClasses(dst, new_dst);
+      return new_dst;
+    } else {
+      LOG(ERROR)
+          << "Unable to combine " << remill::LLVMThingToString(src)
+          << " with " << remill::LLVMThingToString(dst);
+      return nullptr;
+    }
+  // Merge by extending indices of GEP. We need to make sure to combine the
+  // last index of our `src` GEP with the first index of our `dst`.
+  } else {
+    auto it = dst->idx_begin();
+    indices.push_back(ir.CreateAdd(indices.pop_back_val(), it->get()));
+    while (++it != dst->idx_end()) {
+      indices.push_back(it->get());
+    }
+    auto new_dst = ir.CreateGEP(src_type, src, indices);
+    MergeEquivalenceClasses(dst, new_dst);
+    ReplaceAllUses(dst, new_dst);
+    return new_dst;
+  }
+}
+*/
 void PointerLifter::LiftFunction(llvm::Function& func) {
   std::vector<llvm::Instruction *> worklist;
 
 do {
   changed = false;
-
+  func.print(llvm::errs(), nullptr);
   for (auto &block : func) {
     for (auto &inst : block) {
       worklist.push_back(&inst);
@@ -628,16 +780,16 @@ do {
     // is that if we don't we keep iterating over what should be dead code, and then we would have to keep track of instructions we have seen before,
     // but depending on changes we make, instructions we have seen before might need to be updated anyway... it gets messy. Removing dead code at the end
     // of each iteration guarantees convergence
-      for (auto &inst : to_remove) {
-    if (inst->getNumUses() > 0) {
-    //if (inst->use_empty()) {
-      auto rep_inst = rep_map[inst];
-      if (rep_inst->getType() == inst->getType()) {
-        inst->replaceAllUsesWith(rep_inst);
-        inst->eraseFromParent();
+    for (auto &inst : to_remove) {
+      if (inst->getNumUses() > 0) {
+      //if (inst->use_empty()) {
+        auto rep_inst = rep_map[inst];
+        if (rep_inst->getType() == inst->getType()) {
+          inst->replaceAllUsesWith(rep_inst);
+          inst->eraseFromParent();
+        }
       }
     }
-  }
   llvm::legacy::FunctionPassManager fpm(module);
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(llvm::createDeadInstEliminationPass());
