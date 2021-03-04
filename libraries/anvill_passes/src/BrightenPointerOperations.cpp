@@ -21,6 +21,8 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <remill/BC/Util.h>
 #include <iostream>
 #include <string>
@@ -53,8 +55,8 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
 llvm::Value *
 PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
                                  llvm::Value *offset, llvm::Type *dest_type) {
-  auto &context = module.getContext();
-  const auto &dl = module.getDataLayout();
+  auto &context = module->getContext();
+  const auto &dl = module->getDataLayout();
   auto i32_ty = llvm::Type::getInt32Ty(context);
   auto i8_ty = llvm::Type::getInt8Ty(context);
   auto i8_ptr_ty = i8_ty->getPointerTo();
@@ -174,8 +176,8 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
   }
   llvm::Instruction *old_inst = llvm::dyn_cast<llvm::Instruction>(old_val);
   to_remove.insert(old_inst);
-  to_replace.emplace_back(old_inst, new_val);
-
+  rep_map[old_inst] = new_val;
+  changed = true;
   // old_val->replaceAllUsesWith(new_val);
   // TODO Carson, after visitInferInst, remove stuff from the map upon return!
 }
@@ -296,6 +298,7 @@ In the second case, it indicates that %Y although of type integer, has been a po
 */
 std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
+
   llvm::Value *pointer_operand = inst.getOperand(0);
   LOG(ERROR) << "in intoptr, this should be a pointer! "
              << remill::LLVMThingToString(pointer_operand) << "\n";
@@ -325,8 +328,8 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
   //            has a different address than the original, so this would serve
   //            only to introduce an additional load if the original behavior
   //            is maintained.
-  //  // Its a constant expression where we are doing inttoptr of a constant int.
-  //  // We can create a new constant expression
+   // Its a constant expression where we are doing inttoptr of a constant int.
+   // We can create a new constant expression
   //  if (auto pointer_const = llvm::dyn_cast<llvm::ConstantInt>(pointer_operand)) {
   //    llvm::Type *inferred_type = inferred_types[&inst];
   //    llvm::Value *new_global = new llvm::GlobalVariable(
@@ -335,7 +338,7 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
   //    // TODO (Carson), point this out to Peter, he will tell you its bad :)
   //    // ReplaceAllUses(&inst, new_global);
   //    //to_remove.insert(&inst);
-  //    return new_global;
+  //    return {new_global, true};
   //  }
   return {&inst, false};
 }
@@ -372,7 +375,7 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
   // Assert that the CURRENT type of the load (in the example i64) and the new promoted type (i32*)
   // Are of the same size in bytes.
   // This prevents us from accidentally truncating/extending when we don't want to
-  auto dl = module.getDataLayout();
+  auto dl = module->getDataLayout();
   CHECK_EQ(dl.getTypeAllocSizeInBits(inst.getType()),
            dl.getTypeAllocSizeInBits(inferred_type));
 
@@ -413,17 +416,29 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     // ReplaceAllUses(&inst, const_expr);
     // return const_expr;
     llvm::Instruction *expr_as_inst = const_expr->getAsInstruction();
-
+    expr_as_inst->insertBefore(&inst);
     // Rather than passing in the inferred resulting type to this load, pass in the type that matches the load.
 
     auto [new_const_ptr, changed] = visitInferInst(expr_as_inst, ptr_to_ptr);
-
+    
+    // Here, the initial promotion failed. This could be because of any number of reasons
+    // We can give up, but it might be best to actually do a "best effort" transform 
+    // An example is we can insert a bitcast here, and then forcibly promote the load, allowing other optimizations to continueu 
+    if (!changed) {
+      llvm::IRBuilder ir(&inst);
+      llvm::Value * ptr_cast = ir.CreateBitOrPointerCast(expr_as_inst, inferred_type->getPointerTo());
+      llvm::Value * promoted_load = ir.CreateLoad(inferred_type, ptr_cast);
+      ReplaceAllUses(&inst, promoted_load);
+      // Remove expr_as_inst
+      ReplaceAllUses(expr_as_inst, const_expr);
+      return {promoted_load, true};
+    }
+    // expr_as_inst->eraseFromParent();
     llvm::IRBuilder ir(&inst);
     llvm::Value *promoted_load = ir.CreateLoad(inferred_type, new_const_ptr);
-
     ReplaceAllUses(&inst, promoted_load);
+    ReplaceAllUses(expr_as_inst, const_expr);
 
-    // to_remove.insert(&inst);
     return {promoted_load, true};
   }
   return {&inst, false};
@@ -513,6 +528,9 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
       // visit it! propagate type information.
       auto [ptr_val, changed] = visitInferInst(lhs_inst, inferred_type);
+      if (!changed) {
+        return {&inst, false};
+      }
       if (!ptr_val->getType()->isPointerTy()) {
         LOG(ERROR) << "Error! return type is not a pointer: "
                    << remill::LLVMThingToString(ptr_val);
@@ -549,6 +567,9 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     // Same but for RHS
     else if (rhs_inst) {
       auto [ptr_val, changed] = visitInferInst(rhs_inst, inferred_type);
+      if (!changed) {
+          return {&inst, false};
+      }
 
       // TODO (Carson) Confirm pointer type.
       auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op);
@@ -588,45 +609,50 @@ It creates a worklist out of the instructions in the original function and visit
 In order to do downstream pointer propagation, additional uses of updated values are added into the next_worklist
 Pointer lifting for a function is done when we reach a fixed point, when the next_worklist is empty.
 */
-void PointerLifter::LiftFunction(llvm::Function *func) {
+void PointerLifter::LiftFunction(llvm::Function& func) {
   std::vector<llvm::Instruction *> worklist;
 
-  for (auto &block : *func) {
+do {
+  changed = false;
+
+  for (auto &block : func) {
     for (auto &inst : block) {
       worklist.push_back(&inst);
     }
   }
-  do {
     for (auto inst : worklist) {
       visit(inst);
     }
 
-    for (auto &pair : to_replace) {
-      pair.first->replaceAllUsesWith(pair.second);
+    // Note (For Peter): The reason we are doing deletion here instead of the end, 
+    // is that if we don't we keep iterating over what should be dead code, and then we would have to keep track of instructions we have seen before,
+    // but depending on changes we make, instructions we have seen before might need to be updated anyway... it gets messy. Removing dead code at the end
+    // of each iteration guarantees convergence
+      for (auto &inst : to_remove) {
+    if (inst->getNumUses() > 0) {
+    //if (inst->use_empty()) {
+      auto rep_inst = rep_map[inst];
+      if (rep_inst->getType() == inst->getType()) {
+        inst->replaceAllUsesWith(rep_inst);
+        inst->eraseFromParent();
+      }
     }
-    to_replace.clear();
+  }
+  llvm::legacy::FunctionPassManager fpm(module);
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createDeadInstEliminationPass());
+  fpm.doInitialization();
+  fpm.run(func);
+  fpm.doFinalization();
 
-    for (auto &inst : to_remove) {
-      CHECK_EQ(inst->getNumUses(), 0);
-      inst->eraseFromParent();
-    }
-    to_remove.clear();
-
-    worklist.swap(next_worklist);
-    next_worklist.clear();
-
-    // Remove duplicate instructions.
-    std::sort(worklist.begin(), worklist.end());
-    auto it = std::unique(worklist.begin(), worklist.end());
-    worklist.erase(it, worklist.end());
-
-  } while (!next_worklist.empty());
+    worklist.clear();
+  } while (changed);
 }
 
 bool PointerLifterPass::runOnFunction(llvm::Function &f) {
   auto mod = f.getParent();
-  PointerLifter lifter(*mod, xref_resolver);
-  lifter.LiftFunction(&f);
+  PointerLifter lifter(mod, xref_resolver);
+  lifter.LiftFunction(f);
   // TODO (Carson) have an analysis function which determines modifications
   // Then use lift function to run those modifications 
   // Can return true/false depending on what was modified

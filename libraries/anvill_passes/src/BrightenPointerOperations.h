@@ -18,7 +18,7 @@ class PointerLifter
     : public llvm::InstVisitor<PointerLifter, std::pair<llvm::Value *, bool>> {
  public:
   // this is my one requirement: I call a function, get a function pass. I can pass that function a cross-reference resolver instance, and when you get to an llvm::Constant, it will use the xref resolver on that
-  PointerLifter(llvm::Module &mod, const CrossReferenceResolver &resolver) : module(mod), xref_resolver(resolver) {}
+  PointerLifter(llvm::Module *mod, const CrossReferenceResolver &resolver) : module(mod), xref_resolver(resolver), changed(false) {}
 
   // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst
   // Adds users to the next worklist, for downstream type propagation
@@ -50,21 +50,16 @@ class PointerLifter
                                  llvm::Value *offset, llvm::Type *t);
 
   // Driver method
-  void LiftFunction(llvm::Function *func);
-
-  /*
-
-        // TODO (Carson)
-        if you see an intoptr on a load, then you'll want to rewrite the load to be a load on a bitcast
-        i.e. to load a pointer from mrmory, rather than an int
-  */
+  void LiftFunction(llvm::Function& func);
 
  private:
   std::unordered_map<llvm::Value *, llvm::Type *> inferred_types;
   std::vector<llvm::Instruction *> next_worklist;
   std::unordered_set<llvm::Instruction *> to_remove;
-  std::vector<std::pair<llvm::Instruction *, llvm::Value *>> to_replace;
-  llvm::Module &module;
+  std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
+  bool changed;
+  llvm::Module *module;
+
   const CrossReferenceResolver & xref_resolver;
 };
 
