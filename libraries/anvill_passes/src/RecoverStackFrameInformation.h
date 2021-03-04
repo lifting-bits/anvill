@@ -17,9 +17,12 @@
 
 #pragma once
 
+#include <llvm/Pass.h>
+
 #include <unordered_map>
 
 #include "BaseFunctionPass.h"
+#include "Result.h"
 
 namespace anvill {
 
@@ -55,7 +58,10 @@ struct StackFrameAnalysis final {
   std::size_t size{};
 };
 
-class RecoverStackFrameInformation final : public BaseFunctionPass {
+class RecoverStackFrameInformation final : public llvm::FunctionPass,
+                                           public BaseFunctionPass {
+  static char ID;
+
  public:
   // Creates a new RecoverStackFrameInformation object
   static RecoverStackFrameInformation *Create(void);
@@ -88,7 +94,7 @@ class RecoverStackFrameInformation final : public BaseFunctionPass {
   UpdateFunction(llvm::Function &function,
                  const StackFrameAnalysis &stack_frame_analysis);
 
-  RecoverStackFrameInformation(void) = default;
+  RecoverStackFrameInformation(void) : llvm::FunctionPass(ID){};
   virtual ~RecoverStackFrameInformation() override = default;
 };
 

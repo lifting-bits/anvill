@@ -172,7 +172,7 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
         val3 && val3 != val) {
       return IsRelatedToStackPointer(dl, val3);
     } else {
-      return false;
+      return IsStackPointer(val);
     }
   }
 }
