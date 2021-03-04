@@ -18,24 +18,18 @@
 #pragma once
 
 #include <llvm/IR/Instructions.h>
-#include <llvm/Pass.h>
-
-#include "Result.h"
 
 namespace anvill {
 
-class BaseFunctionPass : public llvm::FunctionPass {
-  static char ID;
-
+class BaseFunctionPass {
  public:
-  BaseFunctionPass(void) : llvm::FunctionPass(ID) {}
-  virtual ~BaseFunctionPass(void) override = default;
-
-  // Returns true if this operand references the stack pointer
-  static bool OperandReferencesStackPointer(const llvm::Value *value);
+  BaseFunctionPass(void) = default;
+  virtual ~BaseFunctionPass(void) = default;
 
   // Returns true if this instruction references the stack pointer
-  static bool InstructionReferencesStackPointer(const llvm::Instruction &instr);
+  static bool
+  InstructionReferencesStackPointer(const llvm::DataLayout &data_layout,
+                                    const llvm::Instruction &instr);
 
   // Returns true if this is either a store or a load instruction
   static bool IsMemoryOperation(const llvm::Instruction &instr);

@@ -27,6 +27,7 @@
 #include <limits>
 
 namespace anvill {
+char RecoverStackFrameInformation::ID = '\0';
 
 RecoverStackFrameInformation *RecoverStackFrameInformation::Create(void) {
   return new RecoverStackFrameInformation();
@@ -83,13 +84,16 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
 
   // Enumerate all the instructions we have, looking for `store` and
   // `load` instructions that reference the stack pointer
+  auto module = function.getParent();
+  auto data_layout = module->getDataLayout();
+
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
       if (!IsMemoryOperation(instr)) {
         continue;
       }
 
-      if (InstructionReferencesStackPointer(instr)) {
+      if (InstructionReferencesStackPointer(data_layout, instr)) {
         output.push_back(&instr);
       }
     }

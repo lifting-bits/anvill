@@ -21,49 +21,16 @@
 
 namespace anvill {
 
-char BaseFunctionPass::ID = '\0';
-
-bool BaseFunctionPass::OperandReferencesStackPointer(const llvm::Value *value) {
-  if (IsStackPointer(const_cast<llvm::Value *>(value))) {
-    return true;
-  }
-
-  std::vector<const llvm::Value *> operand_list;
-
-  if (auto instr = llvm::dyn_cast<llvm::Instruction>(value); instr != nullptr) {
-
-    auto operand_count = instr->getNumOperands();
-    for (auto i = 0U; i < operand_count; ++i) {
-      operand_list.push_back(instr->getOperand(i));
-    }
-
-  } else if (auto constant_expr = llvm::dyn_cast<llvm::ConstantExpr>(value);
-             constant_expr != nullptr) {
-
-    auto operand_count = constant_expr->getNumOperands();
-    for (auto i = 0U; i < operand_count; ++i) {
-      operand_list.push_back(constant_expr->getOperand(i));
-    }
-  }
-
-  for (const auto &operand : operand_list) {
-    if (OperandReferencesStackPointer(operand)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 bool BaseFunctionPass::InstructionReferencesStackPointer(
-    const llvm::Instruction &instr) {
+    const llvm::DataLayout &data_layout, const llvm::Instruction &instr) {
+
   auto operand_count = instr.getNumOperands();
 
   for (auto operand_index = 0U; operand_index < operand_count;
        ++operand_index) {
 
     auto operand = instr.getOperand(operand_index);
-    if (OperandReferencesStackPointer(operand)) {
+    if (IsRelatedToStackPointer(data_layout, operand)) {
       return true;
     }
   }
