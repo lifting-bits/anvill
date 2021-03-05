@@ -21,7 +21,11 @@
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
+#include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
+#include <remill/OS/OS.h>
 
+#include <array>
 #include <iostream>
 
 #include "Utils.h"
@@ -30,27 +34,26 @@ namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    llvm::LLVMContext llvm_context;
+    static const std::array<bool, 2> kZeroInitStackSettings = {false, true};
 
-    auto module =
-        RunFunctionPass(llvm_context, "RecoverStackFrameInformation.ll",
-                        CreateRecoverStackFrameInformation());
+    for (const auto &platform : GetSupportedPlatforms()) {
+      for (auto enable_zero_init : kZeroInitStackSettings) {
+        llvm::LLVMContext context;
+        auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+        REQUIRE(module != nullptr);
 
-    // Verify the module
-    std::string error_buffer;
-    llvm::raw_string_ostream error_stream(error_buffer);
+        auto arch =
+            remill::Arch::Build(&context, remill::GetOSName(platform.os),
+                                remill::GetArchName(platform.arch));
 
-    auto succeeded = llvm::verifyModule(*module.get(), &error_stream) == 0;
-    error_stream.flush();
+        REQUIRE(arch != nullptr);
 
-    CHECK(succeeded);
-    if (!succeeded) {
-      std::string error_message = "Module verification failed";
-      if (!error_buffer.empty()) {
-        error_message += ": " + error_buffer;
+        anvill::LifterOptions lift_options(arch.get(), *module);
+        lift_options.zero_init_recovered_stack_frames = (enable_zero_init != 0);
+
+        CHECK(RunFunctionPass(
+            module.get(), CreateRecoverStackFrameInformation(lift_options)));
       }
-
-      std::cerr << error_message << std::endl;
     }
   }
 
@@ -102,7 +105,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
           // __anvill_sp + 12 = 12
           //
           // The high boundary however is not 12, because we are writing a 32-bit
-          // integers; we have to add sizeof(i32) to it, so it becomes 16
+          // integer; we have to add sizeof(i32) to it, so it becomes 16
           //
           // low = -28
           // high = 16
@@ -113,9 +116,8 @@ TEST_SUITE("RecoverStackFrameInformation") {
           CHECK(stack_frame_analysis.highest_offset == 16);
           CHECK(stack_frame_analysis.size == 44U);
 
-          for (auto &p : stack_frame_analysis.instruction_map) {
-            auto &memory_info = p.second;
-            CHECK(memory_info.type == llvm::Type::getInt32Ty(context));
+          for (const auto &stack_operation : stack_frame_analysis.stack_operation_list) {
+            CHECK(stack_operation.type == llvm::Type::getInt32Ty(context));
           }
         }
       }
@@ -151,6 +153,71 @@ TEST_SUITE("RecoverStackFrameInformation") {
           auto data_layout = module->getDataLayout();
           auto frame_type_size = data_layout.getTypeAllocSize(stack_frame_type);
           CHECK(frame_type_size == 44U);
+        }
+      }
+    }
+  }
+
+  SCENARIO("Applying stack frame recovery") {
+    GIVEN("a well formed function") {
+      llvm::LLVMContext context;
+      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+      REQUIRE(module != nullptr);
+
+      auto &function_list = module->getFunctionList();
+      auto function_it =
+          std::find_if(function_list.begin(), function_list.end(),
+
+                       [](const llvm::Function &function) -> bool {
+                         return !function.empty();
+                       });
+
+      REQUIRE(function_it != function_list.end());
+      auto &function = *function_it;
+
+      WHEN("recovering the stack frame") {
+        auto stack_frame_analysis_res =
+            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+
+        REQUIRE(stack_frame_analysis_res.Succeeded());
+
+        auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
+
+        auto update_res = RecoverStackFrameInformation::UpdateFunction(function, stack_frame_analysis, false);
+        REQUIRE(update_res.Succeeded());
+
+        THEN("the function is updated to use the new stack frame structure") {
+          auto &entry_block = function.getEntryBlock();
+
+          // Find the `alloca` instruction that should appear
+          // as the first instruction in the entry block
+          llvm::AllocaInst *alloca_inst{nullptr};
+
+          {
+            auto first_instr_it = entry_block.begin();
+            REQUIRE(first_instr_it != entry_block.end());
+
+            auto first_instr = &(*first_instr_it);
+
+            alloca_inst = llvm::dyn_cast<llvm::AllocaInst>(first_instr);
+          }
+
+          CHECK(alloca_inst != nullptr);
+
+          // We should have the same amount of GEP instructions as the
+          // number of `store` and `load` operations we have found during
+          // stack frame analysis
+          std::size_t frame_gep_count{0U};
+          for (const auto &instr : entry_block) {
+            auto gep_instr = llvm::dyn_cast<llvm::GetElementPtrInst>(&instr);
+            if (gep_instr == nullptr) {
+              continue;
+            }
+
+            ++frame_gep_count;
+          }
+
+          CHECK(frame_gep_count == stack_frame_analysis.stack_operation_list.size());
         }
       }
     }

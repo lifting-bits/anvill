@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <anvill/Lifters/Options.h>
+
 namespace llvm {
 class Function;
 class FunctionPass;
@@ -157,6 +159,7 @@ llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
 
 // This function pass makes use of the __anvill_sp usages to create a StructType
 // that acts as a stack frame
-llvm::FunctionPass *CreateRecoverStackFrameInformation(void);
+llvm::FunctionPass *
+CreateRecoverStackFrameInformation(const LifterOptions &options);
 
 }  // namespace anvill

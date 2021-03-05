@@ -48,7 +48,7 @@ enum class StateStructureInitializationProcedure : char {
   // this option is `false`, then the `State` structure is *not* initialized.
   kGlobalRegisterVariables,
   kGlobalRegisterVariablesAndZeroes,
-  kGlobalRegisterVariablesAndUndef
+  kGlobalRegisterVariablesAndUndef,
 
   // TODO(pag): Add an option to read values using the `llvm.read_register`
   //            intrinsic.
@@ -67,7 +67,8 @@ class LifterOptions {
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
         symbolic_register_types(true),
-        store_inferred_register_values(true) {
+        store_inferred_register_values(true),
+        zero_init_recovered_stack_frames(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -143,6 +144,10 @@ class LifterOptions {
   // perspective, `state->reg` is now a constant value, allowing store-to-load
   // forwarding.
   bool store_inferred_register_values : 1;
+
+  // Instructs the RecoverStackFrameInformation function pass to zero-initialize
+  // the generated stack frame
+  bool zero_init_recovered_stack_frames : 1;
 
  private:
   LifterOptions(void) = delete;
