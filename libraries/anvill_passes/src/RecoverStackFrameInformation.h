@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <anvill/Lifters/Options.h>
 #include <llvm/Pass.h>
 
 #include <unordered_map>
@@ -43,28 +44,39 @@ using StackPointerRegisterUsages = std::vector<llvm::Instruction *>;
 // higher bounds of the offsets, and all the `load` and `store` instructions
 // that have been analyzed
 struct StackFrameAnalysis final {
-  // Describes the relative offset of the operation and
-  // its type
-  struct MemoryInformation final {
+  // Describes a `store` or `load` instruction that is operating on
+  // the stack, along with the SP-relative offset and the operand
+  // type
+  struct StackOperation final {
+    llvm::Instruction *instr{nullptr};
     std::int32_t offset{};
     llvm::Type *type{nullptr};
   };
 
-  std::unordered_map<llvm::Instruction *, MemoryInformation> instruction_map;
+  // A list of StackOperation objects
+  std::vector<StackOperation> stack_operation_list;
 
+  // Lowest SP-relative offset
   std::int32_t lowest_offset{};
+
+  // Highest SP-relative offset
   std::int32_t highest_offset{};
 
+  // Stack frame size
   std::size_t size{};
 };
 
 class RecoverStackFrameInformation final : public llvm::FunctionPass,
                                            public BaseFunctionPass {
+  // Lifting options
+  const LifterOptions &options;
+
+  // Function pass identifier; `&ID` needs to be unique!
   static char ID;
 
  public:
   // Creates a new RecoverStackFrameInformation object
-  static RecoverStackFrameInformation *Create(void);
+  static RecoverStackFrameInformation *Create(const LifterOptions &options);
 
   // Function pass entry point, called by LLVM
   virtual bool runOnFunction(llvm::Function &function) override;
@@ -92,9 +104,10 @@ class RecoverStackFrameInformation final : public llvm::FunctionPass,
   // they operate on the new stack frame type we generated
   static Result<std::monostate, StackAnalysisErrorCode>
   UpdateFunction(llvm::Function &function,
-                 const StackFrameAnalysis &stack_frame_analysis);
+                 const StackFrameAnalysis &stack_frame_analysis,
+                 bool initialize_stack_frame);
 
-  RecoverStackFrameInformation(void) : llvm::FunctionPass(ID){};
+  RecoverStackFrameInformation(const LifterOptions &options);
   virtual ~RecoverStackFrameInformation() override = default;
 };
 

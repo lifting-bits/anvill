@@ -29,8 +29,9 @@
 namespace anvill {
 char RecoverStackFrameInformation::ID = '\0';
 
-RecoverStackFrameInformation *RecoverStackFrameInformation::Create(void) {
-  return new RecoverStackFrameInformation();
+RecoverStackFrameInformation *
+RecoverStackFrameInformation::Create(const LifterOptions &options) {
+  return new RecoverStackFrameInformation(options);
 }
 
 bool RecoverStackFrameInformation::runOnFunction(llvm::Function &function) {
@@ -57,7 +58,9 @@ bool RecoverStackFrameInformation::runOnFunction(llvm::Function &function) {
   // It is now time to patch the function. This method will take the stack
   // analysis and use it to generate a stack frame type and update all the
   // store and load instructions
-  auto update_func_res = UpdateFunction(function, stack_frame_analysis);
+  auto update_func_res = UpdateFunction(
+      function, stack_frame_analysis, options.zero_init_recovered_stack_frames);
+
   if (!update_func_res.Succeeded()) {
     auto &error_code = stack_frame_analysis_res.Error();
     LOG(FATAL) << "Function transformation has failed: " << std::hex
@@ -142,16 +145,23 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       stack_pointer = store_inst->getPointerOperand();
 
     } else {
-      return StackAnalysisErrorCode::UnsupportedInstruction;
+      // This instruction is using __anvill_sp but it's not a memory read
+      // or write operation
+      continue;
     }
 
     // Resolve to a displacement
     auto resolved_stack_ptr =
         resolver.TryResolveReference(const_cast<llvm::Value *>(stack_pointer));
 
-    if (!resolved_stack_ptr.is_valid ||
-        !resolved_stack_ptr.references_stack_pointer) {
+    if (!resolved_stack_ptr.is_valid) {
       return StackAnalysisErrorCode::StackPointerResolutionError;
+    }
+
+    if (!resolved_stack_ptr.references_stack_pointer) {
+      // We already know it's related to a stack pointer, so if we fail
+      // this error happened inside our helpers
+      return StackAnalysisErrorCode::InternalError;
     }
 
     auto displacement =
@@ -167,11 +177,12 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
     output.lowest_offset = std::min(output.lowest_offset, displacement);
 
     // Save the instruction pointer and the memory information
-    StackFrameAnalysis::MemoryInformation memory_info = {};
-    memory_info.offset = displacement;
-    memory_info.type = operand_type;
+    StackFrameAnalysis::StackOperation stack_operation = {};
+    stack_operation.instr = stack_ptr_usage;
+    stack_operation.offset = displacement;
+    stack_operation.type = operand_type;
 
-    output.instruction_map.insert({stack_ptr_usage, memory_info});
+    output.stack_operation_list.push_back(std::move(stack_operation));
   }
 
   auto stack_frame_size = output.highest_offset - output.lowest_offset;
@@ -188,15 +199,19 @@ RecoverStackFrameInformation::GenerateStackFrameType(
     return StackAnalysisErrorCode::InvalidParameter;
   }
 
+  // Generate a stack frame type with a name that matches the
+  // anvill ABI
   auto function_name = function.getName().str();
   auto stack_frame_type_name = function_name + kStackFrameTypeNameSuffix;
 
+  // Make sure this type is not defined already
   auto &module = *function.getParent();
   auto stack_frame_type = module.getTypeByName(stack_frame_type_name);
   if (stack_frame_type != nullptr) {
     return StackAnalysisErrorCode::StackFrameTypeAlreadyExists;
   }
 
+  // Generate the stack frame using a byte array
   auto &context = module.getContext();
 
   auto array_elem_type = llvm::Type::getInt8Ty(context);
@@ -216,7 +231,8 @@ RecoverStackFrameInformation::GenerateStackFrameType(
 
 Result<std::monostate, StackAnalysisErrorCode>
 RecoverStackFrameInformation::UpdateFunction(
-    llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis) {
+    llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
+    bool initialize_stack_frame) {
 
   if (function.empty() || stack_frame_analysis.size == 0U) {
     return StackAnalysisErrorCode::InvalidParameter;
@@ -250,38 +266,37 @@ RecoverStackFrameInformation::UpdateFunction(
 
   // The stack analysis we have performed earlier contains all the
   // `load` and `store` instructions that we have to update
-  for (auto &p : stack_frame_analysis.instruction_map) {
-    auto &instr = p.first;
-    auto &memory_info = p.second;
-
+  for (auto &stack_operation : stack_frame_analysis.stack_operation_list) {
     // Convert the __anvill_sp-relative offset to a 0-based index
     // into our stack frame type
-    auto displacement = memory_info.offset - stack_frame_analysis.lowest_offset;
+    auto displacement =
+        stack_operation.offset - stack_frame_analysis.lowest_offset;
 
     // Create a GEP instruction that accesses the new stack frame we
     // created based on the relative offset
     //
     // As a reminder, the stack frame type is a StructType that contains
     // an ArrayType with int8 elements
-    builder.SetInsertPoint(instr);
+    builder.SetInsertPoint(stack_operation.instr);
 
     auto stack_frame_ptr = builder.CreateGEP(
         stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
                              builder.getInt32(displacement)});
 
-    stack_frame_ptr = builder.CreateBitCast(stack_frame_ptr,
-                                            memory_info.type->getPointerTo());
+    stack_frame_ptr = builder.CreateBitCast(
+        stack_frame_ptr, stack_operation.type->getPointerTo());
 
     // Replace the original `load` or `store` instruction with a matching
     // instruction that operates on the allocated stack frame type instead
     llvm::Value *replacement{nullptr};
 
-    if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(instr);
+    if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(stack_operation.instr);
         load_inst != nullptr) {
 
       replacement = builder.CreateLoad(stack_frame_ptr);
 
-    } else if (auto store_inst = llvm::dyn_cast<llvm::StoreInst>(instr);
+    } else if (auto store_inst =
+                   llvm::dyn_cast<llvm::StoreInst>(stack_operation.instr);
                store_inst != nullptr) {
 
       auto value_operand = store_inst->getValueOperand();
@@ -291,15 +306,21 @@ RecoverStackFrameInformation::UpdateFunction(
       return StackAnalysisErrorCode::UnsupportedInstruction;
     }
 
-    instr->replaceAllUsesWith(replacement);
-    instr->eraseFromParent();
+    stack_operation.instr->replaceAllUsesWith(replacement);
+    stack_operation.instr->eraseFromParent();
   }
 
   return std::monostate();
 }
 
-llvm::FunctionPass *CreateRecoverStackFrameInformation(void) {
-  return RecoverStackFrameInformation::Create();
+RecoverStackFrameInformation::RecoverStackFrameInformation(
+    const LifterOptions &options)
+    : llvm::FunctionPass(ID),
+      options(options) {}
+
+llvm::FunctionPass *
+CreateRecoverStackFrameInformation(const LifterOptions &options) {
+  return RecoverStackFrameInformation::Create(options);
 }
 
 }  // namespace anvill
