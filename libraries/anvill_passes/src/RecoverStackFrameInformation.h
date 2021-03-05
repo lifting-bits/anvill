@@ -18,12 +18,12 @@
 #pragma once
 
 #include <anvill/Lifters/Options.h>
+#include <anvill/Result.h>
 #include <llvm/Pass.h>
 
 #include <unordered_map>
 
 #include "BaseFunctionPass.h"
-#include "Result.h"
 
 namespace anvill {
 
