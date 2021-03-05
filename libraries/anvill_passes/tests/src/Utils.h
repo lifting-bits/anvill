@@ -27,7 +27,6 @@ bool VerifyModule(llvm::Module *module);
 std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
                                            const std::string &data_name);
 
-
 bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass);
 
 struct Platform final {
@@ -36,7 +35,6 @@ struct Platform final {
 };
 
 using PlatformList = std::vector<Platform>;
-
 const PlatformList &GetSupportedPlatforms(void);
 
 }  // namespace anvill

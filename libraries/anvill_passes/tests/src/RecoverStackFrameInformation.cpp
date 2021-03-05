@@ -33,7 +33,7 @@
 namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
-  TEST_CASE("Run the whole pass on a well-formed function") {
+  TEST_CASE("Run the whole pass on aaa well-formed function") {
     static const std::array<bool, 2> kZeroInitStackSettings = {false, true};
 
     for (const auto &platform : GetSupportedPlatforms()) {
@@ -49,7 +49,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
         REQUIRE(arch != nullptr);
 
         anvill::LifterOptions lift_options(arch.get(), *module);
-        lift_options.zero_init_recovered_stack_frames = (enable_zero_init != 0);
+        lift_options.zero_init_recovered_stack_frames = enable_zero_init;
 
         CHECK(RunFunctionPass(
             module.get(), CreateRecoverStackFrameInformation(lift_options)));
