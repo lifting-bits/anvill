@@ -18,7 +18,7 @@ class PointerLifter
     : public llvm::InstVisitor<PointerLifter, std::pair<llvm::Value *, bool>> {
  public:
   // this is my one requirement: I call a function, get a function pass. I can pass that function a cross-reference resolver instance, and when you get to an llvm::Constant, it will use the xref resolver on that
-  PointerLifter(llvm::Module *mod, const CrossReferenceResolver &resolver) : module(mod), xref_resolver(resolver), changed(false) {}
+  PointerLifter(llvm::Module *mod, const CrossReferenceResolver &resolver) : mod(mod), xref_resolver(resolver), changed(false) {}
 
   // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst
   // Adds users to the next worklist, for downstream type propagation
@@ -34,6 +34,9 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
 
   // std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
+  bool canRewriteGep(llvm::GetElementPtrInst& inst, llvm::Type* inferred_type);
+  std::pair<llvm::Value*, bool> flattenGEP(llvm::GetElementPtrInst *gep);
+  std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool>
   visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
@@ -57,8 +60,9 @@ class PointerLifter
   std::vector<llvm::Instruction *> next_worklist;
   std::unordered_set<llvm::Instruction *> to_remove;
   std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
+  std::unordered_map<llvm::Instruction *, bool> dead_inst;
   bool changed;
-  llvm::Module *module;
+  llvm::Module *mod;
 
   const CrossReferenceResolver & xref_resolver;
 };
