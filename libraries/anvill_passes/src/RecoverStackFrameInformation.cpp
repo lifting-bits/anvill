@@ -264,6 +264,19 @@ RecoverStackFrameInformation::UpdateFunction(
   llvm::IRBuilder<> builder(first_instr);
   auto stack_frame_alloca = builder.CreateAlloca(stack_frame_type);
 
+  // Pre-initialize the stack frame to zero if we have been requested
+  // to do so. From the whole FunctionPass class, we get the setting
+  // from the LiftingOptions class
+  if (initialize_stack_frame) {
+    for (auto i = 0U; i < stack_frame_analysis.size; ++i) {
+      auto stack_frame_byte = builder.CreateGEP(
+          stack_frame_alloca,
+          {builder.getInt32(0), builder.getInt32(0), builder.getInt32(i)});
+
+      builder.CreateStore(builder.getInt8(0), stack_frame_byte);
+    }
+  }
+
   // The stack analysis we have performed earlier contains all the
   // `load` and `store` instructions that we have to update
   for (auto &stack_operation : stack_frame_analysis.stack_operation_list) {
