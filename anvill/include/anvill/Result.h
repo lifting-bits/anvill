@@ -25,7 +25,7 @@ namespace anvill {
 template <typename ValueType, typename ErrorType>
 class Result final {
  private:
-  bool destroyed{false};
+  bool destroyed{true};
   mutable bool checked{false};
   std::variant<ValueType, ErrorType> data;
 
@@ -126,21 +126,25 @@ const ValueType *Result<ValueType, ErrorType>::operator->() const {
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(const ValueType &value) {
   data = value;
+  destroyed = false;
 }
 
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(ValueType &&value) {
   data = std::move(value);
+  destroyed = false;
 }
 
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(const ErrorType &error) {
   data = error;
+  destroyed = false;
 }
 
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(ErrorType &&error) {
   data = std::move(error);
+  destroyed = false;
 }
 
 template <typename ValueType, typename ErrorType>
