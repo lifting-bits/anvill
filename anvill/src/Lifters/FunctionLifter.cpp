@@ -1003,12 +1003,14 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
-      remill::AddTerminatingTailCall(block, intrinsics.error);
+      MuteStateEscape(
+          remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
     // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
-      remill::AddTerminatingTailCall(block, intrinsics.error);
+      MuteStateEscape(
+          remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
     } else {

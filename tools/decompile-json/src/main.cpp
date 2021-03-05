@@ -43,6 +43,7 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
+#include <anvill/ABI.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
@@ -729,6 +730,21 @@ int main(int argc, char *argv[]) {
     }
     return true;
   });
+
+  // Clean up by initializing variables.
+  for (auto &var : module.globals()) {
+    if (!var.isDeclaration()) {
+      continue;
+    }
+    const auto name = var.getName();
+    if (name.startswith(anvill::kUnmodelledRegisterPrefix) ||
+        name == anvill::kSymbolicPCName ||
+        name == anvill::kSymbolicSPName ||
+        name == anvill::kSymbolicRAName) {
+      var.setInitializer(llvm::Constant::getNullValue(var.getValueType()));
+      var.setLinkage(llvm::GlobalValue::InternalLinkage);
+    }
+  }
 
   int ret = EXIT_SUCCESS;
 
