@@ -23,7 +23,7 @@ os.chdir(os.path.join(os.path.dirname(__file__), "anvill", "python"))
 
 setuptools.setup(
     name="anvill",
-    version="1.0",
+    version="1.0.1",
     description="Specification-based decompilation library",
     author="Peter Goodman",
     author_email="peter@trailofbits.com",

@@ -897,7 +897,7 @@ class IDAVariable(Variable):
         seg = _find_segment_containing_ea(self.address(), seg_ref)
         if seg and _is_imported_table_seg(seg):
             print(
-                "{} at {:x} is in an import table!".format(self.name(), self.address())
+                "Variable at {:x} is in an import table!".format(self.address())
             )
             is_definition = True
 
@@ -909,8 +909,8 @@ class IDAVariable(Variable):
 
 
 class IDAProgram(Program):
-    def __init__(self, *args, **kargs):
-        super(IDAProgram, self).__init__(kargs["arch"], kargs["os"])
+    def __init__(self, arch, os):
+        super(IDAProgram, self).__init__(arch, os)
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -1067,23 +1067,15 @@ class IDAProgram(Program):
         return func
 
 
-_PROGRAM = None
 
+def get_program(arch=None, os=None, cache=False):
+    if cache:
+        DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
-def get_program(*args, **kargs):
-    if "arch" not in kargs:
-        kargs["arch"] = _get_arch()
+    if not arch:
+        arch = _get_arch()
 
-    if "os" not in kargs:
-        kargs["os"] = _get_os()
+    if not os:
+        os = _get_os()
 
-    # Can pass in `cache=False` to get a unique program.
-    if "cache" in kargs and not kargs["cache"]:
-        return IDAProgram(**kargs)
-
-    global _PROGRAM
-    if _PROGRAM:
-        return _PROGRAM
-
-    _PROGRAM = IDAProgram(**kargs)
-    return _PROGRAM
+    return IDAProgram(arch, os)
