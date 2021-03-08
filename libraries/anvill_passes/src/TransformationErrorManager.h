@@ -17,23 +17,25 @@
 
 #pragma once
 
-#include <llvm/IR/Module.h>
+#include <anvill/ITransformationErrorManager.h>
 
-#include <functional>
-#include <vector>
-
-namespace llvm {
-class CallBase;
-class Function;
-}  // namespace llvm
 namespace anvill {
 
-// Find all function calls in `func` such that `pred(call)` returns `true`.
-std::vector<llvm::CallBase *>
-FindFunctionCalls(llvm::Function &func,
-                  std::function<bool(llvm::CallBase *)> pred);
+class TransformationErrorManager final : public ITransformationErrorManager {
+  std::vector<TransformationError> error_list;
+  bool has_fatal_error{false};
 
-// Returns the module's IR
-std::string GetModuleIR(llvm::Module &module);
+ public:
+  TransformationErrorManager() = default;
+  virtual ~TransformationErrorManager() override = default;
+
+  virtual void Insert(const TransformationError &error) override;
+  virtual void Reset(void) override;
+
+  virtual bool HasFatalError(void) const override;
+
+  virtual const std::vector<TransformationError> &
+  ErrorList(void) const override;
+};
 
 }  // namespace anvill

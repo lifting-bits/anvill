@@ -96,7 +96,7 @@ llvm::AllocaInst *BaseScenario::GenerateStackFrameAllocationEntryBlock() {
   return alloca_inst;
 }
 
-SplitStackFrameAtReturnAddress::StoreInstAndOffsetPair
+StoreInstAndOffsetPair
 BaseScenario::GenerateStackFrameWithRetnIntrinsicEntryBlock() {
 
   if (d->entry_block_generated) {

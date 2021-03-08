@@ -17,13 +17,17 @@
 
 #pragma once
 
+#include <anvill/ITransformationErrorManager.h>
 #include <llvm/IR/Instructions.h>
 
 namespace anvill {
 
 class BaseFunctionPass {
+ protected:
+  ITransformationErrorManager &error_manager;
+
  public:
-  BaseFunctionPass(void) = default;
+  BaseFunctionPass(ITransformationErrorManager &error_manager_);
   virtual ~BaseFunctionPass(void) = default;
 
   // Returns true if this instruction references the stack pointer
@@ -33,6 +37,20 @@ class BaseFunctionPass {
 
   // Returns true if this is either a store or a load instruction
   static bool IsMemoryOperation(const llvm::Instruction &instr);
+
+  // Emits an error through the transformation error manager
+  void EmitError(const std::string &pass_name, SeverityType severity,
+                 const std::string &error_code, const std::string &message,
+                 const std::string &module_name,
+
+                 const std::optional<std::string> &function_name =
+                     std::optional<std::string>(),
+
+                 const std::optional<std::string> &ir_before_pass =
+                     std::optional<std::string>(),
+
+                 const std::optional<std::string> &ir_after_pass =
+                     std::optional<std::string>());
 };
 
 }  // namespace anvill

@@ -76,7 +76,9 @@ class RecoverStackFrameInformation final : public llvm::FunctionPass,
 
  public:
   // Creates a new RecoverStackFrameInformation object
-  static RecoverStackFrameInformation *Create(const LifterOptions &options);
+  static RecoverStackFrameInformation *
+  Create(ITransformationErrorManager &error_manager,
+         const LifterOptions &options);
 
   // Function pass entry point, called by LLVM
   virtual bool runOnFunction(llvm::Function &function) override;
@@ -107,7 +109,8 @@ class RecoverStackFrameInformation final : public llvm::FunctionPass,
                  const StackFrameAnalysis &stack_frame_analysis,
                  bool initialize_stack_frame);
 
-  RecoverStackFrameInformation(const LifterOptions &options);
+  RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
+                               const LifterOptions &options);
   virtual ~RecoverStackFrameInformation() override = default;
 };
 

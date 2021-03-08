@@ -30,18 +30,18 @@ class Result final {
   std::variant<ValueType, ErrorType> data;
 
  public:
-  Result();
-  ~Result() = default;
+  Result(void);
+  ~Result(void) = default;
 
-  bool Succeeded() const;
+  bool Succeeded(void) const;
 
-  const ErrorType &Error() const;
-  ErrorType TakeError();
+  const ErrorType &Error(void) const;
+  ErrorType TakeError(void);
 
-  const ValueType &Value() const;
-  ValueType TakeValue();
+  const ValueType &Value(void) const;
+  ValueType TakeValue(void);
 
-  const ValueType *operator->() const;
+  const ValueType *operator->(void) const;
 
   Result(const ValueType &value);
   Result(ValueType &&value);
@@ -56,20 +56,20 @@ class Result final {
   Result &operator=(const Result &) = delete;
 
  private:
-  void VerifyState() const;
-  void VerifyChecked() const;
-  void VerifyFailed() const;
-  void VerifySucceeded() const;
+  void VerifyState(void) const;
+  void VerifyChecked(void) const;
+  void VerifyFailed(void) const;
+  void VerifySucceeded(void) const;
 };
 
 template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result() {
+Result<ValueType, ErrorType>::Result(void) {
   checked = true;
   data = ErrorType();
 }
 
 template <typename ValueType, typename ErrorType>
-bool Result<ValueType, ErrorType>::Succeeded() const {
+bool Result<ValueType, ErrorType>::Succeeded(void) const {
   VerifyState();
 
   checked = true;
@@ -77,7 +77,7 @@ bool Result<ValueType, ErrorType>::Succeeded() const {
 }
 
 template <typename ValueType, typename ErrorType>
-const ErrorType &Result<ValueType, ErrorType>::Error() const {
+const ErrorType &Result<ValueType, ErrorType>::Error(void) const {
   VerifyState();
   VerifyChecked();
   VerifyFailed();
@@ -86,7 +86,7 @@ const ErrorType &Result<ValueType, ErrorType>::Error() const {
 }
 
 template <typename ValueType, typename ErrorType>
-ErrorType Result<ValueType, ErrorType>::TakeError() {
+ErrorType Result<ValueType, ErrorType>::TakeError(void) {
   VerifyState();
   VerifyChecked();
   VerifyFailed();
@@ -98,7 +98,7 @@ ErrorType Result<ValueType, ErrorType>::TakeError() {
 }
 
 template <typename ValueType, typename ErrorType>
-const ValueType &Result<ValueType, ErrorType>::Value() const {
+const ValueType &Result<ValueType, ErrorType>::Value(void) const {
   VerifyState();
   VerifyChecked();
   VerifySucceeded();
@@ -107,7 +107,7 @@ const ValueType &Result<ValueType, ErrorType>::Value() const {
 }
 
 template <typename ValueType, typename ErrorType>
-ValueType Result<ValueType, ErrorType>::TakeValue() {
+ValueType Result<ValueType, ErrorType>::TakeValue(void) {
   VerifyState();
   VerifyChecked();
   VerifySucceeded();
@@ -119,7 +119,7 @@ ValueType Result<ValueType, ErrorType>::TakeValue() {
 }
 
 template <typename ValueType, typename ErrorType>
-const ValueType *Result<ValueType, ErrorType>::operator->() const {
+const ValueType *Result<ValueType, ErrorType>::operator->(void) const {
   return &Value();
 }
 
@@ -167,7 +167,7 @@ Result<ValueType, ErrorType>::operator=(Result &&other) noexcept {
 }
 
 template <typename ValueType, typename ErrorType>
-void Result<ValueType, ErrorType>::VerifyState() const {
+void Result<ValueType, ErrorType>::VerifyState(void) const {
   if (!destroyed) {
     return;
   }
@@ -177,7 +177,7 @@ void Result<ValueType, ErrorType>::VerifyState() const {
 }
 
 template <typename ValueType, typename ErrorType>
-void Result<ValueType, ErrorType>::VerifyChecked() const {
+void Result<ValueType, ErrorType>::VerifyChecked(void) const {
   if (checked) {
     return;
   }
@@ -187,7 +187,7 @@ void Result<ValueType, ErrorType>::VerifyChecked() const {
 }
 
 template <typename ValueType, typename ErrorType>
-void Result<ValueType, ErrorType>::VerifySucceeded() const {
+void Result<ValueType, ErrorType>::VerifySucceeded(void) const {
   if (std::holds_alternative<ValueType>(data)) {
     return;
   }
@@ -197,7 +197,7 @@ void Result<ValueType, ErrorType>::VerifySucceeded() const {
 }
 
 template <typename ValueType, typename ErrorType>
-void Result<ValueType, ErrorType>::VerifyFailed() const {
+void Result<ValueType, ErrorType>::VerifyFailed(void) const {
   if (std::holds_alternative<ErrorType>(data)) {
     return;
   }

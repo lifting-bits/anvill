@@ -19,7 +19,27 @@
 
 #include <anvill/Analysis/Utils.h>
 
+#include <sstream>
+
 namespace anvill {
+
+namespace {
+
+std::ostream &operator<<(std::ostream &stream, const SeverityType &severity) {
+  switch (severity) {
+    case SeverityType::Information: stream << "information"; break;
+    case SeverityType::Warning: stream << "warning"; break;
+    case SeverityType::Error: stream << "error"; break;
+    case SeverityType::Fatal: stream << "fatal"; break;
+  }
+
+  return stream;
+}
+
+}  // namespace
+
+BaseFunctionPass::BaseFunctionPass(ITransformationErrorManager &error_manager_)
+    : error_manager(error_manager_) {}
 
 bool BaseFunctionPass::InstructionReferencesStackPointer(
     const llvm::DataLayout &data_layout, const llvm::Instruction &instr) {
@@ -50,6 +70,39 @@ bool BaseFunctionPass::IsMemoryOperation(const llvm::Instruction &instr) {
   }
 
   return false;
+}
+
+void BaseFunctionPass::EmitError(
+    const std::string &pass_name, SeverityType severity,
+    const std::string &error_code, const std::string &message,
+    const std::string &module_name,
+    const std::optional<std::string> &function_name,
+    const std::optional<std::string> &ir_before_pass,
+    const std::optional<std::string> &ir_after_pass) {
+
+  TransformationError error;
+  error.pass_name = pass_name;
+  error.severity = severity;
+  error.error_code = error_code;
+  error.message = message;
+  error.module_name = module_name;
+  error.function_name = function_name;
+  error.module_before = ir_before_pass;
+  error.module_after = ir_after_pass;
+
+  std::stringstream buffer;
+  buffer << "severity:" << severity << " pass_name:" << error.pass_name
+         << " error_code:" << error.error_code
+         << " module_name:" << error.module_name;
+
+  if (error.function_name.has_value()) {
+    buffer << " function_name:" << error.function_name.value();
+  }
+
+  buffer << " message:\"" << message << "\"";
+  error.description = buffer.str();
+
+  error_manager.Insert(std::move(error));
 }
 
 }  // namespace anvill

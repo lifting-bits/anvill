@@ -27,6 +27,10 @@ add_library(anvill_passes STATIC
 
   src/Utils.h
   src/Utils.cpp
+
+  include/anvill/ITransformationErrorManager.h
+  src/TransformationErrorManager.h
+  src/TransformationErrorManager.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC
@@ -38,6 +42,8 @@ target_link_libraries(anvill_passes PUBLIC
   remill_settings
   anvill
 )
+
+addMagicEnumLibrary(anvill_passes)
 
 if(ANVILL_ENABLE_TESTS)
   add_subdirectory("tests")

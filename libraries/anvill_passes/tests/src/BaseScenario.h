@@ -35,12 +35,8 @@ class BaseScenario final {
   void GenerateEmptyEntryBlock();
 
   llvm::AllocaInst *GenerateStackFrameAllocationEntryBlock();
-
-  SplitStackFrameAtReturnAddress::StoreInstAndOffsetPair
-  GenerateStackFrameWithRetnIntrinsicEntryBlock();
-
+  StoreInstAndOffsetPair GenerateStackFrameWithRetnIntrinsicEntryBlock();
   llvm::StructType *GenerateStackFrameType();
-
   llvm::Function *Function() const;
   llvm::LLVMContext &Context() const;
 

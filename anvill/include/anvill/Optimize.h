@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <anvill/Lifters/Options.h>
+
 namespace llvm {
 class Module;
 }
@@ -33,6 +35,6 @@ class Program;
 // code, etc.
 void OptimizeModule(const EntityLifter &lifter_context,
                     const remill::Arch *arch, const Program &program,
-                    llvm::Module &module);
+                    llvm::Module &module, const LifterOptions &options);
 
 }  // namespace anvill
