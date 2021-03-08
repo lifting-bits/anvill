@@ -27,6 +27,7 @@
 
 #include <array>
 #include <iostream>
+#include <sstream>
 
 #include "Utils.h"
 
@@ -35,6 +36,7 @@ namespace anvill {
 TEST_SUITE("RecoverStackFrameInformation") {
   TEST_CASE("Run the whole pass on aaa well-formed function") {
     static const std::array<bool, 2> kZeroInitStackSettings = {false, true};
+    auto error_manager = ITransformationErrorManager::Create();
 
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto enable_zero_init : kZeroInitStackSettings) {
@@ -51,8 +53,9 @@ TEST_SUITE("RecoverStackFrameInformation") {
         anvill::LifterOptions lift_options(arch.get(), *module);
         lift_options.zero_init_recovered_stack_frames = enable_zero_init;
 
-        CHECK(RunFunctionPass(
-            module.get(), CreateRecoverStackFrameInformation(lift_options)));
+        CHECK(RunFunctionPass(module.get(),
+                              CreateRecoverStackFrameInformation(
+                                  *error_manager.get(), lift_options)));
       }
     }
   }

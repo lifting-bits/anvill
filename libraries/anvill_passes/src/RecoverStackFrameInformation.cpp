@@ -25,13 +25,17 @@
 #include <llvm/IR/Module.h>
 
 #include <limits>
+#include <magic_enum.hpp>
+
+#include "Utils.h"
 
 namespace anvill {
 char RecoverStackFrameInformation::ID = '\0';
 
 RecoverStackFrameInformation *
-RecoverStackFrameInformation::Create(const LifterOptions &options) {
-  return new RecoverStackFrameInformation(options);
+RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
+                                     const LifterOptions &options) {
+  return new RecoverStackFrameInformation(error_manager, options);
 }
 
 bool RecoverStackFrameInformation::runOnFunction(llvm::Function &function) {
@@ -41,11 +45,17 @@ bool RecoverStackFrameInformation::runOnFunction(llvm::Function &function) {
 
   // Analyze the stack frame first, enumerating the load/store instructions
   // and determining the boundaries of the stack memory
+  auto module = function.getParent();
+  auto original_ir = GetModuleIR(*module);
+
   auto stack_frame_analysis_res = AnalyzeStackFrame(function);
   if (!stack_frame_analysis_res.Succeeded()) {
-    auto &error_code = stack_frame_analysis_res.Error();
-    LOG(FATAL) << "Stack frame analysis failed: " << std::hex
-               << static_cast<int>(error_code);
+    auto error_code =
+        std::string(magic_enum::enum_name(stack_frame_analysis_res.Error()));
+
+    EmitError(getPassName().str(), SeverityType::Error, error_code,
+              "The stack frame analysis has failed", module->getName().str(),
+              function.getName().str(), original_ir);
 
     return false;
   }
@@ -62,9 +72,16 @@ bool RecoverStackFrameInformation::runOnFunction(llvm::Function &function) {
       function, stack_frame_analysis, options.zero_init_recovered_stack_frames);
 
   if (!update_func_res.Succeeded()) {
-    auto &error_code = stack_frame_analysis_res.Error();
-    LOG(FATAL) << "Function transformation has failed: " << std::hex
-               << static_cast<int>(error_code);
+    auto error_code =
+        std::string(magic_enum::enum_name(update_func_res.Error()));
+
+    auto transformed_ir = GetModuleIR(*module);
+
+    EmitError(
+        getPassName().str(), SeverityType::Fatal, error_code,
+        "Function transformation has failed and the stack could not be recovered",
+        module->getName().str(), function.getName().str(), original_ir,
+        transformed_ir);
 
     return false;
   }
@@ -327,13 +344,15 @@ RecoverStackFrameInformation::UpdateFunction(
 }
 
 RecoverStackFrameInformation::RecoverStackFrameInformation(
-    const LifterOptions &options)
+    ITransformationErrorManager &error_manager, const LifterOptions &options)
     : llvm::FunctionPass(ID),
+      BaseFunctionPass(error_manager),
       options(options) {}
 
 llvm::FunctionPass *
-CreateRecoverStackFrameInformation(const LifterOptions &options) {
-  return RecoverStackFrameInformation::Create(options);
+CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
+                                   const LifterOptions &options) {
+  return RecoverStackFrameInformation::Create(error_manager, options);
 }
 
 }  // namespace anvill
