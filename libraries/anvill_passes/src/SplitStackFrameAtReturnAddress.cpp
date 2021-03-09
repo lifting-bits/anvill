@@ -41,7 +41,7 @@ SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
 }
 
 bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
-  if (function.empty()) {
+  if (function.isDeclaration()) {
     return false;
   }
 
@@ -277,7 +277,7 @@ SplitStackFrameAtReturnAddress::GetRetnAddressStoreInstructions(
     llvm::Function &function) {
 
   RetnAddressStoreInstructions output{};
-  if (function.empty()) {
+  if (function.isDeclaration()) {
     return output;
   }
 

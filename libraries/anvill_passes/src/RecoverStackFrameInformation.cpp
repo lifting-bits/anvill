@@ -37,7 +37,7 @@ RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
 }
 
 bool RecoverStackFrameInformation::Run(llvm::Function &function) {
-  if (function.empty()) {
+  if (function.isDeclaration()) {
     return false;
   }
 
@@ -91,7 +91,7 @@ llvm::StringRef RecoverStackFrameInformation::getPassName(void) const {
 Result<StackPointerRegisterUsages, StackAnalysisErrorCode>
 RecoverStackFrameInformation::EnumerateStackPointerUsages(
     llvm::Function &function) {
-  if (function.empty()) {
+  if (function.isDeclaration()) {
     return StackAnalysisErrorCode::InvalidParameter;
   }
 
@@ -246,7 +246,7 @@ RecoverStackFrameInformation::UpdateFunction(
     llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
     bool initialize_stack_frame) {
 
-  if (function.empty() || stack_frame_analysis.size == 0U) {
+  if (function.isDeclaration() || stack_frame_analysis.size == 0U) {
     return StackAnalysisErrorCode::InvalidParameter;
   }
 
@@ -265,15 +265,9 @@ RecoverStackFrameInformation::UpdateFunction(
   // IRBuilder, and then create an `alloca` instruction to
   // generate our new stack frame
   auto &entry_block = function.getEntryBlock();
+  auto &insert_point = *entry_block.getFirstInsertionPt();
 
-  auto first_instr_it = entry_block.begin();
-  if (first_instr_it == entry_block.end()) {
-    return StackAnalysisErrorCode::InternalError;
-  }
-
-  auto first_instr = &(*first_instr_it);
-
-  llvm::IRBuilder<> builder(first_instr);
+  llvm::IRBuilder<> builder(&insert_point);
   auto stack_frame_alloca = builder.CreateAlloca(stack_frame_type);
 
   // Pre-initialize the stack frame to zero if we have been requested
