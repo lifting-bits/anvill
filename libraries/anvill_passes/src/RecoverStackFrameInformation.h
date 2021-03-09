@@ -104,7 +104,7 @@ class RecoverStackFrameInformation final
   static Result<std::monostate, StackAnalysisErrorCode>
   UpdateFunction(llvm::Function &function,
                  const StackFrameAnalysis &stack_frame_analysis,
-                 bool initialize_stack_frame);
+                 StackFrameStructureInitializationProcedure init_strategy);
 
   RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                const LifterOptions &options);

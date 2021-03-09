@@ -33,7 +33,7 @@ enum class StateStructureInitializationProcedure : char {
   // Store an LLVM constant aggregate zero into the `alloca State`.
   kZeroes,
 
-  // Stoe an LLVM undefined value to the `alloca State`.
+  // Store an LLVM undefined value to the `alloca State`.
   kUndef,
 
   // Should the registers of the `State` structure be initialized from many
@@ -54,6 +54,19 @@ enum class StateStructureInitializationProcedure : char {
   //            intrinsic.
 };
 
+// TODO: Add kSymbolic
+enum class StackFrameStructureInitializationProcedure : char {
+
+  // Don't do anything with the `alloca State`.
+  kNone,
+
+  // Store an LLVM constant aggregate zero into the `alloca State`.
+  kZeroes,
+
+  // Store an LLVM undefined value to the `alloca State`.
+  kUndef,
+};
+
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
@@ -63,12 +76,13 @@ class LifterOptions {
         module(&module_),
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
+        stack_frame_struct_init_procedure(StackFrameStructureInitializationProcedure::
+                                        kZeroes),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
         symbolic_register_types(true),
-        store_inferred_register_values(true),
-        zero_init_recovered_stack_frames(true) {
+        store_inferred_register_values(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -82,6 +96,10 @@ class LifterOptions {
   // allocated on the stack. This configuration option determines how the
   // state structure is initialized.
   StateStructureInitializationProcedure state_struct_init_procedure;
+
+  // How the RecoverStackFrameInformation function pass should initialize
+  // recovered stack frames
+  StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
@@ -144,10 +162,6 @@ class LifterOptions {
   // perspective, `state->reg` is now a constant value, allowing store-to-load
   // forwarding.
   bool store_inferred_register_values : 1;
-
-  // Instructs the RecoverStackFrameInformation function pass to zero-initialize
-  // the generated stack frame
-  bool zero_init_recovered_stack_frames : 1;
 
  private:
   LifterOptions(void) = delete;

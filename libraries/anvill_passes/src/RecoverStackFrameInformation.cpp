@@ -65,8 +65,9 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
   // It is now time to patch the function. This method will take the stack
   // analysis and use it to generate a stack frame type and update all the
   // store and load instructions
-  auto update_func_res = UpdateFunction(
-      function, stack_frame_analysis, options.zero_init_recovered_stack_frames);
+  auto update_func_res =
+      UpdateFunction(function, stack_frame_analysis,
+                     options.stack_frame_struct_init_procedure);
 
   if (!update_func_res.Succeeded()) {
     auto error_code =
@@ -244,7 +245,7 @@ RecoverStackFrameInformation::GenerateStackFrameType(
 Result<std::monostate, StackAnalysisErrorCode>
 RecoverStackFrameInformation::UpdateFunction(
     llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
-    bool initialize_stack_frame) {
+    StackFrameStructureInitializationProcedure init_strategy) {
 
   if (function.isDeclaration() || stack_frame_analysis.size == 0U) {
     return StackAnalysisErrorCode::InvalidParameter;
@@ -273,20 +274,24 @@ RecoverStackFrameInformation::UpdateFunction(
   // Pre-initialize the stack frame to zero if we have been requested
   // to do so. From the whole FunctionPass class, we get the setting
   // from the LiftingOptions class
-  if (initialize_stack_frame) {
-    for (auto i = 0U; i < stack_frame_analysis.size; ++i) {
-      auto stack_frame_byte = builder.CreateGEP(
-          stack_frame_alloca,
-          {builder.getInt32(0), builder.getInt32(0), builder.getInt32(i)});
+  if (init_strategy == StackFrameStructureInitializationProcedure::kZeroes) {
+    auto null_value = llvm::Constant::getNullValue(stack_frame_type);
+    builder.CreateStore(null_value, stack_frame_alloca);
 
-      builder.CreateStore(builder.getInt8(0), stack_frame_byte);
-    }
+  } else if (init_strategy ==
+             StackFrameStructureInitializationProcedure::kUndef) {
+    auto null_value = llvm::UndefValue::get(stack_frame_type);
+    builder.CreateStore(null_value, stack_frame_alloca);
+
+  } else if (init_strategy !=
+             StackFrameStructureInitializationProcedure::kNone) {
+    return StackAnalysisErrorCode::InvalidParameter;
   }
 
   // The stack analysis we have performed earlier contains all the
   // `load` and `store` instructions that we have to update
   for (auto &stack_operation : stack_frame_analysis.stack_operation_list) {
-    // Convert the __anvill_sp-relative offset to a 0-based index
+    // Convert the `__anvill_sp`-relative offset to a 0-based index
     // into our stack frame type
     auto displacement =
         stack_operation.offset - stack_frame_analysis.lowest_offset;
