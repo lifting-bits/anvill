@@ -35,11 +35,16 @@ namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
   TEST_CASE("Run the whole pass on aaa well-formed function") {
-    static const std::array<bool, 2> kZeroInitStackSettings = {false, true};
+    static const std::vector<StackFrameStructureInitializationProcedure>
+        kInitStackSettings = {
+            StackFrameStructureInitializationProcedure::kNone,
+            StackFrameStructureInitializationProcedure::kZeroes,
+            StackFrameStructureInitializationProcedure::kUndef};
+
     auto error_manager = ITransformationErrorManager::Create();
 
     for (const auto &platform : GetSupportedPlatforms()) {
-      for (auto enable_zero_init : kZeroInitStackSettings) {
+      for (auto init_strategy : kInitStackSettings) {
         llvm::LLVMContext context;
         auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
         REQUIRE(module != nullptr);
@@ -51,7 +56,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
         REQUIRE(arch != nullptr);
 
         anvill::LifterOptions lift_options(arch.get(), *module);
-        lift_options.zero_init_recovered_stack_frames = enable_zero_init;
+        lift_options.stack_frame_struct_init_procedure = init_strategy;
 
         CHECK(RunFunctionPass(module.get(),
                               CreateRecoverStackFrameInformation(
@@ -186,7 +191,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
 
-        auto update_res = RecoverStackFrameInformation::UpdateFunction(function, stack_frame_analysis, false);
+        auto update_res = RecoverStackFrameInformation::UpdateFunction(function, stack_frame_analysis, StackFrameStructureInitializationProcedure::kZeroes);
         REQUIRE(update_res.Succeeded());
 
         THEN("the function is updated to use the new stack frame structure") {

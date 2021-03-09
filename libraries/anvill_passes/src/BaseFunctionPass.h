@@ -63,9 +63,7 @@ class BaseFunctionPass : public llvm::FunctionPass {
   // Returns true if this is either a store or a load instruction
   static bool IsMemoryOperation(const llvm::Instruction &instr);
 
-  // Emits an error through the transformation error manager. Severity
-  // `fatal` is used when an error has occurred and the module is in
-  // an unknown state
+  // Emits an error through the transformation error manager
   void EmitError(SeverityType severity, const std::string &error_code,
                  const std::string &message);
 };
