@@ -123,15 +123,16 @@ using SuccessOrStackSplitError =
 // llvm.returnaddress (if present) in its own StructType to allow for
 // further optimization passes to better simplify/eliminate stack
 // accesses.
-class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass,
-                                             public BaseFunctionPass {
+class SplitStackFrameAtReturnAddress final
+    : public BaseFunctionPass<SplitStackFrameAtReturnAddress> {
+
  public:
   // Creates a new SplitStackFrameAtReturnAddress object
   static SplitStackFrameAtReturnAddress *
   Create(ITransformationErrorManager &error_manager);
 
-  // Function pass entry point, called by LLVM
-  virtual bool runOnFunction(llvm::Function &function) override;
+  // Function pass entry point
+  bool Run(llvm::Function &function);
 
   // Returns the pass name
   virtual llvm::StringRef getPassName(void) const override;
@@ -213,8 +214,6 @@ class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass,
   }
 
  private:
-  static char ID;
-
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
 };
 

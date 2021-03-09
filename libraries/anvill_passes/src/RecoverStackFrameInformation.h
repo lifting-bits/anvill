@@ -66,13 +66,10 @@ struct StackFrameAnalysis final {
   std::size_t size{};
 };
 
-class RecoverStackFrameInformation final : public llvm::FunctionPass,
-                                           public BaseFunctionPass {
+class RecoverStackFrameInformation final
+    : public BaseFunctionPass<RecoverStackFrameInformation> {
   // Lifting options
   const LifterOptions &options;
-
-  // Function pass identifier; `&ID` needs to be unique!
-  static char ID;
 
  public:
   // Creates a new RecoverStackFrameInformation object
@@ -80,8 +77,8 @@ class RecoverStackFrameInformation final : public llvm::FunctionPass,
   Create(ITransformationErrorManager &error_manager,
          const LifterOptions &options);
 
-  // Function pass entry point, called by LLVM
-  virtual bool runOnFunction(llvm::Function &function) override;
+  // Function pass entry point
+  bool Run(llvm::Function &function);
 
   // Returns the pass name
   virtual llvm::StringRef getPassName(void) const override;
@@ -111,6 +108,7 @@ class RecoverStackFrameInformation final : public llvm::FunctionPass,
 
   RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                const LifterOptions &options);
+
   virtual ~RecoverStackFrameInformation() override = default;
 };
 

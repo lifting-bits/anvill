@@ -34,15 +34,13 @@
 #include "Utils.h"
 
 namespace anvill {
-char SplitStackFrameAtReturnAddress::ID = '\0';
-
 SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
     ITransformationErrorManager &error_manager) {
   static_cast<void>(error_manager);
   return new SplitStackFrameAtReturnAddress(error_manager);
 }
 
-bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
+bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
   if (function.empty()) {
     return false;
   }
@@ -75,9 +73,8 @@ bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
     }
 
     auto error_name = std::string(magic_enum::enum_name(error_code));
-    EmitError(getPassName().str(), SeverityType::Error, error_name,
-              "Failed to identify which instructions access the stack frame",
-              module->getName().str(), function.getName().str(), original_ir);
+    EmitError(SeverityType::Error, error_name,
+              "Failed to identify which instructions access the stack frame");
 
     return false;
   }
@@ -95,9 +92,8 @@ bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
     auto error_name = std::string(magic_enum::enum_name(error_code));
 
     EmitError(
-        getPassName().str(), SeverityType::Error, error_name,
-        "There are too many instructios writing the retn address. Aborting",
-        module->getName().str(), function.getName().str(), original_ir);
+        SeverityType::Error, error_name,
+        "There are too many instructios writing the retn address. Aborting");
 
     return false;
   }
@@ -114,9 +110,8 @@ bool SplitStackFrameAtReturnAddress::runOnFunction(llvm::Function &function) {
 
     auto transformed_ir = GetModuleIR(*module);
 
-    EmitError(getPassName().str(), SeverityType::Fatal, error_name,
-              "Failed to transform the function", module->getName().str(),
-              function.getName().str(), original_ir, transformed_ir);
+    EmitError(SeverityType::Fatal, error_name,
+              "Failed to transform the function");
 
     return false;
   }
@@ -491,8 +486,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
 
 SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager)
-    : llvm::FunctionPass(ID),
-      BaseFunctionPass(error_manager) {}
+    : BaseFunctionPass(error_manager) {}
 
 llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager) {
