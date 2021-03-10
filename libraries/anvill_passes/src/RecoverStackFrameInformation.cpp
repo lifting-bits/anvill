@@ -48,10 +48,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
 
   auto stack_frame_analysis_res = AnalyzeStackFrame(function);
   if (!stack_frame_analysis_res.Succeeded()) {
-    auto error_code =
-        std::string(magic_enum::enum_name(stack_frame_analysis_res.Error()));
-
-    EmitError(SeverityType::Error, error_code,
+    EmitError(SeverityType::Error, stack_frame_analysis_res.Error(),
               "The stack frame analysis has failed");
 
     return false;
@@ -70,13 +67,8 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
                      options.stack_frame_struct_init_procedure);
 
   if (!update_func_res.Succeeded()) {
-    auto error_code =
-        std::string(magic_enum::enum_name(update_func_res.Error()));
-
-    auto transformed_ir = GetModuleIR(*module);
-
     EmitError(
-        SeverityType::Fatal, error_code,
+        SeverityType::Fatal, update_func_res.Error(),
         "Function transformation has failed and the stack could not be recovered");
 
     return false;
