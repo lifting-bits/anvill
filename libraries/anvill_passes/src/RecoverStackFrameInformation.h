@@ -98,7 +98,8 @@ class RecoverStackFrameInformation final
   // function
   static Result<llvm::StructType *, StackAnalysisErrorCode>
   GenerateStackFrameType(const llvm::Function &function,
-                         const StackFrameAnalysis &stack_frame_analysis);
+                         const StackFrameAnalysis &stack_frame_analysis,
+                         std::size_t padding_bytes);
 
   // Generates a new symbolic stack value
   static Result<llvm::GlobalVariable *, StackAnalysisErrorCode>
@@ -109,7 +110,9 @@ class RecoverStackFrameInformation final
   static Result<std::monostate, StackAnalysisErrorCode>
   UpdateFunction(llvm::Function &function,
                  const StackFrameAnalysis &stack_frame_analysis,
-                 StackFrameStructureInitializationProcedure init_strategy);
+                 StackFrameStructureInitializationProcedure init_strategy,
+                 std::size_t stack_frame_lower_padding = 0U,
+                 std::size_t stack_frame_higher_padding = 0U);
 
   RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                const LifterOptions &options);

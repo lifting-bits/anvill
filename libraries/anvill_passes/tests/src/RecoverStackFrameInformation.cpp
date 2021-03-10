@@ -26,7 +26,6 @@
 #include <remill/OS/OS.h>
 
 #include <array>
-#include <iostream>
 #include <sstream>
 
 #include "Utils.h"
@@ -34,7 +33,7 @@
 namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
-  TEST_CASE("Run the whole pass on aaa well-formed function") {
+  TEST_CASE("Run the whole pass on a well-formed function") {
     static const StackFrameStructureInitializationProcedure
         kInitStackSettings[] = {
             StackFrameStructureInitializationProcedure::kNone,
@@ -42,30 +41,32 @@ TEST_SUITE("RecoverStackFrameInformation") {
             StackFrameStructureInitializationProcedure::kUndef,
             StackFrameStructureInitializationProcedure::kSymbolic};
 
+    static const std::size_t kTestPaddingSettings[] = {0, 32, 64};
+
     auto error_manager = ITransformationErrorManager::Create();
 
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto init_strategy : kInitStackSettings) {
-        llvm::LLVMContext context;
-        auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
-        REQUIRE(module != nullptr);
+        for (auto padding_bytes : kTestPaddingSettings) {
+          llvm::LLVMContext context;
+          auto module =
+              LoadTestData(context, "RecoverStackFrameInformation.ll");
+          REQUIRE(module != nullptr);
 
-        auto arch =
-            remill::Arch::Build(&context, remill::GetOSName(platform.os),
-                                remill::GetArchName(platform.arch));
+          auto arch =
+              remill::Arch::Build(&context, remill::GetOSName(platform.os),
+                                  remill::GetArchName(platform.arch));
 
-        REQUIRE(arch != nullptr);
+          REQUIRE(arch != nullptr);
 
-        anvill::LifterOptions lift_options(arch.get(), *module);
-        lift_options.stack_frame_struct_init_procedure = init_strategy;
+          anvill::LifterOptions lift_options(arch.get(), *module);
+          lift_options.stack_frame_struct_init_procedure = init_strategy;
+          lift_options.stack_frame_lower_padding =
+              lift_options.stack_frame_higher_padding = padding_bytes / 2U;
 
-        CHECK(RunFunctionPass(module.get(),
-                              CreateRecoverStackFrameInformation(
-                                  *error_manager.get(), lift_options)));
-
-        if (init_strategy ==
-            StackFrameStructureInitializationProcedure::kSymbolic) {
-          std::cout << GetModuleIR(*module.get()) << std::endl;
+          CHECK(RunFunctionPass(module.get(),
+                                CreateRecoverStackFrameInformation(
+                                    *error_manager.get(), lift_options)));
         }
       }
     }
@@ -136,14 +137,14 @@ TEST_SUITE("RecoverStackFrameInformation") {
         }
       }
 
-      WHEN("creating a new stack frame") {
+      WHEN("creating a new stack frame with no padding bytes") {
         auto stack_frame_analysis_res =
             RecoverStackFrameInformation::AnalyzeStackFrame(function);
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-        auto stack_frame_type_res = RecoverStackFrameInformation::GenerateStackFrameType(function, stack_frame_analysis);
+        auto stack_frame_type_res = RecoverStackFrameInformation::GenerateStackFrameType(function, stack_frame_analysis, 0);
         REQUIRE(stack_frame_type_res.Succeeded());
 
         THEN("a StructType containing a byte array is returned") {
@@ -167,6 +168,40 @@ TEST_SUITE("RecoverStackFrameInformation") {
           auto data_layout = module->getDataLayout();
           auto frame_type_size = data_layout.getTypeAllocSize(stack_frame_type);
           CHECK(frame_type_size == 44U);
+        }
+      }
+
+      WHEN("creating a new stack frame with additional padding bytes") {
+        auto stack_frame_analysis_res =
+            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+
+        REQUIRE(stack_frame_analysis_res.Succeeded());
+
+        auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
+        auto stack_frame_type_res = RecoverStackFrameInformation::GenerateStackFrameType(function, stack_frame_analysis, 128U);
+        REQUIRE(stack_frame_type_res.Succeeded());
+
+        THEN("a StructType containing a byte array along with the padding is returned") {
+          auto stack_frame_type = stack_frame_type_res.TakeValue();
+          REQUIRE(stack_frame_type->getNumElements() == 1U);
+
+          auto function_name = function.getName().str();
+          auto expected_frame_type_name = function_name + kStackFrameTypeNameSuffix;
+          REQUIRE(stack_frame_type->getName().str() == expected_frame_type_name);
+          
+          auto first_elem_type = stack_frame_type->getElementType(0U);
+          REQUIRE(first_elem_type->isArrayTy());
+
+          auto byte_array_type = llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
+          REQUIRE(byte_array_type != nullptr);
+
+          auto byte_array_size = byte_array_type->getNumElements();
+          CHECK(byte_array_size == 172U);
+
+          auto module = function.getParent();
+          auto data_layout = module->getDataLayout();
+          auto frame_type_size = data_layout.getTypeAllocSize(stack_frame_type);
+          CHECK(frame_type_size == 172U);
         }
       }
     }
