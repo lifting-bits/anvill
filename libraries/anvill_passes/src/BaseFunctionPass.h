@@ -19,6 +19,7 @@
 
 #include <anvill/Analysis/Utils.h>
 #include <anvill/ITransformationErrorManager.h>
+#include <anvill/Result.h>
 #include <llvm/IR/Instructions.h>
 
 #include <sstream>
@@ -26,6 +27,17 @@
 #include "Utils.h"
 
 namespace anvill {
+
+// BaseFunctionPass error codes
+enum class BaseFunctionPassErrorCode {
+  // The name of the requested symbolic value does not start with the
+  // required `__anvill_` prefix
+  InvalidSymbolicValueName,
+
+  // A symbolic value with the same name but different
+  // type already exists
+  SymbolicValueConflict,
+};
 
 template <typename UserFunctionPass>
 class BaseFunctionPass : public llvm::FunctionPass {
@@ -62,6 +74,11 @@ class BaseFunctionPass : public llvm::FunctionPass {
 
   // Returns true if this is either a store or a load instruction
   static bool IsMemoryOperation(const llvm::Instruction &instr);
+
+  // Creates or returns an existing symbolic value
+  static Result<llvm::GlobalVariable *, BaseFunctionPassErrorCode>
+  GetSymbolicValue(llvm::Module &module, llvm::Type *type,
+                   const std::string &name);
 
   // Emits an error through the transformation error manager
   void EmitError(SeverityType severity, const std::string &error_code,
@@ -121,6 +138,35 @@ bool BaseFunctionPass<UserFunctionPass>::IsMemoryOperation(
   }
 
   return false;
+}
+
+
+template <typename UserFunctionPass>
+Result<llvm::GlobalVariable *, BaseFunctionPassErrorCode>
+BaseFunctionPass<UserFunctionPass>::GetSymbolicValue(llvm::Module &module,
+                                                     llvm::Type *type,
+                                                     const std::string &name) {
+
+  static const std::string kMandatoryPrefix{"__anvill_"};
+  if (name.find(kMandatoryPrefix) != 0U) {
+    return BaseFunctionPassErrorCode::InvalidSymbolicValueName;
+  }
+
+  auto symbolic_value = module.getGlobalVariable(name);
+  if (symbolic_value != nullptr) {
+    if (type != symbolic_value->getType()) {
+      return BaseFunctionPassErrorCode::SymbolicValueConflict;
+    }
+
+  } else {
+    auto initial_value = llvm::Constant::getNullValue(type);
+
+    symbolic_value = new llvm::GlobalVariable(
+        module, type, false, llvm::GlobalValue::ExternalLinkage, initial_value,
+        name);
+  }
+
+  return symbolic_value;
 }
 
 template <typename UserFunctionPass>

@@ -194,7 +194,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
         base_stack_frame_type_name + "_part" + std::to_string(part_name);
 
     auto stack_frame_part =
-        llvm::StructType::create(context, struct_definition, struct_name);
+        llvm::StructType::create(context, struct_definition, struct_name, true);
 
     output.push_back(stack_frame_part);
 

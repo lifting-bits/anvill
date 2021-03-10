@@ -61,4 +61,6 @@ const std::string kGlobalVariableNamePrefix("var_");
 // global variables
 const std::string kGlobalAliasNamePrefix("data_");
 
+const std::string kSymbolicStackFrameValuePrefix("__anvill_stack_");
+
 }  // namespace anvill

@@ -34,6 +34,7 @@ enum class StackAnalysisErrorCode {
   StackFrameTypeAlreadyExists,
   InternalError,
   InvalidParameter,
+  StackInitializationError,
 };
 
 // Contains a list of `load` and `store` instructions that reference
@@ -98,6 +99,10 @@ class RecoverStackFrameInformation final
   static Result<llvm::StructType *, StackAnalysisErrorCode>
   GenerateStackFrameType(const llvm::Function &function,
                          const StackFrameAnalysis &stack_frame_analysis);
+
+  // Generates a new symbolic stack value
+  static Result<llvm::GlobalVariable *, StackAnalysisErrorCode>
+  GetStackSymbolicByteValue(llvm::Module &module, std::int32_t offset);
 
   // Patches the function, replacing the load/store instructions so that
   // they operate on the new stack frame type we generated

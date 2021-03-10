@@ -64,4 +64,7 @@ extern const std::string kGlobalVariableNamePrefix;
 // global variables
 extern const std::string kGlobalAliasNamePrefix;
 
+// Prefix used to identify symbolic values for stack frame values
+extern const std::string kSymbolicStackFrameValuePrefix;
+
 }  // namespace anvill

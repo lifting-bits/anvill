@@ -54,7 +54,6 @@ enum class StateStructureInitializationProcedure : char {
   //            intrinsic.
 };
 
-// TODO: Add kSymbolic
 enum class StackFrameStructureInitializationProcedure : char {
 
   // Don't do anything with the `alloca State`.
@@ -65,6 +64,9 @@ enum class StackFrameStructureInitializationProcedure : char {
 
   // Store an LLVM undefined value to the `alloca State`.
   kUndef,
+
+  // Use symbolic values to initialize each byte in the stack frame
+  kSymbolic,
 };
 
 // Options that direct the behavior of the code and data lifters.
@@ -77,7 +79,7 @@ class LifterOptions {
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
         stack_frame_struct_init_procedure(StackFrameStructureInitializationProcedure::
-                                        kZeroes),
+                                        kSymbolic),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
