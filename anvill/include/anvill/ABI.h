@@ -56,4 +56,7 @@ extern const std::string kMemoryPointerEscapeFunction;
 // This is the suffix used when naming stack frame types
 extern const std::string kStackFrameTypeNameSuffix;
 
+// Prefix used to identify symbolic values for stack frame values
+extern const std::string kSymbolicStackFrameValuePrefix;
+
 }  // namespace anvill

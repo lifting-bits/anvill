@@ -35,11 +35,12 @@ namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
   TEST_CASE("Run the whole pass on aaa well-formed function") {
-    static const std::vector<StackFrameStructureInitializationProcedure>
-        kInitStackSettings = {
+    static const StackFrameStructureInitializationProcedure
+        kInitStackSettings[] = {
             StackFrameStructureInitializationProcedure::kNone,
             StackFrameStructureInitializationProcedure::kZeroes,
-            StackFrameStructureInitializationProcedure::kUndef};
+            StackFrameStructureInitializationProcedure::kUndef,
+            StackFrameStructureInitializationProcedure::kSymbolic};
 
     auto error_manager = ITransformationErrorManager::Create();
 
@@ -61,6 +62,11 @@ TEST_SUITE("RecoverStackFrameInformation") {
         CHECK(RunFunctionPass(module.get(),
                               CreateRecoverStackFrameInformation(
                                   *error_manager.get(), lift_options)));
+
+        if (init_strategy ==
+            StackFrameStructureInitializationProcedure::kSymbolic) {
+          std::cout << GetModuleIR(*module.get()) << std::endl;
+        }
       }
     }
   }

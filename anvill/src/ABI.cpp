@@ -53,4 +53,6 @@ const std::string kMemoryPointerEscapeFunction("__anvill_memory_escape");
 
 const std::string kStackFrameTypeNameSuffix(".frame_type");
 
+const std::string kSymbolicStackFrameValuePrefix("__anvill_stack_");
+
 }  // namespace anvill

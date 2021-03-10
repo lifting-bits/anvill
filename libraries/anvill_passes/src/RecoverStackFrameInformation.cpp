@@ -242,6 +242,32 @@ RecoverStackFrameInformation::GenerateStackFrameType(
   return stack_frame_type;
 }
 
+Result<llvm::GlobalVariable *, StackAnalysisErrorCode>
+RecoverStackFrameInformation::GetStackSymbolicByteValue(llvm::Module &module,
+                                                        std::int32_t offset) {
+  // Create a new name
+  auto value_name = kSymbolicStackFrameValuePrefix;
+  if (offset < 0) {
+    value_name += "minus_";
+  } else if (offset > 0) {
+    value_name += "plus_";
+  }
+
+  value_name += std::to_string(abs(offset));
+
+  // Get the symbolic value; this will fail if we already have
+  // one with the same name but wrong type
+  auto &context = module.getContext();
+  auto byte_type = llvm::Type::getInt8Ty(context);
+
+  auto symbolic_value_res = GetSymbolicValue(module, byte_type, value_name);
+  if (!symbolic_value_res.Succeeded()) {
+    return StackAnalysisErrorCode::StackInitializationError;
+  }
+
+  return symbolic_value_res.TakeValue();
+}
+
 Result<std::monostate, StackAnalysisErrorCode>
 RecoverStackFrameInformation::UpdateFunction(
     llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
@@ -274,18 +300,51 @@ RecoverStackFrameInformation::UpdateFunction(
   // Pre-initialize the stack frame to zero if we have been requested
   // to do so. From the whole FunctionPass class, we get the setting
   // from the LiftingOptions class
-  if (init_strategy == StackFrameStructureInitializationProcedure::kZeroes) {
-    auto null_value = llvm::Constant::getNullValue(stack_frame_type);
-    builder.CreateStore(null_value, stack_frame_alloca);
+  switch (init_strategy) {
+    case StackFrameStructureInitializationProcedure::kZeroes: {
+      auto null_value = llvm::Constant::getNullValue(stack_frame_type);
+      builder.CreateStore(null_value, stack_frame_alloca);
 
-  } else if (init_strategy ==
-             StackFrameStructureInitializationProcedure::kUndef) {
-    auto null_value = llvm::UndefValue::get(stack_frame_type);
-    builder.CreateStore(null_value, stack_frame_alloca);
+      break;
+    }
 
-  } else if (init_strategy !=
-             StackFrameStructureInitializationProcedure::kNone) {
-    return StackAnalysisErrorCode::InvalidParameter;
+    case StackFrameStructureInitializationProcedure::kUndef: {
+      auto null_value = llvm::UndefValue::get(stack_frame_type);
+      builder.CreateStore(null_value, stack_frame_alloca);
+
+      break;
+    }
+
+    case StackFrameStructureInitializationProcedure::kSymbolic: {
+      auto current_offset = stack_frame_analysis.lowest_offset;
+      auto &module = *function.getParent();
+      auto byte_type = llvm::Type::getInt8Ty(module.getContext());
+
+      for (auto i = 0U; i < stack_frame_analysis.size; ++i) {
+        auto stack_frame_byte = builder.CreateGEP(
+            stack_frame_alloca,
+            {builder.getInt32(0), builder.getInt32(0), builder.getInt32(i)});
+
+        auto symbolic_value_res =
+            GetStackSymbolicByteValue(module, current_offset);
+
+        if (!symbolic_value_res.Succeeded()) {
+          return symbolic_value_res.TakeError();
+        }
+
+        auto symbolic_value = symbolic_value_res.TakeValue();
+        ++current_offset;
+
+        auto casted_sym_value =
+            llvm::ConstantExpr::getPtrToInt(symbolic_value, byte_type);
+
+        builder.CreateStore(casted_sym_value, stack_frame_byte);
+      }
+
+      break;
+    }
+
+    case StackFrameStructureInitializationProcedure::kNone: break;
   }
 
   // The stack analysis we have performed earlier contains all the
