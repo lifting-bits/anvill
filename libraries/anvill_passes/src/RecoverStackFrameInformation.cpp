@@ -62,9 +62,9 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
   // It is now time to patch the function. This method will take the stack
   // analysis and use it to generate a stack frame type and update all the
   // store and load instructions
-  auto update_func_res =
-      UpdateFunction(function, stack_frame_analysis,
-                     options.stack_frame_struct_init_procedure);
+  auto update_func_res = UpdateFunction(
+      function, stack_frame_analysis, options.stack_frame_struct_init_procedure,
+      options.stack_frame_lower_padding, options.stack_frame_higher_padding);
 
   if (!update_func_res.Succeeded()) {
     EmitError(
@@ -199,7 +199,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
 Result<llvm::StructType *, StackAnalysisErrorCode>
 RecoverStackFrameInformation::GenerateStackFrameType(
     const llvm::Function &function,
-    const StackFrameAnalysis &stack_frame_analysis) {
+    const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
   if (stack_frame_analysis.size == 0) {
     return StackAnalysisErrorCode::InvalidParameter;
   }
@@ -216,12 +216,17 @@ RecoverStackFrameInformation::GenerateStackFrameType(
     return StackAnalysisErrorCode::StackFrameTypeAlreadyExists;
   }
 
+  // Determine how many bytes we should allocate. We may have been
+  // asked to add some additional padding. We don't care how it is
+  // accessed right now, we just add them to the total size
+  auto stack_frame_size = padding_bytes + stack_frame_analysis.size;
+
   // Generate the stack frame using a byte array
   auto &context = module.getContext();
 
   auto array_elem_type = llvm::Type::getInt8Ty(context);
   auto byte_array_type =
-      llvm::ArrayType::get(array_elem_type, stack_frame_analysis.size);
+      llvm::ArrayType::get(array_elem_type, stack_frame_size);
 
   const std::vector<llvm::Type *> stack_frame_types = {byte_array_type};
   stack_frame_type =
@@ -263,7 +268,9 @@ RecoverStackFrameInformation::GetStackSymbolicByteValue(llvm::Module &module,
 Result<std::monostate, StackAnalysisErrorCode>
 RecoverStackFrameInformation::UpdateFunction(
     llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
-    StackFrameStructureInitializationProcedure init_strategy) {
+    StackFrameStructureInitializationProcedure init_strategy,
+    std::size_t stack_frame_lower_padding,
+    std::size_t stack_frame_higher_padding) {
 
   if (function.isDeclaration() || stack_frame_analysis.size == 0U) {
     return StackAnalysisErrorCode::InvalidParameter;
@@ -271,8 +278,10 @@ RecoverStackFrameInformation::UpdateFunction(
 
   // Generate a new stack frame type, using a byte array inside a
   // StructType
+  auto padding_bytes = stack_frame_lower_padding + stack_frame_higher_padding;
+
   auto stack_frame_type_res =
-      GenerateStackFrameType(function, stack_frame_analysis);
+      GenerateStackFrameType(function, stack_frame_analysis, padding_bytes);
 
   if (!stack_frame_type_res.Succeeded()) {
     return stack_frame_type_res.TakeError();
@@ -289,6 +298,34 @@ RecoverStackFrameInformation::UpdateFunction(
   llvm::IRBuilder<> builder(&insert_point);
   auto stack_frame_alloca = builder.CreateAlloca(stack_frame_type);
 
+  // When we have padding enabled in the configuration, we must
+  // make sure that accesses are still correctly centered around the
+  // stack pointer we were given (i.e.: we don't alter where the
+  // `__anvill_stack_0` is supposed to land).
+  //
+  // This is true regardless of which initialization method we use, but
+  // the following example assumes kSymbolic since it makes the
+  // explanation easier to follow.
+  //
+  //     [higher addresses]
+  //
+  //     [__anvill_stack_plus_3    <- optional higher padding]
+  //
+  //     __anvill_stack_plus_2
+  //     __anvill_stack_plus_1
+  //     __anvill_stack_0          <- __anvill_sp
+  //     __anvill_stack_minus_1
+  //     __anvill_stack_minus_2
+  //
+  //     [__anvill_stack_minus_3   <- optional lower padding]
+  //
+  //     [lower addresses]
+
+  auto base_stack_offset = stack_frame_analysis.lowest_offset -
+                           static_cast<std::int32_t>(stack_frame_lower_padding);
+
+  auto total_stack_frame_size = padding_bytes + stack_frame_analysis.size;
+
   // Pre-initialize the stack frame to zero if we have been requested
   // to do so. From the whole FunctionPass class, we get the setting
   // from the LiftingOptions class
@@ -296,23 +333,22 @@ RecoverStackFrameInformation::UpdateFunction(
     case StackFrameStructureInitializationProcedure::kZeroes: {
       auto null_value = llvm::Constant::getNullValue(stack_frame_type);
       builder.CreateStore(null_value, stack_frame_alloca);
-
       break;
     }
 
     case StackFrameStructureInitializationProcedure::kUndef: {
-      auto null_value = llvm::UndefValue::get(stack_frame_type);
-      builder.CreateStore(null_value, stack_frame_alloca);
-
+      auto undef_value = llvm::UndefValue::get(stack_frame_type);
+      builder.CreateStore(undef_value, stack_frame_alloca);
       break;
     }
 
     case StackFrameStructureInitializationProcedure::kSymbolic: {
-      auto current_offset = stack_frame_analysis.lowest_offset;
       auto &module = *function.getParent();
       auto byte_type = llvm::Type::getInt8Ty(module.getContext());
 
-      for (auto i = 0U; i < stack_frame_analysis.size; ++i) {
+      auto current_offset = base_stack_offset;
+
+      for (auto i = 0U; i < total_stack_frame_size; ++i) {
         auto stack_frame_byte = builder.CreateGEP(
             stack_frame_alloca,
             {builder.getInt32(0), builder.getInt32(0), builder.getInt32(i)});
@@ -346,6 +382,10 @@ RecoverStackFrameInformation::UpdateFunction(
     // into our stack frame type
     auto displacement =
         stack_operation.offset - stack_frame_analysis.lowest_offset;
+
+    // If we added padding, adjust the displacement value. We just have
+    // to add the amount of bytes we have inserted before the stack pointer
+    displacement += stack_frame_lower_padding;
 
     // Create a GEP instruction that accesses the new stack frame we
     // created based on the relative offset

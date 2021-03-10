@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace llvm {
 class Module;
 }  // namespace llvm
@@ -80,6 +82,8 @@ class LifterOptions {
                                         kGlobalRegisterVariablesAndZeroes),
         stack_frame_struct_init_procedure(StackFrameStructureInitializationProcedure::
                                         kSymbolic),
+        stack_frame_lower_padding(0U),
+        stack_frame_higher_padding(0U),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
@@ -102,6 +106,12 @@ class LifterOptions {
   // How the RecoverStackFrameInformation function pass should initialize
   // recovered stack frames
   StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
+
+  // How many bytes of padding should be added after recovered stack frames
+  std::size_t stack_frame_lower_padding;
+
+  // How many bytes of padding should be added before recovered stack frames
+  std::size_t stack_frame_higher_padding;
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
