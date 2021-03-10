@@ -72,8 +72,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
       return false;
     }
 
-    auto error_name = std::string(magic_enum::enum_name(error_code));
-    EmitError(SeverityType::Error, error_name,
+    EmitError(SeverityType::Error, error_code,
               "Failed to identify which instructions access the stack frame");
 
     return false;
@@ -89,10 +88,9 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
     // We only handle the first instance, so return an error if
     // we have more
     auto error_code = StackFrameSplitErrorCode::NotSupported;
-    auto error_name = std::string(magic_enum::enum_name(error_code));
 
     EmitError(
-        SeverityType::Error, error_name,
+        SeverityType::Error, error_code,
         "There are too many instructios writing the retn address. Aborting");
 
     return false;
@@ -105,12 +103,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
                                            retn_addr_store_instr.alloca_inst);
 
   if (!split_res.Succeeded()) {
-    auto error_code = split_res.TakeError();
-    auto error_name = std::string(magic_enum::enum_name(error_code));
-
-    auto transformed_ir = GetModuleIR(*module);
-
-    EmitError(SeverityType::Fatal, error_name,
+    EmitError(SeverityType::Fatal, split_res.TakeError(),
               "Failed to transform the function");
 
     return false;

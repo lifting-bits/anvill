@@ -24,6 +24,7 @@ target_link_libraries(test_anvill_passes PRIVATE
   remill
   anvill_passes
   thirdparty_doctest
+  thirdparty_magicenum
 )
 
 target_compile_definitions(test_anvill_passes PRIVATE

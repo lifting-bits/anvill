@@ -22,6 +22,7 @@
 #include <anvill/Result.h>
 #include <llvm/IR/Instructions.h>
 
+#include <magic_enum.hpp>
 #include <sstream>
 
 #include "Utils.h"
@@ -80,8 +81,13 @@ class BaseFunctionPass : public llvm::FunctionPass {
   GetSymbolicValue(llvm::Module &module, llvm::Type *type,
                    const std::string &name);
 
+  // Converts the given enum value to string
+  template <typename ErrorCodeEnum>
+  static std::string EnumValueToString(ErrorCodeEnum error_code);
+
   // Emits an error through the transformation error manager
-  void EmitError(SeverityType severity, const std::string &error_code,
+  template <typename ErrorCodeEnum>
+  void EmitError(SeverityType severity, ErrorCodeEnum error_code,
                  const std::string &message);
 };
 
@@ -170,14 +176,22 @@ BaseFunctionPass<UserFunctionPass>::GetSymbolicValue(llvm::Module &module,
 }
 
 template <typename UserFunctionPass>
-void BaseFunctionPass<UserFunctionPass>::EmitError(
-    SeverityType severity, const std::string &error_code,
-    const std::string &message) {
+template <typename ErrorCodeEnum>
+std::string BaseFunctionPass<UserFunctionPass>::EnumValueToString(
+    ErrorCodeEnum error_code) {
+  return std::string(magic_enum::enum_name(error_code));
+}
+
+template <typename UserFunctionPass>
+template <typename ErrorCodeEnum>
+void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
+                                                   ErrorCodeEnum error_code,
+                                                   const std::string &message) {
 
   TransformationError error;
   error.pass_name = getPassName().str();
   error.severity = severity;
-  error.error_code = error_code;
+  error.error_code = EnumValueToString(error_code);
   error.message = message;
   error.module_name = original_module_name;
   error.function_name = original_function_name;
