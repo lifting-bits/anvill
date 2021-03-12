@@ -21,6 +21,9 @@
 
 namespace anvill {
 
+// The common prefix for all special values
+extern const std::string kAnvillNamePrefix;
+
 // The name of the global variable that is used to taint (via constant
 // expressions) data that operates on the program counter.
 extern const std::string kSymbolicPCName;

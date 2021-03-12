@@ -267,6 +267,14 @@ TEST_SUITE("RecoverStackFrameInformation") {
           }
 
           CHECK(frame_gep_count == stack_frame_analysis.stack_operation_list.size());
+
+          // If we run a second stack analysis, we should no longer find any
+          // stack frame operation to recover
+          stack_frame_analysis_res = RecoverStackFrameInformation::AnalyzeStackFrame(function);
+          REQUIRE(stack_frame_analysis_res.Succeeded());
+
+          auto second_stack_frame_analysis = stack_frame_analysis_res.TakeValue();
+          CHECK(second_stack_frame_analysis.stack_operation_list.empty());
         }
       }
     }

@@ -132,13 +132,13 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
 
   auto stack_ptr_usages = stack_ptr_usages_res.TakeValue();
   for (const auto &stack_ptr_usage : stack_ptr_usages) {
-    // Get the memory operands
-    const llvm::Value *stack_pointer{nullptr};
+    // Get the operands
+    const llvm::Value *pointer_operand{nullptr};
     llvm::Type *operand_type{nullptr};
 
     if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(stack_ptr_usage);
         load_inst != nullptr) {
-      stack_pointer = load_inst->getPointerOperand();
+      pointer_operand = load_inst->getPointerOperand();
       operand_type = load_inst->getType();
 
     } else if (auto store_inst =
@@ -147,7 +147,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       auto value_operand = store_inst->getValueOperand();
       operand_type = value_operand->getType();
 
-      stack_pointer = store_inst->getPointerOperand();
+      pointer_operand = store_inst->getPointerOperand();
 
     } else {
       // This instruction is using __anvill_sp but it's not a memory read
@@ -155,9 +155,17 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       continue;
     }
 
+    // We may have found this instruction only because the value operand
+    // references the special `__anvill_sp` symbol. If that's the case, then
+    // it can be safely ignored
+    if (!IsRelatedToStackPointer(data_layout,
+                                 const_cast<llvm::Value *>(pointer_operand))) {
+      continue;
+    }
+
     // Resolve to a displacement
-    auto resolved_stack_ptr =
-        resolver.TryResolveReference(const_cast<llvm::Value *>(stack_pointer));
+    auto resolved_stack_ptr = resolver.TryResolveReference(
+        const_cast<llvm::Value *>(pointer_operand));
 
     if (!resolved_stack_ptr.is_valid) {
       return StackAnalysisErrorCode::StackPointerResolutionError;
@@ -326,53 +334,61 @@ RecoverStackFrameInformation::UpdateFunction(
 
   auto total_stack_frame_size = padding_bytes + stack_frame_analysis.size;
 
-  // Pre-initialize the stack frame to zero if we have been requested
-  // to do so. From the whole FunctionPass class, we get the setting
-  // from the LiftingOptions class
+  // Pre-initialize the stack frame if we have been requested to do so. This
+  // covers the frame padding bytes as well.
+  //
+  // Look at the definition for the `StackFrameStructureInitializationProcedure`
+  // enum class to get more details on each initialization strategy.
   switch (init_strategy) {
     case StackFrameStructureInitializationProcedure::kZeroes: {
+      // Initialize to zero
       auto null_value = llvm::Constant::getNullValue(stack_frame_type);
       builder.CreateStore(null_value, stack_frame_alloca);
       break;
     }
 
     case StackFrameStructureInitializationProcedure::kUndef: {
+      // Mark the stack values as explicitly undefined
       auto undef_value = llvm::UndefValue::get(stack_frame_type);
       builder.CreateStore(undef_value, stack_frame_alloca);
       break;
     }
 
     case StackFrameStructureInitializationProcedure::kSymbolic: {
+      // Generate symbolic values for each byte in the stack frame
       auto &module = *function.getParent();
-      auto byte_type = llvm::Type::getInt8Ty(module.getContext());
 
       auto current_offset = base_stack_offset;
 
-      for (auto i = 0U; i < total_stack_frame_size; ++i) {
-        auto stack_frame_byte = builder.CreateGEP(
-            stack_frame_alloca,
-            {builder.getInt32(0), builder.getInt32(0), builder.getInt32(i)});
+      llvm::Value *gep_indexes[] = {builder.getInt32(0), builder.getInt32(0),
+                                    nullptr};
 
-        auto symbolic_value_res =
+      for (auto i = 0U; i < total_stack_frame_size; ++i) {
+        gep_indexes[2] = builder.getInt32(i);
+        auto stack_frame_byte =
+            builder.CreateGEP(stack_frame_alloca, gep_indexes);
+
+        auto symbolic_value_ptr_res =
             GetStackSymbolicByteValue(module, current_offset);
 
-        if (!symbolic_value_res.Succeeded()) {
-          return symbolic_value_res.TakeError();
+        if (!symbolic_value_ptr_res.Succeeded()) {
+          return symbolic_value_ptr_res.TakeError();
         }
 
-        auto symbolic_value = symbolic_value_res.TakeValue();
+        auto symbolic_value_ptr = symbolic_value_ptr_res.TakeValue();
         ++current_offset;
 
-        auto casted_sym_value =
-            llvm::ConstantExpr::getPtrToInt(symbolic_value, byte_type);
-
-        builder.CreateStore(casted_sym_value, stack_frame_byte);
+        auto symbolic_value = builder.CreateLoad(symbolic_value_ptr);
+        builder.CreateStore(symbolic_value, stack_frame_byte);
       }
 
       break;
     }
 
-    case StackFrameStructureInitializationProcedure::kNone: break;
+    case StackFrameStructureInitializationProcedure::kNone: {
+      // Skip initialization
+      break;
+    }
   }
 
   // The stack analysis we have performed earlier contains all the

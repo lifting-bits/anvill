@@ -19,24 +19,26 @@
 
 namespace anvill {
 
+const std::string kAnvillNamePrefix("__anvill_");
+
 // The name of the global variable that is used to taint (via constant
 // expressions) data that operates on the program counter.
-const std::string kSymbolicPCName("__anvill_pc");
+const std::string kSymbolicPCName(kAnvillNamePrefix + "pc");
 
 // The name of the global variable that is used to taint (via constant
 // expressions) data that operates on the stack pointer.
-const std::string kSymbolicSPName("__anvill_sp");
+const std::string kSymbolicSPName(kAnvillNamePrefix + "sp");
 
 // The name of the global variable that is used to taint (via constant
 // expressions) data that operates on the return address.
-const std::string kSymbolicRAName("__anvill_ra");
+const std::string kSymbolicRAName(kAnvillNamePrefix + "ra");
 
 // This is the prefix of the variable name of an "unmodelled" register. When
 // we lift, we fill up Remill's `State` structure with loads from "register
 // global variables," which exist to signal dependencies on native registers
 // without descending into inline assembly or LLVM's `llvm.read_register`
 // intrinsic. These register global variables are names as `<prefix><reg_name>`.
-const std::string kUnmodelledRegisterPrefix("__anvill_reg_");
+const std::string kUnmodelledRegisterPrefix(kAnvillNamePrefix + "__anvill_reg_");
 
 // This is the name of the "escape hatch" function for the Remill `Memory *`
 // value that is taken as an argument to Remill-lifted functions, passed
@@ -49,7 +51,7 @@ const std::string kUnmodelledRegisterPrefix("__anvill_reg_");
 // is not allowed to optimize then LLVM's optimizations may decide to eliminate
 // uses of memory access intrinsics whose (memory pointer) return vales
 // appear to be unused.
-const std::string kMemoryPointerEscapeFunction("__anvill_memory_escape");
+const std::string kMemoryPointerEscapeFunction(kAnvillNamePrefix + "memory_escape");
 
 const std::string kStackFrameTypeNameSuffix(".frame_type");
 
@@ -61,6 +63,6 @@ const std::string kGlobalVariableNamePrefix("var_");
 // global variables
 const std::string kGlobalAliasNamePrefix("data_");
 
-const std::string kSymbolicStackFrameValuePrefix("__anvill_stack_");
+const std::string kSymbolicStackFrameValuePrefix(kAnvillNamePrefix + "stack_");
 
 }  // namespace anvill
