@@ -155,9 +155,9 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       continue;
     }
 
-    // We may have found this instruction only because the value operand
-    // references the special `__anvill_sp` symbol. If that's the case, then
-    // it can be safely ignored
+    // We may have found this instruction only because the value operand (and
+    // NOT the pointer operand) references the special `__anvill_sp` symbol.
+    // If that's the case, then it can be safely ignored
     if (!IsRelatedToStackPointer(data_layout,
                                  const_cast<llvm::Value *>(pointer_operand))) {
       continue;
@@ -177,11 +177,14 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       return StackAnalysisErrorCode::InternalError;
     }
 
-    auto displacement =
+    // TODO: The displacement returned by TryResolveReference is in fact
+    // a 32-bit value inside an std::int64_t integer. Force the conversion
+    // to fix it
+    std::int64_t displacement =
         static_cast<std::int32_t>(resolved_stack_ptr.u.displacement);
 
     auto operand_size =
-        static_cast<std::int32_t>(data_layout.getTypeAllocSize(operand_type));
+        static_cast<std::int64_t>(data_layout.getTypeAllocSize(operand_type));
 
     // Update the boundaries
     output.highest_offset =

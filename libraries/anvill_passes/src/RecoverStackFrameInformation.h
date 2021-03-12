@@ -50,7 +50,7 @@ struct StackFrameAnalysis final {
   // type
   struct StackOperation final {
     llvm::Instruction *instr{nullptr};
-    std::int32_t offset{};
+    std::int64_t offset{};
     llvm::Type *type{nullptr};
   };
 
@@ -58,10 +58,10 @@ struct StackFrameAnalysis final {
   std::vector<StackOperation> stack_operation_list;
 
   // Lowest SP-relative offset
-  std::int32_t lowest_offset{};
+  std::int64_t lowest_offset{};
 
   // Highest SP-relative offset
-  std::int32_t highest_offset{};
+  std::int64_t highest_offset{};
 
   // Stack frame size
   std::size_t size{};
