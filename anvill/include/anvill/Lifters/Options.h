@@ -58,16 +58,24 @@ enum class StateStructureInitializationProcedure : char {
 
 enum class StackFrameStructureInitializationProcedure : char {
 
-  // Don't do anything with the `alloca State`.
+  // Not initializing the stack frame may or may not have the same
+  // meaning as initializing it with the kUndef strategy. The exact
+  // behavior depends on external factors such as compiler switches
+  // and version
   kNone,
 
-  // Store an LLVM constant aggregate zero into the `alloca State`.
+  // Always initialize stack frames with zeroes
   kZeroes,
 
-  // Store an LLVM undefined value to the `alloca State`.
+  // Explicitly mark stack frames as Undef; compared to kNone, the
+  // effect of this initialization is more predictable and won't
+  // change with different compiler switches or versions
   kUndef,
 
-  // Use symbolic values to initialize each byte in the stack frame
+  // Use symbolic values to initialize each byte in the stack frame. This
+  // is useful to track how the stack frame is used and also allows us to
+  // generate bitcode that can be compiled while also communicating the
+  // missing/unmodeled input dependencies
   kSymbolic,
 };
 
@@ -107,7 +115,13 @@ class LifterOptions {
   // recovered stack frames
   StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
 
-  // How many bytes of padding should be added after recovered stack frames
+  //
+  // Stack frame padding is useful to support red zones for ABIs that support
+  // them. See https://en.wikipedia.org/wiki/Red_zone_(computing) for more
+  // information
+  //
+
+  // How many bytes of padding should be added after recovered stack frames.
   std::size_t stack_frame_lower_padding;
 
   // How many bytes of padding should be added before recovered stack frames

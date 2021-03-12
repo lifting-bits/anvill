@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Result.h>
@@ -153,8 +154,7 @@ BaseFunctionPass<UserFunctionPass>::GetSymbolicValue(llvm::Module &module,
                                                      llvm::Type *type,
                                                      const std::string &name) {
 
-  static const std::string kMandatoryPrefix{"__anvill_"};
-  if (name.find(kMandatoryPrefix) != 0U) {
+  if (name.find(kAnvillNamePrefix) != 0U) {
     return BaseFunctionPassErrorCode::InvalidSymbolicValueName;
   }
 
