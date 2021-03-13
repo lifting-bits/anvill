@@ -56,4 +56,12 @@ extern const std::string kMemoryPointerEscapeFunction;
 // This is the suffix used when naming stack frame types
 extern const std::string kStackFrameTypeNameSuffix;
 
+// The prefix string used while naming the global variables at an address
+// with type information as suffix.
+extern const std::string kGlobalVariableNamePrefix;
+
+// The prefix string which is used while naming the global aliases from the
+// global variables
+extern const std::string kGlobalAliasNamePrefix;
+
 }  // namespace anvill

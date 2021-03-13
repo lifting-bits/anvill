@@ -53,4 +53,12 @@ const std::string kMemoryPointerEscapeFunction("__anvill_memory_escape");
 
 const std::string kStackFrameTypeNameSuffix(".frame_type");
 
+// The prefix string used while naming the global variables at an address
+// with type information as suffix.
+const std::string kGlobalVariableNamePrefix("var_");
+
+// The prefix string which is used while naming the global aliases from the
+// global variables
+const std::string kGlobalAliasNamePrefix("data_");
+
 }  // namespace anvill

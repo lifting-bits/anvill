@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "ValueLifter.h"
 
 #include <glog/logging.h>
@@ -50,11 +51,93 @@ llvm::APInt ValueLifter::ConsumeBytesAsInt(std::string_view &data,
   }
 }
 
+// Lift the pointer at address `ea` which is getting referenced by the
+// variable at `loc_ea`. It checks the type and lift them as function
+// or variable pointer
+llvm::Constant *ValueLifter::GetPointer(uint64_t ea, llvm::Type *data_type,
+                                        EntityLifterImpl &ent_lifter,
+                                        uint64_t loc_ea) const {
+
+  llvm::GlobalValue *found_entity_at = nullptr;
+  auto &func_lifter = ent_lifter.function_lifter;
+
+  // `ea` can be null; lift it as zero initialized
+  if (!ea) {
+    return llvm::Constant::getNullValue(data_type);
+  }
+
+  ent_lifter.ForEachEntityAtAddress(
+      ea, [&](llvm::GlobalValue *gv) { found_entity_at = gv; });
+
+  if (found_entity_at) {
+    return llvm::ConstantExpr::getBitCast(found_entity_at, data_type);
+  }
+
+  const auto pointer_type = llvm::dyn_cast<llvm::PointerType>(data_type);
+  const auto elm_type = pointer_type->getElementType();
+
+  if (elm_type->getTypeID() == llvm::Type::FunctionTyID) {
+
+    // Get the function at the given address; if it is missing from the spec
+    // fallback to returning the address
+    if (auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
+        maybe_decl) {
+      auto func = func_lifter.DeclareFunction(*maybe_decl);
+      auto func_in_context =
+          func_lifter.AddFunctionToContext(func, ea, ent_lifter);
+
+      // Getting wrong function pointer type here. Check??
+      return llvm::ConstantExpr::getBitCast(func_in_context, pointer_type);
+    } else {
+      LOG(ERROR) << "Failed to lift function pointer at " << std::hex << ea
+                 << " referenced by variable at " << loc_ea << std::dec;
+    }
+
+  } else if (auto maybe_decl =
+                 ent_lifter.type_provider->TryGetVariableType(ea, dl);
+             maybe_decl) {
+
+    // if the variable start address matches with ea
+    if (maybe_decl->address == ea) {
+      auto var =
+          ent_lifter.data_lifter.GetOrDeclareData(*maybe_decl, ent_lifter);
+      return llvm::ConstantExpr::getBitCast(var, data_type);
+    } else {
+      llvm::IRBuilder<> builder(options.module->getContext());
+      auto enclosing_var =
+          ent_lifter.data_lifter.GetOrDeclareData(*maybe_decl, ent_lifter);
+      return llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+          builder, enclosing_var, ea - maybe_decl->address, pointer_type));
+    }
+
+  // ea could be just after the section for symbols e.g `__text_end`;
+  // get variable decl for `ea - 1` and build pointers with the offset
+  } else if (auto maybe_decl =
+                 ent_lifter.type_provider->TryGetVariableType(ea - 1, dl);
+             maybe_decl) {
+
+    llvm::IRBuilder<> builder(options.module->getContext());
+    auto enclosing_var =
+        ent_lifter.data_lifter.GetOrDeclareData(*maybe_decl, ent_lifter);
+    return llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+        builder, enclosing_var, ea - maybe_decl->address, pointer_type));
+  }
+
+  // failed to lift pointer at `ea`. lift it as integer value
+  LOG(ERROR) << "Missing references to " << std::hex << ea
+             << " for the variable at " << loc_ea << std::dec;
+
+  llvm::APInt value(dl.getTypeAllocSize(pointer_type), ea);
+  return llvm::Constant::getIntegerValue(pointer_type, value);
+}
+
 // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
 // of type `type_of_data`. This requires access to `ent_lifter` to be able
 // to lift pointer types that will reference declared data/functions.
 llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
-                                  EntityLifterImpl &ent_lifter) const {
+                                  EntityLifterImpl &ent_lifter,
+                                  uint64_t loc_ea) const {
+
 
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
@@ -64,11 +147,14 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
     }
 
     case llvm::Type::PointerTyID: {
+
+      // Get the address of pointer type and look for it into the entity map
       const auto pointer_type = llvm::dyn_cast<llvm::PointerType>(type);
-      const auto size = dl.getTypeAllocSize(type);
-      auto val = ConsumeBytesAsInt(data, size);
-      return llvm::Constant::getIntegerValue(pointer_type, val);
-    }
+      const auto size = dl.getTypeAllocSize(pointer_type);
+      auto value = ConsumeBytesAsInt(data, size);
+      auto address = value.getZExtValue();
+      return GetPointer(address, type, ent_lifter, loc_ea);
+    } break;
 
     case llvm::Type::StructTyID: {
 
@@ -83,8 +169,8 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_type = struct_type->getStructElementType(i);
         const auto offset = layout->getElementOffset(i);
-        data = data.substr(offset);
-        auto const_elm = Lift(data.substr(offset), elm_type, ent_lifter);
+        auto const_elm =
+            Lift(data.substr(offset), elm_type, ent_lifter, loc_ea);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantStruct::get(struct_type, initializer_list);
@@ -102,7 +188,8 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter);
+        auto const_elm =
+            Lift(data.substr(elm_offset), elm_type, ent_lifter, loc_ea);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantArray::get(array_type, initializer_list);
@@ -118,10 +205,23 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter);
+        auto const_elm =
+            Lift(data.substr(elm_offset), elm_type, ent_lifter, loc_ea);
         initializer_list.push_back(const_elm);
       }
       return llvm::ConstantVector::get(initializer_list);
+    }
+
+    case llvm::Type::FloatTyID: {
+      const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
+      auto val = ConsumeBytesAsInt(data, size);
+      return llvm::ConstantFP::get(type, val.bitsToFloat());
+    }
+
+    case llvm::Type::DoubleTyID: {
+      const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
+      auto val = ConsumeBytesAsInt(data, size);
+      return llvm::ConstantFP::get(type, val.bitsToDouble());
     }
 
     default:

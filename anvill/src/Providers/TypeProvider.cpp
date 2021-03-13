@@ -40,6 +40,9 @@ class ProgramTypeProvider final : public TypeProvider {
   // type is the prototype of the function.
   std::optional<FunctionDecl> TryGetFunctionType(uint64_t address) final;
 
+  std::optional<GlobalVarDecl>
+  TryGetVariableType(uint64_t address, const llvm::DataLayout &layout) final;
+
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
   // `func_address`.
@@ -68,6 +71,28 @@ ProgramTypeProvider::TryGetFunctionType(uint64_t address) {
   CHECK_EQ(decl->address, address);
 
   return *decl;
+}
+
+std::optional<GlobalVarDecl>
+ProgramTypeProvider::TryGetVariableType(uint64_t address,
+                                        const llvm::DataLayout &layout) {
+  if (auto var_decl = program.FindVariable(address); var_decl) {
+
+    // Check integrity of the var_decl
+    CHECK_NOTNULL(var_decl->type);
+    CHECK_EQ(var_decl->address, address);
+    return *var_decl;
+
+  // if FindVariable fails to get the variable at address; get the variable
+  // containing the address
+  } else if (auto var_decl = program.FindInVariable(address, layout);
+             var_decl) {
+    CHECK_NOTNULL(var_decl->type);
+    CHECK_LE(address, var_decl->address);
+    return *var_decl;
+  }
+
+  return std::nullopt;
 }
 
 // Try to get the type of the register named `reg_name` on entry to the
