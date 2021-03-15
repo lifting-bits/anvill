@@ -283,10 +283,10 @@ PointerLifter::canRewriteGep(llvm::GetElementPtrInst& gep, llvm::Type* inferred_
   // Figure out what the last index was represented in terms of a byte offset.
   // We need to be careful about negative indices -- we want to maintain them,
   // but we don't want division/remainder to produce different roundings.
-  const auto dst_elem_type_size =
+  const auto gep_elem_type_size =
       dl.getTypeAllocSize(gep.getResultElementType()).getFixedSize();
   const auto last_index_i = last_index->getSExtValue() *
-                            static_cast<int64_t>(dst_elem_type_size);
+                            static_cast<int64_t>(gep_elem_type_size);
   const long long last_index_ai = std::abs(last_index_i);
   const auto last_index_sign = (last_index_i / std::max(last_index_ai, 1ll));
   auto elem_size = static_cast<int64_t>(
@@ -298,62 +298,110 @@ PointerLifter::canRewriteGep(llvm::GetElementPtrInst& gep, llvm::Type* inferred_
   }
   return true;
 }
+// This function turns GEPS with multiple indicies into multiple geps each with 1 index. 
+// Why? Sometimes GEP indexes are not constant, so you cant just divide by them all. 
 std::pair<llvm::Value*, bool> PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
+
 
 }
 // TODO (Carson) maybe change back to pointer type.
+// TODO (Carson) gep is not a good name for this shenanigans
 std::pair<llvm::Value*, bool> 
-PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst, llvm::Type *inferred_type) {
+PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep, llvm::Type *inferred_type) {
   // TODO (Carson) refactor this to use canRewriteGEP
-  LOG(ERROR) << remill::LLVMThingToString(dst) << " < gep is\n";
+  LOG(ERROR) << "================================================\n";
+  LOG(ERROR) << remill::LLVMThingToString(gep) << " < gep is\n";
+  LOG(ERROR) << remill::LLVMThingToString(gep->getType()) << "< gep type\n";
+  LOG(ERROR) << gep->getType()->isStructTy() << " < is struct ty? \n";
+  LOG(ERROR) << gep->getType()->isVectorTy() << " < is vector ty? \n";
+  LOG(ERROR) << gep->getType()->isPointerTy() << " < is pointer ty?\n";
   LOG(ERROR) << remill::LLVMThingToString(inferred_type) << " < gep inferred type is\n";
-  auto src = dst->getPointerOperand();
-  auto src_type = llvm::PointerType::get(dst->getSourceElementType(),
-                                         dst->getPointerAddressSpace());
-  auto dst_type = llvm::PointerType::get(dst->getResultElementType(),
-                                         dst->getPointerAddressSpace());
+
+  if (gep->getType()->isPointerTy()) {
+    LOG(ERROR) << remill::LLVMThingToString(gep->getType()->getPointerElementType()) << " < pointer ele type\n";
+    LOG(ERROR) << gep->getType()->getPointerElementType()->isStructTy() << " < ele is struct?\n";
+    if (gep->getType()->getPointerElementType()->isStructTy()) {
+        return {gep, false};
+    }
+
+  }
+  LOG(ERROR) << "------------------------------------------------\n";
+  auto src = gep->getPointerOperand();
+  LOG(ERROR) << remill::LLVMThingToString(src) << " < src is\n";
+  LOG(ERROR) << remill::LLVMThingToString(src->getType()) << "< dest type\n";
+  LOG(ERROR) << src->getType()->isStructTy() << " < is struct ty? \n";
+  LOG(ERROR) << src->getType()->isVectorTy() << " < is vector ty? \n";
+  LOG(ERROR) << src->getType()->isPointerTy() << " < is pointer ty?\n";
+
+
+  // TODO (Carson), handling structs could be tricky.... 
+  if (gep->getType()->isStructTy()) {
+    return {gep, false};
+  }
+  auto src_element_type = llvm::PointerType::get(gep->getSourceElementType(),
+                                         gep->getPointerAddressSpace());
+  auto gep_element_type = llvm::PointerType::get(gep->getResultElementType(),
+                                         gep->getPointerAddressSpace());
+  auto inferred_element_type = llvm::PointerType::get(inferred_type->getPointerElementType(),
+                                         inferred_type->getPointerAddressSpace());
   llvm::SmallVector<llvm::Value *, 4> indices;
-  for (auto it = dst->idx_begin(); it != dst->idx_end(); ++it) {
+  for (auto it = gep->idx_begin(); it != gep->idx_end(); ++it) {
     indices.push_back(it->get());
   }
   // If the last index isn't a constant then we can't peel it off.
   auto last_index = llvm::dyn_cast<llvm::ConstantInt>(indices.pop_back_val());
   if (!last_index) {
-    return {dst, false};
+    return {gep, false};
   }
   auto dl = mod->getDataLayout();
 
   // Figure out what the last index was represented in terms of a byte offset.
   // We need to be careful about negative indices -- we want to maintain them,
   // but we don't want division/remainder to produce different roundings.
-  const auto dst_elem_type_size = dl.getTypeAllocSize(inferred_type).getFixedSize();
+  const auto gep_elem_type_size = dl.getTypeAllocSize(gep->getType()->getPointerElementType()).getFixedSize();
+  const auto inferred_ele_type_size = dl.getTypeAllocSize(inferred_type->getPointerElementType()).getFixedSize();
   const auto last_index_i = last_index->getSExtValue();
-  const long long last_index_ai = std::abs(last_index_i);
-  const auto last_index_sign = (last_index_i / std::max(last_index_ai, 1ll));
-  auto elem_size = static_cast<int64_t>(
-      dl.getTypeAllocSize(inferred_type).getFixedSize());
-  auto size_adjusted_index = (last_index_ai / elem_size);
-  LOG(ERROR) << "last_index: " << last_index_ai << "\n";
-  LOG(ERROR) << "element sign: " << last_index_sign << "\n";
-  LOG(ERROR) << "Size adjusted index: " << size_adjusted_index << "\n";
+  const auto index_value = std::abs(last_index_i) * static_cast<uint64_t>(gep_elem_type_size);
+  const auto last_index_sign = (last_index_i) ? 1 : -1;
+  
+  // Error case, in the case our inferred type size is greater than the offset
+  // Lets not break anything. dont do it. 
+  // imagine you have an i8* with offset 1 byte, and a cast to i32*, you can't represent that 1 byte with a complete index 
+  // If you can think it, its an edge case :galaxy_brain: 
+  if (inferred_ele_type_size > index_value) {
+    return {gep, false};
+  }
+
+  // last_index_i = value / gep_elem_type_size 
+  // value = last_index_i * gep_elem_type_size 
+  // adjusted_value = value / inferred_type_size 
+  auto size_adjusted_index = index_value / inferred_ele_type_size;
+
+  LOG(ERROR) << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+  LOG(ERROR) << "gep elem type size (bytes): " << gep_elem_type_size << "\n";
+  LOG(ERROR) << "inferred elem type size (bytes): " << inferred_ele_type_size << "\n";
+  LOG(ERROR) << "last_index of this GEP (as gep type): " << last_index_i << "\n";
+  LOG(ERROR) << "last_index actual value(bits) : " << index_value << "\n";
+  LOG(ERROR) << "last_index of this GEP (as inferred_type): " << size_adjusted_index << "\n";
+  LOG(ERROR) << "last_index element sign : " << last_index_sign << "\n";
+  // LOG(ERROR) << "Size adjusted index (for whatever the new type is): " << size_adjusted_index << "=" <<  / "gep_elem_type_size\n";
   // The last index does not evenly divide the size of the result
   // element type.
-  if (!(last_index_ai % elem_size)) {
-    return {dst, false};
+  if ((index_value % inferred_ele_type_size)) {
+    return {gep, false};
   }
   llvm::Value *new_src = nullptr;
   // Generate a new `src` that has one less index.
   if (indices.empty()) {
     new_src = src;
   } else {
-    llvm::IRBuilder<> ir(dst);
-    LOG(ERROR) << remill::LLVMThingToString(src_type) << " < new gep src type?\n";
-    LOG(ERROR) << remill::LLVMThingToString(src) << " < new src type?\n";
-    for (auto idx : indices) {
-      LOG(ERROR) << remill::LLVMThingToString(idx) << " <index\n";
-    }
-    new_src = ir.CreateGEP(src_type, src, indices);
-    LOG(ERROR) << remill::LLVMThingToString(new_src) << " < created new gep!\n";
+    llvm::IRBuilder<> ir(gep);
+    // TODO (Carson) seems kinda sketchy.
+    LOG(ERROR) << "Unfolding GEP, making new gep with less indexes\n";
+    LOG(ERROR) << " Source element type: " << remill::LLVMThingToString(src_element_type) << "\n";
+    LOG(ERROR) << " Source type: " << remill::LLVMThingToString(src->getType()) << "\n";
+    LOG(ERROR) << " Source: " << remill::LLVMThingToString(src) << "\n";
+    new_src = ir.CreateGEP(src->getType()->getPointerElementType(), src, indices);
   }
   llvm::Instruction* new_src_inst = llvm::dyn_cast<llvm::Instruction>(new_src);
   CHECK(new_src_inst != nullptr);
@@ -362,7 +410,7 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst, llvm::Typ
   if (!promoted) {
     LOG(ERROR) << "Failed to flatten gep, making bitcast!\n";
     // TODO (Carson) check 
-    llvm::IRBuilder<> ir(dst);
+    llvm::IRBuilder<> ir(gep);
     casted_src = ir.CreateBitCast(new_src, inferred_type);
   }
   // Now that we have `src` casted to the corrected type, we can index into
@@ -370,53 +418,37 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst, llvm::Typ
   indices.clear();
   indices.push_back(llvm::ConstantInt::get(
       last_index->getType(),
-      last_index_sign * (last_index_ai / elem_size), true));
-    llvm::IRBuilder<> ir(dst);
-      LOG(ERROR) << remill::LLVMThingToString(src_type) << " < new gep src type?\n";
-    LOG(ERROR) << remill::LLVMThingToString(src) << " < new src type?\n";
-    for (auto idx : indices) {
-      LOG(ERROR) << remill::LLVMThingToString(idx) << " <index\n";
-    }
-    LOG(ERROR) << remill::LLVMThingToString(inferred_type) << " inferred type?\n";
-    LOG(ERROR) << remill::LLVMThingToString(casted_src) << " casted_src\n";
-
+      last_index_sign * size_adjusted_index, true));
+  llvm::IRBuilder<> ir(gep);
   // Casted source should be inferred_type, so get the element type
-  const auto new_dst = ir.CreateGEP(inferred_type->getPointerElementType(), casted_src, indices);
-  LOG(ERROR) << remill::LLVMThingToString(new_dst) << " Have a new gep!\n";
-  return {new_dst, true};
+  const auto new_gep = ir.CreateGEP(inferred_type->getPointerElementType(), casted_src, indices);
+  LOG(ERROR) << remill::LLVMThingToString(new_gep) << " Have a new gep!\n";
+  return {new_gep, true};
 }
 
 // TODO (Carson), create example where promotion to operand succeeds, BUT 
 // for whatever reason, GEP fails. 
+// TODO (Carson), 
+// 1. if inferred type, we want to either flatten or not flattern. 
+// 2. Determine if flatten based on if every value is constant/can be updated. 
+//  a. If all constant, then go try and promote the source type. 
+//    x. if works, then just update each constant with new size info.   
+//    y. if not, push a bitcast before the gep, and update types anyway. 
+//  b. if not, then split the gep into parts before the val
+//    x. try and promote source type. 
+//      i. if works, update last  
 std::pair<llvm::Value *, bool>
 PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   if (inferred_types.find(&inst) == inferred_types.end()) {
     return {&inst, false};
   }
 
-  // If there is an inferred type for this inst, our GEP type might be inaccurate
-  // https://releases.llvm.org/3.3/docs/LangRef.html#getelementptr-instruction
   llvm::Type *inferred_type = inferred_types[&inst];
   auto [flat_gep, worked] = BrightenGEP_PeelLastIndex(&inst, inferred_type);
-  if (!worked) {  // TODO Should bitcast here, like peter!
-
-    LOG(ERROR) << "Can't rewrite GEP " << remill::LLVMThingToString(&inst) << " with inferred type: " << remill::LLVMThingToString(inferred_type) << "\n";
-    return {&inst, false};
-  }
-  return {flat_gep, worked};
- /* bool can_rewrite = canRewriteGep(inst, inferred_type);
-  if (!can_rewrite) {
-    LOG(ERROR) << "Can't rewrite GEP " << remill::LLVMThingToString(&inst) << " with inferred type: " << remill::LLVMThingToString(inferred_type) << "\n";
-    return {&inst, false};
-  }
-  llvm::Instruction *pointer_inst = llvm::dyn_cast<llvm::Instruction>(inst.getPointerOperand());
-  CHECK(pointer_inst != nullptr);
-  auto [new_pointer, promoted] = visitInferInst(pointer_inst, inferred_type);
-  if (!promoted) {
-    // Here, create a bitcast instead for best effort. 
-    return {&inst, false};
-  }
-  */
+  if (worked) {
+    return {flat_gep, worked};
+  }  
+  return {&inst, false};
 }
 /*
 inttoptr instructions indicate there are pointers. There are two cases:
@@ -766,15 +798,15 @@ Pointer lifting for a function is done when we reach a fixed point, when the nex
 // Then we rely on the bitcast for pushing through.
 /*
 llvm::Value *PointerLifter::BrightenGEP_PeelLastIndex(
-      llvm::IRBuilder<> &ir, llvm::GEPOperator *dst,
+      llvm::IRBuilder<> &ir, llvm::GEPOperator *gep,
       llvm::PointerType *inferred_type) {
-  auto src = dst->getPointerOperand();
-  auto src_type = llvm::PointerType::get(dst->getSourceElementType(),
-                                         dst->getPointerAddressSpace());
-  auto dst_type = llvm::PointerType::get(dst->getResultElementType(),
-                                         dst->getPointerAddressSpace());
+  auto src = gep->getPointerOperand();
+  auto src_type = llvm::PointerType::get(gep->getSourceElementType(),
+                                         gep->getPointerAddressSpace());
+  auto gep_type = llvm::PointerType::get(gep->getResultElementType(),
+                                         gep->getPointerAddressSpace());
   llvm::SmallVector<llvm::Value *, 4> indices;
-  for (auto it = dst->idx_begin(); it != dst->idx_end(); ++it) {
+  for (auto it = gep->idx_begin(); it != gep->idx_end(); ++it) {
     indices.push_back(it->get());
   }
   // If the last index isn't a constant then we can't peel it off.
@@ -785,14 +817,14 @@ llvm::Value *PointerLifter::BrightenGEP_PeelLastIndex(
   // Figure out what the last index was represented in terms of a byte offset.
   // We need to be careful about negative indices -- we want to maintain them,
   // but we don't want division/remainder to produce different roundings.
-  const auto dst_elem_type_size =
-      dl->getTypeAllocSize(dst->getResultElementType()).getFixedSize();
+  const auto gep_elem_type_size =
+      dl->getTypeAllocSize(gep->getResultElementType()).getFixedSize();
   const auto last_index_i = last_index->getSExtValue() *
-                            static_cast<int64_t>(dst_elem_type_size);
+                            static_cast<int64_t>(gep_elem_type_size);
   const auto last_index_ai = std::abs(last_index_i);
   const auto last_index_sign = (last_index_i / std::max(last_index_ai, 1ll));
   auto elem_size = static_cast<int64_t>(
-      dl->getTypeAllocSize(dst->getResultElementType()).getFixedSize());
+      dl->getTypeAllocSize(gep->getResultElementType()).getFixedSize());
   // The last index does not evenly divide the size of the result
   // element type.
   if ((last_index_ai % elem_size)) {
@@ -817,29 +849,29 @@ llvm::Value *PointerLifter::BrightenGEP_PeelLastIndex(
   indices.push_back(llvm::ConstantInt::get(
       last_index->getType(),
       last_index_sign * (last_index_ai / elem_size), true));
-  const auto new_dst = ir.CreateGEP(inferred_type, casted_src, indices);
-  MergeEquivalenceClasses(dst, new_dst);
-  return new_dst;
+  const auto new_gep = ir.CreateGEP(inferred_type, casted_src, indices);
+  MergeEquivalenceClasses(gep, new_gep);
+  return new_gep;
 }
 llvm::Value *PointerLifter::BrightenGEP(
-    llvm::IRBuilder<> &ir, llvm::GEPOperator *dst,
+    llvm::IRBuilder<> &ir, llvm::GEPOperator *gep,
     llvm::PointerType *inferred_type) {
-  auto src = dst->getPointerOperand();
-  auto src_type = llvm::PointerType::get(dst->getSourceElementType(),
-                                         dst->getPointerAddressSpace());
-  auto dst_type = llvm::PointerType::get(dst->getResultElementType(),
-                                         dst->getPointerAddressSpace());
+  auto src = gep->getPointerOperand();
+  auto src_type = llvm::PointerType::get(gep->getSourceElementType(),
+                                         gep->getPointerAddressSpace());
+  auto gep_type = llvm::PointerType::get(gep->getResultElementType(),
+                                         gep->getPointerAddressSpace());
   auto goal_src_type = src_type;
 
   llvm::SmallVector<llvm::Value *, 4> indices;
-  if (inferred_type != dst_type) {
-    if (auto new_dst = BrightenGEP_PeelLastIndex(ir, dst, inferred_type)) {
-      return new_dst;
+  if (inferred_type != gep_type) {
+    if (auto new_gep = BrightenGEP_PeelLastIndex(ir, gep, inferred_type)) {
+      return new_gep;
     }
     // Worst-case: bitcast.
-    auto new_dst = ir.CreateBitCast(dst, inferred_type);
-    MergeEquivalenceClasses(dst, new_dst);
-    return new_dst;
+    auto new_gep = ir.CreateBitCast(gep, inferred_type);
+    MergeEquivalenceClasses(gep, new_gep);
+    return new_gep;
   } else {
   }
   // Top-down, try to brighten `src` into `src` type.
@@ -858,30 +890,30 @@ llvm::Value *PointerLifter::BrightenGEP(
     indices.push_back(it->get());
   }
   // Merge by adding trailing indices of GEP.
-  if (src_type == dst_type) {
-    if (dst->getNumIndices() == 1) {
-      indices.back() = ir.CreateAdd(indices.back(), dst->getOperand(1));
-      auto new_dst = ir.CreateGEP(src_type, src, indices);
-      MergeEquivalenceClasses(dst, new_dst);
-      return new_dst;
+  if (src_type == gep_type) {
+    if (gep->getNumIndices() == 1) {
+      indices.back() = ir.CreateAdd(indices.back(), gep->getOperand(1));
+      auto new_gep = ir.CreateGEP(src_type, src, indices);
+      MergeEquivalenceClasses(gep, new_gep);
+      return new_gep;
     } else {
       LOG(ERROR)
           << "Unable to combine " << remill::LLVMThingToString(src)
-          << " with " << remill::LLVMThingToString(dst);
+          << " with " << remill::LLVMThingToString(gep);
       return nullptr;
     }
   // Merge by extending indices of GEP. We need to make sure to combine the
-  // last index of our `src` GEP with the first index of our `dst`.
+  // last index of our `src` GEP with the first index of our `gep`.
   } else {
-    auto it = dst->idx_begin();
+    auto it = gep->idx_begin();
     indices.push_back(ir.CreateAdd(indices.pop_back_val(), it->get()));
-    while (++it != dst->idx_end()) {
+    while (++it != gep->idx_end()) {
       indices.push_back(it->get());
     }
-    auto new_dst = ir.CreateGEP(src_type, src, indices);
-    MergeEquivalenceClasses(dst, new_dst);
-    ReplaceAllUses(dst, new_dst);
-    return new_dst;
+    auto new_gep = ir.CreateGEP(src_type, src, indices);
+    MergeEquivalenceClasses(gep, new_gep);
+    ReplaceAllUses(gep, new_gep);
+    return new_gep;
   }
 }
 */

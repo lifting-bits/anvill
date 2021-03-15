@@ -58,11 +58,34 @@ TEST_SUITE("BrightenPointers") {
     auto succeeded = llvm::verifyModule(*module.get(), &error_stream) == 0;
     error_stream.flush();
 
-    for (auto &func: *module) {
+    for (auto &func : *mod) {
       if (func.getName() == "valid_test") {
+        std::cout << "====================BEFORE====================" << std::endl;
         func.print(llvm::errs(), nullptr);
       }
     }
+
+    for (auto &func: *module) {
+      if (func.getName() == "valid_test") {
+        std::cout << "====================AFTER====================" << std::endl;
+        func.print(llvm::errs(), nullptr);
+      }
+    }
+
+    for (auto &func : *mod) {
+      if (func.getName() == "main") {
+        std::cout << "====================BEFORE====================" << std::endl;
+        func.print(llvm::errs(), nullptr);
+      }
+    }
+
+    for (auto &func: *module) {
+      if (func.getName() == "main") {
+        std::cout << "====================AFTER====================" << std::endl;
+        func.print(llvm::errs(), nullptr);
+      }
+    }
+
 
     CHECK(succeeded);
     if (!succeeded) {
