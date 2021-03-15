@@ -3,19 +3,22 @@
 
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <remill/BC/Util.h>
-
+#include <string>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-
+#include <anvill/Transforms.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 
 namespace anvill {
 
 class PointerLifter
     : public llvm::InstVisitor<PointerLifter, std::pair<llvm::Value *, bool>> {
  public:
-  PointerLifter(llvm::Module &mod) : module(mod) {}
+  // this is my one requirement: I call a function, get a function pass. I can pass that function a cross-reference resolver instance, and when you get to an llvm::Constant, it will use the xref resolver on that
+  PointerLifter(llvm::Module *mod, const CrossReferenceResolver &resolver) : mod(mod), xref_resolver(resolver), changed(false) {}
 
   // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst
   // Adds users to the next worklist, for downstream type propagation
@@ -31,6 +34,9 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
 
   // std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
+  bool canRewriteGep(llvm::GetElementPtrInst& inst, llvm::Type* inferred_type);
+  std::pair<llvm::Value*, bool> flattenGEP(llvm::GetElementPtrInst *gep);
+  std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool>
   visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
@@ -47,21 +53,29 @@ class PointerLifter
                                  llvm::Value *offset, llvm::Type *t);
 
   // Driver method
-  void LiftFunction(llvm::Function *func);
-
-  /*
-
-        // TODO (Carson)
-        if you see an intoptr on a load, then you'll want to rewrite the load to be a load on a bitcast
-        i.e. to load a pointer from mrmory, rather than an int
-  */
+  void LiftFunction(llvm::Function& func);
 
  private:
   std::unordered_map<llvm::Value *, llvm::Type *> inferred_types;
   std::vector<llvm::Instruction *> next_worklist;
   std::unordered_set<llvm::Instruction *> to_remove;
-  std::vector<std::pair<llvm::Instruction *, llvm::Value *>> to_replace;
-  llvm::Module &module;
+  std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
+  std::unordered_map<llvm::Instruction *, bool> dead_inst;
+  bool changed;
+  llvm::Module *mod;
+
+  const CrossReferenceResolver & xref_resolver;
+};
+
+class PointerLifterPass : public llvm::FunctionPass {
+  public:
+      PointerLifterPass(const CrossReferenceResolver &resolver): xref_resolver(resolver), FunctionPass(ID) {}
+      bool runOnFunction(llvm::Function &f);
+  private:
+      static char ID;
+      const CrossReferenceResolver &xref_resolver;
+
+      
 };
 
 };  // namespace anvill

@@ -16,6 +16,7 @@ add_executable(test_anvil_passes
   src/BaseScenario.cpp
 
   src/SplitStackFrameAtReturnAddress.cpp
+  src/BrightenPointers.cpp
 )
 
 target_link_libraries(test_anvil_passes PRIVATE
