@@ -52,18 +52,22 @@ EntityLifterImpl::EntityLifterImpl(
 // `address`. There is some collusion between the `Context`, the
 // `FunctionLifter`, the `DataLifter`, and the `ValueLifter` to ensure their
 // view of the world remains consistent.
-void EntityLifterImpl::AddEntity(llvm::GlobalValue *entity, uint64_t address) {
+void EntityLifterImpl::AddEntity(llvm::Constant *entity, uint64_t address) {
+  CHECK_NOTNULL(entity);
   address_to_entity[address].insert(entity);
   if (auto [it, added] = entity_to_address.emplace(entity, address); added) {
-    llvm::GlobalValue *used[] = {entity};
-    llvm::appendToCompilerUsed(*(options.module), used);
+    if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(entity); gv) {
+      llvm::GlobalValue *used[] = {gv};
+      llvm::appendToCompilerUsed(*(options.module), used);
+    }
   }
 }
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
 std::optional<uint64_t>
-EntityLifterImpl::AddressOfEntity(llvm::GlobalValue *entity) const {
+EntityLifterImpl::AddressOfEntity(llvm::Constant *entity) const {
+  CHECK_NOTNULL(entity);
   auto it = entity_to_address.find(entity);
   if (it == entity_to_address.end()) {
     return std::nullopt;
@@ -74,7 +78,7 @@ EntityLifterImpl::AddressOfEntity(llvm::GlobalValue *entity) const {
 
 // Applies a callback `cb` to each entity at a specified address.
 void EntityLifterImpl::ForEachEntityAtAddress(
-    uint64_t address, std::function<void(llvm::GlobalValue *)> cb) const {
+    uint64_t address, std::function<void(llvm::Constant *)> cb) const {
   if (auto it = address_to_entity.find(address);
       it != address_to_entity.end()) {
     for (auto gv : it->second) {
@@ -94,7 +98,7 @@ EntityLifter::EntityLifter(const LifterOptions &options_,
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
 std::optional<uint64_t>
-EntityLifter::AddressOfEntity(llvm::GlobalValue *entity) const {
+EntityLifter::AddressOfEntity(llvm::Constant *entity) const {
   return impl->AddressOfEntity(entity);
 }
 

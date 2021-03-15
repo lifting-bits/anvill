@@ -58,7 +58,7 @@ llvm::Constant *ValueLifter::GetPointer(uint64_t ea, llvm::Type *data_type,
                                         EntityLifterImpl &ent_lifter,
                                         uint64_t loc_ea) const {
 
-  llvm::GlobalValue *found_entity_at = nullptr;
+  llvm::Constant *found_entity_at = nullptr;
   auto &func_lifter = ent_lifter.function_lifter;
 
   // `ea` can be null; lift it as zero initialized
@@ -67,7 +67,7 @@ llvm::Constant *ValueLifter::GetPointer(uint64_t ea, llvm::Type *data_type,
   }
 
   ent_lifter.ForEachEntityAtAddress(
-      ea, [&](llvm::GlobalValue *gv) { found_entity_at = gv; });
+      ea, [&](llvm::Constant *gv) { found_entity_at = gv; });
 
   if (found_entity_at) {
     return llvm::ConstantExpr::getBitCast(found_entity_at, data_type);

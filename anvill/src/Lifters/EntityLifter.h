@@ -55,16 +55,16 @@ class EntityLifterImpl {
   // `address`. There is some collusion between the `Context`, the
   // `FunctionLifter`, the `DataLifter`, and the `ValueLifter` to ensure their
   // view of the world remains consistent.
-  void AddEntity(llvm::GlobalValue *entity, uint64_t address);
+  void AddEntity(llvm::Constant *entity, uint64_t address);
 
   // Applies a callback `cb` to each entity at a specified address.
   void
   ForEachEntityAtAddress(uint64_t address,
-                         std::function<void(llvm::GlobalValue *)> cb) const;
+                         std::function<void(llvm::Constant *)> cb) const;
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.
-  std::optional<uint64_t> AddressOfEntity(llvm::GlobalValue *entity) const;
+  std::optional<uint64_t> AddressOfEntity(llvm::Constant *entity) const;
 
  private:
   friend class EntityLifter;
@@ -97,11 +97,11 @@ class EntityLifterImpl {
 
   // Maps native code addresses to lifted entities. The lifted entities reside
   // in the `options.module` module.
-  std::unordered_map<uint64_t, std::unordered_set<llvm::GlobalValue *>>
+  std::unordered_map<uint64_t, std::unordered_set<llvm::Constant *>>
       address_to_entity;
 
   // Maps lifted entities to native addresses. The lifted
-  std::unordered_map<llvm::GlobalValue *, uint64_t> entity_to_address;
+  std::unordered_map<llvm::Constant *, uint64_t> entity_to_address;
 };
 
 }  // namespace anvill

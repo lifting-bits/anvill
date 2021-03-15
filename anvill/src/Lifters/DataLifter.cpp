@@ -45,28 +45,34 @@ DataLifter::DataLifter(const LifterOptions &options_,
 
 // Declare a lifted a variable. Will not return `nullptr`. One issue that we
 // face is that we want to
-llvm::GlobalValue *
+llvm::Constant *
 DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
                              EntityLifterImpl &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
-  llvm::GlobalValue *found_by_type = nullptr;
-  llvm::GlobalValue *found_by_address = nullptr;
+  llvm::Constant *found_by_type = nullptr;
+  llvm::Constant *found_by_address = nullptr;
 
   // Go try to figure out if we've already got a declaration for this specific
   // piece of data at the corresponding address. All data is versioned
   lifter_context.ForEachEntityAtAddress(
-      decl.address, [&](llvm::GlobalValue *gv) {
-        if (gv->getValueType() == type) {
-          found_by_type = gv;
-          found_by_address = gv;
+      decl.address, [&](llvm::Constant *v) {
+        if (!llvm::isa_and_nonnull<llvm::GlobalValue>(found_by_type)) {
+          if (auto ga = llvm::dyn_cast<llvm::GlobalAlias>(v)) {
+            if (ga->getValueType() == type) {
+              found_by_type = ga;
+            }
+            found_by_address = ga;
 
-        } else if (llvm::isa<llvm::GlobalVariable>(gv)) {
-          found_by_address = gv;
-
-        } else if (!found_by_address) {
-          found_by_address = gv;
+          } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(v)) {
+            auto ce_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
+            CHECK_NOTNULL(ce_type);
+            if (ce_type->getElementType() == type) {
+              found_by_type = ga;
+            }
+            found_by_address = ga;
+          }
         }
       });
 
@@ -74,14 +80,20 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
     return found_by_type;
   }
 
-  std::stringstream ss;
-  ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-     << TranslateType(*type, dl, true);
-  const auto name = ss.str();
-  const auto ga = llvm::GlobalAlias::create(
-      type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
+  auto wrap_with_alias = [&] (llvm::Constant *val) {
+    std::stringstream ss;
+    ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
+       << TranslateType(*type, dl, true);
+    const auto name = ss.str();
+    const auto ga = llvm::GlobalAlias::create(
+        type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
+    ga->setAliasee(val);
 
-  lifter_context.AddEntity(ga, decl.address);
+    lifter_context.AddEntity(val, decl.address);
+    lifter_context.AddEntity(ga, decl.address);
+
+    return ga;
+  };
 
   if (found_by_address) {
 
@@ -103,12 +115,9 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
         // dummy IRBuilder to reuse `remill::BuildPointerToOffset`
         llvm::IRBuilder<> ir(options.module->getContext());
-        auto gv =
-            llvm::dyn_cast<llvm::GlobalValue>(llvm::dyn_cast<llvm::Constant>(
-                remill::BuildPointerToOffset(ir, base, offset, type)));
-        lifter_context.AddEntity(gv, decl.address);
-
-        ga->setAliasee(gv);
+        const auto ce = llvm::dyn_cast<llvm::Constant>(
+            remill::BuildPointerToOffset(ir, base, offset, type));
+        return wrap_with_alias(ce);
       }
     }
 
@@ -116,26 +125,19 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
         << "Found negative offset for variable at " << std::hex << decl.address
         << std::dec << " cast and return to the correct data type.";
 
-    // fallback to is base is null or offset < 0; bit cast to the
+    // Fallback to is base is null or offset < 0; bit cast to the
     // correct type
-    auto gv = llvm::dyn_cast<llvm::GlobalValue>(
-        llvm::ConstantExpr::getBitCast(found_by_address, type));
-    lifter_context.AddEntity(gv, decl.address);
-
-    ga->setAliasee(gv);
-
-    return ga;
+    const auto ce = llvm::ConstantExpr::getBitCast(found_by_address, type);
+    lifter_context.AddEntity(ce, decl.address);
+    return wrap_with_alias(ce);
   }
 
-  auto gv = LiftData(decl, lifter_context);
+  const auto gv = LiftData(decl, lifter_context);
   lifter_context.AddEntity(gv, decl.address);
-
-  ga->setAliasee(gv);
-
-  return ga;
+  return gv;
 }
 
-llvm::GlobalValue *DataLifter::LiftData(const GlobalVarDecl &decl,
+llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
                                         EntityLifterImpl &lifter_context) {
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
@@ -195,10 +197,9 @@ llvm::GlobalValue *DataLifter::LiftData(const GlobalVarDecl &decl,
                                   ss2.str());
 }
 
-
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.
-llvm::GlobalValue *
+llvm::Constant *
 EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
 
   // Not a valid address, or memory isn't executable.
@@ -212,7 +213,7 @@ EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
 }
 
 // Lift a function. Will return `nullptr` if the memory is not accessible.
-llvm::GlobalValue *EntityLifter::LiftEntity(const GlobalVarDecl &decl) const {
+llvm::Constant *EntityLifter::LiftEntity(const GlobalVarDecl &decl) const {
 
   // TODO(pag,alessandro): Inspect the pointer returned from `DeclareData`.
   //                       Use `FindBaseAndOffset` to find the base. If the

@@ -49,12 +49,12 @@ class DataLifter {
              TypeProvider &type_provider_);
 
   // Lift a function. Will return `nullptr` if the memory is not accessible.
-  llvm::GlobalValue *LiftData(const GlobalVarDecl &decl,
-                              EntityLifterImpl &lifter_context);
+  llvm::Constant *LiftData(const GlobalVarDecl &decl,
+                           EntityLifterImpl &lifter_context);
 
   // Declare a lifted a variable. Will not return `nullptr`.
-  llvm::GlobalValue *GetOrDeclareData(const GlobalVarDecl &decl,
-                                      EntityLifterImpl &lifter_context);
+  llvm::Constant *GetOrDeclareData(const GlobalVarDecl &decl,
+                                   EntityLifterImpl &lifter_context);
 
  private:
   friend class FunctionLifter;

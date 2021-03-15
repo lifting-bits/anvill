@@ -56,7 +56,7 @@ class EntityLifter {
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.
-  std::optional<uint64_t> AddressOfEntity(llvm::GlobalValue *entity) const;
+  std::optional<uint64_t> AddressOfEntity(llvm::Constant *entity) const;
 
   // Return the options being used by this entity lifter.
   const LifterOptions &Options(void) const;
@@ -68,10 +68,10 @@ class EntityLifter {
   llvm::Function *DeclareEntity(const FunctionDecl &decl) const;
 
   // Lift a variable and return it. Returns `nullptr` if there was a failure.
-  llvm::GlobalValue *LiftEntity(const GlobalVarDecl &decl) const;
+  llvm::Constant *LiftEntity(const GlobalVarDecl &decl) const;
 
   // Lift a variable and return it. Returns `nullptr` if there was a failure.
-  llvm::GlobalValue *DeclareEntity(const GlobalVarDecl &decl) const;
+  llvm::Constant *DeclareEntity(const GlobalVarDecl &decl) const;
 
   EntityLifter(const EntityLifter &) = default;
   EntityLifter(EntityLifter &&) noexcept = default;

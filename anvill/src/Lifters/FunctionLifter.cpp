@@ -1525,7 +1525,7 @@ llvm::Function *EntityLifter::LiftEntity(const FunctionDecl &decl) const {
 
   // Go try to figure out if we've already got a declaration for this specific
   // function at the corresponding address.
-  impl->ForEachEntityAtAddress(decl.address, [&](llvm::GlobalValue *gv) {
+  impl->ForEachEntityAtAddress(decl.address, [&](llvm::Constant *gv) {
     if (auto func = llvm::dyn_cast<llvm::Function>(gv)) {
       if (func->getFunctionType() == module_func_type) {
         found_by_type = func;
@@ -1596,7 +1596,7 @@ llvm::Function *EntityLifter::DeclareEntity(const FunctionDecl &decl) const {
   // function at the corresponding address.
   //
   // TODO(pag): Refactor out this copypasta.
-  impl->ForEachEntityAtAddress(decl.address, [&](llvm::GlobalValue *gv) {
+  impl->ForEachEntityAtAddress(decl.address, [&](llvm::Constant *gv) {
     if (auto func = llvm::dyn_cast<llvm::Function>(gv)) {
       if (func->getFunctionType() == module_func_type) {
         found_by_type = func;
@@ -1689,7 +1689,7 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
   // It's possible that we've lifted this function before, but that it was
   // renamed by user code, and so the above check failed. Go check for that.
   } else {
-    lifter_context.ForEachEntityAtAddress(address, [&](llvm::GlobalValue *gv) {
+    lifter_context.ForEachEntityAtAddress(address, [&](llvm::Constant *gv) {
       if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);
           gv_func && gv_func->getFunctionType() == module_func_type) {
         CHECK(!new_version);
