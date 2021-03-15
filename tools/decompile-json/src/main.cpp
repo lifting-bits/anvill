@@ -636,7 +636,8 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  const auto &buff = remill::GetReference(maybe_buff);
+  const std::unique_ptr<llvm::MemoryBuffer> &buff =
+      remill::GetReference(maybe_buff);
   auto maybe_json = llvm::json::parse(buff->getBuffer());
   if (remill::IsError(maybe_json)) {
     LOG(ERROR) << "Unable to parse JSON spec file '" << FLAGS_spec
@@ -644,7 +645,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto &json = remill::GetReference(maybe_json);
+  llvm::json::Value &json = remill::GetReference(maybe_json);
   const auto spec = json.getAsObject();
   if (!spec) {
     LOG(ERROR) << "JSON spec file '" << FLAGS_spec
@@ -710,7 +711,18 @@ int main(int argc, char *argv[]) {
   });
 
   // Verify the module
-  CHECK(remill::VerifyModule(&module));
+  if (!remill::VerifyModule(&module)) {
+    std::string json_outs;
+    if (llvm::json::fromJSON(json, json_outs)) {
+      std::cerr << "Couldn't verify module produced from spec:\n"
+                << json_outs << '\n';
+
+    } else {
+      std::cerr << "Couldn't verify module produced from spec:\n"
+                << buff->getBuffer().str() << '\n';
+    }
+    return EXIT_FAILURE;
+  }
 
   // OLD: Apply optimizations.
   anvill::OptimizeModule(lifter, arch.get(), program, module);
@@ -749,13 +761,13 @@ int main(int argc, char *argv[]) {
 
   if (!FLAGS_ir_out.empty()) {
     if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
-      LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
+      std::cerr << "Could not save LLVM IR to " << FLAGS_ir_out << '\n';
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
     if (!remill::StoreModuleToFile(&module, FLAGS_bc_out, true)) {
-      LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
+      std::cerr << "Could not save LLVM bitcode to " << FLAGS_bc_out << '\n';
       ret = EXIT_FAILURE;
     }
   }
