@@ -470,6 +470,10 @@ ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
   std::int64_t displacement{};
 
   switch (dl.getPointerSizeInBits(0)) {
+    case 16:
+      displacement = static_cast<std::int16_t>(u.displacement);
+      break;
+
     case 32:
       displacement = static_cast<std::int32_t>(u.displacement);
       break;
