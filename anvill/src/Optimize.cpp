@@ -584,7 +584,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // We can extend error handling here to provide more visibility
   // into what has happened
   for (const auto &error : err_man.ErrorList()) {
-    std::stringstream buffer = {};
+    std::stringstream buffer;
     buffer << error.description;
 
     // If this is a fatal error, also include the module IR if
