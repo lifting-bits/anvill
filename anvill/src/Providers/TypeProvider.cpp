@@ -121,8 +121,7 @@ void ProgramTypeProvider::QueryRegisterStateAtInstruction(
 
 class NullTypeProvider final : public TypeProvider {
  public:
-  NullTypeProvider(llvm::LLVMContext &context_)
-      : TypeProvider(context_) {}
+  NullTypeProvider(llvm::LLVMContext &context_) : TypeProvider(context_) {}
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
@@ -170,8 +169,8 @@ TypeProvider::CreateProgramTypeProvider(llvm::LLVMContext &context_,
 }
 
 // Creates a type provider that always fails to provide type information.
-std::shared_ptr<TypeProvider> TypeProvider::CreateNullTypeProvider(
-    llvm::LLVMContext &context_) {
+std::shared_ptr<TypeProvider>
+TypeProvider::CreateNullTypeProvider(llvm::LLVMContext &context_) {
   return std::make_shared<NullTypeProvider>(context_);
 }
 

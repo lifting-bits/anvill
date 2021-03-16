@@ -21,6 +21,9 @@
 
 namespace anvill {
 
+// The common prefix for all special values
+extern const std::string kAnvillNamePrefix;
+
 // The name of the global variable that is used to taint (via constant
 // expressions) data that operates on the program counter.
 extern const std::string kSymbolicPCName;
@@ -69,5 +72,8 @@ extern const std::string kGlobalVariableNamePrefix;
 // The prefix string which is used while naming the global aliases from the
 // global variables
 extern const std::string kGlobalAliasNamePrefix;
+
+// Prefix used to identify symbolic values for stack frame values
+extern const std::string kSymbolicStackFrameValuePrefix;
 
 }  // namespace anvill

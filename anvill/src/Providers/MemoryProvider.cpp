@@ -78,8 +78,7 @@ MemoryProvider::CreateProgramMemoryProvider(const Program &program) {
 }
 
 // Creates a memory provider that gives access to no memory.
-std::shared_ptr<MemoryProvider>
-MemoryProvider::CreateNullMemoryProvider(void) {
+std::shared_ptr<MemoryProvider> MemoryProvider::CreateNullMemoryProvider(void) {
   return std::make_shared<NullMemoryProvider>();
 }
 

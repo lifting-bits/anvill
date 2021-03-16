@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Trail of Bits, Inc.
+ * Copyright (c) 2021 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,24 +17,25 @@
 
 #pragma once
 
-#include <llvm/IR/LegacyPassManager.h>
-#include <llvm/IR/Module.h>
+#include <anvill/ITransformationErrorManager.h>
 
 namespace anvill {
 
-bool VerifyModule(llvm::Module *module);
+class TransformationErrorManager final : public ITransformationErrorManager {
+  std::vector<TransformationError> error_list;
+  bool has_fatal_error{false};
 
-std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
-                                           const std::string &data_name);
+ public:
+  TransformationErrorManager() = default;
+  virtual ~TransformationErrorManager() override = default;
 
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass);
+  virtual void Insert(const TransformationError &error) override;
+  virtual void Reset(void) override;
 
-struct Platform final {
-  std::string os;
-  std::string arch;
+  virtual bool HasFatalError(void) const override;
+
+  virtual const std::vector<TransformationError> &
+  ErrorList(void) const override;
 };
-
-using PlatformList = std::vector<Platform>;
-const PlatformList &GetSupportedPlatforms(void);
 
 }  // namespace anvill

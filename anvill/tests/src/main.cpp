@@ -15,26 +15,5 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-#include <llvm/IR/LegacyPassManager.h>
-#include <llvm/IR/Module.h>
-
-namespace anvill {
-
-bool VerifyModule(llvm::Module *module);
-
-std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
-                                           const std::string &data_name);
-
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass);
-
-struct Platform final {
-  std::string os;
-  std::string arch;
-};
-
-using PlatformList = std::vector<Platform>;
-const PlatformList &GetSupportedPlatforms(void);
-
-}  // namespace anvill
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest.h>

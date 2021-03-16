@@ -17,8 +17,8 @@
 
 #pragma once
 
-#include <anvill/Lifters/ValueLifter.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/Lifters/ValueLifter.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
 
@@ -67,9 +67,9 @@ class ValueLifterImpl {
   //            entity or plausible entity.
   //
   // NOTE(pag): `hinted_type` can be `nullptr`.
-  llvm::Constant *TryGetPointerForAddress(
-      uint64_t ea, EntityLifterImpl &ent_lifter,
-      llvm::PointerType *hinted_type) const;
+  llvm::Constant *TryGetPointerForAddress(uint64_t ea,
+                                          EntityLifterImpl &ent_lifter,
+                                          llvm::PointerType *hinted_type) const;
 
   // Lift pointers at `ea` that is getting referred by the variable at `loc_ea`.
   //
@@ -80,13 +80,12 @@ class ValueLifterImpl {
                              uint64_t loc_ea) const;
 
  private:
-
   llvm::Constant *GetFunctionPointer(const FunctionDecl &decl,
                                      EntityLifterImpl &ent_lifter) const;
 
   llvm::Constant *GetVarPointer(uint64_t var_ea, uint64_t search_ea,
                                 EntityLifterImpl &ent_lifter,
-                                llvm::PointerType *ptr_type=nullptr) const;
+                                llvm::PointerType *ptr_type = nullptr) const;
 
   const LifterOptions options;
   const llvm::DataLayout &dl;

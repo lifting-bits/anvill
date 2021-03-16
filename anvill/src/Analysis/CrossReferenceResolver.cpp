@@ -20,6 +20,7 @@
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
+#include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -30,16 +31,13 @@
 
 #include <unordered_map>
 
-#include <glog/logging.h>
-
 namespace anvill {
 namespace {
 
 using AddressResolverFuncType =
     std::function<std::optional<uint64_t>(llvm::Constant *)>;
 
-using EntityResolverFuncType =
-    std::function<llvm::Constant *(uint64_t)>;
+using EntityResolverFuncType = std::function<llvm::Constant *(uint64_t)>;
 
 // Convert an unsigned value `val` of size `size` bits into a signed `int64_t`.
 static int64_t Signed(uint64_t val, uint64_t size) {
@@ -103,10 +101,11 @@ class CrossReferenceResolverImpl {
                                     uint64_t mask, uint64_t size) { \
     if (allow_rhs_zero || rhs_xr.u.address & mask) { \
       return merge(lhs_xr, rhs_xr, [=](uint64_t lhs, uint64_t rhs) { \
-        auto ret = static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
-                   mask; \
-        LOG(ERROR) << "lhs=" << std::hex << lhs << " " << #op << " rhs=" \
-                   << rhs << " = ret=" << ret << std::dec; \
+        auto ret = \
+            static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
+            mask; \
+        LOG(ERROR) << "lhs=" << std::hex << lhs << " " << #op \
+                   << " rhs=" << rhs << " = ret=" << ret << std::dec; \
         return ret; \
       }); \
     } else { \
@@ -250,10 +249,11 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
   return xr;
 }
 
-ResolvedCrossReference CrossReferenceResolverImpl::ResolveInstruction(
-    llvm::Instruction *inst_val) {
+ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 
-  const uint64_t size = inst_val->getOperand(0)->getType()->getPrimitiveSizeInBits();
+  const uint64_t size =
+      inst_val->getOperand(0)->getType()->getPrimitiveSizeInBits();
   const uint64_t mask = size < 64 ? (1ull << size) - 1ull : ~0ull;
   const uint64_t out_size = inst_val->getType()->getPrimitiveSizeInBits();
   const uint64_t out_mask = out_size < 64 ? (1ull << out_size) - 1ull : ~0ull;
@@ -313,15 +313,15 @@ ResolvedCrossReference CrossReferenceResolverImpl::ResolveInstruction(
 
     case llvm::Instruction::BitCast: {
       auto xr = ResolveValue(inst_val->getOperand(0));
-      if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
+      if (auto ptr_type =
+              llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
           ptr_type && !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
       }
       return xr;
     }
 
-    default:
-      return {};
+    default: return {};
   }
 }
 
@@ -473,8 +473,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       return xr;
     }
 
-    case llvm::Instruction::PtrToInt:
-      return ResolveConstant(ce->getOperand(0));
+    case llvm::Instruction::PtrToInt: return ResolveConstant(ce->getOperand(0));
 
     case llvm::Instruction::BitCast: {
       auto xr = ResolveConstant(ce->getOperand(0));
@@ -582,6 +581,21 @@ void CrossReferenceResolver::ClearCache(void) const {
 ResolvedCrossReference
 CrossReferenceResolver::TryResolveReference(llvm::Value *val) const {
   return impl->ResolveValue(val);
+}
+
+std::int64_t
+ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
+  std::int64_t displacement{};
+
+  switch (dl.getPointerSizeInBits(0)) {
+    case 16: displacement = static_cast<std::int16_t>(u.displacement); break;
+
+    case 32: displacement = static_cast<std::int32_t>(u.displacement); break;
+
+    case 64: displacement = u.displacement; break;
+  }
+
+  return displacement;
 }
 
 }  // namespace anvill

@@ -18,14 +18,11 @@
 #include "BrightenPointerOperations.h"
 
 #include <anvill/Transforms.h>
-
 #include <glog/logging.h>
-
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
-
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
@@ -37,8 +34,8 @@ namespace anvill {
 
 char PointerLifterPass::ID = '\0';
 
-PointerLifterPass::PointerLifterPass(
-    const EntityLifter &entity_lifter_, unsigned max_gas_)
+PointerLifterPass::PointerLifterPass(const EntityLifter &entity_lifter_,
+                                     unsigned max_gas_)
     : FunctionPass(ID),
       entity_lifter(entity_lifter_),
       max_gas(max_gas_) {}
@@ -129,10 +126,10 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
 }
 
 
-llvm::Value *
-PointerLifter::GetIndexedPointer(
-    llvm::IRBuilder<> &ir, llvm::Value *address,
-    llvm::Value *offset, llvm::Type *dest_type) const {
+llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
+                                              llvm::Value *address,
+                                              llvm::Value *offset,
+                                              llvm::Type *dest_type) const {
 
   // TODO (Carson) the addr_space is  actually for thread stuff
   // auto i8_ptr_ty = llvm::PointerType::get(i8_ty, addr_space);
@@ -248,10 +245,9 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
     rep_map[old_inst] = new_val;
     made_progress = true;
   } else {
-    LOG(ERROR)
-        << "Cannot replace " << remill::LLVMThingToString(old_val)
-        << " with " << remill::LLVMThingToString(new_val)
-        << " in " << func->getName().str();
+    LOG(ERROR) << "Cannot replace " << remill::LLVMThingToString(old_val)
+               << " with " << remill::LLVMThingToString(new_val) << " in "
+               << func->getName().str();
   }
 
   // old_val->replaceAllUsesWith(new_val);
@@ -379,6 +375,7 @@ bool PointerLifter::canRewriteGep(llvm::GetElementPtrInst &gep,
 // divide by them all.
 std::pair<llvm::Value *, bool>
 PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
+
   // TODO(Carson): Implement me?
   return {gep, false};
 }
@@ -424,11 +421,12 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
   }
   auto src_element_type = llvm::PointerType::get(gep->getSourceElementType(),
                                                  gep->getPointerAddressSpace());
-//  auto gep_element_type = llvm::PointerType::get(gep->getResultElementType(),
-//                                                 gep->getPointerAddressSpace());
-//  auto inferred_element_type =
-//      llvm::PointerType::get(inferred_type->getPointerElementType(),
-//                             inferred_type->getPointerAddressSpace());
+
+  //  auto gep_element_type = llvm::PointerType::get(gep->getResultElementType(),
+  //                                                 gep->getPointerAddressSpace());
+  //  auto inferred_element_type =
+  //      llvm::PointerType::get(inferred_type->getPointerElementType(),
+  //                             inferred_type->getPointerAddressSpace());
 
   llvm::SmallVector<llvm::Value *, 4> indices;
   for (auto it = gep->idx_begin(); it != gep->idx_end(); ++it) {
@@ -572,8 +570,8 @@ std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
 
   const auto inferred_type = llvm::dyn_cast<llvm::PointerType>(inst.getType());
-  auto [p, lifted_xref] = visitPossibleCrossReference(
-      inst, inst.getOperandUse(0), inferred_type);
+  auto [p, lifted_xref] =
+      visitPossibleCrossReference(inst, inst.getOperandUse(0), inferred_type);
 
   if (auto ip = llvm::dyn_cast<llvm::Instruction>(p)) {
     LOG(ERROR) << "Visiting a pointer instruction "
@@ -595,15 +593,14 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
     return {p, true};
   }
 
-  LOG(ERROR)
-      << "Failed to promote IntToPtr inst: "
-      << remill::LLVMThingToString(&inst);
+  LOG(ERROR) << "Failed to promote IntToPtr inst: "
+             << remill::LLVMThingToString(&inst);
 
   return {&inst, false};
 }
 
-std::pair<llvm::Value *, bool> 
-PointerLifter::visitPHINode(llvm::PHINode& inst) {
+std::pair<llvm::Value *, bool>
+PointerLifter::visitPHINode(llvm::PHINode &inst) {
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
     LOG(ERROR) << "No type info for load! Returning just the phi node\n";
@@ -614,43 +611,41 @@ PointerLifter::visitPHINode(llvm::PHINode& inst) {
   const auto num_vals = inst.getNumIncomingValues();
   auto new_phi = ir.CreatePHI(inferred_type, num_vals);
 
-  // We might brighten some of the phi, but not all of it. 
-  // We can force a success by bitcasting in case of failure. 
-  for (auto i = 0; i < num_vals; i++) {
+  // We might brighten some of the phi, but not all of it.
+  // We can force a success by bitcasting in case of failure.
+  for (auto i = 0u; i < num_vals; i++) {
     auto incoming_val = inst.getIncomingValue(i);
     auto incoming_block = inst.getIncomingBlock(i);
     llvm::IRBuilder<> sub_ir(incoming_block->getTerminator());
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(incoming_val)) {
+
       // Visit possible reference
       const auto inferred_ptr_ty = inferred_type->getPointerTo();
-      auto& use = val_inst->getOperandUse(0);
+      auto &use = val_inst->getOperandUse(0);
 
-      auto [p, lifted_xref] = visitPossibleCrossReference(
-        *val_inst, use, inferred_ptr_ty);
-      // I guess if we lifted, use it!
-      if (lifted_xref) {
-        // If its not the right type, we can bitcast.
-        if (p->getType() != inferred_type) {
-          p = sub_ir.CreateBitCast(p, inferred_type);
-        }
+      auto [p, lifted_xref] =
+          visitPossibleCrossReference(*val_inst, use, inferred_ptr_ty);
+
+      // Okay, xref lifter failed
+      // Not sure what it tried/or not tried, lets try vising ourselves.
+      if (!lifted_xref) {
+        p = visitInferInst(val_inst, inferred_type).first;
+
       }
-      else {
-        // Okay, xref lifter failed
-        // Not sure what it tried/or not tried, lets try vising ourselves.
-        auto [p, worked] = visitInferInst(val_inst, inferred_type);
-        if (!worked) {
-          p = sub_ir.CreateBitCast(p, inferred_type);
-        }
-     }
-     new_phi->addIncoming(p, incoming_block);
+      if (p->getType() != inferred_type) {
+        p = sub_ir.CreateBitOrPointerCast(p, inferred_type);
+      }
+
+      new_phi->addIncoming(p, incoming_block);
     }
     // TODO (Carson) handle const expr
     else {
-      LOG(ERROR) << "Unknown type in Phi op: " << remill::LLVMThingToString(incoming_val) << "\n";
+      LOG(ERROR) << "Unknown type in Phi op: "
+                 << remill::LLVMThingToString(incoming_val) << "\n";
       exit(1);
     }
   }
-  // TODO (Carson) do we replace uses here? i dont think so. 
+  // TODO (Carson) do we replace uses here? i dont think so.
   return {new_phi, true};
 }
 
@@ -680,8 +675,8 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
            dl.getTypeAllocSizeInBits(inferred_type));
 
   const auto inferred_ptr_ty = inferred_type->getPointerTo();
-  auto [p, lifted_xref] = visitPossibleCrossReference(
-      inst, inst.getOperandUse(0), inferred_ptr_ty);
+  auto [p, lifted_xref] =
+      visitPossibleCrossReference(inst, inst.getOperandUse(0), inferred_ptr_ty);
 
   llvm::IRBuilder<> ir(&inst);
 
@@ -760,6 +755,7 @@ std::pair<llvm::Value *, bool> PointerLifter::visitPossibleCrossReference(
 
       } else {
         new_val = ce_inst;
+
         // NOTE(pag): We don't mark `changed = true`.
       }
     }
@@ -778,23 +774,25 @@ std::pair<llvm::Value *, bool> PointerLifter::visitPossibleCrossReference(
     // `hinted_value_type`.
     } else if (ra.hinted_value_type) {
       if (0 < ra.displacement_from_hinted_value_type) {
-        auto disp = static_cast<uint64_t>(ra.displacement_from_hinted_value_type);
+        auto disp =
+            static_cast<uint64_t>(ra.displacement_from_hinted_value_type);
 
         if (ra.u.address > disp) {
           auto base_val = value_lifter.Lift(
-              ra.u.address - disp,
-              ra.hinted_value_type->getPointerTo(0));
-          //auto val_size = dl.getTypeAllocSize(ra.hinted_value_type).getFixedSize();
-          //auto offset = val_size % disp;
-          //new_val = remill::BuildPointerToOffset(ir, ptr, dest_elem_offset, dest_ptr_type);
-          //changed = true;
-          LOG(ERROR)
-              << "TODO: Handle displacements from value type in "
-              << remill::LLVMThingToString(val) << "; value type is "
-              << remill::LLVMThingToString(ra.hinted_value_type)
-              << "; resolved address is " << std::hex << ra.u.address << std::dec
-              << "; displacement is " << ra.displacement_from_hinted_value_type
-              << "; base value is " << remill::LLVMThingToString(base_val);
+              ra.u.address - disp, ra.hinted_value_type->getPointerTo(0));
+
+          // auto val_size = dl.getTypeAllocSize(ra.hinted_value_type).getFixedSize();
+          // auto offset = val_size % disp;
+          // new_val = remill::BuildPointerToOffset(ir, ptr, dest_elem_offset, dest_ptr_type);
+          // changed = true;
+          LOG(ERROR) << "TODO: Handle displacements from value type in "
+                     << remill::LLVMThingToString(val) << "; value type is "
+                     << remill::LLVMThingToString(ra.hinted_value_type)
+                     << "; resolved address is " << std::hex << ra.u.address
+                     << std::dec << "; displacement is "
+                     << ra.displacement_from_hinted_value_type
+                     << "; base value is "
+                     << remill::LLVMThingToString(base_val);
 
           // TODO(pag): Figure out the type to pass to `BuildPointerToOffset`.
 
@@ -805,12 +803,12 @@ std::pair<llvm::Value *, bool> PointerLifter::visitPossibleCrossReference(
         // NOTE(pag): This probably isn't worth handling until we hit it, hence
         //            the `FATAL` log to tell us loud and clear.
         } else {
-          LOG(FATAL)
-              << "TODO: Handle too-big displacements from value type in "
-              << remill::LLVMThingToString(val) << "; value type is "
-              << remill::LLVMThingToString(ra.hinted_value_type)
-              << "; resolved address is " << std::hex << ra.u.address << std::dec
-              << "; displacement is " << ra.displacement_from_hinted_value_type;
+          LOG(FATAL) << "TODO: Handle too-big displacements from value type in "
+                     << remill::LLVMThingToString(val) << "; value type is "
+                     << remill::LLVMThingToString(ra.hinted_value_type)
+                     << "; resolved address is " << std::hex << ra.u.address
+                     << std::dec << "; displacement is "
+                     << ra.displacement_from_hinted_value_type;
         }
 
       // Negative displacement, this is a bit odd.
@@ -818,26 +816,25 @@ std::pair<llvm::Value *, bool> PointerLifter::visitPossibleCrossReference(
       // NOTE(pag): This probably isn't worth handling until we hit it, hence
       //            the `FATAL` log to tell us loud and clear.
       } else if (0 > ra.displacement_from_hinted_value_type) {
-        LOG(FATAL)
-            << "TODO: Handle negatived displacements from value type in "
-            << remill::LLVMThingToString(val) << "; value type is "
-            << remill::LLVMThingToString(ra.hinted_value_type)
-            << "; resolved address is " << std::hex << ra.u.address << std::dec
-            << "; displacement is " << ra.displacement_from_hinted_value_type;
+        LOG(FATAL) << "TODO: Handle negatived displacements from value type in "
+                   << remill::LLVMThingToString(val) << "; value type is "
+                   << remill::LLVMThingToString(ra.hinted_value_type)
+                   << "; resolved address is " << std::hex << ra.u.address
+                   << std::dec << "; displacement is "
+                   << ra.displacement_from_hinted_value_type;
 
       // The displacement is zero, so we have a pointer type.
       } else {
-        new_val = value_lifter.Lift(
-            ra.u.address, ra.hinted_value_type->getPointerTo(0));
+        new_val = value_lifter.Lift(ra.u.address,
+                                    ra.hinted_value_type->getPointerTo(0));
         changed = true;
       }
 
     } else {
-      LOG(ERROR)
-              << "Found address " << std::hex << ra.u.address << std::dec
-              << " derived from " << remill::LLVMThingToString(val)
-              << " that seems like an address " << ra.references_global_value
-              << ra.references_entity << ra.references_program_counter;
+      LOG(ERROR) << "Found address " << std::hex << ra.u.address << std::dec
+                 << " derived from " << remill::LLVMThingToString(val)
+                 << " that seems like an address " << ra.references_global_value
+                 << ra.references_entity << ra.references_program_counter;
     }
 
   // OK, we resolved to an actual address, and we have a pointer type; this is
@@ -861,10 +858,9 @@ std::pair<llvm::Value *, bool> PointerLifter::visitPossibleCrossReference(
     }
 
   } else {
-    DLOG(ERROR)
-        << "Ignoring value " << std::hex << ra.u.address << std::dec
-        << " derived from " << remill::LLVMThingToString(val)
-        << " that doesn't seem like an address";
+    DLOG(ERROR) << "Ignoring value " << std::hex << ra.u.address << std::dec
+                << " derived from " << remill::LLVMThingToString(val)
+                << " that doesn't seem like an address";
   }
 
   return {new_val, changed};
@@ -927,11 +923,13 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       llvm::dyn_cast<llvm::PointerType>(inferred_type);
 
   // If we are coming from downstream, then we have an inferred type.
-  const auto lhs_op = visitPossibleCrossReference(
-      inst, inst.getOperandUse(0), inferred_type_as_ptr).first;
+  const auto lhs_op = visitPossibleCrossReference(inst, inst.getOperandUse(0),
+                                                  inferred_type_as_ptr)
+                          .first;
 
-  const auto rhs_op = visitPossibleCrossReference(
-      inst, inst.getOperandUse(1), inferred_type_as_ptr).first;
+  const auto rhs_op = visitPossibleCrossReference(inst, inst.getOperandUse(1),
+                                                  inferred_type_as_ptr)
+                          .first;
 
   auto lhs_ptr = lhs_op->getType()->isPointerTy();
   auto rhs_ptr = rhs_op->getType()->isPointerTy();
@@ -1030,20 +1028,18 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   // The left-hand side is a pointer!
   } else if (lhs_ptr) {
 
-    LOG(ERROR)
-        << remill::LLVMThingToString(&inst) << "\n"
-        << remill::LLVMThingToString(lhs_op) << "\n"
-        << remill::LLVMThingToString(rhs_op);
+    LOG(ERROR) << remill::LLVMThingToString(&inst) << "\n"
+               << remill::LLVMThingToString(lhs_op) << "\n"
+               << remill::LLVMThingToString(rhs_op);
     return {&inst, false};
 
   // The right-hand side is a pointer!
   } else {
     CHECK(rhs_ptr);
 
-    LOG(ERROR)
-        << remill::LLVMThingToString(&inst) << "\n"
-        << remill::LLVMThingToString(lhs_op) << "\n"
-        << remill::LLVMThingToString(rhs_op);
+    LOG(ERROR) << remill::LLVMThingToString(&inst) << "\n"
+               << remill::LLVMThingToString(lhs_op) << "\n"
+               << remill::LLVMThingToString(rhs_op);
     return {&inst, false};
   }
 }
@@ -1216,7 +1212,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
   made_progress = true;
   for (auto i = 0u; i < max_gas && made_progress; ++i) {
     made_progress = false;
-//    func.print(llvm::errs(), nullptr);
+
+    //    func.print(llvm::errs(), nullptr);
     for (auto &block : func) {
       for (auto &inst : block) {
         worklist.push_back(&inst);
@@ -1271,8 +1268,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *
-CreateBrightenPointerOperations(const EntityLifter &lifter, unsigned max_gas) {
+llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter,
+                                                    unsigned max_gas) {
   return new PointerLifterPass(lifter, max_gas ? max_gas : 250u);
 }
 

@@ -15,10 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -36,8 +36,7 @@ class BrightenPointersFixture {
       : arch(remill::Arch::Build(&llvm_context, remill::kOSLinux,
                                  remill::kArchAMD64)),
         mem(MemoryProvider::CreateNullMemoryProvider()),
-        types(TypeProvider::CreateNullTypeProvider(llvm_context)) {
-  }
+        types(TypeProvider::CreateNullTypeProvider(llvm_context)) {}
 
   llvm::LLVMContext llvm_context;
   const remill::Arch::ArchPtr arch;
@@ -75,8 +74,7 @@ TEST_SUITE("BrightenPointers") {
       std::cerr << error_message << std::endl;
     }
   }
-  TEST_CASE_FIXTURE(BrightenPointersFixture,
-                    "multiple_bitcast") {
+  TEST_CASE_FIXTURE(BrightenPointersFixture, "multiple_bitcast") {
     llvm::LLVMContext llvm_context;
 
     auto mod = LoadTestData(llvm_context, "multiple_bitcast.ll");

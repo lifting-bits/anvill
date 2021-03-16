@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace llvm {
 class Module;
 }  // namespace llvm
@@ -33,7 +35,7 @@ enum class StateStructureInitializationProcedure : char {
   // Store an LLVM constant aggregate zero into the `alloca State`.
   kZeroes,
 
-  // Stoe an LLVM undefined value to the `alloca State`.
+  // Store an LLVM undefined value to the `alloca State`.
   kUndef,
 
   // Should the registers of the `State` structure be initialized from many
@@ -48,10 +50,33 @@ enum class StateStructureInitializationProcedure : char {
   // this option is `false`, then the `State` structure is *not* initialized.
   kGlobalRegisterVariables,
   kGlobalRegisterVariablesAndZeroes,
-  kGlobalRegisterVariablesAndUndef
+  kGlobalRegisterVariablesAndUndef,
 
   // TODO(pag): Add an option to read values using the `llvm.read_register`
   //            intrinsic.
+};
+
+enum class StackFrameStructureInitializationProcedure : char {
+
+  // Not initializing the stack frame may or may not have the same
+  // meaning as initializing it with the kUndef strategy. The exact
+  // behavior depends on external factors such as compiler switches
+  // and version
+  kNone,
+
+  // Always initialize stack frames with zeroes
+  kZeroes,
+
+  // Explicitly mark stack frames as Undef; compared to kNone, the
+  // effect of this initialization is more predictable and won't
+  // change with different compiler switches or versions
+  kUndef,
+
+  // Use symbolic values to initialize each byte in the stack frame. This
+  // is useful to track how the stack frame is used and also allows us to
+  // generate bitcode that can be compiled while also communicating the
+  // missing/unmodeled input dependencies
+  kSymbolic,
 };
 
 // Options that direct the behavior of the code and data lifters.
@@ -63,6 +88,10 @@ class LifterOptions {
         module(&module_),
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
+        stack_frame_struct_init_procedure(
+            StackFrameStructureInitializationProcedure::kSymbolic),
+        stack_frame_lower_padding(0U),
+        stack_frame_higher_padding(0U),
         symbolic_program_counter(true),
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
@@ -81,6 +110,22 @@ class LifterOptions {
   // allocated on the stack. This configuration option determines how the
   // state structure is initialized.
   StateStructureInitializationProcedure state_struct_init_procedure;
+
+  // How the RecoverStackFrameInformation function pass should initialize
+  // recovered stack frames
+  StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
+
+  //
+  // Stack frame padding is useful to support red zones for ABIs that support
+  // them. See https://en.wikipedia.org/wiki/Red_zone_(computing) for more
+  // information
+  //
+
+  // How many bytes of padding should be added after recovered stack frames.
+  std::size_t stack_frame_lower_padding;
+
+  // How many bytes of padding should be added before recovered stack frames
+  std::size_t stack_frame_higher_padding;
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:

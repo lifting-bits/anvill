@@ -6,7 +6,7 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-add_executable(test_anvil_passes
+add_executable(test_anvill_passes
   src/main.cpp
 
   src/Utils.h
@@ -15,27 +15,30 @@ add_executable(test_anvil_passes
   src/BaseScenario.h
   src/BaseScenario.cpp
 
+  src/BaseFunctionPass.cpp
+  src/RecoverStackFrameInformation.cpp
   src/SplitStackFrameAtReturnAddress.cpp
   src/BrightenPointers.cpp
 )
 
-target_link_libraries(test_anvil_passes PRIVATE
+target_link_libraries(test_anvill_passes PRIVATE
   remill_settings
   remill
   anvill_passes
   thirdparty_doctest
+  thirdparty_magicenum
 )
 
-target_compile_definitions(test_anvil_passes PRIVATE
+target_compile_definitions(test_anvill_passes PRIVATE
   ANVILL_TEST_DATA_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/data\"
 )
 
-target_include_directories(test_anvil_passes PRIVATE
+target_include_directories(test_anvill_passes PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
 
 add_test(
-  NAME test_anvil_passes
-  COMMAND "$<TARGET_FILE:test_anvil_passes>"
+  NAME test_anvill_passes
+  COMMAND "$<TARGET_FILE:test_anvill_passes>"
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )

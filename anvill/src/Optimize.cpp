@@ -106,9 +106,9 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
   }
 }
 
-//// Get the address space of a pointer value/type, using `addr_space` as our
-//// backup if it doesn't seem like a pointer with a nown address space.
-//static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
+// // Get the address space of a pointer value/type, using `addr_space` as our
+// // backup if it doesn't seem like a pointer with a nown address space.
+// static unsigned GetPointerAddressSpace(llvm::Value *val, unsigned addr_space) {
 //  if (addr_space || !val) {
 //    return addr_space;
 //  }
@@ -135,9 +135,9 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //  } else {
 //    return addr_space;
 //  }
-//}
+// }
 //
-//static llvm::Value *FindPointer(llvm::IRBuilder<> &ir, llvm::Value *addr,
+// static llvm::Value *FindPointer(llvm::IRBuilder<> &ir, llvm::Value *addr,
 //                                llvm::Type *elem_type, unsigned addr_space) {
 //
 //  if (auto as_ptr_to_int = llvm::dyn_cast<llvm::PtrToIntOperator>(addr)) {
@@ -151,14 +151,14 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //  } else {
 //    return nullptr;
 //  }
-//}
+// }
 
-//static llvm::Value *GetPointer(const Program &program, llvm::Module &module,
+// static llvm::Value *GetPointer(const Program &program, llvm::Module &module,
 //                               llvm::IRBuilder<> &ir, llvm::Value *addr,
 //                               llvm::Type *elem_type, unsigned addr_space);
 //
-//static llvm::Value *
-//GetIndexedPointer(const Program &program, llvm::Module &module,
+// static llvm::Value *
+// GetIndexedPointer(const Program &program, llvm::Module &module,
 //                  llvm::IRBuilder<> &ir, llvm::Value *lhs, llvm::Value *rhs,
 //                  llvm::Type *dest_type, unsigned addr_space) {
 //
@@ -239,11 +239,11 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //  llvm::Value *indices[1] = {ir.CreateTrunc(rhs, i32_ty)};
 //  auto gep = ir.CreateGEP(i8_ty, base, indices);
 //  return ir.CreateBitCast(gep, dest_type);
-//}
+// }
 
-//// Try to get a pointer for the address operand of a remill memory access
-//// intrinsic.
-//static llvm::Value *GetPointerFromInt(llvm::IRBuilder<> &ir, llvm::Value *addr,
+// // Try to get a pointer for the address operand of a remill memory access
+// // intrinsic.
+// static llvm::Value *GetPointerFromInt(llvm::IRBuilder<> &ir, llvm::Value *addr,
 //                                      llvm::Type *elem_type,
 //                                      unsigned addr_space) {
 //
@@ -278,11 +278,11 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //  } else {
 //    return ir.CreateIntToPtr(addr, dest_type);
 //  }
-//}
+// }
 
-//// Try to get a pointer for the address operand of a remill memory access
-//// intrinsic.
-//llvm::Value *GetPointer(const Program &program, llvm::Module &module,
+// // Try to get a pointer for the address operand of a remill memory access
+// // intrinsic.
+// llvm::Value *GetPointer(const Program &program, llvm::Module &module,
 //                        llvm::IRBuilder<> &ir, llvm::Value *addr,
 //                        llvm::Type *elem_type, unsigned addr_space) {
 //
@@ -472,11 +472,11 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //    CHECK(addr_type->isPointerTy());
 //    return ir.CreateBitCast(addr, dest_type);
 //  }
-//}
+// }
 
 
-//// Lower an anvill type function into an `inttoptr` instructions
-//static void ReplaceTypeOp(const Program &program, llvm::Module &module,
+// // Lower an anvill type function into an `inttoptr` instructions
+// static void ReplaceTypeOp(const Program &program, llvm::Module &module,
 //                          llvm::Function *func) {
 //  auto callers = remill::CallersOf(func);
 //  for (auto call_inst : callers) {
@@ -502,9 +502,9 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //    call_inst->eraseFromParent();
 //  }
 //  RemoveFunction(func);
-//}
+// }
 
-//static void LowerTypeOps(const Program &program, llvm::Module &mod) {
+// static void LowerTypeOps(const Program &program, llvm::Module &mod) {
 //  std::vector<llvm::Function *> funcs;
 //  for (auto &func : mod) {
 //    funcs.push_back(&func);
@@ -514,7 +514,7 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 //      ReplaceTypeOp(program, mod, func);
 //    }
 //  }
-//}
+// }
 
 }  // namespace
 
@@ -522,7 +522,7 @@ static void RemoveUndefFuncCalls(llvm::Module &module) {
 // code, etc.
 void OptimizeModule(const EntityLifter &lifter_context,
                     const remill::Arch *arch, const Program &program,
-                    llvm::Module &module) {
+                    llvm::Module &module, const LifterOptions &options) {
 
   if (auto err = module.materializeAll(); remill::IsError(err)) {
     LOG(FATAL) << remill::GetErrorString(err);
@@ -564,12 +564,17 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSinkingPass());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createInstructionCombiningPass());
+
+  auto error_manager_ptr = ITransformationErrorManager::Create();
+  auto &err_man = *error_manager_ptr.get();
+
   fpm.add(CreateSinkSelectionsIntoBranchTargets());
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateSplitStackFrameAtReturnAddress());
   fpm.add(CreateBrightenPointerOperations(lifter_context));
+  fpm.add(CreateRecoverStackFrameInformation(err_man, options));
+  fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
 
   fpm.doInitialization();
@@ -578,10 +583,48 @@ void OptimizeModule(const EntityLifter &lifter_context,
   }
   fpm.doFinalization();
 
-//  RecoverStackMemoryAccesses(lifter_context, program, module);
-//  RecoverMemoryAccesses(lifter_context, program, module);
-//  LowerTypeOps(program, module);
-//  RecoverMemoryReferences(program, module);
+  // We can extend error handling here to provide more visibility
+  // into what has happened
+  for (const auto &error : err_man.ErrorList()) {
+    std::stringstream buffer;
+    buffer << error.description;
+
+    // If this is a fatal error, also include the module IR if
+    // available, both before and after the transformation
+    if (error.severity == SeverityType::Fatal) {
+      buffer << "\n";
+
+      if (error.func_before.has_value()) {
+        buffer << "Module IR before the transformation follows\n";
+        buffer << error.func_before.value();
+      } else {
+        buffer << "No pre-transformation module IR available.";
+      }
+
+      buffer << "\n";
+
+      if (error.func_after.has_value()) {
+        buffer << "Module IR after the transformation follows\n";
+        buffer << error.func_after.value();
+      } else {
+        buffer << "No post-transformation module IR available.";
+      }
+    }
+
+    auto message = buffer.str();
+
+    // TODO: Maybe create a structured JSON report instead?
+    switch (error.severity) {
+      case SeverityType::Information: LOG(INFO) << message; break;
+      case SeverityType::Warning: LOG(WARNING) << message; break;
+      case SeverityType::Error: LOG(ERROR) << message; break;
+      case SeverityType::Fatal: LOG(FATAL) << message; break;
+    }
+  }
+
+  CHECK(!err_man.HasFatalError());
+
+  RecoverMemoryReferences(program, module);
 
   fpm.add(CreateRemoveRemillFunctionReturns());
   fpm.doInitialization();

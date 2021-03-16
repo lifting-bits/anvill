@@ -639,8 +639,7 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   // std::hex << pc << "_" << reg->name
 
   std::stringstream func_name;
-  func_name << kTypeHintFunctionPrefix
-            << TranslateType(*goal_type, dl, true);
+  func_name << kTypeHintFunctionPrefix << TranslateType(*goal_type, dl, true);
   llvm::Type *return_type = goal_type;
 
   auto anvill_type_fn_ty =

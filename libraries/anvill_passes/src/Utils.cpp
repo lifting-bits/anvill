@@ -18,15 +18,13 @@
 #include "Utils.h"
 
 #include <glog/logging.h>
-
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/IRBuilder.h>
-
 #include <remill/BC/Util.h>
 
 namespace anvill {
@@ -47,17 +45,19 @@ FindFunctionCalls(llvm::Function &func,
 namespace {
 
 // Convert the constant `val` to have the pointer type `dest_ptr_ty`.
-llvm::Value *ConvertConstantToPointer(
-    llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
-    llvm::Constant *val_to_convert, llvm::PointerType *dest_ptr_ty) {
+llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
+                                      const llvm::DataLayout &dl,
+                                      llvm::Constant *val_to_convert,
+                                      llvm::PointerType *dest_ptr_ty) {
   const auto type = val_to_convert->getType();
 
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty =
-          ptr_ty->getElementType()->getPointerTo(dest_ptr_ty->getAddressSpace());
-      val_to_convert = llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
+      const auto new_ptr_ty = ptr_ty->getElementType()->getPointerTo(
+          dest_ptr_ty->getAddressSpace());
+      val_to_convert =
+          llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
       ptr_ty = new_ptr_ty;
     }
 
@@ -71,35 +71,35 @@ llvm::Value *ConvertConstantToPointer(
   // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() <
-        pointer_width) {
-      int_ty = llvm::Type::getIntNTy(val_to_convert->getContext(),
-                                     pointer_width);
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+      int_ty =
+          llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       val_to_convert = llvm::ConstantExpr::getZExt(val_to_convert, int_ty);
     }
 
     return llvm::ConstantExpr::getIntToPtr(val_to_convert, dest_ptr_ty);
 
   } else {
-    LOG(ERROR)
-        << "Unanticipated conversion from " << remill::LLVMThingToString(type)
-        << " to " << remill::LLVMThingToString(dest_ptr_ty);
+    LOG(ERROR) << "Unanticipated conversion from "
+               << remill::LLVMThingToString(type) << " to "
+               << remill::LLVMThingToString(dest_ptr_ty);
     return llvm::ConstantExpr::getBitCast(val_to_convert, dest_ptr_ty);
   }
 }
 
 
 // Convert the constant `val` to have the pointer type `dest_ptr_ty`.
-llvm::Value *ConvertValueToPointer(
-    llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
-    llvm::Value *val_to_convert, llvm::PointerType *dest_ptr_ty) {
+llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
+                                   const llvm::DataLayout &dl,
+                                   llvm::Value *val_to_convert,
+                                   llvm::PointerType *dest_ptr_ty) {
   const auto type = val_to_convert->getType();
 
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty =
-          ptr_ty->getElementType()->getPointerTo(dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = ptr_ty->getElementType()->getPointerTo(
+          dest_ptr_ty->getAddressSpace());
       val_to_convert = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
       ptr_ty = new_ptr_ty;
     }
@@ -114,10 +114,9 @@ llvm::Value *ConvertValueToPointer(
   // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() <
-        pointer_width) {
-      int_ty = llvm::Type::getIntNTy(val_to_convert->getContext(),
-                                     pointer_width);
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+      int_ty =
+          llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       val_to_convert = ir.CreateZExt(val_to_convert, int_ty);
     }
 
@@ -131,9 +130,9 @@ llvm::Value *ConvertValueToPointer(
 }  // namespace
 
 // Convert the constant `val` to have the pointer type `dest_ptr_ty`.
-llvm::Value *ConvertToPointer(
-    llvm::Instruction *usage_site, llvm::Value *val_to_convert,
-    llvm::PointerType *dest_ptr_ty) {
+llvm::Value *ConvertToPointer(llvm::Instruction *usage_site,
+                              llvm::Value *val_to_convert,
+                              llvm::PointerType *dest_ptr_ty) {
 
   llvm::IRBuilder<> ir(usage_site);
   const auto &dl = usage_site->getModule()->getDataLayout();
@@ -142,6 +141,25 @@ llvm::Value *ConvertToPointer(
   } else {
     return ConvertValueToPointer(ir, dl, val_to_convert, dest_ptr_ty);
   }
+}
+
+// Returns the function's IR
+std::string GetFunctionIR(llvm::Function &func) {
+  std::string output;
+
+  llvm::raw_string_ostream output_stream(output);
+  func.print(output_stream, nullptr);
+
+  return output;
+}
+
+std::string GetModuleIR(llvm::Module &module) {
+  std::string output;
+
+  llvm::raw_string_ostream output_stream(output);
+  module.print(output_stream, nullptr);
+
+  return output;
 }
 
 }  // namespace anvill

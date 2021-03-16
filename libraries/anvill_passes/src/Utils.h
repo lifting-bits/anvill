@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <llvm/IR/Module.h>
+
 #include <functional>
 #include <vector>
 
@@ -35,8 +37,14 @@ FindFunctionCalls(llvm::Function &func,
                   std::function<bool(llvm::CallBase *)> pred);
 
 // Convert the constant `val` to have the pointer type `dest_ptr_ty`.
-llvm::Value *ConvertToPointer(
-    llvm::Instruction *usage_site, llvm::Value *val_to_convert,
-    llvm::PointerType *dest_ptr_ty);
+llvm::Value *ConvertToPointer(llvm::Instruction *usage_site,
+                              llvm::Value *val_to_convert,
+                              llvm::PointerType *dest_ptr_ty);
+
+// Returns the function's IR
+std::string GetFunctionIR(llvm::Function &func);
+
+// Returns the module's IR
+std::string GetModuleIR(llvm::Module &module);
 
 }  // namespace anvill

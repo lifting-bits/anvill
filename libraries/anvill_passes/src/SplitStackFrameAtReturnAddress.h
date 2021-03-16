@@ -65,100 +65,122 @@
 
 #pragma once
 
-#include <llvm/IR/Instructions.h>
-#include <llvm/Pass.h>
+#include <anvill/ITransformationErrorManager.h>
+#include <anvill/Result.h>
+
+#include "BaseFunctionPass.h"
 
 namespace anvill {
+
+// Function pass outcome
+enum class StackFrameSplitErrorCode {
+
+  // The pass has either succeeded or decided that the function
+  // does not need any patching
+  Success,
+
+  // The function possesses features that the pass does not support
+  NotSupported,
+
+  // An internal error, most likely a logic bug
+  InternalError,
+
+  // An error has occurred while trying to track instructions/uses
+  InstructionTrackingError,
+
+  // The structure offset is not valid, and could not be mapped
+  // back to a valid StructType element index
+  StackFrameOffsetError,
+
+  // The stack frame type for this function is missing
+  MissingFunctionStackFrameType,
+
+  // The instruction responsible for allocating the stack frame
+  // was not found
+  StackFrameAllocationNotFound,
+};
+
+// A store instruction and the offset into the structure being written
+using StoreInstAndOffsetPair = std::pair<const llvm::StoreInst *, std::int64_t>;
+
+// Output data for GetRetnAddressStoreInstructions
+struct RetnAddressStoreInstructions final {
+
+  // A list of store instructions and offsets that operate
+  // on the stack frame allocated by the `alloca_inst` instruction
+  std::vector<StoreInstAndOffsetPair> store_off_pairs;
+
+  // This is the instruction that allocates the stack frame
+  // of the function
+  llvm::AllocaInst *alloca_inst{nullptr};
+};
+
+using SuccessOrStackSplitError =
+    Result<std::monostate, StackFrameSplitErrorCode>;
 
 // Splits the stack frame type of the given function, isolating the
 // llvm.returnaddress (if present) in its own StructType to allow for
 // further optimization passes to better simplify/eliminate stack
 // accesses.
-class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass {
+class SplitStackFrameAtReturnAddress final
+    : public BaseFunctionPass<SplitStackFrameAtReturnAddress> {
+
  public:
-  // Function pass outcome
-  enum class Error {
-
-    // The pass has either succeeded or decided that the function
-    // does not need any patching
-    Success,
-
-    // The function possesses features that the pass does not support
-    NotSupported,
-
-    // An internal error, most likely a logic bug
-    InternalError,
-
-    // An error has occurred while trying to track instructions/uses
-    InstructionTrackingError,
-
-    // The stack frame could not be properly handled due to errors
-    // with the offset <--> elem index translation
-    StackFrameOffsetError,
-  };
-
   // Creates a new SplitStackFrameAtReturnAddress object
-  static SplitStackFrameAtReturnAddress *Create(void);
+  static SplitStackFrameAtReturnAddress *
+  Create(ITransformationErrorManager &error_manager);
 
-  // Function pass entry point, called by LLVM
-  virtual bool runOnFunction(llvm::Function &function) override;
+  // Function pass entry point
+  bool Run(llvm::Function &function);
 
   // Returns the pass name
   virtual llvm::StringRef getPassName(void) const override;
 
-  // Executes the function pass logic; this method definition (vs runOnFunction)
-  // lets return an error in case something goes wrong
-  Error execute(bool &function_was_updated, llvm::Function &function);
+  // Executes the function pass logic
+  Result<bool, StackFrameSplitErrorCode> execute(llvm::Function &function);
 
   // Returns the name of the stack frame type for the given function
   static std::string
   GetFunctionStackFrameTypeName(const llvm::Function &function);
 
   // Returns the stack frame type for the given function
-  static bool GetFunctionStackFrameType(const llvm::StructType *&frame_type,
-                                        const llvm::Function &function);
+  static Result<const llvm::StructType *, StackFrameSplitErrorCode>
+  GetFunctionStackFrameType(const llvm::Function &function);
 
   // Returns the `alloca` instruction for the function's stackframe, or
   // nullptr if not found
-  static llvm::AllocaInst *GetStackFrameAllocaInst(llvm::Function &function);
+  static Result<llvm::AllocaInst *, StackFrameSplitErrorCode>
+  GetStackFrameAllocaInst(llvm::Function &function);
 
   // Returns the first `call` instruction to the llvm.returnaddress intrinsic
   // in the entry block or nullptr if not found
   static const llvm::CallInst *
   GetReturnAddressInstrinsicCall(const llvm::Function &function);
 
-  // A store instruction and the offset into the structure being written
-  using StoreInstAndOffsetPair =
-      std::pair<const llvm::StoreInst *, std::int64_t>;
-
   // Returns a list of StoreInstAndOffsetPair that identify stores
   // instructions that are saving the value of the llvm.returnaddress
   // intrinsic and the alloca inst that allocates the stack frame
-  static bool GetRetnAddressStoreInstructions(
-      std::vector<StoreInstAndOffsetPair> &store_off_pairs,
-      llvm::AllocaInst *&alloca_inst, llvm::Function &function);
+  static Result<RetnAddressStoreInstructions, StackFrameSplitErrorCode>
+  GetRetnAddressStoreInstructions(llvm::Function &function);
 
   // Given an offset into the specified StructType, it returns the matching
   // struct element index
-  static bool StructOffsetToElementIndex(std::uint32_t &elem_index,
-                                         const llvm::Module *module,
-                                         const llvm::StructType *struct_type,
-                                         std::int64_t offset);
+  static Result<std::uint32_t, StackFrameSplitErrorCode>
+  StructOffsetToElementIndex(const llvm::Module *module,
+                             const llvm::StructType *struct_type,
+                             std::int64_t offset);
 
   // Takes the function's stack frame type and splits it into three parts, isolating
   // the element at the given index in its own structure
-  static Error SplitStackFrameTypeAtOffset(
-      std::vector<llvm::StructType *> &stack_frame_parts,
-      const llvm::Function &function, std::int64_t offset,
-      const llvm::StructType *stack_frame_type);
+  static Result<std::vector<llvm::StructType *>, StackFrameSplitErrorCode>
+  SplitStackFrameTypeAtOffset(const llvm::Function &function,
+                              std::int64_t offset,
+                              const llvm::StructType *stack_frame_type);
 
   // Takes the function's stack frame and splits it by patching the IR
-  static Error SplitStackFrameAtOffset(llvm::Function &function,
-                                       std::int64_t offset,
-                                       llvm::AllocaInst *orig_frame_alloca);
-
-  // Translates the error code to a human readable string
-  static const char *ErrorToString(const Error &error);
+  static SuccessOrStackSplitError
+  SplitStackFrameAtOffset(llvm::Function &function, std::int64_t offset,
+                          llvm::AllocaInst *orig_frame_alloca);
 
   // Tracks down all the direct and indirect users of source_instr that are
   // of type InstructionType
@@ -191,9 +213,7 @@ class SplitStackFrameAtReturnAddress final : public llvm::FunctionPass {
   }
 
  private:
-  static char ID;
-
-  SplitStackFrameAtReturnAddress(void) : llvm::FunctionPass(ID) {}
+  SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
 };
 
 }  // namespace anvill

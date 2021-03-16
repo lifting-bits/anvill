@@ -17,16 +17,14 @@
 
 #pragma once
 
-#include <llvm/Pass.h>
-
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/ValueLifter.h>
-
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/IRBuilder.h>
+#include <llvm/Pass.h>
 
 #include <algorithm>
 #include <string>
@@ -51,8 +49,7 @@ class CrossReferenceResolver;
 
 class PointerLifterPass final : public llvm::FunctionPass {
  public:
-  PointerLifterPass(const EntityLifter &entity_lifter_,
-                    unsigned max_gas_);
+  PointerLifterPass(const EntityLifter &entity_lifter_, unsigned max_gas_);
 
   bool runOnFunction(llvm::Function &f) final;
 
@@ -88,8 +85,9 @@ class PointerLifter
 
   // Visit of use of a value `val` by the instruction `user`, where we
   // believe this use should be a pointer to the type `inferred_value_type`.
-  std::pair<llvm::Value *, bool> visitPossibleCrossReference(
-      llvm::Instruction &user, llvm::Use &use, llvm::PointerType *inferred_type);
+  std::pair<llvm::Value *, bool>
+  visitPossibleCrossReference(llvm::Instruction &user, llvm::Use &use,
+                              llvm::PointerType *inferred_type);
 
   // std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
   bool canRewriteGep(llvm::GetElementPtrInst &inst, llvm::Type *inferred_type);
@@ -102,6 +100,7 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
 
   std::pair<llvm::Value *, bool> visitPHINode(llvm::PHINode &inst);
+
   // std::pair<llvm::Value*, bool>visitCastInst(llvm::CastInst &inst);
   // Simple wrapper for storing the type information into the list, and then
   // calling visit.
@@ -131,12 +130,12 @@ class PointerLifter
   // Whether or not progress has been made, e.g. a new type was inferred.
   bool made_progress{false};
 
-  llvm::Function * const func;
-  llvm::Module * const mod;
+  llvm::Function *const func;
+  llvm::Module *const mod;
   llvm::LLVMContext &context;
-  llvm::IntegerType * const i32_ty;
-  llvm::IntegerType * const i8_ty;
-  llvm::PointerType * const i8_ptr_ty;
+  llvm::IntegerType *const i32_ty;
+  llvm::IntegerType *const i8_ty;
+  llvm::PointerType *const i8_ptr_ty;
   const llvm::DataLayout &dl;
 
   // Used to resolve constant pointers to integer addresses or stack pointer
@@ -147,4 +146,3 @@ class PointerLifter
 };
 
 }  // namespace anvill
-
