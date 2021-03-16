@@ -169,19 +169,16 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
         return StackAnalysisErrorCode::StackPointerResolutionError;
       }
 
-      // TODO: Should be sign-extended by the CrossReferenceResolver class
-      std::int64_t stack_offset =
-          static_cast<std::int32_t>(reference.u.displacement);
-
-      operand.stack_offset = stack_offset;
+      operand.stack_offset = reference.Displacement(data_layout);
 
       // Update the boundaries, based on the offset we have found
       std::int64_t type_size = data_layout.getTypeAllocSize(op->getType());
 
       output.highest_offset =
-          std::max(output.highest_offset, stack_offset + type_size);
+          std::max(output.highest_offset, operand.stack_offset + type_size);
 
-      output.lowest_offset = std::min(output.lowest_offset, stack_offset);
+      output.lowest_offset =
+          std::min(output.lowest_offset, operand.stack_offset);
 
       // Save the operand
       instruction.operand_list.push_back(std::move(operand));

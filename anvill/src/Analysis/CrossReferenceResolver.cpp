@@ -465,4 +465,21 @@ CrossReferenceResolver::TryResolveReference(llvm::Value *val) const {
   return impl->ResolveValue(val);
 }
 
+std::int64_t
+ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
+  std::int64_t displacement{};
+
+  switch (dl.getPointerSizeInBits(0)) {
+    case 32:
+      displacement = static_cast<std::int32_t>(u.displacement);
+      break;
+
+    case 64:
+      displacement = u.displacement;
+      break;
+  }
+
+  return displacement;
+}
+
 }  // namespace anvill
