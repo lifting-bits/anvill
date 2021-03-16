@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,25 +15,5 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-#include <llvm/IR/Module.h>
-
-#include <functional>
-#include <vector>
-
-namespace llvm {
-class CallBase;
-class Function;
-}  // namespace llvm
-namespace anvill {
-
-// Find all function calls in `func` such that `pred(call)` returns `true`.
-std::vector<llvm::CallBase *>
-FindFunctionCalls(llvm::Function &func,
-                  std::function<bool(llvm::CallBase *)> pred);
-
-// Returns the module's IR
-std::string GetModuleIR(llvm::Module &module);
-
-}  // namespace anvill
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest.h>

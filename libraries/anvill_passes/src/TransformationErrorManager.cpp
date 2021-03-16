@@ -15,35 +15,39 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
-
-#include <llvm/IR/Function.h>
-#include <llvm/IR/InstIterator.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
+#include "TransformationErrorManager.h"
 
 namespace anvill {
 
-// Find all function calls in `func` such that `pred(call)` returns `true`.
-std::vector<llvm::CallBase *>
-FindFunctionCalls(llvm::Function &func,
-                  std::function<bool(llvm::CallBase *)> pred) {
-  std::vector<llvm::CallBase *> found;
-  for (auto &inst : llvm::instructions(func)) {
-    if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst); call && pred(call)) {
-      found.push_back(call);
-    }
+void TransformationErrorManager::Insert(const TransformationError &error) {
+  if (error.severity == SeverityType::Fatal) {
+    has_fatal_error = true;
   }
-  return found;
+
+  error_list.push_back(error);
 }
 
-std::string GetModuleIR(llvm::Module &module) {
-  std::string output;
+void TransformationErrorManager::Reset(void) {
+  error_list.clear();
+  has_fatal_error = false;
+}
 
-  llvm::raw_string_ostream output_stream(output);
-  module.print(output_stream, nullptr);
+bool TransformationErrorManager::HasFatalError(void) const {
+  return has_fatal_error;
+}
 
-  return output;
+const std::vector<TransformationError> &
+TransformationErrorManager::ErrorList(void) const {
+  return error_list;
+}
+
+ITransformationErrorManager::Ptr ITransformationErrorManager::Create(void) {
+  try {
+    return Ptr(new TransformationErrorManager());
+
+  } catch (const std::bad_alloc &) {
+    return nullptr;
+  }
 }
 
 }  // namespace anvill

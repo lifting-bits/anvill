@@ -22,11 +22,19 @@
 
 namespace anvill {
 
+bool VerifyModule(llvm::Module *module);
+
 std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
                                            const std::string &data_name);
 
-std::unique_ptr<llvm::Module>
-RunFunctionPass(llvm::LLVMContext &context, const std::string &test_data_name,
-                llvm::FunctionPass *function_pass);
+bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass);
+
+struct Platform final {
+  std::string os;
+  std::string arch;
+};
+
+using PlatformList = std::vector<Platform>;
+const PlatformList &GetSupportedPlatforms(void);
 
 }  // namespace anvill

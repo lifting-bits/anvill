@@ -8,6 +8,7 @@
 
 add_library(anvill STATIC
   include/anvill/Type.h
+  include/anvill/Result.h
 
   src/Arch/AArch64_C.cpp
   src/Arch/SPARC32_C.cpp
@@ -69,12 +70,13 @@ add_library(anvill STATIC
   
   include/anvill/ABI.h
   src/ABI.cpp
-  
-  include/anvill/Analysis/CrossReferenceResolver.h  
+
   include/anvill/Analysis/Utils.h
   src/Analysis/Utils.cpp
+
+  include/anvill/Analysis/CrossReferenceResolver.h  
   src/Analysis/CrossReferenceResolver.cpp
-    
+
   include/anvill/Providers/MemoryProvider.h
   src/Providers/MemoryProvider.cpp
   
@@ -106,6 +108,7 @@ target_public_headers(anvill
   include/anvill/Optimize.h
   include/anvill/Program.h
   include/anvill/RecoverMemRefs.h
+  include/anvill/Result.h
   include/anvill/Type.h
   include/anvill/TypeParser.h
   include/anvill/TypePrinter.h
@@ -113,6 +116,10 @@ target_public_headers(anvill
 )
 
 add_subdirectory("python")
+
+if(ANVILL_ENABLE_TESTS)
+  add_subdirectory("tests")
+endif()
 
 if(ANVILL_ENABLE_INSTALL_TARGET)
   install(

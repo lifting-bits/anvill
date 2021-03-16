@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <anvill/ITransformationErrorManager.h>
+#include <anvill/Lifters/Options.h>
+
 namespace llvm {
 class Function;
 class FunctionPass;
@@ -79,7 +82,8 @@ llvm::FunctionPass *CreateRemoveCompilerBarriers(void);
 // frame. This approach is very convenient, but comes at the cost of having
 // to do this particular transformation in order to recover more typical stack
 // frame structures.
-llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(void);
+llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
+    ITransformationErrorManager &error_manager);
 
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics
@@ -155,5 +159,10 @@ llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
 // stores themselves are retained.
 // llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
 
+// This function pass makes use of the __anvill_sp usages to create a StructType
+// that acts as a stack frame
+llvm::FunctionPass *
+CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
+                                   const LifterOptions &options);
 
 }  // namespace anvill

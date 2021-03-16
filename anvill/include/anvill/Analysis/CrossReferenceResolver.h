@@ -38,6 +38,10 @@ struct ResolvedCrossReference {
 
     // In the case of a stack pointer reference, we're generally dealing with a
     // displacement and not a concrete address.
+    //
+    // Prefer to use ResolvedCrossReference::Displacement instead of accessing
+    // this field directly, since this value needs to be adjusted according
+    // to the size of a pointer
     int64_t displacement;
   } u;
 
@@ -90,6 +94,9 @@ struct ResolvedCrossReference {
   inline operator bool(void) const {
     return is_valid;
   }
+
+  // Returns the displacement value, adjusted according to pointer size
+  std::int64_t Displacement(const llvm::DataLayout &dl) const;
 };
 
 // Attempts to fold cross-references down into their intended addresses. This

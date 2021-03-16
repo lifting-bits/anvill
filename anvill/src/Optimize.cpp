@@ -521,7 +521,7 @@ static void LowerTypeOps(const Program &program, llvm::Module &mod) {
 // code, etc.
 void OptimizeModule(const EntityLifter &lifter_context,
                     const remill::Arch *arch, const Program &program,
-                    llvm::Module &module) {
+                    llvm::Module &module, const LifterOptions &options) {
 
   if (auto err = module.materializeAll(); remill::IsError(err)) {
     LOG(FATAL) << remill::GetErrorString(err);
@@ -564,11 +564,15 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createInstructionCombiningPass());
 
+  auto error_manager_ptr = ITransformationErrorManager::Create();
+  auto &err_man = *error_manager_ptr.get();
+
   fpm.add(CreateSinkSelectionsIntoBranchTargets());
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateSplitStackFrameAtReturnAddress());
+  //fpm.add(CreateRecoverStackFrameInformation(err_man, options));
+  fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
 
   fpm.doInitialization();
@@ -576,6 +580,47 @@ void OptimizeModule(const EntityLifter &lifter_context,
     fpm.run(func);
   }
   fpm.doFinalization();
+
+  // We can extend error handling here to provide more visibility
+  // into what has happened
+  for (const auto &error : err_man.ErrorList()) {
+    std::stringstream buffer;
+    buffer << error.description;
+
+    // If this is a fatal error, also include the module IR if
+    // available, both before and after the transformation
+    if (error.severity == SeverityType::Fatal) {
+      buffer << "\n";
+
+      if (error.module_before.has_value()) {
+        buffer << "Module IR before the transformation follows\n";
+        buffer << error.module_before.value();
+      } else {
+        buffer << "No pre-transformation module IR available.";
+      }
+
+      buffer << "\n";
+
+      if (error.module_after.has_value()) {
+        buffer << "Module IR after the transformation follows\n";
+        buffer << error.module_after.value();
+      } else {
+        buffer << "No post-transformation module IR available.";
+      }
+    }
+
+    auto message = buffer.str();
+
+    // TODO: Maybe create a structured JSON report instead?
+    switch (error.severity) {
+      case SeverityType::Information: LOG(INFO) << message; break;
+      case SeverityType::Warning: LOG(WARNING) << message; break;
+      case SeverityType::Error: LOG(ERROR) << message; break;
+      case SeverityType::Fatal: LOG(FATAL) << message; break;
+    }
+  }
+
+  CHECK(!err_man.HasFatalError());
 
   RecoverStackMemoryAccesses(lifter_context, program, module);
   RecoverMemoryAccesses(lifter_context, program, module);

@@ -17,10 +17,35 @@
 
 #include "Utils.h"
 
+#include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
 
+#include <iostream>
+
 namespace anvill {
+
+bool VerifyModule(llvm::Module *module) {
+  std::string error_buffer;
+  llvm::raw_string_ostream error_stream(error_buffer);
+
+  if (llvm::verifyModule(*module, &error_stream) != 0) {
+    auto module_name = module->getName().str();
+
+    std::string error_message =
+        "Module verification failed for '" + module_name + "'";
+
+    error_stream.flush();
+    if (!error_buffer.empty()) {
+      error_message += ": " + error_buffer;
+    }
+
+    std::cerr << error_message << std::endl;
+    return false;
+  }
+
+  return true;
+}
 
 std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
                                            const std::string &data_name) {
@@ -36,25 +61,44 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
         error.getMessage().str());
   }
 
+  std::string error_buffer;
+  llvm::raw_string_ostream error_stream(error_buffer);
+
+  auto succeeded = llvm::verifyModule(*llvm_module.get(), &error_stream) == 0;
+  error_stream.flush();
+
+  if (!succeeded) {
+    std::string error_message =
+        "Module verification failed for '" + data_name + "'";
+
+    if (!error_buffer.empty()) {
+      error_message += ": " + error_buffer;
+    }
+
+    std::cerr << error_message << std::endl;
+  }
+
   return llvm_module;
 }
 
-std::unique_ptr<llvm::Module>
-RunFunctionPass(llvm::LLVMContext &context, const std::string &test_data_name,
-                llvm::FunctionPass *function_pass) {
-  auto module = LoadTestData(context, test_data_name);
-
-  llvm::legacy::FunctionPassManager pass_manager(module.get());
+bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass) {
+  llvm::legacy::FunctionPassManager pass_manager(module);
   pass_manager.add(function_pass);
 
   pass_manager.doInitialization();
 
-  for (auto &function : *module.get()) {
+  for (auto &function : *module) {
     pass_manager.run(function);
   }
 
   pass_manager.doFinalization();
-  return module;
+  return VerifyModule(module);
+}
+
+const PlatformList &GetSupportedPlatforms(void) {
+  static const PlatformList kSupportedPlatforms = {{"linux", "amd64"}};
+
+  return kSupportedPlatforms;
 }
 
 }  // namespace anvill

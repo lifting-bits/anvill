@@ -29,27 +29,14 @@ namespace anvill {
 TEST_SUITE("SplitStackFrameAtReturnAddress") {
   TEST_CASE("Run the whole pass on a well-formed function") {
     llvm::LLVMContext llvm_context;
-
     auto module =
-        RunFunctionPass(llvm_context, "SplitStackFrameAtReturnAddress.ll",
-                        CreateSplitStackFrameAtReturnAddress());
+        LoadTestData(llvm_context, "SplitStackFrameAtReturnAddress.ll");
 
-    // Verify the module
-    std::string error_buffer;
-    llvm::raw_string_ostream error_stream(error_buffer);
+    REQUIRE(module != nullptr);
 
-    auto succeeded = llvm::verifyModule(*module.get(), &error_stream) == 0;
-    error_stream.flush();
-
-    CHECK(succeeded);
-    if (!succeeded) {
-      std::string error_message = "Module verification failed";
-      if (!error_buffer.empty()) {
-        error_message += ": " + error_buffer;
-      }
-
-      std::cerr << error_message << std::endl;
-    }
+    auto error_manager = ITransformationErrorManager::Create();
+    CHECK(RunFunctionPass(module.get(), CreateSplitStackFrameAtReturnAddress(
+                                            *error_manager.get())));
   }
 
   SCENARIO("Offsets can be converted to StructType element indexes") {
@@ -63,28 +50,25 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       WHEN("querying for offset 0") {
         auto module = base->Function()->getParent();
 
-        std::uint32_t elem_index{1};
-        auto succeeded =
+        auto elem_index_res =
             SplitStackFrameAtReturnAddress::StructOffsetToElementIndex(
-                elem_index, module, frame_type, 0);
+                module, frame_type, 0);
 
         THEN("success is returned with a 0 element index") {
-          CHECK(succeeded);
-          CHECK(elem_index == 0UL);
+          REQUIRE(elem_index_res.Succeeded());
+          CHECK(elem_index_res.Value() == 0UL);
         }
       }
 
       WHEN("querying for an invalid offset") {
         auto module = base->Function()->getParent();
 
-        std::uint32_t elem_index{1};
-        auto succeeded =
+        auto elem_index_res =
             SplitStackFrameAtReturnAddress::StructOffsetToElementIndex(
-                elem_index, module, frame_type, 1000);
+                module, frame_type, 1000);
 
         THEN("failure is returned") {
-          CHECK(succeeded == false);
-          CHECK(elem_index == 0UL);
+          CHECK(!elem_index_res.Succeeded());
         }
       }
     }
@@ -96,15 +80,12 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       REQUIRE(BaseScenario::Create(base));
 
       WHEN("querying for the frame type") {
-        auto frame_type = reinterpret_cast<const llvm::StructType *>(1);
-
-        auto frame_type_found =
+        auto frame_type_res =
             SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
-                frame_type, *base->Function());
+                *base->Function());
 
         THEN("an error is returned and the returned frame type is a nullptr") {
-          CHECK(frame_type == nullptr);
-          CHECK(!frame_type_found);
+          CHECK(!frame_type_res.Succeeded());
         }
       }
     }
@@ -116,15 +97,13 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       auto expected_frame_type = base->GenerateStackFrameType();
 
       WHEN("querying for the frame type") {
-        const llvm::StructType *frame_type{nullptr};
-
-        auto frame_type_found =
+        auto frame_type_res =
             SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
-                frame_type, *base->Function());
+                *base->Function());
 
         THEN("success is returned and frame_type is set to a valid pointer") {
-          CHECK(frame_type == expected_frame_type);
-          CHECK(frame_type_found);
+          REQUIRE(frame_type_res.Succeeded());
+          CHECK(frame_type_res.Value() == expected_frame_type);
         }
       }
     }
@@ -138,12 +117,16 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       base->GenerateEmptyEntryBlock();
 
       WHEN("querying for the `alloca` instruction") {
-        auto alloca_inst =
+        auto alloca_inst_res =
             SplitStackFrameAtReturnAddress::GetStackFrameAllocaInst(
                 *base->Function());
 
-        THEN("a nullptr is returned") {
-          CHECK(alloca_inst == nullptr);
+        THEN("an error is returned") {
+          REQUIRE(!alloca_inst_res.Succeeded());
+
+          auto error = alloca_inst_res.TakeError();
+          CHECK(error ==
+                StackFrameSplitErrorCode::StackFrameAllocationNotFound);
         }
       }
     }
@@ -156,11 +139,14 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
           base->GenerateStackFrameAllocationEntryBlock();
 
       WHEN("querying for the `alloca` instruction") {
-        auto alloca_inst =
+        auto alloca_inst_res =
             SplitStackFrameAtReturnAddress::GetStackFrameAllocaInst(
                 *base->Function());
 
         THEN("the correct alloc instruction is returned") {
+          REQUIRE(alloca_inst_res.Succeeded());
+
+          auto alloca_inst = alloca_inst_res.TakeValue();
           CHECK(alloca_inst == expected_alloca_inst);
         }
       }
@@ -185,20 +171,16 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       }
 
       WHEN("querying for the retn addr store instr into the stack frame") {
-        std::vector<SplitStackFrameAtReturnAddress::StoreInstAndOffsetPair>
-            store_off_pairs = {std::make_pair(nullptr, 0),
-                               std::make_pair(nullptr, 0)};
-
-        auto alloca_inst = reinterpret_cast<llvm::AllocaInst *>(1);
-
-        auto found =
+        auto retn_addr_store_instr_res =
             SplitStackFrameAtReturnAddress::GetRetnAddressStoreInstructions(
-                store_off_pairs, alloca_inst, *base->Function());
+                *base->Function());
 
-        THEN("nothing is returned") {
-          CHECK(found == false);
-          CHECK(alloca_inst == nullptr);
-          CHECK(store_off_pairs.empty());
+        THEN("an error is returned") {
+          REQUIRE(!retn_addr_store_instr_res.Succeeded());
+
+          auto error = retn_addr_store_instr_res.TakeError();
+          CHECK(error ==
+                StackFrameSplitErrorCode::StackFrameAllocationNotFound);
         }
       }
     }
@@ -220,23 +202,20 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       }
 
       WHEN("querying for the retn addr store instr into the stack frame") {
-        std::vector<SplitStackFrameAtReturnAddress::StoreInstAndOffsetPair>
-            store_off_pairs = {std::make_pair(nullptr, 0),
-                               std::make_pair(nullptr, 0)};
-
-        llvm::AllocaInst *alloca_inst{nullptr};
-
-        auto found =
+        auto retn_addr_store_instr_res =
             SplitStackFrameAtReturnAddress::GetRetnAddressStoreInstructions(
-                store_off_pairs, alloca_inst, *base->Function());
+                *base->Function());
 
         THEN("a valid store+off pair and alloc instruction are returned") {
-          CHECK(found);
+          REQUIRE(retn_addr_store_instr_res.Succeeded());
 
-          CHECK(alloca_inst != nullptr);
+          auto retn_addr_store_instr = retn_addr_store_instr_res.TakeValue();
 
-          REQUIRE(store_off_pairs.size() == 1U);
-          const auto &store_and_offset = store_off_pairs.front();
+          CHECK(retn_addr_store_instr.alloca_inst != nullptr);
+
+          REQUIRE(retn_addr_store_instr.store_off_pairs.size() == 1U);
+          const auto &store_and_offset =
+              retn_addr_store_instr.store_off_pairs.front();
 
           auto store_instruction = std::get<0>(store_and_offset);
           auto store_offset = std::get<1>(store_and_offset);
@@ -257,14 +236,14 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       auto base_type_name = frame_type->getName().str();
 
       WHEN("splitting the stack frame in the center") {
-        std::vector<llvm::StructType *> stack_frame_parts;
-
-        auto error =
+        auto stack_frame_parts_res =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
-                stack_frame_parts, *base->Function(), 40LL, frame_type);
+                *base->Function(), 40LL, frame_type);
 
         THEN("success is returned, with three new valid frame types") {
-          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
+          REQUIRE(stack_frame_parts_res.Succeeded());
+
+          auto stack_frame_parts = stack_frame_parts_res.TakeValue();
           REQUIRE(stack_frame_parts.size() == 3U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
@@ -288,14 +267,14 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       }
 
       WHEN("splitting the stack frame at the first element") {
-        std::vector<llvm::StructType *> stack_frame_parts;
-
-        auto error =
+        auto stack_frame_parts_res =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
-                stack_frame_parts, *base->Function(), 0LL, frame_type);
+                *base->Function(), 0LL, frame_type);
 
         THEN("success is returned, with two new valid frame types") {
-          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
+          REQUIRE(stack_frame_parts_res.Succeeded());
+
+          auto stack_frame_parts = stack_frame_parts_res.TakeValue();
           REQUIRE(stack_frame_parts.size() == 2U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
@@ -313,14 +292,14 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
       }
 
       WHEN("splitting the stack frame at the last element") {
-        std::vector<llvm::StructType *> stack_frame_parts;
-
-        auto error =
+        auto stack_frame_parts_res =
             SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
-                stack_frame_parts, *base->Function(), 72LL, frame_type);
+                *base->Function(), 72LL, frame_type);
 
         THEN("success is returned, with two new valid frame types") {
-          CHECK(error == SplitStackFrameAtReturnAddress::Error::Success);
+          REQUIRE(stack_frame_parts_res.Succeeded());
+
+          auto stack_frame_parts = stack_frame_parts_res.TakeValue();
           REQUIRE(stack_frame_parts.size() == 2U);
 
           auto stack_frame_part0 = stack_frame_parts[0];
