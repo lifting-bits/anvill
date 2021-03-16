@@ -22,6 +22,7 @@
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Result.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/Pass.h>
 
 #include <magic_enum.hpp>
 #include <sstream>

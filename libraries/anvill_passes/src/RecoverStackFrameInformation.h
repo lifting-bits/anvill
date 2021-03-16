@@ -19,7 +19,6 @@
 
 #include <anvill/Lifters/Options.h>
 #include <anvill/Result.h>
-#include <llvm/Pass.h>
 
 #include <unordered_map>
 
@@ -86,6 +85,8 @@ struct StackFrameAnalysis final {
   std::size_t size{};
 };
 
+// This function pass recovers stack information by analyzing the usage
+// of the `__anvill_sp` symbol
 class RecoverStackFrameInformation final
     : public BaseFunctionPass<RecoverStackFrameInformation> {
   // Lifting options
