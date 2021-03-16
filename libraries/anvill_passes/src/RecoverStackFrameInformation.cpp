@@ -24,6 +24,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 
+#include <iostream>
 #include <limits>
 #include <magic_enum.hpp>
 
@@ -41,11 +42,8 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
     return false;
   }
 
-  // Analyze the stack frame first, enumerating the load/store instructions
-  // and determining the boundaries of the stack memory
-  auto module = function.getParent();
-  auto original_ir = GetModuleIR(*module);
-
+  // Analyze the stack frame first, enumerating the instructions referencing
+  // the __anvill_sp symbol and determining the boundaries of the stack memory
   auto stack_frame_analysis_res = AnalyzeStackFrame(function);
   if (!stack_frame_analysis_res.Succeeded()) {
     EmitError(SeverityType::Error, stack_frame_analysis_res.Error(),
@@ -61,7 +59,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
 
   // It is now time to patch the function. This method will take the stack
   // analysis and use it to generate a stack frame type and update all the
-  // store and load instructions
+  // instructions
   auto update_func_res = UpdateFunction(
       function, stack_frame_analysis, options.stack_frame_struct_init_procedure,
       options.stack_frame_lower_padding, options.stack_frame_higher_padding);
@@ -72,6 +70,24 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
         "Function transformation has failed and the stack could not be recovered");
 
     return false;
+  }
+
+  // Analyze the __anvill_sp usage again; this time, the resulting
+  // instruction list should be empty
+  stack_frame_analysis_res = AnalyzeStackFrame(function);
+  if (!stack_frame_analysis_res.Succeeded()) {
+    EmitError(SeverityType::Fatal, stack_frame_analysis_res.Error(),
+              "The secondary stack frame analysis has failed");
+
+    return false;
+  }
+
+  auto second_stack_frame_analysis = stack_frame_analysis_res.TakeValue();
+  if (!stack_frame_analysis.instruction_list.empty()) {
+    EmitError(
+        SeverityType::Fatal,
+        StackAnalysisErrorCode::FunctionTransformationFailed,
+        "The stack frame recovery did not replace all the possible __anvill_sp uses");
   }
 
   return true;
@@ -90,17 +106,11 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
 
   StackPointerRegisterUsages output;
 
-  // Enumerate all the instructions we have, looking for `store` and
-  // `load` instructions that reference the stack pointer
   auto module = function.getParent();
   auto data_layout = module->getDataLayout();
 
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
-      if (!IsMemoryOperation(instr)) {
-        continue;
-      }
-
       if (InstructionReferencesStackPointer(data_layout, instr)) {
         output.push_back(&instr);
       }
@@ -112,93 +122,73 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
 
 Result<StackFrameAnalysis, StackAnalysisErrorCode>
 RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
-  // Enumerate all the `store` and `load` instructions operating on
-  // the stack pointer
-  auto stack_ptr_usages_res = EnumerateStackPointerUsages(function);
-  if (!stack_ptr_usages_res.Succeeded()) {
-    return stack_ptr_usages_res.TakeError();
+  // Enumerate all the instructions referencing __anvill_sp
+  auto stack_related_instr_list_res = EnumerateStackPointerUsages(function);
+  if (!stack_related_instr_list_res.Succeeded()) {
+    return stack_related_instr_list_res.TakeError();
   }
 
-  // Go through each instruction, and attempt to determine
-  // what are the stack boundaries
+  // The CrossReferenceResolver can accumulate all the offsets
+  // applied to the stack pointer symbol for us
   auto module = function.getParent();
   auto data_layout = module->getDataLayout();
 
   CrossReferenceResolver resolver(data_layout);
 
+  // Pre-initialize the stack limits
   StackFrameAnalysis output;
-  output.highest_offset = std::numeric_limits<std::int32_t>::min();
-  output.lowest_offset = std::numeric_limits<std::int32_t>::max();
+  output.highest_offset = std::numeric_limits<std::int64_t>::min();
+  output.lowest_offset = std::numeric_limits<std::int64_t>::max();
 
-  auto stack_ptr_usages = stack_ptr_usages_res.TakeValue();
-  for (const auto &stack_ptr_usage : stack_ptr_usages) {
-    // Get the operands
-    const llvm::Value *pointer_operand{nullptr};
-    llvm::Type *operand_type{nullptr};
+  // Go through each one of the instructions we have found
+  auto stack_related_instr_list = stack_related_instr_list_res.TakeValue();
 
-    if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(stack_ptr_usage);
-        load_inst != nullptr) {
-      pointer_operand = load_inst->getPointerOperand();
-      operand_type = load_inst->getType();
+  for (const auto &stack_related_instr : stack_related_instr_list) {
+    // Enumerate all the operands
+    StackFrameAnalysis::Instruction instruction;
+    instruction.instr = stack_related_instr;
 
-    } else if (auto store_inst =
-                   llvm::dyn_cast<llvm::StoreInst>(stack_ptr_usage);
-               store_inst != nullptr) {
-      auto value_operand = store_inst->getValueOperand();
-      operand_type = value_operand->getType();
+    auto operand_count = instruction.instr->getNumOperands();
 
-      pointer_operand = store_inst->getPointerOperand();
+    for (auto operand_index = 0U; operand_index < operand_count;
+         ++operand_index) {
+      // Skip any operand that is not related to the stack pointer
+      auto op = instruction.instr->getOperand(operand_index);
+      if (!IsRelatedToStackPointer(data_layout, op)) {
+        continue;
+      }
 
-    } else {
-      // This instruction is using __anvill_sp but it's not a memory read
-      // or write operation
-      continue;
+      // Save the operand
+      StackFrameAnalysis::Instruction::Operand operand;
+      operand.index = operand_index;
+      operand.obj = op;
+
+      // Attempt to resolve the constant expression into an offset
+      auto reference = resolver.TryResolveReference(op);
+      if (!reference.is_valid || !reference.references_stack_pointer) {
+        return StackAnalysisErrorCode::StackPointerResolutionError;
+      }
+
+      // TODO: Should be sign-extended by the CrossReferenceResolver class
+      std::int64_t stack_offset =
+          static_cast<std::int32_t>(reference.u.displacement);
+
+      operand.stack_offset = stack_offset;
+
+      // Update the boundaries, based on the offset we have found
+      std::int64_t type_size = data_layout.getTypeAllocSize(op->getType());
+
+      output.highest_offset =
+          std::max(output.highest_offset, stack_offset + type_size);
+
+      output.lowest_offset = std::min(output.lowest_offset, stack_offset);
+
+      // Save the operand
+      instruction.operand_list.push_back(std::move(operand));
     }
 
-    // We may have found this instruction only because the value operand (and
-    // NOT the pointer operand) references the special `__anvill_sp` symbol.
-    // If that's the case, then it can be safely ignored
-    if (!IsRelatedToStackPointer(data_layout,
-                                 const_cast<llvm::Value *>(pointer_operand))) {
-      continue;
-    }
-
-    // Resolve to a displacement
-    auto resolved_stack_ptr = resolver.TryResolveReference(
-        const_cast<llvm::Value *>(pointer_operand));
-
-    if (!resolved_stack_ptr.is_valid) {
-      return StackAnalysisErrorCode::StackPointerResolutionError;
-    }
-
-    if (!resolved_stack_ptr.references_stack_pointer) {
-      // We already know it's related to a stack pointer, so if we fail
-      // this error happened inside our helpers
-      return StackAnalysisErrorCode::InternalError;
-    }
-
-    // TODO: The displacement returned by TryResolveReference is in fact
-    // a 32-bit value inside an std::int64_t integer. Force the conversion
-    // to fix it
-    std::int64_t displacement =
-        static_cast<std::int32_t>(resolved_stack_ptr.u.displacement);
-
-    auto operand_size =
-        static_cast<std::int64_t>(data_layout.getTypeAllocSize(operand_type));
-
-    // Update the boundaries
-    output.highest_offset =
-        std::max(output.highest_offset, displacement + operand_size);
-
-    output.lowest_offset = std::min(output.lowest_offset, displacement);
-
-    // Save the instruction pointer and the memory information
-    StackFrameAnalysis::StackOperation stack_operation = {};
-    stack_operation.instr = stack_ptr_usage;
-    stack_operation.offset = displacement;
-    stack_operation.type = operand_type;
-
-    output.stack_operation_list.push_back(std::move(stack_operation));
+    // Save the instruction instance
+    output.instruction_list.push_back(std::move(instruction));
   }
 
   auto stack_frame_size = output.highest_offset - output.lowest_offset;
@@ -211,12 +201,11 @@ Result<llvm::StructType *, StackAnalysisErrorCode>
 RecoverStackFrameInformation::GenerateStackFrameType(
     const llvm::Function &function,
     const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
-  if (stack_frame_analysis.size == 0) {
+  if (stack_frame_analysis.instruction_list.empty()) {
     return StackAnalysisErrorCode::InvalidParameter;
   }
 
-  // Generate a stack frame type with a name that matches the
-  // anvill ABI
+  // Generate a stack frame type with a name that matches the anvill ABI
   auto function_name = function.getName().str();
   auto stack_frame_type_name = function_name + kStackFrameTypeNameSuffix;
 
@@ -229,7 +218,8 @@ RecoverStackFrameInformation::GenerateStackFrameType(
 
   // Determine how many bytes we should allocate. We may have been
   // asked to add some additional padding. We don't care how it is
-  // accessed right now, we just add them to the total size
+  // accessed right now, we just add to the total size of the final
+  // stack frame
   auto stack_frame_size = padding_bytes + stack_frame_analysis.size;
 
   // Generate the stack frame using a byte array
@@ -283,7 +273,8 @@ RecoverStackFrameInformation::UpdateFunction(
     std::size_t stack_frame_lower_padding,
     std::size_t stack_frame_higher_padding) {
 
-  if (function.isDeclaration() || stack_frame_analysis.size == 0U) {
+  if (function.isDeclaration() ||
+      stack_frame_analysis.instruction_list.empty()) {
     return StackAnalysisErrorCode::InvalidParameter;
   }
 
@@ -395,53 +386,41 @@ RecoverStackFrameInformation::UpdateFunction(
   }
 
   // The stack analysis we have performed earlier contains all the
-  // `load` and `store` instructions that we have to update
-  for (auto &stack_operation : stack_frame_analysis.stack_operation_list) {
-    // Convert the `__anvill_sp`-relative offset to a 0-based index
-    // into our stack frame type
-    auto displacement =
-        stack_operation.offset - stack_frame_analysis.lowest_offset;
+  // instructions we have to update
+  for (auto &instruction : stack_frame_analysis.instruction_list) {
+    // Set the insert point just before the instruction we have to update
+    builder.SetInsertPoint(instruction.instr);
 
-    // If we added padding, adjust the displacement value. We just have
-    // to add the amount of bytes we have inserted before the stack pointer
-    displacement += stack_frame_lower_padding;
+    // Go through each one of the operands that we have to update
+    for (auto &operand : instruction.operand_list) {
+      // Convert the `__anvill_sp`-relative offset to a 0-based index
+      // into our stack frame type
+      auto zero_based_offset =
+          operand.stack_offset - stack_frame_analysis.lowest_offset;
 
-    // Create a GEP instruction that accesses the new stack frame we
-    // created based on the relative offset
-    //
-    // As a reminder, the stack frame type is a StructType that contains
-    // an ArrayType with int8 elements
-    builder.SetInsertPoint(stack_operation.instr);
+      // If we added padding, adjust the displacement value. We just have
+      // to add the amount of bytes we have inserted before the stack pointer
+      zero_based_offset += stack_frame_lower_padding;
 
-    auto stack_frame_ptr = builder.CreateGEP(
-        stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
-                             builder.getInt32(displacement)});
+      // Create a GEP instruction that accesses the new stack frame we
+      // created based on the relative offset
+      //
+      // As a reminder, the stack frame type is a StructType that contains
+      // an ArrayType with int8 elements
+      auto stack_frame_ptr = builder.CreateGEP(
+          stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
+                               builder.getInt32(zero_based_offset)});
 
-    stack_frame_ptr = builder.CreateBitCast(
-        stack_frame_ptr, stack_operation.type->getPointerTo());
+      stack_frame_ptr = builder.CreateBitOrPointerCast(stack_frame_ptr,
+                                                       operand.obj->getType());
 
-    // Replace the original `load` or `store` instruction with a matching
-    // instruction that operates on the allocated stack frame type instead
-    llvm::Value *replacement{nullptr};
+      // We now have to replace the operand; it is not correct to use replaceAllUsesWith
+      // on the operand, because the scope of a constant could be bigger than just the
+      // function we are using.
+      auto &operand_use = instruction.instr->getOperandUse(operand.index);
 
-    if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(stack_operation.instr);
-        load_inst != nullptr) {
-
-      replacement = builder.CreateLoad(stack_frame_ptr);
-
-    } else if (auto store_inst =
-                   llvm::dyn_cast<llvm::StoreInst>(stack_operation.instr);
-               store_inst != nullptr) {
-
-      auto value_operand = store_inst->getValueOperand();
-      replacement = builder.CreateStore(value_operand, stack_frame_ptr);
-
-    } else {
-      return StackAnalysisErrorCode::UnsupportedInstruction;
+      operand_use.set(stack_frame_ptr);
     }
-
-    stack_operation.instr->replaceAllUsesWith(replacement);
-    stack_operation.instr->eraseFromParent();
   }
 
   return std::monostate();

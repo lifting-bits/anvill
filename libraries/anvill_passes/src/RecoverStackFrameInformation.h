@@ -35,6 +35,7 @@ enum class StackAnalysisErrorCode {
   InternalError,
   InvalidParameter,
   StackInitializationError,
+  FunctionTransformationFailed,
 };
 
 // Contains a list of `load` and `store` instructions that reference
@@ -42,20 +43,38 @@ enum class StackAnalysisErrorCode {
 using StackPointerRegisterUsages = std::vector<llvm::Instruction *>;
 
 // This structure contains the stack size, along with the lower and
-// higher bounds of the offsets, and all the `load` and `store` instructions
-// that have been analyzed
+// higher bounds of the offsets, and all the instructions that have
+// been analyzed
 struct StackFrameAnalysis final {
-  // Describes a `store` or `load` instruction that is operating on
-  // the stack, along with the SP-relative offset and the operand
-  // type
-  struct StackOperation final {
+  // Describes an instruction that accesses the stack pointer
+  // through the __anvill_sp symbol
+  struct Instruction final {
+    // Detailed information about each operand accessing the
+    // stack frame pointer
+    struct Operand final {
+      // Index of this operand in the parent instruction
+      std::size_t index{};
+
+      // Pointer to the llvm Operand
+      llvm::Value *obj{nullptr};
+
+      // Operand size
+      std::int64_t type_size{};
+
+      // Stack offset referenced
+      std::int64_t stack_offset{};
+    };
+
+    // The instruction performing the stack-related operation
     llvm::Instruction *instr{nullptr};
-    std::int64_t offset{};
-    llvm::Type *type{nullptr};
+
+    // A list of all the operands that are referencing the stack
+    // pointer
+    std::vector<Operand> operand_list;
   };
 
-  // A list of StackOperation objects
-  std::vector<StackOperation> stack_operation_list;
+  // A list of instructions that are referencing the stack pointer
+  std::vector<Instruction> instruction_list;
 
   // Lowest SP-relative offset
   std::int64_t lowest_offset{};

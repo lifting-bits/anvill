@@ -51,6 +51,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
           llvm::LLVMContext context;
           auto module =
               LoadTestData(context, "RecoverStackFrameInformation.ll");
+
           REQUIRE(module != nullptr);
 
           auto arch =
@@ -95,8 +96,9 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         REQUIRE(stack_ptr_usages_res.Succeeded());
 
-        THEN(
-            "all the store/load instructions using the stack pointer are returned") {
+        THEN("all the instructions using the stack pointer are returned") {
+          // From the test data, you can see we have 12 instructions referencing
+          // the `__anvill_sp` symbol
           auto stack_ptr_usages = stack_ptr_usages_res.TakeValue();
           CHECK(stack_ptr_usages.size() == 12U);
         }
@@ -109,13 +111,10 @@ TEST_SUITE("RecoverStackFrameInformation") {
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
         THEN("lowest and highest relative offsets are returned") {
-          // From the test data:
+          // From the test data, you can see we have 12 instructions referencing
+          // the `__anvill_sp` symbol
           //
-          // clang-format off
-          // store i32 %6, i32* inttoptr (i32 add (i32 sub (i32 ptrtoint (i8* @__anvill_sp to i32), i32 16), i32 12) to i32*), align 4
-          // store i32 %5, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 12) to i32*), align 4
-          // clanf-format on
-          //
+          // The boundaries we should find are:
           // __anvill_sp - 16 - 12 = -28
           // __anvill_sp + 12 = 12
           //
@@ -130,10 +129,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
           CHECK(stack_frame_analysis.lowest_offset == -28);
           CHECK(stack_frame_analysis.highest_offset == 16);
           CHECK(stack_frame_analysis.size == 44U);
-
-          for (const auto &stack_operation : stack_frame_analysis.stack_operation_list) {
-            CHECK(stack_operation.type == llvm::Type::getInt32Ty(context));
-          }
+          CHECK(stack_frame_analysis.instruction_list.size() == 12U);
         }
       }
 
@@ -144,7 +140,9 @@ TEST_SUITE("RecoverStackFrameInformation") {
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-        auto stack_frame_type_res = RecoverStackFrameInformation::GenerateStackFrameType(function, stack_frame_analysis, 0);
+        auto stack_frame_type_res =
+            RecoverStackFrameInformation::GenerateStackFrameType(
+                function, stack_frame_analysis, 0);
         REQUIRE(stack_frame_type_res.Succeeded());
 
         THEN("a StructType containing a byte array is returned") {
@@ -152,13 +150,16 @@ TEST_SUITE("RecoverStackFrameInformation") {
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
-          auto expected_frame_type_name = function_name + kStackFrameTypeNameSuffix;
-          REQUIRE(stack_frame_type->getName().str() == expected_frame_type_name);
-          
+          auto expected_frame_type_name =
+              function_name + kStackFrameTypeNameSuffix;
+          REQUIRE(stack_frame_type->getName().str() ==
+                  expected_frame_type_name);
+
           auto first_elem_type = stack_frame_type->getElementType(0U);
           REQUIRE(first_elem_type->isArrayTy());
 
-          auto byte_array_type = llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
+          auto byte_array_type =
+              llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
           REQUIRE(byte_array_type != nullptr);
 
           auto byte_array_size = byte_array_type->getNumElements();
@@ -178,21 +179,27 @@ TEST_SUITE("RecoverStackFrameInformation") {
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-        auto stack_frame_type_res = RecoverStackFrameInformation::GenerateStackFrameType(function, stack_frame_analysis, 128U);
+        auto stack_frame_type_res =
+            RecoverStackFrameInformation::GenerateStackFrameType(
+                function, stack_frame_analysis, 128U);
         REQUIRE(stack_frame_type_res.Succeeded());
 
-        THEN("a StructType containing a byte array along with the padding is returned") {
+        THEN(
+            "a StructType containing a byte array along with the padding is returned") {
           auto stack_frame_type = stack_frame_type_res.TakeValue();
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
-          auto expected_frame_type_name = function_name + kStackFrameTypeNameSuffix;
-          REQUIRE(stack_frame_type->getName().str() == expected_frame_type_name);
-          
+          auto expected_frame_type_name =
+              function_name + kStackFrameTypeNameSuffix;
+          REQUIRE(stack_frame_type->getName().str() ==
+                  expected_frame_type_name);
+
           auto first_elem_type = stack_frame_type->getElementType(0U);
           REQUIRE(first_elem_type->isArrayTy());
 
-          auto byte_array_type = llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
+          auto byte_array_type =
+              llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
           REQUIRE(byte_array_type != nullptr);
 
           auto byte_array_size = byte_array_type->getNumElements();
@@ -232,7 +239,9 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
 
-        auto update_res = RecoverStackFrameInformation::UpdateFunction(function, stack_frame_analysis, StackFrameStructureInitializationProcedure::kZeroes);
+        auto update_res = RecoverStackFrameInformation::UpdateFunction(
+            function, stack_frame_analysis,
+            StackFrameStructureInitializationProcedure::kZeroes);
         REQUIRE(update_res.Succeeded());
 
         THEN("the function is updated to use the new stack frame structure") {
@@ -253,9 +262,10 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
           CHECK(alloca_inst != nullptr);
 
-          // We should have the same amount of GEP instructions as the
-          // number of `store` and `load` operations we have found during
-          // stack frame analysis
+          // We have 12 instructions referencing the `__anvill_sp` symbol; however, two
+          // of those are `store` operations that have 2 references each.
+          //
+          // We should then have 14 GEP instructions
           std::size_t frame_gep_count{0U};
           for (const auto &instr : entry_block) {
             auto gep_instr = llvm::dyn_cast<llvm::GetElementPtrInst>(&instr);
@@ -266,15 +276,17 @@ TEST_SUITE("RecoverStackFrameInformation") {
             ++frame_gep_count;
           }
 
-          CHECK(frame_gep_count == stack_frame_analysis.stack_operation_list.size());
+          CHECK(frame_gep_count == 14U);
 
           // If we run a second stack analysis, we should no longer find any
           // stack frame operation to recover
-          stack_frame_analysis_res = RecoverStackFrameInformation::AnalyzeStackFrame(function);
+          stack_frame_analysis_res =
+              RecoverStackFrameInformation::AnalyzeStackFrame(function);
           REQUIRE(stack_frame_analysis_res.Succeeded());
 
-          auto second_stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-          CHECK(second_stack_frame_analysis.stack_operation_list.empty());
+          auto second_stack_frame_analysis =
+              stack_frame_analysis_res.TakeValue();
+          CHECK(second_stack_frame_analysis.instruction_list.empty());
         }
       }
     }
