@@ -79,6 +79,9 @@ class MemoryProvider {
   static std::shared_ptr<MemoryProvider>
   CreateProgramMemoryProvider(const Program &program);
 
+  // Creates a memory provider that gives access to no memory.
+  static std::shared_ptr<MemoryProvider> CreateNullMemoryProvider(void);
+
  protected:
   MemoryProvider(void) = default;
 

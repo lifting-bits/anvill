@@ -41,6 +41,7 @@ class LifterOptions;
 class MemoryProvider;
 class TypeProvider;
 class ValueLifter;
+class ValueLifterImpl;
 
 // Lifting context for ANVILL. The lifting context keeps track of the options
 // used for lifting, the module into which lifted objects are placed, and
@@ -82,6 +83,7 @@ class EntityLifter {
   friend class DataLifter;
   friend class FunctionLifter;
   friend class ValueLifter;
+  friend class ValueLifterImpl;
 
   inline EntityLifter(const std::shared_ptr<EntityLifterImpl> &impl_)
       : impl(impl_) {}

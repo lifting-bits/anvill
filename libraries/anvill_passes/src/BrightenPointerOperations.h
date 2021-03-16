@@ -20,6 +20,8 @@
 #include <llvm/Pass.h>
 
 #include <anvill/Analysis/CrossReferenceResolver.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Lifters/ValueLifter.h>
 
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
@@ -49,7 +51,7 @@ class CrossReferenceResolver;
 
 class PointerLifterPass final : public llvm::FunctionPass {
  public:
-  PointerLifterPass(const CrossReferenceResolver &xref_resolver_,
+  PointerLifterPass(const EntityLifter &entity_lifter_,
                     unsigned max_gas_);
 
   bool runOnFunction(llvm::Function &f) final;
@@ -57,7 +59,7 @@ class PointerLifterPass final : public llvm::FunctionPass {
  private:
   static char ID;
 
-  const CrossReferenceResolver xref_resolver;
+  const EntityLifter entity_lifter;
   const unsigned max_gas;
 };
 
@@ -67,8 +69,8 @@ class PointerLifter
   // this is my one requirement: I call a function, get a function pass.
   // I can pass that function a cross-reference resolver instance, and
   // when you get to an llvm::Constant, it will use the xref resolver on that
-  PointerLifter(llvm::Module *mod_, unsigned max_gas_,
-                const CrossReferenceResolver &xref_resolver_);
+  PointerLifter(llvm::Function *func_, unsigned max_gas_,
+                const EntityLifter &entity_lifter_);
 
   // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst
   // Adds users to the next worklist, for downstream type propagation
@@ -84,6 +86,11 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
   std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
 
+  // Visit of use of a value `val` by the instruction `user`, where we
+  // believe this use should be a pointer to the type `inferred_value_type`.
+  std::pair<llvm::Value *, bool> visitPossibleCrossReference(
+      llvm::Instruction &user, llvm::Use &use, llvm::PointerType *inferred_type);
+
   // std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
   bool canRewriteGep(llvm::GetElementPtrInst &inst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> flattenGEP(llvm::GetElementPtrInst *gep);
@@ -95,7 +102,8 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
 
   // std::pair<llvm::Value*, bool>visitCastInst(llvm::CastInst &inst);
-  // Simple wrapper for storing the type information into the list, and then calling visit.
+  // Simple wrapper for storing the type information into the list, and then
+  // calling visit.
   std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst,
                                                 llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> visitInstruction(llvm::Instruction &I);
@@ -113,14 +121,16 @@ class PointerLifter
   const unsigned max_gas;
 
   std::unordered_map<llvm::Value *, llvm::Type *> inferred_types;
-  std::vector<llvm::Instruction *> next_worklist;
+  std::unordered_map<llvm::Value *, llvm::Type *> next_inferred_types;
+
   std::unordered_set<llvm::Instruction *> to_remove;
   std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
   std::unordered_map<llvm::Instruction *, bool> dead_inst;
 
   // Whether or not progress has been made, e.g. a new type was inferred.
-  bool changed{false};
+  bool made_progress{false};
 
+  llvm::Function * const func;
   llvm::Module * const mod;
   llvm::LLVMContext &context;
   llvm::IntegerType * const i32_ty;
@@ -130,7 +140,9 @@ class PointerLifter
 
   // Used to resolve constant pointers to integer addresses or stack pointer
   // displacements.
-  CrossReferenceResolver xref_resolver;
+  const EntityLifter entity_lifter;
+  const ValueLifter value_lifter;
+  const CrossReferenceResolver xref_resolver;
 };
 
 }  // namespace anvill

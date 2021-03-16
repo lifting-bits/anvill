@@ -30,11 +30,16 @@
 
 #include <unordered_map>
 
+#include <glog/logging.h>
+
 namespace anvill {
 namespace {
 
-using ResolverFuncType =
-    std::function<std::optional<uint64_t>(llvm::GlobalValue *)>;
+using AddressResolverFuncType =
+    std::function<std::optional<uint64_t>(llvm::Constant *)>;
+
+using EntityResolverFuncType =
+    std::function<llvm::Constant *(uint64_t)>;
 
 // Convert an unsigned value `val` of size `size` bits into a signed `int64_t`.
 static int64_t Signed(uint64_t val, uint64_t size) {
@@ -60,10 +65,13 @@ static int64_t Signed(uint64_t val, uint64_t size) {
 class CrossReferenceResolverImpl {
  public:
   CrossReferenceResolverImpl(const llvm::DataLayout &dl_,
-                             ResolverFuncType address_of_entity_)
+                             AddressResolverFuncType address_of_entity_,
+                             EntityResolverFuncType entity_at_address_)
       : dl(dl_),
-        address_of_entity(address_of_entity_) {}
+        address_of_entity(address_of_entity_),
+        entity_at_address(entity_at_address_) {}
 
+  ResolvedCrossReference ResolveInstruction(llvm::Instruction *inst_val);
   ResolvedCrossReference ResolveConstant(llvm::Constant *const_val);
   ResolvedCrossReference ResolveGlobalValue(llvm::GlobalValue *const_val);
   ResolvedCrossReference ResolveConstantExpr(llvm::ConstantExpr *const_val);
@@ -95,8 +103,11 @@ class CrossReferenceResolverImpl {
                                     uint64_t mask, uint64_t size) { \
     if (allow_rhs_zero || rhs_xr.u.address & mask) { \
       return merge(lhs_xr, rhs_xr, [=](uint64_t lhs, uint64_t rhs) { \
-        return static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
-               mask; \
+        auto ret = static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
+                   mask; \
+        LOG(ERROR) << "lhs=" << std::hex << lhs << " " << #op << " rhs=" \
+                   << rhs << " = ret=" << ret << std::dec; \
+        return ret; \
       }); \
     } else { \
       return {}; \
@@ -162,7 +173,11 @@ class CrossReferenceResolverImpl {
   const llvm::DataLayout dl;
 
   // Entity address resolver for figuring out the address of globals/functions.
-  const ResolverFuncType address_of_entity;
+  const AddressResolverFuncType address_of_entity;
+
+  // Entity address resolver for figuring out the globals/functions associated
+  // with addresses.
+  const EntityResolverFuncType entity_at_address;
 
   // Cache of resolved values.
   std::unordered_map<llvm::Value *, ResolvedCrossReference> xref_cache;
@@ -235,6 +250,81 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
   return xr;
 }
 
+ResolvedCrossReference CrossReferenceResolverImpl::ResolveInstruction(
+    llvm::Instruction *inst_val) {
+
+  const uint64_t size = inst_val->getOperand(0)->getType()->getPrimitiveSizeInBits();
+  const uint64_t mask = size < 64 ? (1ull << size) - 1ull : ~0ull;
+  const uint64_t out_size = inst_val->getType()->getPrimitiveSizeInBits();
+  const uint64_t out_mask = out_size < 64 ? (1ull << out_size) - 1ull : ~0ull;
+
+  switch (inst_val->getOpcode()) {
+#define FOLD_CASE(name) \
+  case llvm::Instruction::name: \
+    return Fold##name(ResolveValue(inst_val->getOperand(0)), \
+                      ResolveValue(inst_val->getOperand(1)), mask, size);
+
+    FOLD_CASE(Add)
+    FOLD_CASE(Sub)
+    FOLD_CASE(Mul)
+    FOLD_CASE(And)
+    FOLD_CASE(Or)
+    FOLD_CASE(Xor)
+    FOLD_CASE(Shl)
+    FOLD_CASE(LShr)
+    FOLD_CASE(AShr)
+    FOLD_CASE(SDiv)
+    FOLD_CASE(UDiv)
+    FOLD_CASE(SRem)
+    FOLD_CASE(URem)
+
+#undef FOLD_CASE
+
+    case llvm::Instruction::ZExt: {
+      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr.u.address &= mask;
+      return xr;
+    }
+
+    case llvm::Instruction::SExt: {
+      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr.u.displacement = Signed(xr.u.address, size);
+      xr.u.address &= out_mask;
+      return xr;
+    }
+
+    case llvm::Instruction::Trunc: {
+      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr.u.address &= out_mask;
+      return xr;
+    }
+
+    case llvm::Instruction::IntToPtr: {
+      auto xr = ResolveValue(inst_val->getOperand(0));
+      if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
+          !xr.displacement_from_hinted_value_type) {
+        xr.hinted_value_type = ptr_type->getElementType();
+      }
+      return xr;
+    }
+
+    case llvm::Instruction::PtrToInt:
+      return ResolveValue(inst_val->getOperand(0));
+
+    case llvm::Instruction::BitCast: {
+      auto xr = ResolveValue(inst_val->getOperand(0));
+      if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
+          ptr_type && !xr.displacement_from_hinted_value_type) {
+        xr.hinted_value_type = ptr_type->getElementType();
+      }
+      return xr;
+    }
+
+    default:
+      return {};
+  }
+}
+
 // Try to resolve a constant to a cross-reference.
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
@@ -298,8 +388,8 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
     xr.is_valid = true;
   }
 
-  auto [base, offset] = remill::StripAndAccumulateConstantOffsets(dl, gv);
-  if (base) {
+  if (auto [base, offset] = remill::StripAndAccumulateConstantOffsets(dl, gv);
+      base) {
     xr.hinted_value_type = base->getType()->getPointerElementType();
     xr.displacement_from_hinted_value_type = offset;
 
@@ -313,6 +403,17 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
+
+  if (auto maybe_addr = address_of_entity(ce); maybe_addr) {
+    ResolvedCrossReference xr;
+    xr.u.address = *maybe_addr;
+    xr.references_entity = true;
+    xr.is_valid = true;
+    if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
+      xr.hinted_value_type = ptr_ty->getElementType();
+    }
+    return xr;
+  }
 
   const auto ptr_size = dl.getPointerSizeInBits(0);
   const uint64_t size = ce->getOperand(0)->getType()->getPrimitiveSizeInBits();
@@ -363,10 +464,26 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       return xr;
     }
 
-    // TODO(pag): Mark as pointers?
-    case llvm::Instruction::IntToPtr:
+    case llvm::Instruction::IntToPtr: {
+      auto xr = ResolveConstant(ce->getOperand(0));
+      if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
+          !xr.displacement_from_hinted_value_type) {
+        xr.hinted_value_type = ptr_type->getElementType();
+      }
+      return xr;
+    }
+
     case llvm::Instruction::PtrToInt:
-    case llvm::Instruction::BitCast: return ResolveConstant(ce->getOperand(0));
+      return ResolveConstant(ce->getOperand(0));
+
+    case llvm::Instruction::BitCast: {
+      auto xr = ResolveConstant(ce->getOperand(0));
+      if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
+          ptr_type && !xr.displacement_from_hinted_value_type) {
+        xr.hinted_value_type = ptr_type->getElementType();
+      }
+      return xr;
+    }
 
     case llvm::Instruction::ICmp: {
       return FoldICmp(ResolveConstant(ce->getOperand(0)),
@@ -426,12 +543,9 @@ CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
 
-  // TODO(pag): Eventually try to deal with instructions. Key issues are that
-  //            we can't cache their results. Possible opportunities are that
-  //            we could have an API that takes a `DominorTree` and thus
-  //            communicates that the user won't invalidate the dominator tree
-  //            results while using the API, and then we can possibly do folding
-  //            of things like `select` instructions, and possible `phi` nodes.
+  } else if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
+    return ResolveInstruction(inst_val);
+
   } else {
     return {};
   }
@@ -444,15 +558,20 @@ CrossReferenceResolver::~CrossReferenceResolver(void) {}
 CrossReferenceResolver::CrossReferenceResolver(const EntityLifter &lifter)
     : impl(std::make_shared<CrossReferenceResolverImpl>(
           lifter.Options().module->getDataLayout(),
-          [=](llvm::GlobalValue *entity) {
+          [=](llvm::Constant *entity) {
             return lifter.AddressOfEntity(entity);
+          },
+          [=](uint64_t addr) -> llvm::Constant * {
+            llvm::Constant *ret = nullptr;
+            return ret;
           })) {}
 
 // In the absence of an entity lifter, we need a DataLayout to determine
 // offsets, etc.
 CrossReferenceResolver::CrossReferenceResolver(const llvm::DataLayout &dl)
     : impl(std::make_shared<CrossReferenceResolverImpl>(
-          dl, [](llvm::GlobalValue *) { return std::nullopt; })) {}
+          dl, [](llvm::Constant *) { return std::nullopt; },
+          [](uint64_t) -> llvm::Constant * { return nullptr; })) {}
 
 // Clear the internal cache.
 void CrossReferenceResolver::ClearCache(void) const {

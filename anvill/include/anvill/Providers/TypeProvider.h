@@ -57,10 +57,14 @@ class TypeProvider {
                          std::optional<uint64_t>)>
           typed_reg_cb);
 
-  // Sources bytes from an `anvill::Program`.
+  // Sources types from an `anvill::Program`.
   static std::shared_ptr<TypeProvider>
   CreateProgramTypeProvider(llvm::LLVMContext &context_,
                             const Program &program);
+
+  // Creates a type provider that always fails to provide type information.
+  static std::shared_ptr<TypeProvider>
+  CreateNullTypeProvider(llvm::LLVMContext &context_);
 
  protected:
   explicit TypeProvider(llvm::LLVMContext &context_);

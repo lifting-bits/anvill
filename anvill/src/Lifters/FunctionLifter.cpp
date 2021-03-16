@@ -621,6 +621,7 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
 //
 // This function encodes type information within symbolic functions so the type
 // information can survive optimization. It should turn some instruction like
+//
 //    %1 = add %4, 1
 //
 // into:
@@ -632,9 +633,14 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
     llvm::Type *current_type, llvm::Type *goal_type,
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
 
+  const auto &dl = semantics_module->getDataLayout();
+
+  // Consider adding in:
+  // std::hex << pc << "_" << reg->name
+
   std::stringstream func_name;
-  func_name << "__anvill_type_func_" << std::hex << pc << "_" << reg->name
-            << "_" << reinterpret_cast<void *>(current_type);
+  func_name << kTypeHintFunctionPrefix
+            << TranslateType(*goal_type, dl, true);
   llvm::Type *return_type = goal_type;
 
   auto anvill_type_fn_ty =

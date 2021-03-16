@@ -40,6 +40,12 @@ extern const std::string kSymbolicRAName;
 // intrinsic. These register global variables are names as `<prefix><reg_name>`.
 extern const std::string kUnmodelledRegisterPrefix;
 
+// This is the prefix of a type hint function/variable name. These hints exist
+// to tell anvill that something has a different type. Type hints objects encode
+// type information within symbolic functions so the type information can
+// survive optimization.
+extern const std::string kTypeHintFunctionPrefix;
+
 // This is the name of the "escape hatch" function for the Remill `Memory *`
 // value that is taken as an argument to Remill-lifted functions, passed
 // around between memory access intrinsics, and then returned from Remill-

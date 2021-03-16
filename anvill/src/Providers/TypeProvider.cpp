@@ -119,6 +119,35 @@ void ProgramTypeProvider::QueryRegisterStateAtInstruction(
   }
 }
 
+class NullTypeProvider final : public TypeProvider {
+ public:
+  NullTypeProvider(llvm::LLVMContext &context_)
+      : TypeProvider(context_) {}
+
+  // Try to return the type of a function starting at address `address`. This
+  // type is the prototype of the function.
+  std::optional<FunctionDecl> TryGetFunctionType(uint64_t) final {
+    return std::nullopt;
+  }
+
+  std::optional<GlobalVarDecl>
+  TryGetVariableType(uint64_t, const llvm::DataLayout &) final {
+    return std::nullopt;
+  }
+
+  // Try to get the type of the register named `reg_name` on entry to the
+  // instruction at `inst_address` inside the function beginning at
+  // `func_address`.
+  void QueryRegisterStateAtInstruction(
+      uint64_t, uint64_t,
+      std::function<void(const std::string &, llvm::Type *,
+                         std::optional<uint64_t>)>) final {}
+
+ private:
+  NullTypeProvider(void) = delete;
+};
+
+
 }  // namespace
 
 TypeProvider::~TypeProvider(void) {}
@@ -138,6 +167,12 @@ std::shared_ptr<TypeProvider>
 TypeProvider::CreateProgramTypeProvider(llvm::LLVMContext &context_,
                                         const Program &program) {
   return std::make_shared<ProgramTypeProvider>(context_, program);
+}
+
+// Creates a type provider that always fails to provide type information.
+std::shared_ptr<TypeProvider> TypeProvider::CreateNullTypeProvider(
+    llvm::LLVMContext &context_) {
+  return std::make_shared<NullTypeProvider>(context_);
 }
 
 }  // namespace anvill

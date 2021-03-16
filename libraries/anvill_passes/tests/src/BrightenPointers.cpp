@@ -1,4 +1,24 @@
-#include <anvill/Analysis/CrossReferenceResolver.h>
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Lifters/Options.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -10,16 +30,31 @@
 
 namespace anvill {
 
+class BrightenPointersFixture {
+ public:
+  BrightenPointersFixture(void)
+      : arch(remill::Arch::Build(&llvm_context, remill::kOSLinux,
+                                 remill::kArchAMD64)),
+        mem(MemoryProvider::CreateNullMemoryProvider()),
+        types(TypeProvider::CreateNullTypeProvider(llvm_context)) {
+  }
+
+  llvm::LLVMContext llvm_context;
+  const remill::Arch::ArchPtr arch;
+  const std::shared_ptr<MemoryProvider> mem;
+  const std::shared_ptr<TypeProvider> types;
+};
+
 TEST_SUITE("BrightenPointers") {
-  TEST_CASE("Run the whole pass on a well-formed function") {
-    llvm::LLVMContext llvm_context;
+  TEST_CASE_FIXTURE(BrightenPointersFixture,
+                    "Run the whole pass on a well-formed function") {
 
     auto mod = LoadTestData(llvm_context, "gep_add.ll");
-
-    anvill::CrossReferenceResolver resolver(mod->getDataLayout());
+    LifterOptions options(arch.get(), mod.get());
+    EntityLifter lifter(options, mem, types);
 
     auto module = RunFunctionPass(llvm_context, "gep_add.ll",
-                                  CreateBrightenPointerOperations(resolver));
+                                  CreateBrightenPointerOperations(lifter));
 
     // Verify the module
     std::string error_buffer;
@@ -40,7 +75,8 @@ TEST_SUITE("BrightenPointers") {
       std::cerr << error_message << std::endl;
     }
   }
-  TEST_CASE("multiple_bitcast") {
+  TEST_CASE_FIXTURE(BrightenPointersFixture,
+                    "multiple_bitcast") {
     llvm::LLVMContext llvm_context;
 
     auto mod = LoadTestData(llvm_context, "multiple_bitcast.ll");

@@ -17,10 +17,17 @@
 
 #include "Utils.h"
 
+#include <glog/logging.h>
+
+#include <llvm/IR/Constant.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/IRBuilder.h>
+
+#include <remill/BC/Util.h>
 
 namespace anvill {
 
@@ -35,6 +42,106 @@ FindFunctionCalls(llvm::Function &func,
     }
   }
   return found;
+}
+
+namespace {
+
+// Convert the constant `val` to have the pointer type `dest_ptr_ty`.
+llvm::Value *ConvertConstantToPointer(
+    llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
+    llvm::Constant *val_to_convert, llvm::PointerType *dest_ptr_ty) {
+  const auto type = val_to_convert->getType();
+
+  // Cast a pointer to a pointer type.
+  if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
+    if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
+      const auto new_ptr_ty =
+          ptr_ty->getElementType()->getPointerTo(dest_ptr_ty->getAddressSpace());
+      val_to_convert = llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
+      ptr_ty = new_ptr_ty;
+    }
+
+    if (ptr_ty == dest_ptr_ty) {
+      return val_to_convert;
+
+    } else {
+      return remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
+    }
+
+  // Cast an integer to a pointer type.
+  } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
+    const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() <
+        pointer_width) {
+      int_ty = llvm::Type::getIntNTy(val_to_convert->getContext(),
+                                     pointer_width);
+      val_to_convert = llvm::ConstantExpr::getZExt(val_to_convert, int_ty);
+    }
+
+    return llvm::ConstantExpr::getIntToPtr(val_to_convert, dest_ptr_ty);
+
+  } else {
+    LOG(ERROR)
+        << "Unanticipated conversion from " << remill::LLVMThingToString(type)
+        << " to " << remill::LLVMThingToString(dest_ptr_ty);
+    return llvm::ConstantExpr::getBitCast(val_to_convert, dest_ptr_ty);
+  }
+}
+
+
+// Convert the constant `val` to have the pointer type `dest_ptr_ty`.
+llvm::Value *ConvertValueToPointer(
+    llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
+    llvm::Value *val_to_convert, llvm::PointerType *dest_ptr_ty) {
+  const auto type = val_to_convert->getType();
+
+  // Cast a pointer to a pointer type.
+  if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
+    if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
+      const auto new_ptr_ty =
+          ptr_ty->getElementType()->getPointerTo(dest_ptr_ty->getAddressSpace());
+      val_to_convert = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
+      ptr_ty = new_ptr_ty;
+    }
+
+    if (ptr_ty == dest_ptr_ty) {
+      return val_to_convert;
+
+    } else {
+      return remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
+    }
+
+  // Cast an integer to a pointer type.
+  } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
+    const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() <
+        pointer_width) {
+      int_ty = llvm::Type::getIntNTy(val_to_convert->getContext(),
+                                     pointer_width);
+      val_to_convert = ir.CreateZExt(val_to_convert, int_ty);
+    }
+
+    return ir.CreateIntToPtr(val_to_convert, dest_ptr_ty);
+
+  } else {
+    return ir.CreateBitOrPointerCast(val_to_convert, dest_ptr_ty);
+  }
+}
+
+}  // namespace
+
+// Convert the constant `val` to have the pointer type `dest_ptr_ty`.
+llvm::Value *ConvertToPointer(
+    llvm::Instruction *usage_site, llvm::Value *val_to_convert,
+    llvm::PointerType *dest_ptr_ty) {
+
+  llvm::IRBuilder<> ir(usage_site);
+  const auto &dl = usage_site->getModule()->getDataLayout();
+  if (auto cv = llvm::dyn_cast<llvm::Constant>(val_to_convert)) {
+    return ConvertConstantToPointer(ir, dl, cv, dest_ptr_ty);
+  } else {
+    return ConvertValueToPointer(ir, dl, val_to_convert, dest_ptr_ty);
+  }
 }
 
 }  // namespace anvill

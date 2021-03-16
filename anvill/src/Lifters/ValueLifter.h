@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <anvill/Lifters/ValueLifter.h>
 #include <anvill/Lifters/Options.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
@@ -25,17 +26,21 @@ namespace llvm {
 class Constant;
 class DataLayout;
 class LLVMContext;
+class PointerType;
 class Type;
 }  // namespace llvm
 namespace anvill {
+
+struct FunctionDecl;
+struct GlobalVarDecl;
 class TypeProvider;
 
 class EntityLifterImpl;
 
 // Implementation of the `ValueLifter`.
-class ValueLifter {
+class ValueLifterImpl {
  public:
-  explicit ValueLifter(const LifterOptions &options_);
+  explicit ValueLifterImpl(const LifterOptions &options_);
 
   // Consume `num_bytes` of bytes from `data`, interpreting them as an integer,
   // and update `data` in place, bumping out the first `num_bytes` of consumed
@@ -56,13 +61,33 @@ class ValueLifter {
   llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
                        EntityLifterImpl &ent_lifter, uint64_t loc_ea) const;
 
- private:
-  // Lift pointers at `ea` that is getting referred by the variable at `loc_ea`
-  llvm::Constant *GetPointer(uint64_t ea, llvm::Type *type,
+  // Lift pointers at `ea`.
+  //
+  // NOTE(pag): This returns `nullptr` upon failure to find `ea` as an
+  //            entity or plausible entity.
+  //
+  // NOTE(pag): `hinted_type` can be `nullptr`.
+  llvm::Constant *TryGetPointerForAddress(
+      uint64_t ea, EntityLifterImpl &ent_lifter,
+      llvm::PointerType *hinted_type) const;
+
+  // Lift pointers at `ea` that is getting referred by the variable at `loc_ea`.
+  //
+  // Returns an `llvm::GlobalValue *` if the pointer is associated with a
+  // known or plausible entity, and an `llvm::Constant *` otherwise.
+  llvm::Constant *GetPointer(uint64_t ea, llvm::PointerType *type,
                              EntityLifterImpl &ent_lifter,
                              uint64_t loc_ea) const;
 
  private:
+
+  llvm::Constant *GetFunctionPointer(const FunctionDecl &decl,
+                                     EntityLifterImpl &ent_lifter) const;
+
+  llvm::Constant *GetVarPointer(uint64_t var_ea, uint64_t search_ea,
+                                EntityLifterImpl &ent_lifter,
+                                llvm::PointerType *ptr_type=nullptr) const;
+
   const LifterOptions options;
   const llvm::DataLayout &dl;
   llvm::LLVMContext &context;

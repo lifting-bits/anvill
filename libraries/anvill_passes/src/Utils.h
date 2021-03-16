@@ -23,6 +23,9 @@
 namespace llvm {
 class CallBase;
 class Function;
+class Instruction;
+class PointerType;
+class Value;
 }  // namespace llvm
 namespace anvill {
 
@@ -30,5 +33,10 @@ namespace anvill {
 std::vector<llvm::CallBase *>
 FindFunctionCalls(llvm::Function &func,
                   std::function<bool(llvm::CallBase *)> pred);
+
+// Convert the constant `val` to have the pointer type `dest_ptr_ty`.
+llvm::Value *ConvertToPointer(
+    llvm::Instruction *usage_site, llvm::Value *val_to_convert,
+    llvm::PointerType *dest_ptr_ty);
 
 }  // namespace anvill

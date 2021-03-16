@@ -58,6 +58,15 @@ class ProgramMemoryProvider final : public MemoryProvider {
   const Program &program;
 };
 
+
+class NullMemoryProvider final : public MemoryProvider {
+ public:
+  std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) final {
+    return {0, ByteAvailability::kUnknown, BytePermission::kUnknown};
+  }
+};
+
 }  // namespace
 
 MemoryProvider::~MemoryProvider(void) {}
@@ -66,6 +75,12 @@ MemoryProvider::~MemoryProvider(void) {}
 std::shared_ptr<MemoryProvider>
 MemoryProvider::CreateProgramMemoryProvider(const Program &program) {
   return std::make_shared<ProgramMemoryProvider>(program);
+}
+
+// Creates a memory provider that gives access to no memory.
+std::shared_ptr<MemoryProvider>
+MemoryProvider::CreateNullMemoryProvider(void) {
+  return std::make_shared<NullMemoryProvider>();
 }
 
 }  // namespace anvill

@@ -39,6 +39,7 @@ class Function;
 namespace anvill {
 
 class ValueLifter;
+class ValueLifterImpl;
 
 // An entity lifter is responsible for lifting functions and data (variables)
 // into a target LLVM module.
@@ -70,6 +71,7 @@ class EntityLifterImpl {
   friend class DataLifter;
   friend class FunctionLifter;
   friend class ValueLifter;
+  friend class ValueLifterImpl;
 
   EntityLifterImpl(void) = delete;
 
@@ -85,7 +87,7 @@ class EntityLifterImpl {
   // Lifts initializers of global variables. Talks with the `data_lifter`
   // and the `function_lifter` when its trying to resolve cross-references
   // embedded in initialziers.
-  ValueLifter value_lifter;
+  ValueLifterImpl value_lifter;
 
   // Used to lift functions.
   FunctionLifter function_lifter;

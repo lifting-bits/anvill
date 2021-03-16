@@ -564,15 +564,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSinkingPass());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createInstructionCombiningPass());
-
-  CrossReferenceResolver xref_resolver(lifter_context);
-
   fpm.add(CreateSinkSelectionsIntoBranchTargets());
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
   fpm.add(CreateSplitStackFrameAtReturnAddress());
-  fpm.add(CreateBrightenPointerOperations(xref_resolver));
+  fpm.add(CreateBrightenPointerOperations(lifter_context));
   fpm.add(llvm::createSROAPass());
 
   fpm.doInitialization();

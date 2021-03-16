@@ -23,7 +23,7 @@ class FunctionPass;
 }  // namespace llvm
 namespace anvill {
 
-class CrossReferenceResolver;
+class EntityLifter;
 
 // When lifting conditional control-flow, we end up with the following pattern:
 //
@@ -117,7 +117,7 @@ llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
 llvm::FunctionPass *
-CreateBrightenPointerOperations(const CrossReferenceResolver &resolver,
+CreateBrightenPointerOperations(const EntityLifter &lifter,
                                 unsigned max_gas=250);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,

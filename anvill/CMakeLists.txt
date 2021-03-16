@@ -51,6 +51,7 @@ add_library(anvill STATIC
   include/anvill/Lifters/Options.h
   src/Lifters/Options.cpp
   
+  include/anvill/Lifters/ValueLifter.h
   src/Lifters/ValueLifter.h
   src/Lifters/ValueLifter.cpp
   
