@@ -567,7 +567,6 @@ compiler
 
 In the second case, it indicates that %Y although of type integer, has been a
 pointer
-
 */
 std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
@@ -601,6 +600,58 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
       << remill::LLVMThingToString(&inst);
 
   return {&inst, false};
+}
+
+std::pair<llvm::Value *, bool> 
+PointerLifter::visitPHINode(llvm::PHINode& inst) {
+  llvm::Type *inferred_type = inferred_types[&inst];
+  if (!inferred_type) {
+    LOG(ERROR) << "No type info for load! Returning just the phi node\n";
+    return {&inst, false};
+  }
+  llvm::IRBuilder<> ir(&inst);
+
+  const auto num_vals = inst.getNumIncomingValues();
+  auto new_phi = ir.CreatePHI(inferred_type, num_vals);
+
+  // We might brighten some of the phi, but not all of it. 
+  // We can force a success by bitcasting in case of failure. 
+  for (auto i = 0; i < num_vals; i++) {
+    auto incoming_val = inst.getIncomingValue(i);
+    auto incoming_block = inst.getIncomingBlock(i);
+    llvm::IRBuilder<> sub_ir(incoming_block->getTerminator());
+    if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(incoming_val)) {
+      // Visit possible reference
+      const auto inferred_ptr_ty = inferred_type->getPointerTo();
+      auto& use = val_inst->getOperandUse(0);
+
+      auto [p, lifted_xref] = visitPossibleCrossReference(
+        *val_inst, use, inferred_ptr_ty);
+      // I guess if we lifted, use it!
+      if (lifted_xref) {
+        // If its not the right type, we can bitcast.
+        if (p->getType() != inferred_type) {
+          p = sub_ir.CreateBitCast(p, inferred_type);
+        }
+      }
+      else {
+        // Okay, xref lifter failed
+        // Not sure what it tried/or not tried, lets try vising ourselves.
+        auto [p, worked] = visitInferInst(val_inst, inferred_type);
+        if (!worked) {
+          p = sub_ir.CreateBitCast(p, inferred_type);
+        }
+     }
+     new_phi->addIncoming(p, incoming_block);
+    }
+    // TODO (Carson) handle const expr
+    else {
+      LOG(ERROR) << "Unknown type in Phi op: " << remill::LLVMThingToString(incoming_val) << "\n";
+      exit(1);
+    }
+  }
+  // TODO (Carson) do we replace uses here? i dont think so. 
+  return {new_phi, true};
 }
 
 /*
