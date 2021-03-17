@@ -572,7 +572,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateBrightenPointerOperations(lifter_context));
+  // fpm.add(CreateBrightenPointerOperations(lifter_context));
   fpm.add(CreateRecoverStackFrameInformation(err_man, options));
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
