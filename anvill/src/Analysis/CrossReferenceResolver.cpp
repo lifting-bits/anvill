@@ -20,7 +20,7 @@
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
-#include <glog/logging.h>
+
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -75,6 +75,9 @@ class CrossReferenceResolverImpl {
   ResolvedCrossReference ResolveConstantExpr(llvm::ConstantExpr *const_val);
 
   // Try to resolve `val` as a cross-reference.
+  ResolvedCrossReference ResolveCall(llvm::CallInst *val);
+
+  // Try to resolve `val` as a cross-reference.
   ResolvedCrossReference ResolveValue(llvm::Value *val);
 
   // Merge and saturate the flags of `lhs` and `rhs`. It is acceptable for
@@ -101,12 +104,8 @@ class CrossReferenceResolverImpl {
                                     uint64_t mask, uint64_t size) { \
     if (allow_rhs_zero || rhs_xr.u.address & mask) { \
       return merge(lhs_xr, rhs_xr, [=](uint64_t lhs, uint64_t rhs) { \
-        auto ret = \
-            static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
-            mask; \
-        LOG(ERROR) << "lhs=" << std::hex << lhs << " " << #op \
-                   << " rhs=" << rhs << " = ret=" << ret << std::dec; \
-        return ret; \
+        return static_cast<uint64_t>((wrap(lhs, size) op wrap(rhs, size))) & \
+               mask; \
       }); \
     } else { \
       return {}; \
@@ -320,6 +319,9 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       }
       return xr;
     }
+
+    case llvm::Instruction::Call:
+      return ResolveCall(llvm::dyn_cast<llvm::CallInst>(inst_val));
 
     default: return {};
   }
@@ -538,6 +540,47 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
+CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
+  switch (call->getIntrinsicID()) {
+    case llvm::Intrinsic::ctlz: {
+      auto xr = ResolveValue(call->getArgOperand(0));
+      xr.u.address = __builtin_clzl(xr.u.address);
+      return xr;
+    }
+    case llvm::Intrinsic::cttz: {
+      auto xr = ResolveValue(call->getArgOperand(0));
+      xr.u.address = __builtin_ctzl(xr.u.address);
+      return xr;
+    }
+    case llvm::Intrinsic::ctpop: {
+      auto xr = ResolveValue(call->getArgOperand(0));
+      xr.u.address = __builtin_popcountl(xr.u.address);
+      return xr;
+    }
+
+    // Not an intrinsic.
+    case 0: break;
+
+    // Unsupported intrinsic.
+    default: return {};
+  }
+
+  // Looks like a call through a type hint function.
+  if (auto func = call->getCalledFunction();
+      func && func->getName().startswith(kTypeHintFunctionPrefix)) {
+    auto xr = ResolveValue(call->getArgOperand(0));
+    xr.hinted_value_type = func->getReturnType()->getPointerElementType();
+    xr.displacement_from_hinted_value_type = 0;
+    return xr;
+
+  // Not a call through a type hint, ignore it.
+  } else {
+    return {};
+  }
+}
+
+// Try to resolve `val` as a cross-reference.
+ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
@@ -589,9 +632,7 @@ ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
 
   switch (dl.getPointerSizeInBits(0)) {
     case 16: displacement = static_cast<std::int16_t>(u.displacement); break;
-
     case 32: displacement = static_cast<std::int32_t>(u.displacement); break;
-
     case 64: displacement = u.displacement; break;
   }
 

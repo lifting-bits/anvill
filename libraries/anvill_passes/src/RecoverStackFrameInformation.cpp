@@ -80,8 +80,6 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
   CHECK(stack_related_instr_list_res.Succeeded());
   auto second_stack_frame_uses = stack_related_instr_list_res.TakeValue();
   if (!second_stack_frame_uses.empty()) {
-    LOG(FATAL)
-        << "First use: " << remill::LLVMThingToString(second_stack_frame_uses[0]->getUser());
     EmitError(
         SeverityType::Fatal,
         StackAnalysisErrorCode::FunctionTransformationFailed,

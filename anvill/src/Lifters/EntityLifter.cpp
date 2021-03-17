@@ -89,9 +89,10 @@ void EntityLifterImpl::ForEachEntityAtAddress(
 
 EntityLifter::~EntityLifter(void) {}
 
-EntityLifter::EntityLifter(const LifterOptions &options_,
-                           const std::shared_ptr<MemoryProvider> &mem_provider_,
-                           const std::shared_ptr<TypeProvider> &type_provider_)
+EntityLifter::EntityLifter(
+    const LifterOptions &options_,
+    const std::shared_ptr<MemoryProvider> &mem_provider_,
+    const std::shared_ptr<::anvill::TypeProvider> &type_provider_)
     : impl(std::make_shared<EntityLifterImpl>(options_, mem_provider_,
                                               type_provider_)) {}
 
@@ -105,6 +106,11 @@ EntityLifter::AddressOfEntity(llvm::Constant *entity) const {
 // Return the options being used by this entity lifter.
 const LifterOptions &EntityLifter::Options(void) const {
   return impl->options;
+}
+
+// Return a reference to the type provider for this entity lifter.
+TypeProvider &EntityLifter::TypeProvider(void) const {
+  return *(impl->type_provider);
 }
 
 }  // namespace anvill

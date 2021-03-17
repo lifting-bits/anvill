@@ -20,6 +20,9 @@ add_library(anvill_passes STATIC
 
   src/BrightenPointerOperations.h
   src/BrightenPointerOperations.cpp
+  
+  src/RecoverEntityUseInformation.h
+  src/RecoverEntityUseInformation.cpp
 
   src/RecoverStackFrameInformation.h
   src/RecoverStackFrameInformation.cpp

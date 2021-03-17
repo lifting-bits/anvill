@@ -99,6 +99,46 @@ ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
   }
 }
 
+namespace {
+
+// Sort of sketchy function to try to drill down on some referenced variable
+// if we can.
+static llvm::Constant *UnwrapZeroIndices(llvm::Constant *ret,
+                                         llvm::Type *ret_type) {
+  auto new_ret = ret;
+  if (auto gep = llvm::dyn_cast<llvm::GEPOperator>(ret)) {
+    if (gep->hasAllZeroIndices()) {
+      new_ret = llvm::dyn_cast<llvm::Constant>(gep->getPointerOperand());
+      if (new_ret != ret && new_ret->getType() == ret_type) {
+        return new_ret;
+      }
+    }
+  }
+
+  new_ret = new_ret->stripPointerCasts();
+  if (new_ret != ret && new_ret->getType() == ret_type) {
+    return UnwrapZeroIndices(new_ret, ret_type);
+  }
+
+  new_ret = llvm::dyn_cast<llvm::Constant>(
+      new_ret->stripPointerCastsAndAliases());
+  if (new_ret != ret && new_ret->getType() == ret_type) {
+    return UnwrapZeroIndices(new_ret, ret_type);
+  }
+
+  if (new_ret != ret) {
+    new_ret = UnwrapZeroIndices(new_ret, ret_type);
+  }
+
+  if (new_ret != ret && new_ret->getType() == ret_type) {
+    return new_ret;
+  }
+
+  return ret;
+}
+
+}  // namespace
+
 // Lift pointers at `ea`.
 //
 // NOTE(pag): This returns `nullptr` upon failure to find `ea` as an
@@ -132,11 +172,17 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     }
   });
 
+  auto unrwap_zero_indices = [] (llvm::Constant *ret) {
+    const auto ret_type = ret->getType();
+    return UnwrapZeroIndices(ret, ret_type);
+  };
+
   // We've found the entity we wanted.
   if (found_entity_at_type) {
-    return found_entity_at_type;
+    return unrwap_zero_indices(found_entity_at_type);
+
   } else if (found_entity_at) {
-    return found_entity_at;
+    return unrwap_zero_indices(found_entity_at);
   }
 
   auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
@@ -174,7 +220,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     ret = GetVarPointer(ea, ea - 1u, ent_lifter);
   }
 
-  return ret;
+  return ret ? unrwap_zero_indices(ret) : nullptr;
 }
 
 // Lift the pointer at address `ea` which is getting referenced by the
@@ -210,9 +256,11 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
     ent_lifter.AddEntity(ret, ea);
   }
 
+
   if (llvm::isa<llvm::GlobalValue>(ret)) {
     return ret;
   }
+
 
   // Wrap the returned pointer in an alias.
   const auto type = ptr_type->getElementType();
@@ -221,7 +269,6 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
   ss << kGlobalAliasNamePrefix << std::hex << ea << '_'
      << TranslateType(*type, options.module->getDataLayout(), true);
   const auto name = ss.str();
-
   auto alias_ret = llvm::GlobalAlias::create(type, addr_space,
                                              llvm::GlobalValue::ExternalLinkage,
                                              name, options.module);

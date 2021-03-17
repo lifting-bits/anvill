@@ -748,9 +748,7 @@ int main(int argc, char *argv[]) {
       continue;
     }
     const auto name = var.getName();
-    if (name.startswith(anvill::kUnmodelledRegisterPrefix) ||
-        name == anvill::kSymbolicPCName || name == anvill::kSymbolicSPName ||
-        name == anvill::kSymbolicRAName) {
+    if (name.startswith(anvill::kAnvillNamePrefix)) {
       var.setInitializer(llvm::Constant::getNullValue(var.getValueType()));
       var.setLinkage(llvm::GlobalValue::InternalLinkage);
     }
