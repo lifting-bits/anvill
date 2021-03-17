@@ -579,7 +579,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateRemoveRemillFunctionReturns());
-  fpm.add(CreateBrightenPointerOperations(lifter_context));
+  // fpm.add(CreateBrightenPointerOperations(lifter_context));
 
   fpm.doInitialization();
   for (auto &func : module) {

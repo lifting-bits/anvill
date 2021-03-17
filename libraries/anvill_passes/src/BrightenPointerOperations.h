@@ -56,9 +56,9 @@ class PointerLifterPass final : public llvm::FunctionPass {
  private:
   static char ID;
 
+  const EntityLifter entity_lifter;
   const ValueLifter value_lifter;
   const CrossReferenceResolver xref_lifter;
-  const EntityLifter entity_lifter;
   const unsigned max_gas;
 };
 
