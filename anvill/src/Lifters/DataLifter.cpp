@@ -45,9 +45,8 @@ DataLifter::DataLifter(const LifterOptions &options_,
 
 // Declare a lifted a variable. Will not return `nullptr`. One issue that we
 // face is that we want to
-llvm::Constant *
-DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
-                             EntityLifterImpl &lifter_context) {
+llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
+                                             EntityLifterImpl &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
@@ -56,31 +55,30 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
   // Go try to figure out if we've already got a declaration for this specific
   // piece of data at the corresponding address. All data is versioned
-  lifter_context.ForEachEntityAtAddress(
-      decl.address, [&](llvm::Constant *v) {
-        if (!llvm::isa_and_nonnull<llvm::GlobalValue>(found_by_type)) {
-          if (auto ga = llvm::dyn_cast<llvm::GlobalAlias>(v)) {
-            if (ga->getValueType() == type) {
-              found_by_type = ga;
-            }
-            found_by_address = ga;
-
-          } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(v)) {
-            auto ce_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
-            CHECK_NOTNULL(ce_type);
-            if (ce_type->getElementType() == type) {
-              found_by_type = ga;
-            }
-            found_by_address = ga;
-          }
+  lifter_context.ForEachEntityAtAddress(decl.address, [&](llvm::Constant *v) {
+    if (!llvm::isa_and_nonnull<llvm::GlobalValue>(found_by_type)) {
+      if (auto ga = llvm::dyn_cast<llvm::GlobalAlias>(v)) {
+        if (ga->getValueType() == type) {
+          found_by_type = ga;
         }
-      });
+        found_by_address = ga;
+
+      } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(v)) {
+        auto ce_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
+        CHECK_NOTNULL(ce_type);
+        if (ce_type->getElementType() == type) {
+          found_by_type = ga;
+        }
+        found_by_address = ga;
+      }
+    }
+  });
 
   if (found_by_type) {
     return found_by_type;
   }
 
-  auto wrap_with_alias = [&] (llvm::Constant *val) {
+  auto wrap_with_alias = [&](llvm::Constant *val) {
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
        << TranslateType(*type, dl, true);
@@ -138,7 +136,7 @@ DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 }
 
 llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
-                                        EntityLifterImpl &lifter_context) {
+                                     EntityLifterImpl &lifter_context) {
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
 
@@ -199,8 +197,7 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.
-llvm::Constant *
-EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
+llvm::Constant *EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =

@@ -58,9 +58,8 @@ class EntityLifterImpl {
   void AddEntity(llvm::Constant *entity, uint64_t address);
 
   // Applies a callback `cb` to each entity at a specified address.
-  void
-  ForEachEntityAtAddress(uint64_t address,
-                         std::function<void(llvm::Constant *)> cb) const;
+  void ForEachEntityAtAddress(uint64_t address,
+                              std::function<void(llvm::Constant *)> cb) const;
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.

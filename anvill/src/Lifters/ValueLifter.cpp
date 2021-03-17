@@ -138,7 +138,6 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
                                   EntityLifterImpl &ent_lifter,
                                   uint64_t loc_ea) const {
 
-
   switch (type->getTypeID()) {
     case llvm::Type::IntegerTyID: {
       const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
@@ -153,6 +152,15 @@ llvm::Constant *ValueLifter::Lift(std::string_view data, llvm::Type *type,
       const auto size = dl.getTypeAllocSize(pointer_type);
       auto value = ConsumeBytesAsInt(data, size);
       auto address = value.getZExtValue();
+
+      // decompiler may resolve the references of a pointer to itself.
+      // e.g:
+      // 00004008  void* __dso_handle = __dso_handle
+      // If the references resolves to itself avoid lifting the pointer
+      if (address == loc_ea) {
+        return llvm::Constant::getIntegerValue(pointer_type, value);
+      }
+
       return GetPointer(address, type, ent_lifter, loc_ea);
     } break;
 

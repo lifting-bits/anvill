@@ -328,8 +328,10 @@ class TypeCache:
         # long double ty may get represented as int80_t. If the size
         # of the IntegerTypeClass is [10, 12], create a float type
         # int32_t (int32_t arg1, int80_t arg2 @ st0)
-        if tinfo.width in [1, 2, 4, 8, 16]:
-            ret = IntegerType(tinfo.width, True)
+        # int24_t type have tinfo width 3. recover it as size 4 byte
+        if tinfo.width in [1, 2, 3, 4, 8, 16]:
+            width = tinfo.width if tinfo.width % 2 == 0 else tinfo.width + 1
+            ret = IntegerType(width, True)
             return ret
         elif tinfo.width in [10, 12]:
             width = tinfo.width
