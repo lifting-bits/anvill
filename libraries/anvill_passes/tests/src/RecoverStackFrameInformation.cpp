@@ -90,18 +90,20 @@ TEST_SUITE("RecoverStackFrameInformation") {
       REQUIRE(function_it != function_list.end());
       auto &function = *function_it;
 
-      WHEN("enumerating instructions accessing the stack") {
+      WHEN("enumerating stack pointer usages") {
         auto stack_ptr_usages_res =
             RecoverStackFrameInformation::EnumerateStackPointerUsages(function);
 
         REQUIRE(stack_ptr_usages_res.Succeeded());
 
-        THEN("all the instructions using the stack pointer are returned") {
+        THEN(
+            "all the uses for the instruction operands referencing the __anvill_sp symbol are returned") {
 
           // From the test data, you can see we have 12 instructions referencing
-          // the `__anvill_sp` symbol
+          // the `__anvill_sp` symbol. Two of these, are `store` instructions
+          // that have the symbol on both operands.
           auto stack_ptr_usages = stack_ptr_usages_res.TakeValue();
-          CHECK(stack_ptr_usages.size() == 12U);
+          CHECK(stack_ptr_usages.size() == 14U);
         }
       }
 
@@ -131,7 +133,11 @@ TEST_SUITE("RecoverStackFrameInformation") {
           CHECK(stack_frame_analysis.lowest_offset == -28);
           CHECK(stack_frame_analysis.highest_offset == 16);
           CHECK(stack_frame_analysis.size == 44U);
-          CHECK(stack_frame_analysis.instruction_list.size() == 12U);
+
+          // Usages of the `__anvill_sp` symbol is 14, because two of the 12
+          // instructions we have are referencing the stack from both
+          // operands
+          CHECK(stack_frame_analysis.instruction_uses.size() == 14U);
         }
       }
 
@@ -288,7 +294,8 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
           auto second_stack_frame_analysis =
               stack_frame_analysis_res.TakeValue();
-          CHECK(second_stack_frame_analysis.instruction_list.empty());
+
+          CHECK(second_stack_frame_analysis.instruction_uses.empty());
         }
       }
     }
