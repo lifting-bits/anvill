@@ -56,7 +56,7 @@ bool checkMod(const llvm::Module& mod) {
     }
     return succeeded;
 }
-
+/*
 class BrightenPointersFixture {
  public:
   BrightenPointersFixture(void)
@@ -70,16 +70,19 @@ class BrightenPointersFixture {
   const std::shared_ptr<MemoryProvider> mem;
   const std::shared_ptr<TypeProvider> types;
 };
-
+*/
 TEST_SUITE("BrightenPointers") {
-  TEST_CASE_FIXTURE(BrightenPointersFixture,
-                    "Run the whole pass on a well-formed function") {
+  TEST_CASE("Run the whole pass on a well-formed function") {
 
-    auto mod = LoadTestData(llvm_context, "gep_add.ll");
+    llvm::LLVMContext context;
+    auto mod = LoadTestData(context, "gep_add.ll");
+    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
+    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
+    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
+
     REQUIRE(mod != nullptr);
 
-    const auto testme = arch.get();
-    LifterOptions options(testme, *mod.get());
+    LifterOptions options(arch.get(), *mod.get());
     EntityLifter lifter(options, mem, types);
     CrossReferenceResolver resolver(mod->getDataLayout());
     ValueLifter v_lifter(lifter);
@@ -87,14 +90,15 @@ TEST_SUITE("BrightenPointers") {
     checkMod(*mod);
   }
 
-  TEST_CASE_FIXTURE(BrightenPointersFixture, "multiple_bitcast") {
-    llvm::LLVMContext llvm_context;
-
-    auto mod = LoadTestData(llvm_context, "multiple_bitcast.ll");
+  TEST_CASE("multiple_bitcast") {
+    llvm::LLVMContext context;
+    auto mod = LoadTestData(context, "multiple_bitcast.ll");
+    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
+    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
+    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
     REQUIRE(mod != nullptr);
 
-    const auto testme = arch.get();
-    LifterOptions options(testme, *mod.get());
+    LifterOptions options(arch.get(), *mod.get());
     EntityLifter lifter(options, mem, types);
     CrossReferenceResolver resolver(mod->getDataLayout());
     ValueLifter v_lifter(lifter);
