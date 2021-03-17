@@ -38,14 +38,13 @@ const std::string kSymbolicRAName(kAnvillNamePrefix + "ra");
 // global variables," which exist to signal dependencies on native registers
 // without descending into inline assembly or LLVM's `llvm.read_register`
 // intrinsic. These register global variables are names as `<prefix><reg_name>`.
-const std::string kUnmodelledRegisterPrefix(kAnvillNamePrefix +
-                                            "__anvill_reg_");
+const std::string kUnmodelledRegisterPrefix(kAnvillNamePrefix + "reg_");
 
 // This is the prefix of a type hint function/variable name. These hints exist
 // to tell anvill that something has a different type. Type hints objects encode
 // type information within symbolic functions so the type information can
 // survive optimization.
-const std::string kTypeHintFunctionPrefix("__anvill_type_hint");
+const std::string kTypeHintFunctionPrefix(kAnvillNamePrefix + "type_hint");
 
 // This is the name of the "escape hatch" function for the Remill `Memory *`
 // value that is taken as an argument to Remill-lifted functions, passed

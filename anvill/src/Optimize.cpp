@@ -572,10 +572,13 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateBrightenPointerOperations(lifter_context));
+//  fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
   fpm.add(CreateRecoverStackFrameInformation(err_man, options));
+  fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
+  fpm.add(CreateRemoveRemillFunctionReturns());
+  fpm.add(CreateBrightenPointerOperations(lifter_context));
 
   fpm.doInitialization();
   for (auto &func : module) {
@@ -624,9 +627,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   CHECK(!err_man.HasFatalError());
 
-  RecoverMemoryReferences(program, module);
+//  RecoverMemoryReferences(program, module);
 
-  fpm.add(CreateRemoveRemillFunctionReturns());
   fpm.doInitialization();
   for (auto &func : module) {
     fpm.run(func);
@@ -636,6 +638,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   mpm.run(module);
 
   RemoveUndefFuncCalls(module);
+
+  //module.dump();
 
   CHECK(remill::VerifyModule(&module));
 }

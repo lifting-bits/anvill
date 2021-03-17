@@ -148,6 +148,12 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
       << TranslateType(*type, dl, true);
 
+  const auto var_name = ss2.str();
+  auto var = options.module->getGlobalVariable(var_name);
+  if (var) {
+    return var;
+  }
+
   // Inspect the availability of first byte at `decl.address` and append
   // it into the bytes vector
   const auto data_size = dl.getTypeAllocSize(type);
@@ -183,7 +189,6 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
     }
   }
 
-
   if (bytes_accessable) {
     value = lifter_context.value_lifter.Lift(
         std::string_view(reinterpret_cast<char *>(bytes.data()), bytes.size()),
@@ -192,7 +197,7 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
   return new llvm::GlobalVariable(*options.module, type, false,
                                   llvm::GlobalValue::ExternalLinkage, value,
-                                  ss2.str());
+                                  var_name);
 }
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is

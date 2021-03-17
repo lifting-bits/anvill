@@ -165,4 +165,18 @@ llvm::FunctionPass *
 CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                    const LifterOptions &options);
 
+// Anvill-lifted code is full of references to constant expressions related
+// to `__anvill_pc`. These constant expressions exist to "taint" values as
+// being possibly related to the program counter, and thus likely being
+// pointers.
+//
+// This goal of this pass is to opportunistically identify uses of values
+// that are related to the program counter, and likely to be references to
+// other entitities. We say opportunistic because that pass is not guaranteed
+// to replace all such references, and will in fact leave references around
+// for later passes to benefit from.
+llvm::FunctionPass *
+CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
+                                  const EntityLifter &lifter);
+
 }  // namespace anvill

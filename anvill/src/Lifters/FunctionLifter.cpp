@@ -638,14 +638,29 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   // Consider adding in:
   // std::hex << pc << "_" << reg->name
 
-  std::stringstream func_name;
-  func_name << kTypeHintFunctionPrefix << TranslateType(*goal_type, dl, true);
+  std::stringstream ss;
+  ss << kTypeHintFunctionPrefix << TranslateType(*goal_type, dl, true);
+  const auto func_name = ss.str();
+
   llvm::Type *return_type = goal_type;
 
   auto anvill_type_fn_ty =
       llvm::FunctionType::get(return_type, {current_type}, false);
-  semantics_module->getOrInsertFunction(func_name.str(), anvill_type_fn_ty);
-  return semantics_module->getFunction(func_name.str());
+
+  // Return the function if it exists.
+  auto func = semantics_module->getFunction(func_name);
+  if (func) {
+    return func;
+  }
+
+  // Create the function if not, and make LLVM treat it like an uninterpreted
+  // function that doesn't read memory. This improves LLVM's ability to optimize
+  // uses of the function.
+  func = llvm::Function::Create(
+      anvill_type_fn_ty, llvm::GlobalValue::ExternalLinkage, func_name,
+      semantics_module.get());
+  func->addFnAttr(llvm::Attribute::ReadNone);
+  return func;
 }
 
 // Instrument an instruction. This inject a `printf` call just before a

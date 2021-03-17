@@ -51,9 +51,10 @@ class EntityLifter {
  public:
   ~EntityLifter(void);
 
-  explicit EntityLifter(const LifterOptions &options,
-                        const std::shared_ptr<MemoryProvider> &mem_provider_,
-                        const std::shared_ptr<TypeProvider> &type_provider_);
+  explicit EntityLifter(
+      const LifterOptions &options,
+      const std::shared_ptr<MemoryProvider> &mem_provider_,
+      const std::shared_ptr<::anvill::TypeProvider> &type_provider_);
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.
@@ -61,6 +62,9 @@ class EntityLifter {
 
   // Return the options being used by this entity lifter.
   const LifterOptions &Options(void) const;
+
+  // Return a reference to the type provider for this entity lifter.
+  TypeProvider &TypeProvider(void) const;
 
   // Lift a function and return it. Returns `nullptr` if there was a failure.
   llvm::Function *LiftEntity(const FunctionDecl &decl) const;
