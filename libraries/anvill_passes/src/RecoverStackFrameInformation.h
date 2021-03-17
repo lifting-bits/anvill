@@ -18,7 +18,6 @@
 #pragma once
 
 #include <anvill/Lifters/Options.h>
-#include <anvill/Result.h>
 
 #include <unordered_map>
 
@@ -133,7 +132,7 @@ class RecoverStackFrameInformation final
   RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                const LifterOptions &options);
 
-  virtual ~RecoverStackFrameInformation() override = default;
+  virtual ~RecoverStackFrameInformation(void) override = default;
 };
 
 }  // namespace anvill

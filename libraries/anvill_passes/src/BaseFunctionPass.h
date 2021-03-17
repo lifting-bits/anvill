@@ -17,12 +17,17 @@
 
 #pragma once
 
+
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Result.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
+#include <remill/BC/Util.h>
 
 #include <magic_enum.hpp>
 #include <sstream>
@@ -95,7 +100,15 @@ class BaseFunctionPass : public llvm::FunctionPass {
   // Emits an error through the transformation error manager
   template <typename ErrorCodeEnum>
   void EmitError(SeverityType severity, ErrorCodeEnum error_code,
-                 const std::string &message);
+                 const std::string &message,
+                 llvm::Instruction *instr = nullptr);
+
+  // A list of instructions
+  using InstructionList = std::vector<llvm::Instruction *>;
+
+  // Returns a list of the instructions matching the given types
+  template <class... Types>
+  static InstructionList SelectInstructions(llvm::Function &function);
 };
 
 template <typename UserFunctionPass>
@@ -193,7 +206,8 @@ template <typename UserFunctionPass>
 template <typename ErrorCodeEnum>
 void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
                                                    ErrorCodeEnum error_code,
-                                                   const std::string &message) {
+                                                   const std::string &message,
+                                                   llvm::Instruction *instr) {
 
   TransformationError error;
   error.pass_name = getPassName().str();
@@ -227,10 +241,31 @@ void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
     buffer << " function_name:" << error.function_name.value();
   }
 
+  if (instr != nullptr) {
+    buffer << " instruction:" << remill::LLVMThingToString(instr);
+  }
+
   buffer << " message:\"" << message << "\"";
   error.description = buffer.str();
 
   error_manager.Insert(std::move(error));
+}
+
+template <typename UserFunctionPass>
+template <class... Types>
+typename BaseFunctionPass<UserFunctionPass>::InstructionList
+BaseFunctionPass<UserFunctionPass>::SelectInstructions(
+    llvm::Function &function) {
+  InstructionList output;
+
+  for (auto &instruction : llvm::instructions(function)) {
+    bool selected = (llvm::dyn_cast<Types>(&instruction) || ...);
+    if (selected) {
+      output.push_back(&instruction);
+    }
+  }
+
+  return output;
 }
 
 }  // namespace anvill

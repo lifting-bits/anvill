@@ -15,14 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "RecoverStackFrameInformation.h"
 
-#include <anvill/ABI.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
-#include <anvill/Analysis/Utils.h>
-#include <glog/logging.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Module.h>
 
 #include <iostream>
 #include <limits>
