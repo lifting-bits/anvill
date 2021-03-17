@@ -49,13 +49,15 @@ class CrossReferenceResolver;
 
 class PointerLifterPass final : public llvm::FunctionPass {
  public:
-  PointerLifterPass(const EntityLifter &entity_lifter_, unsigned max_gas_);
+  PointerLifterPass(const EntityLifter &entity_lifter_, const ValueLifter &value_lifter_, const CrossReferenceResolver& xref_resolver_, unsigned max_gas_);
 
   bool runOnFunction(llvm::Function &f) final;
 
  private:
   static char ID;
 
+  const ValueLifter value_lifter;
+  const CrossReferenceResolver xref_lifter;
   const EntityLifter entity_lifter;
   const unsigned max_gas;
 };

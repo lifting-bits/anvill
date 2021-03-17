@@ -19,6 +19,8 @@
 
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
+#include <anvill/Lifters/ValueLifter.h>
 
 namespace llvm {
 class Function;
@@ -120,7 +122,7 @@ llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter,
+llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, const ValueLifter& value_lifter, const CrossReferenceResolver& xref,
                                                     unsigned max_gas = 250);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,

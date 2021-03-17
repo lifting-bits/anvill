@@ -34,10 +34,12 @@ namespace anvill {
 
 char PointerLifterPass::ID = '\0';
 
-PointerLifterPass::PointerLifterPass(const EntityLifter &entity_lifter_,
-                                     unsigned max_gas_)
+PointerLifterPass::PointerLifterPass(const EntityLifter &entity_lifter_, const ValueLifter &value_lifter_,
+   const CrossReferenceResolver& xref_lifter_, unsigned max_gas_)
     : FunctionPass(ID),
       entity_lifter(entity_lifter_),
+      value_lifter(value_lifter_),
+      xref_lifter(xref_lifter_),
       max_gas(max_gas_) {}
 
 bool PointerLifterPass::runOnFunction(llvm::Function &f) {
@@ -1268,9 +1270,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter,
+llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, const ValueLifter &value_lifter, const CrossReferenceResolver& xref_res,
                                                     unsigned max_gas) {
-  return new PointerLifterPass(lifter, max_gas ? max_gas : 250u);
+  return new PointerLifterPass(lifter, value_lifter, xref_res, max_gas ? max_gas : 250u);
 }
 
 }  // namespace anvill

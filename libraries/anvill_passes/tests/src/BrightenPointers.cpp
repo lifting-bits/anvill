@@ -22,13 +22,40 @@
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
-
+#include <remill/BC/Lifter.h>
+#include <remill/OS/OS.h>
+#include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <iostream>
 
 #include "BaseScenario.h"
 #include "Utils.h"
 
 namespace anvill {
+
+
+bool checkMod(const llvm::Module& mod) {
+    // Verify the module
+    std::string error_buffer;
+    llvm::raw_string_ostream error_stream(error_buffer);
+
+    auto succeeded = llvm::verifyModule(mod, &error_stream) == 0;
+    error_stream.flush();
+
+    mod.print(llvm::errs(), nullptr);
+
+    CHECK(succeeded);
+    if (!succeeded) {
+      std::string error_message = "Module verification failed";
+      if (!error_buffer.empty()) {
+        error_message += ": " + error_buffer;
+      }
+
+      std::cerr << error_message << std::endl;
+    }
+    return succeeded;
+}
 
 class BrightenPointersFixture {
  public:
@@ -49,91 +76,31 @@ TEST_SUITE("BrightenPointers") {
                     "Run the whole pass on a well-formed function") {
 
     auto mod = LoadTestData(llvm_context, "gep_add.ll");
-    LifterOptions options(arch.get(), mod.get());
+    REQUIRE(mod != nullptr);
+
+    const auto testme = arch.get();
+    LifterOptions options(testme, *mod.get());
     EntityLifter lifter(options, mem, types);
-
-    auto module = RunFunctionPass(llvm_context, "gep_add.ll",
-                                  CreateBrightenPointerOperations(lifter));
-
-    // Verify the module
-    std::string error_buffer;
-    llvm::raw_string_ostream error_stream(error_buffer);
-
-    auto succeeded = llvm::verifyModule(*module.get(), &error_stream) == 0;
-    error_stream.flush();
-
-    module->print(llvm::errs(), nullptr);
-
-    CHECK(succeeded);
-    if (!succeeded) {
-      std::string error_message = "Module verification failed";
-      if (!error_buffer.empty()) {
-        error_message += ": " + error_buffer;
-      }
-
-      std::cerr << error_message << std::endl;
-    }
+    CrossReferenceResolver resolver(mod->getDataLayout());
+    ValueLifter v_lifter(lifter);
+    CHECK(RunFunctionPass(mod.get(), CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    checkMod(*mod);
   }
+
   TEST_CASE_FIXTURE(BrightenPointersFixture, "multiple_bitcast") {
     llvm::LLVMContext llvm_context;
 
     auto mod = LoadTestData(llvm_context, "multiple_bitcast.ll");
+    REQUIRE(mod != nullptr);
 
-    anvill::CrossReferenceResolver resolver(mod->getDataLayout());
-
-    auto module = RunFunctionPass(llvm_context, "multiple_bitcast.ll",
-                                  CreateBrightenPointerOperations(resolver));
-
-    // Verify the module
-    std::string error_buffer;
-    llvm::raw_string_ostream error_stream(error_buffer);
-
-    auto succeeded = llvm::verifyModule(*module.get(), &error_stream) == 0;
-    error_stream.flush();
-
-    for (auto &func : *mod) {
-      if (func.getName() == "valid_test") {
-        std::cout << "====================BEFORE===================="
-                  << std::endl;
-        func.print(llvm::errs(), nullptr);
-      }
-    }
-
-    for (auto &func : *module) {
-      if (func.getName() == "valid_test") {
-        std::cout << "====================AFTER===================="
-                  << std::endl;
-        func.print(llvm::errs(), nullptr);
-      }
-    }
-
-    for (auto &func : *mod) {
-      if (func.getName() == "main") {
-        std::cout << "====================BEFORE===================="
-                  << std::endl;
-        func.print(llvm::errs(), nullptr);
-      }
-    }
-
-    for (auto &func : *module) {
-      if (func.getName() == "main") {
-        std::cout << "====================AFTER===================="
-                  << std::endl;
-        func.print(llvm::errs(), nullptr);
-      }
-    }
-
-
-    CHECK(succeeded);
-    if (!succeeded) {
-      std::string error_message = "Module verification failed";
-      if (!error_buffer.empty()) {
-        error_message += ": " + error_buffer;
-      }
-
-      std::cerr << error_message << std::endl;
-    }
-  }
+    const auto testme = arch.get();
+    LifterOptions options(testme, *mod.get());
+    EntityLifter lifter(options, mem, types);
+    CrossReferenceResolver resolver(mod->getDataLayout());
+    ValueLifter v_lifter(lifter);
+    CHECK(RunFunctionPass(mod.get(), CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    checkMod(*mod);
+}
 }
 
 };  // namespace anvill
