@@ -125,6 +125,9 @@ class CrossReferenceResolver {
   // Try to resolve `val` as a cross-reference.
   ResolvedCrossReference TryResolveReference(llvm::Value *val) const;
 
+  // Returns the "magic" value that represents the return address.
+  uint64_t MagicReturnAddressValue(void) const;
+
   CrossReferenceResolver(const CrossReferenceResolver &) = default;
   CrossReferenceResolver(CrossReferenceResolver &&) noexcept = default;
   CrossReferenceResolver &operator=(const CrossReferenceResolver &) = default;

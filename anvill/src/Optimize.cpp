@@ -578,7 +578,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
-  fpm.add(CreateRemoveRemillFunctionReturns());
   // fpm.add(CreateBrightenPointerOperations(lifter_context));
 
   fpm.doInitialization();
@@ -630,6 +629,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
 //  RecoverMemoryReferences(program, module);
 
+  fpm.add(CreateRemoveRemillFunctionReturns(lifter_context));
   fpm.doInitialization();
   for (auto &func : module) {
     fpm.run(func);

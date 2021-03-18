@@ -152,7 +152,8 @@ llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, 
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
+llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
+    const EntityLifter &lifter);
 
 // Transforms the bitcode in `func`, looking for uses of the
 // `llvm.returnaddress` intrinsic function. If the return value of this function

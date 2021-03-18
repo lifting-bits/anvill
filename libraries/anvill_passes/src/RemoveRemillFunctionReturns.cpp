@@ -16,6 +16,7 @@
  */
 
 #include <anvill/Analysis/Utils.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
@@ -36,18 +37,6 @@
 
 namespace anvill {
 namespace {
-
-class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
- public:
-  RemoveRemillFunctionReturns(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char RemoveRemillFunctionReturns::ID = '\0';
 
 enum ReturnAddressResult {
 
@@ -71,9 +60,27 @@ enum ReturnAddressResult {
   kUnclassifiableReturnAddress
 };
 
+class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
+ public:
+  RemoveRemillFunctionReturns(const EntityLifter &lifter_)
+      : llvm::FunctionPass(ID),
+        xref_resolver(lifter_) {}
+
+  bool runOnFunction(llvm::Function &func) final;
+
+ private:
+  ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
+                                         llvm::Value *val) const;
+
+  static char ID;
+  const CrossReferenceResolver xref_resolver;
+};
+
+char RemoveRemillFunctionReturns::ID = '\0';
+
 // Returns `true` if `val` is a return address.
-static ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
-                                              llvm::Value *val) {
+ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
+    const llvm::DataLayout &dl, llvm::Value *val) const {
 
   if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
     if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
@@ -112,6 +119,17 @@ static ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
 
   } else if (IsRelatedToStackPointer(dl, val)) {
     return kFoundSymbolicStackPointerLoad;
+
+  // Sometimes optimizations result in really crazy looking constant expressions
+  // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+  // this situation by initializing a "magic" address associated with
+  // `__anvill_ra`, and then if we find this magic value on something that
+  // references `__anvill_ra`, then we conclude that all those manipulations
+  // in the constant expression are actually not important.
+  } else if (auto xr = xref_resolver.TryResolveReference(val);
+             xr.is_valid && xr.references_return_address &&
+             xr.u.address == xref_resolver.MagicReturnAddressValue()) {
+    return kFoundReturnAddress;
 
   } else {
     return kUnclassifiableReturnAddress;
@@ -302,8 +320,9 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void) {
-  return new RemoveRemillFunctionReturns;
+llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
+    const EntityLifter &lifter) {
+  return new RemoveRemillFunctionReturns(lifter);
 }
 
 }  // namespace anvill
