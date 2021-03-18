@@ -120,8 +120,8 @@ static llvm::Constant *UnwrapZeroIndices(llvm::Constant *ret,
     return UnwrapZeroIndices(new_ret, ret_type);
   }
 
-  new_ret = llvm::dyn_cast<llvm::Constant>(
-      new_ret->stripPointerCastsAndAliases());
+  new_ret =
+      llvm::dyn_cast<llvm::Constant>(new_ret->stripPointerCastsAndAliases());
   if (new_ret != ret && new_ret->getType() == ret_type) {
     return UnwrapZeroIndices(new_ret, ret_type);
   }
@@ -172,7 +172,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     }
   });
 
-  auto unrwap_zero_indices = [] (llvm::Constant *ret) {
+  auto unrwap_zero_indices = [](llvm::Constant *ret) {
     const auto ret_type = ret->getType();
     return UnwrapZeroIndices(ret, ret_type);
   };
@@ -200,7 +200,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
       auto maybe_inv_decl = FunctionDecl::Create(*func, options.arch);
       func->eraseFromParent();
       if (!remill::IsError(maybe_inv_decl)) {
-        maybe_decl->address = ea;  // Force the address in.
+        maybe_inv_decl->address = ea;  // Force the address in.
         return GetFunctionPointer(remill::GetReference(maybe_inv_decl),
                                   ent_lifter);
       } else {
@@ -304,6 +304,15 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       const auto size = dl.getTypeAllocSize(pointer_type);
       auto value = ConsumeBytesAsInt(data, size);
       auto address = value.getZExtValue();
+
+      // decompiler may resolve the references of a pointer to itself.
+      // e.g:
+      // 00004008  void* __dso_handle = __dso_handle
+      // If the references resolves to itself avoid lifting the pointer
+      if (address == loc_ea) {
+        return llvm::Constant::getIntegerValue(pointer_type, value);
+      }
+
       return GetPointer(address, pointer_type, ent_lifter, loc_ea);
     } break;
 
