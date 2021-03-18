@@ -55,55 +55,6 @@
 #include <anvill/Transforms.h>
 
 namespace anvill {
-namespace {
-
-// Replace all uses of a specific intrinsic with an undefined value. We actually
-// don't use LLVM's `undef` values because those can behave unpredictably
-// across different LLVM versions with different optimization levels. Instead,
-// we use a null value (zero, really).
-static void ReplaceUndefIntrinsic(llvm::Function *function) {
-  auto call_insts = remill::CallersOf(function);
-  auto undef_val = llvm::Constant::getNullValue(function->getReturnType());
-  for (auto call_inst : call_insts) {
-    call_inst->replaceAllUsesWith(undef_val);
-    call_inst->removeFromParent();
-    delete call_inst;
-  }
-}
-
-static void RemoveFunction(llvm::Function *func) {
-  if (!func->hasNUsesOrMore(1)) {
-    func->eraseFromParent();
-  } else {
-    auto ret_type = func->getReturnType();
-    if (!ret_type->isVoidTy()) {
-      func->replaceAllUsesWith(llvm::UndefValue::get(func->getType()));
-      func->eraseFromParent();
-    }
-  }
-}
-
-
-// Remove calls to the various undefined value intrinsics.
-static void RemoveUndefFuncCalls(llvm::Module &module) {
-  llvm::Function *undef_funcs[] = {
-      module.getFunction("__remill_undefined_8"),
-      module.getFunction("__remill_undefined_16"),
-      module.getFunction("__remill_undefined_32"),
-      module.getFunction("__remill_undefined_64"),
-      module.getFunction("__remill_undefined_f32"),
-      module.getFunction("__remill_undefined_f64"),
-  };
-
-  for (auto undef_func : undef_funcs) {
-    if (undef_func) {
-      ReplaceUndefIntrinsic(undef_func);
-      RemoveFunction(undef_func);
-    }
-  }
-}
-
-}  // namespace
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
@@ -216,15 +167,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   CHECK(!err_man.HasFatalError());
 
   fpm.add(CreateRemoveRemillFunctionReturns(lifter_context));
+  fpm.add(CreateLowerRemillUndefinedIntrinsics());
   fpm.doInitialization();
   for (auto &func : module) {
     fpm.run(func);
   }
   fpm.doFinalization();
-
-  mpm.run(module);
-
-  RemoveUndefFuncCalls(module);
 
   CHECK(remill::VerifyModule(&module));
 }

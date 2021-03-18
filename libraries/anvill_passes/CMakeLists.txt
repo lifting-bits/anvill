@@ -10,6 +10,7 @@ add_library(anvill_passes STATIC
   include/anvill/Transforms.h
 
   src/LowerRemillMemoryAccessIntrinsics.cpp
+  src/LowerRemillUndefinedIntrinsics.cpp
   src/LowerTypeHintIntrinsics.cpp
   src/RemoveCompilerBarriers.cpp
   src/RemoveRemillFunctionReturns.cpp

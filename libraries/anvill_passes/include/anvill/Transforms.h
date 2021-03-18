@@ -194,4 +194,21 @@ llvm::FunctionPass *
 CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
                                   const EntityLifter &lifter);
 
+// Some machine code instructions explicitly introduce undefined values /
+// behavior. Often, this is a result of the CPUs of different steppings of
+// an ISA producing different results for specific registers. For example,
+// some instructions leave the value of specific arithmetic flags instructions
+// in an undefined state.
+//
+// Remill models these situations using opaque function calls, i.e. an
+// undefined value is produced via a call to something like
+// `__remill_undefined_8`, which represents an 8-bit undefined value. We want
+// to lower these to `undef` values in LLVM; however, we don't want to do this
+// too early, otherwise the "undefinedness" can spread and possibly get out
+// of control.
+//
+// This pass exists to do the lowering to `undef` values, and should be run
+// as late as possible.
+llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
+
 }  // namespace anvill
