@@ -34,7 +34,15 @@
 
 namespace anvill {
 
+void printFunc(const llvm::Module& mod, const std::string& name, const std::string& msg) {
+  for (auto& f : mod) {
+    if (f.hasName() && f.getName() == name) {
+      std::cout << msg << std::endl;
+      f.print(llvm::errs(), nullptr);
+    }
+  }
 
+}
 bool checkMod(const llvm::Module& mod) {
     // Verify the module
     std::string error_buffer;
@@ -42,8 +50,6 @@ bool checkMod(const llvm::Module& mod) {
 
     auto succeeded = llvm::verifyModule(mod, &error_stream) == 0;
     error_stream.flush();
-
-    mod.print(llvm::errs(), nullptr);
 
     CHECK(succeeded);
     if (!succeeded) {
@@ -71,11 +77,26 @@ class BrightenPointersFixture {
   const std::shared_ptr<TypeProvider> types;
 };
 */
+bool RunFunctionPass(llvm::Module& module, llvm::FunctionPass *function_pass) {
+  llvm::legacy::FunctionPassManager pass_manager(&module);
+  pass_manager.add(function_pass);
+
+  pass_manager.doInitialization();
+
+  for (auto &function : module) {
+    pass_manager.run(function);
+  }
+
+  pass_manager.doFinalization();
+  return VerifyModule(&module);
+}
+
 TEST_SUITE("BrightenPointers") {
   TEST_CASE("Run the whole pass on a well-formed function") {
 
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "gep_add.ll");
+    printFunc(*mod, "main", "BEFORE");
     const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
     const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
     const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
@@ -86,13 +107,17 @@ TEST_SUITE("BrightenPointers") {
     EntityLifter lifter(options, mem, types);
     CrossReferenceResolver resolver(mod->getDataLayout());
     ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(mod.get(), CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
-    checkMod(*mod);
-  }
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(checkMod(*mod));
+    printFunc(*mod, "main", "AFTER");
 
+  }
+/*
   TEST_CASE("multiple_bitcast") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "multiple_bitcast.ll");
+    printFunc(*mod, "valid_test", "BEFORE");
+
     const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
     const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
     const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
@@ -102,9 +127,11 @@ TEST_SUITE("BrightenPointers") {
     EntityLifter lifter(options, mem, types);
     CrossReferenceResolver resolver(mod->getDataLayout());
     ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(mod.get(), CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
-    checkMod(*mod);
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(checkMod(*mod));
+    printFunc(*mod, "valid_test", "AFTER");
 }
+*/
 }
 
 };  // namespace anvill
