@@ -656,9 +656,9 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   // Create the function if not, and make LLVM treat it like an uninterpreted
   // function that doesn't read memory. This improves LLVM's ability to optimize
   // uses of the function.
-  func = llvm::Function::Create(
-      anvill_type_fn_ty, llvm::GlobalValue::ExternalLinkage, func_name,
-      semantics_module.get());
+  func = llvm::Function::Create(anvill_type_fn_ty,
+                                llvm::GlobalValue::ExternalLinkage, func_name,
+                                semantics_module.get());
   func->addFnAttr(llvm::Attribute::ReadNone);
   return func;
 }
