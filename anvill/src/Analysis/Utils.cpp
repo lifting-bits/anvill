@@ -220,4 +220,31 @@ bool IsReturnAddress(llvm::Value *val) {
   }
 }
 
+// Returns `true` if `val` looks like it is backed by a definition, and thus can
+// be the aliasee of an `llvm::GlobalAlias`.
+bool CanBeAliased(llvm::Value *val) {
+  if (!val) {
+    return false;
+  } else if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
+    return !gv->isDeclaration();
+  } else if (auto f = llvm::dyn_cast<llvm::Function>(val)) {
+    return !f->isDeclaration();
+  } else if (auto ga = llvm::dyn_cast<llvm::GlobalAlias>(val)) {
+    return CanBeAliased(ga->getAliasee());
+  } else if (auto gep = llvm::dyn_cast<llvm::GEPOperator>(val)) {
+    return CanBeAliased(gep->getPointerOperand());
+  } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+    switch (ce->getOpcode()) {
+      case llvm::Instruction::BitCast:
+      case llvm::Instruction::PtrToInt:
+      case llvm::Instruction::IntToPtr:
+        return CanBeAliased(ce->getOperand(0));
+      default:
+        return false;
+    }
+  } else {
+    return false;
+  }
+}
+
 }  // namespace anvill

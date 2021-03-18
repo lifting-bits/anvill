@@ -18,6 +18,7 @@
 #include "ValueLifter.h"
 
 #include <anvill/ABI.h>
+#include <anvill/Analysis/Utils.h>
 #include <anvill/TypePrinter.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
@@ -247,8 +248,7 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
           << "Failed to lift address " << std::hex << ea
           << " into a pointer of type " << remill::LLVMThingToString(ptr_type);
 
-      llvm::APInt value(dl.getPointerSizeInBits(addr_space), ea);
-      return llvm::Constant::getIntegerValue(ptr_type, value);
+      return nullptr;
     }
 
   } else if (ret->getType() != ptr_type) {
@@ -256,11 +256,9 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
     ent_lifter.AddEntity(ret, ea);
   }
 
-
-  if (llvm::isa<llvm::GlobalValue>(ret)) {
+  if (llvm::isa<llvm::GlobalValue>(ret) || !CanBeAliased(ret)) {
     return ret;
   }
-
 
   // Wrap the returned pointer in an alias.
   const auto type = ptr_type->getElementType();
@@ -313,7 +311,14 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
         return llvm::Constant::getIntegerValue(pointer_type, value);
       }
 
-      return GetPointer(address, pointer_type, ent_lifter, loc_ea);
+      // If we successfully lift it as a reference then we're in good shape.
+      if (auto val = GetPointer(address, pointer_type, ent_lifter, loc_ea)) {
+        return val;
+      }
+
+      // Otherwise, we do best-effort and cast the address.
+      return llvm::Constant::getIntegerValue(pointer_type, value);
+
     } break;
 
     // Take apart the structure type, recursing into each element
@@ -416,8 +421,8 @@ llvm::Constant *ValueLifter::Lift(std::string_view data,
 // Interpret `ea` as being a pointer of type `pointer_type`. `loc_ea`,
 // if non-null, is the address at which `ea` appears.
 //
-// Returns an `llvm::GlobalValue *` if the pointer is associated with a
-// known or plausible entity, and an `llvm::Constant *` otherwise.
+// Returns an `llvm::Constant *` if the pointer is associated with a
+// known or plausible entity, and a `nullptr` otherwise.
 llvm::Constant *ValueLifter::Lift(uint64_t ea,
                                   llvm::PointerType *pointer_type) const {
   return impl->value_lifter.GetPointer(ea, pointer_type, *impl, 0);

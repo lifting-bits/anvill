@@ -36,4 +36,8 @@ bool IsReturnAddress(llvm::Value *val);
 // pointer representation.
 bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val);
 
+// Returns `true` if `val` looks like it is backed by a definition, and thus can
+// be the aliasee of an `llvm::GlobalAlias`.
+bool CanBeAliased(llvm::Value *val);
+
 }  // namespace anvill
