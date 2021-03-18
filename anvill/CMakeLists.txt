@@ -33,18 +33,12 @@ add_library(anvill STATIC
 
   include/anvill/Program.h
   src/Program.cpp
-  
-  include/anvill/RecoverMemRefs.h
-  src/RecoverMemRefs.cpp
 
   include/anvill/Decl.h
   src/Decl.cpp
 
   include/anvill/Optimize.h
   src/Optimize.cpp
-
-  include/anvill/Analyze.h
-  src/Analyze.cpp
 
   include/anvill/Util.h
   src/Util.cpp
@@ -104,11 +98,9 @@ macro(target_public_headers TARGET)
 endmacro()
 
 target_public_headers(anvill
-  include/anvill/Analyze.h
   include/anvill/Decl.h
   include/anvill/Optimize.h
   include/anvill/Program.h
-  include/anvill/RecoverMemRefs.h
   include/anvill/Result.h
   include/anvill/Type.h
   include/anvill/TypeParser.h
