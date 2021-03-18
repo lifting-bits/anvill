@@ -79,35 +79,35 @@ class PointerLifter
   llvm::Value *getPointerToValue(llvm::IRBuilder<> &ir, llvm::Value *curr_val,
                                  llvm::Type *dest_type);
 
-  // These visitor methods indicate that we know about pointer information to
-  // propagate. Some are maybes, because not all cast instructions are casts to
-  // pointers.
+
   std::pair<llvm::Value *, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
   std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
+  std::pair<llvm::Value *, bool> visitReturnInst(llvm::ReturnInst& inst);
+  std::pair<llvm::Value *, bool> visitStoreInst(llvm::StoreInst& store);
+  std::pair<llvm::Value *, bool> visitAllocaInst(llvm::AllocaInst& alloca);
+  
+  std::pair<llvm::Value *, bool> visitSExtInst(llvm::SExtInst& inst);
+  std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst& inst);
 
+  std::pair<llvm::Value *, bool> visitCmpInst(llvm::CmpInst& inst);
+/*
   // Visit of use of a value `val` by the instruction `user`, where we
   // believe this use should be a pointer to the type `inferred_value_type`.
   std::pair<llvm::Value *, bool>
   visitPossibleCrossReference(llvm::Instruction &user, llvm::Use &use,
                               llvm::PointerType *inferred_type);
-
-  // std::pair<llvm::Value*, bool>visitPtrToIntInst(llvm::PtrToIntInst &inst);
+*/
   bool canRewriteGep(llvm::GetElementPtrInst &inst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> flattenGEP(llvm::GetElementPtrInst *gep);
-  std::pair<llvm::Value *, bool>
-  BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
+  std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
                             llvm::Type *inferred_type);
-  std::pair<llvm::Value *, bool>
-  visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
+  std::pair<llvm::Value *, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
-
   std::pair<llvm::Value *, bool> visitPHINode(llvm::PHINode &inst);
 
-  // std::pair<llvm::Value*, bool>visitCastInst(llvm::CastInst &inst);
   // Simple wrapper for storing the type information into the list, and then
   // calling visit.
-  std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst,
-                                                llvm::Type *inferred_type);
+  std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> visitInstruction(llvm::Instruction &I);
   std::pair<llvm::Value *, bool>
   visitBinaryOperator(llvm::BinaryOperator &inst);
