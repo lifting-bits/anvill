@@ -280,12 +280,7 @@ bool InstructionFolderPass::FoldPHINode(
 
     for (auto i = 0U; i < incoming_value_count; ++i) {
       IncomingValue incoming_value;
-      incoming_value.instruction =
-          llvm::dyn_cast<llvm::Instruction>(phi_node->getIncomingValue(i));
-      if (incoming_value.instruction == nullptr) {
-        return false;
-      }
-
+      incoming_value.value = phi_node->getIncomingValue(i);
       incoming_value.basic_block = phi_node->getIncomingBlock(i);
 
       incoming_value_list.push_back(std::move(incoming_value));
@@ -337,8 +332,14 @@ bool InstructionFolderPass::FoldPHINode(
   }
 
   for (auto &incoming_value : incoming_value_list) {
-    if (incoming_value.instruction->getNumUses() == 0U) {
-      incoming_value.instruction->eraseFromParent();
+    auto value_as_instr =
+        llvm::dyn_cast<llvm::Instruction>(incoming_value.value);
+    if (value_as_instr == nullptr) {
+      continue;
+    }
+
+    if (value_as_instr->getNumUses() == 0U) {
+      value_as_instr->eraseFromParent();
     }
   }
 
@@ -411,13 +412,9 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
-    auto new_value =
-        builder.CreateBinOp(opcode, incoming_value.instruction, operand);
-
     IncomingValue new_incoming_value;
-    new_incoming_value.instruction =
-        llvm::dyn_cast<llvm::Instruction>(new_value);
-
+    new_incoming_value.value =
+        builder.CreateBinOp(opcode, incoming_value.value, operand);
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
@@ -429,7 +426,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
       builder.CreatePHI(phi_node->getType(), new_incoming_values.size());
 
   for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.instruction,
+    new_phi_node->addIncoming(new_incoming_value.value,
                               new_incoming_value.basic_block);
   }
 
@@ -490,13 +487,9 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
-    auto new_value = builder.CreateCast(cast_opcode, incoming_value.instruction,
-                                        destination_type);
-
     IncomingValue new_incoming_value;
-    new_incoming_value.instruction =
-        llvm::dyn_cast<llvm::Instruction>(new_value);
-
+    new_incoming_value.value =
+        builder.CreateCast(cast_opcode, incoming_value.value, destination_type);
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
@@ -510,7 +503,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
       builder.CreatePHI(destination_type, new_incoming_values.size());
 
   for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.instruction,
+    new_phi_node->addIncoming(new_incoming_value.value,
                               new_incoming_value.basic_block);
   }
 
@@ -555,17 +548,45 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     InstructionFolderPass::IncomingValueList &incoming_values,
     llvm::Instruction *gep_instr) {
 
-  // Acquire all the indices first, and make sure that they
-  // are all constant values
+  // Acquire all the indices first, so we can verify them:
+  // 1. If they are instructions, then all the indices in the GEP
+  //    that are preceding our PHI use must NOT reside in the same
+  //    basic block as the GEP (otherwise we won't have them when
+  //    we move the GetElementPtrInst inside the incoming basic block)
+  // 2. All the indices that are following the PHI use must be constants
   std::vector<llvm::Value *> index_list;
+
   {
     auto instr = llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr);
-    if (!instr->hasAllConstantIndices()) {
-      return false;
-    }
+    bool phi_index_found{false};
 
     for (auto &index : instr->indices()) {
       index_list.push_back(index);
+
+      // If this is our PHI node, update the verification stage and skip
+      // any check
+      auto index_as_instr = llvm::dyn_cast<llvm::Instruction>(&index);
+      if (index_as_instr == phi_node) {
+        phi_index_found = true;
+        continue;
+      }
+
+      if (!phi_index_found) {
+        // We have not met the PHI index yet, make sure that this
+        // index is still reachable if we move the GEP
+        if (index_as_instr != nullptr &&
+            index_as_instr->getParent() == gep_instr->getParent()) {
+          return false;
+        }
+
+      } else {
+        // We are after the PHI index; make sure that this value is a
+        // constant
+        if (!(llvm::isa<llvm::Constant>(index) &&
+              llvm::isa<llvm::ConstantExpr>(index))) {
+          return false;
+        }
+      }
     }
   }
 
@@ -577,11 +598,9 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
-    auto new_value = builder.CreateGEP(incoming_value.instruction, index_list);
-
     IncomingValue new_incoming_value;
-    new_incoming_value.instruction =
-        llvm::dyn_cast<llvm::Instruction>(new_value);
+    new_incoming_value.value =
+        builder.CreateGEP(incoming_value.value, index_list);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
@@ -595,7 +614,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
       builder.CreatePHI(gep_instr->getType(), new_incoming_values.size());
 
   for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.instruction,
+    new_phi_node->addIncoming(new_incoming_value.value,
                               new_incoming_value.basic_block);
   }
 

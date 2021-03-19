@@ -55,7 +55,7 @@ class InstructionFolderPass final
   // A single incoming value + basic_block for a PHI node
   struct IncomingValue final {
     llvm::BasicBlock *basic_block{nullptr};
-    llvm::Instruction *instruction{nullptr};
+    llvm::Value *value{nullptr};
   };
 
   // A list of incoming values for a PHI node
