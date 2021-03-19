@@ -98,7 +98,7 @@ class PointerLifter
                               llvm::PointerType *inferred_type);
 */
   bool canRewriteGep(llvm::GetElementPtrInst &inst, llvm::Type *inferred_type);
-  std::pair<llvm::Value *, bool> flattenGEP(llvm::GetElementPtrInst *gep);
+  llvm::Value* flattenGEP(llvm::GetElementPtrInst *gep);
   std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
                             llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
