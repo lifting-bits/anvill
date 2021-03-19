@@ -137,11 +137,9 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
     // We have inferred a pointer type from the usage site or from the value.
     if (inferred_type) {
 
-      // NOTE(pag): `address_lifter.Lift` will return `llvm::Constant`s for
-      //            unresolved references in order to satisfy the request, and
-      //            will return `llvm::GlobalValue`s for "proper" entities.
-      entity = llvm::dyn_cast<llvm::GlobalValue>(
-          address_lifter.Lift(ra.u.address, inferred_type));
+      // NOTE(pag): `address_lifter.Lift` will return `nullptr` for
+      //            unresolved references in order to satisfy the request.
+      entity = address_lifter.Lift(ra.u.address, inferred_type);
 
     // We have not inferred information about this, time to go find it.
     } else {
@@ -195,6 +193,12 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
       } else {
         // TODO(pag): Report error/warning?
       }
+
+      if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(val);
+          val_inst && val_inst->use_empty()) {
+        val_inst->eraseFromParent();
+      }
+
     } else {
       // TODO(pag): Report warning/informational?
     }

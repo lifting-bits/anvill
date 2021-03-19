@@ -44,8 +44,8 @@ class ValueLifter {
   // Interpret `ea` as being a pointer of type `pointer_type`. `loc_ea`,
   // if non-null, is the address at which `ea` appears.
   //
-  // Returns an `llvm::GlobalValue *` if the pointer is associated with a
-  // known or plausible entity, and an `llvm::Constant *` otherwise.
+  // Returns an `llvm::Constant *` if the pointer is associated with a
+  // known or plausible entity, and an `nullptr` otherwise.
   llvm::Constant *Lift(uint64_t ea, llvm::PointerType *pointer_type) const;
 
  private:

@@ -18,6 +18,7 @@
 #include "DataLifter.h"
 
 #include <anvill/ABI.h>
+#include <anvill/Analysis/Utils.h>
 #include <anvill/Decl.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/TypePrinter.h>
@@ -43,8 +44,7 @@ DataLifter::DataLifter(const LifterOptions &options_,
       type_provider(type_provider_),
       context(options.module->getContext()) {}
 
-// Declare a lifted a variable. Will not return `nullptr`. One issue that we
-// face is that we want to
+// Declare a lifted a variable. Will not return `nullptr`.
 llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
                                              EntityLifterImpl &lifter_context) {
 
@@ -78,7 +78,11 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
     return found_by_type;
   }
 
-  auto wrap_with_alias = [&](llvm::Constant *val) {
+  auto wrap_with_alias = [&](llvm::Constant *val) -> llvm::Constant * {
+    if (!CanBeAliased(val)) {
+      return val;
+    }
+
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
        << TranslateType(*type, dl, true);

@@ -48,7 +48,6 @@
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
 
-#include "anvill/Analyze.h"
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
 #include "anvill/Program.h"

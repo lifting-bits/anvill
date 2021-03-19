@@ -1,0 +1,86 @@
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <anvill/ABI.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Pass.h>
+
+#include <vector>
+
+namespace anvill {
+namespace {
+
+class LowerRemillUndefinedIntrinsics final : public llvm::FunctionPass {
+ public:
+  LowerRemillUndefinedIntrinsics(void)
+      : llvm::FunctionPass(ID) {}
+
+  bool runOnFunction(llvm::Function &func) override;
+
+ private:
+  static char ID;
+};
+
+char LowerRemillUndefinedIntrinsics::ID = '\0';
+
+bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
+  std::vector<llvm::CallInst *> calls;
+
+  for (auto &inst : llvm::instructions(func)) {
+    if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+      if (auto callee = call->getCalledFunction();
+          callee && callee->getName().startswith("__remill_undefined_")) {
+        calls.push_back(call);
+      }
+    }
+  }
+
+  auto changed = false;
+  for (auto call : calls) {
+    call->replaceAllUsesWith(llvm::UndefValue::get(call->getType()));
+    call->eraseFromParent();
+    changed = true;
+  }
+
+  return changed;
+}
+
+}  // namespace
+
+// Some machine code instructions explicitly introduce undefined values /
+// behavior. Often, this is a result of the CPUs of different steppings of
+// an ISA producing different results for specific registers. For example,
+// some instructions leave the value of specific arithmetic flags instructions
+// in an undefined state.
+//
+// Remill models these situations using opaque function calls, i.e. an
+// undefined value is produced via a call to something like
+// `__remill_undefined_8`, which represents an 8-bit undefined value. We want
+// to lower these to `undef` values in LLVM; however, we don't want to do this
+// too early, otherwise the "undefinedness" can spread and possibly get out
+// of control.
+//
+// This pass exists to do the lowering to `undef` values, and should be run
+// as late as possible.
+llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void) {
+  return new LowerRemillUndefinedIntrinsics;
+}
+
+}  // namespace anvill

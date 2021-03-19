@@ -104,6 +104,18 @@ llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void);
 // various atomic read-modify-write variants into LLVM loads and stores.
 llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 
+// Type information from prior lifting efforts, or from front-end tools
+// (e.g. Binary Ninja) is plumbed through the system by way of calls to
+// intrinsic functions such as `__anvill_type<blah>`. These function calls
+// don't interfere (too much) with optimizations, and they also survive
+// optimizations. In general, the key role that they serve is to enable us to
+// propagate through pointer type information at an instruction/register
+// granularity.
+//
+// These function calls need to be removed/lowered into `inttoptr` or `bitcast`
+// instructions.
+llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void);
+
 // Anvill-lifted bitcode operates at a very low level, swapping between integer
 // and pointer representations. It is typically for just-lifted bitcode to
 // perform integer arithmetic on addresses, then cast those integers into
@@ -152,17 +164,18 @@ llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, 
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(void);
+llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
+    const EntityLifter &lifter);
 
-// Transforms the bitcode in `func`, looking for uses of the
-// `llvm.returnaddress` intrinsic function. If the return value of this function
-// is stored into memory, then we try to identify any loads from the same
-// memory region, and forward the stored value to those loads. Note that the
-// stores themselves are retained.
-// llvm::FunctionPass *CreateForwardReturnAddressStoresToLoads(void);
-
-// This function pass makes use of the __anvill_sp usages to create a StructType
-// that acts as a stack frame
+// This function pass makes use of the `__anvill_sp` usages to create an
+// `llvm::StructType` that acts as a stack frame. This initial stack frame
+// is an array of bytes. The initial purpose of this stack frame is to observe
+// uses of possibly uninitialized bytes in the stack (via `kSymbolic` in
+// `StackFrameStructureInitializationProcedure` in `options`), to enable
+// baseline scalar replacement of aggregates (SROA), and if that pass fails
+// to eliminate the stack frame, then to enable splitting of the stack from
+// into components (see `CreateSplitStackFrameAtReturnAddress`) such that
+// SROA can apply to the arguments and return address components.
 llvm::FunctionPass *
 CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                    const LifterOptions &options);
@@ -180,5 +193,22 @@ CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
 llvm::FunctionPass *
 CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
                                   const EntityLifter &lifter);
+
+// Some machine code instructions explicitly introduce undefined values /
+// behavior. Often, this is a result of the CPUs of different steppings of
+// an ISA producing different results for specific registers. For example,
+// some instructions leave the value of specific arithmetic flags instructions
+// in an undefined state.
+//
+// Remill models these situations using opaque function calls, i.e. an
+// undefined value is produced via a call to something like
+// `__remill_undefined_8`, which represents an 8-bit undefined value. We want
+// to lower these to `undef` values in LLVM; however, we don't want to do this
+// too early, otherwise the "undefinedness" can spread and possibly get out
+// of control.
+//
+// This pass exists to do the lowering to `undef` values, and should be run
+// as late as possible.
+llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
 
 }  // namespace anvill

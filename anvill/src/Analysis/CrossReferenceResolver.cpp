@@ -92,9 +92,8 @@ class CrossReferenceResolverImpl {
   ResolvedCrossReference MergeLeft(ResolvedCrossReference lhs,
                                    ResolvedCrossReference rhs, Op &&merge_vals);
 
-  // Return the size of the type `type`.
-  uint64_t SizeOfType(llvm::Type *type);
-
+  // Returns the "magic" value that represents the return address.
+  uint64_t MagicReturnAddressValue(void) const;
 
 #define NO_WRAP(val, size) val
 #define SIGNED_WRAP(val, size) Signed(val, size)
@@ -376,6 +375,7 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
       return xr;
 
     } else if (IsReturnAddress(gv)) {
+      xr.u.address = MagicReturnAddressValue();
       xr.references_return_address = true;
       xr.is_valid = true;
       return xr;
@@ -593,6 +593,16 @@ CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
   }
 }
 
+// Returns the "magic" value that represents the return address.
+uint64_t CrossReferenceResolverImpl::MagicReturnAddressValue(void) const {
+  uint64_t addr = 0x4141414141414141ull;
+  switch (dl.getPointerSizeInBits(0)) {
+    case 16: return static_cast<uint16_t>(addr); break;
+    case 32: return static_cast<uint32_t>(addr); break;
+    default: return addr;
+  }
+}
+
 CrossReferenceResolver::~CrossReferenceResolver(void) {}
 
 // The primary way of using a cross-reference resolver is with an entity
@@ -624,6 +634,11 @@ void CrossReferenceResolver::ClearCache(void) const {
 ResolvedCrossReference
 CrossReferenceResolver::TryResolveReference(llvm::Value *val) const {
   return impl->ResolveValue(val);
+}
+
+// Returns the "magic" value that represents the return address.
+uint64_t CrossReferenceResolver::MagicReturnAddressValue(void) const {
+  return impl->MagicReturnAddressValue();
 }
 
 std::int64_t
