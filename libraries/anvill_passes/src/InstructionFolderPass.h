@@ -67,16 +67,24 @@ class InstructionFolderPass final
   // Returns true if the function was changed
   static bool FoldPHINode(InstructionList &output, llvm::Instruction *instr);
 
+  // Before we can fold a `GetElementPtrInst` instruction, we have to
+  // collect the indices. This function will do the work, and return
+  // false if any of them makes the folding not possible
+  static bool
+  CollectAndValidateGEPIndexes(std::vector<llvm::Value *> &index_list,
+                               llvm::Instruction *phi_or_select_instr,
+                               llvm::Instruction *gep_instr);
+
   // Folders for
   //   `SelectInst` + `BinaryOperator`
   //   `PHINode` + `BinaryOperator`
   //
   //   src:
-  //     x = select cond, true_value, false_value
+  //     x = select cond, true_value, false_value ; (or PHI)
   //     y = add z, x
   //
   //   dst
-  //     y = select cond, (add z, true_value), (add z, false_value)
+  //     y = select cond, (add z, true_value), (add z, false_value) ; (or PHI)
   //
   static bool FoldSelectWithBinaryOp(llvm::Instruction *&output,
                                      llvm::Instruction *select_instr,
@@ -95,13 +103,13 @@ class InstructionFolderPass final
   //   `PHINode` + `CastInst`
   //
   //   src:
-  //     x = select cond, true_value, false_value
+  //     x = select cond, true_value, false_value ; (or PHI)
   //     y = inttoptr x
   //
   //   dst
   //     new_true_value = inttoptr true_value
   //     new_false_value = inttoptr false_value
-  //     y = select cond, new_true_value, new_false_value
+  //     y = select cond, new_true_value, new_false_value ; (or PHI)
   //
   static bool FoldSelectWithCastInst(llvm::Instruction *&output,
                                      llvm::Instruction *select_instr,
@@ -120,13 +128,13 @@ class InstructionFolderPass final
   //   `PHINode` + `GetElementPtrInst`
   //
   //   src:
-  //     x = select cond, true_value, false_value
+  //     x = select cond, true_value, false_value ; (or PHI)
   //     y = getelementptr x [indexes]
   //
   //   dst
   //     new_true_value = getelementptr true_value [indexes]
   //     new_false_value = getelementptr false_value [indexes]
-  //     y = select cond, new_true_value, new_false_value
+  //     y = select cond, new_true_value, new_false_value ; (or PHI)
   //
   static bool
   FoldSelectWithGEPInst(llvm::Instruction *&output,

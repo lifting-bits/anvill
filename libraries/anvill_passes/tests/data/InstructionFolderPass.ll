@@ -2,7 +2,6 @@
 source_filename = "CombineInstructionsPass"
 
 @__anvill_pc = external global i8
-@__test_value = external global i32
 
 define i64 @CombineAddWithSelect() {
 entry:
@@ -20,9 +19,19 @@ entry:
   ret i64* %2
 }
 
-define i64 @CombineGEPWithSelect() {
+define i32 @CombineGEPWithSelect() {
 entry:
-  ret i64 0
+  %0 = alloca i32, align 4
+  store i32 0, i32* %0, align 4
+  %1 = load i32, i32* %0, align 4
+  %2 = icmp eq i32 %1, 0
+  %3 = alloca [100 x i32], align 4
+  %4 = alloca [100 x i32], align 4
+  store [100 x i32] zeroinitializer, [100 x i32]* %4, align 4
+  %5 = select i1 %2, [100 x i32]* %3, [100 x i32]* %4
+  %6 = getelementptr [100 x i32], [100 x i32]* %5, i32 0, i32 0
+  %7 = load i32, i32* %6, align 4
+  ret i32 %7
 }
 
 define i32 @CombineAddWithPHI() {
@@ -47,7 +56,7 @@ exit:                                             ; preds = %second, %first
   ret i32 %6
 }
 
-define i32* @CombineCastWithPHI() {
+define i32 @CombineGEPWithPHI() {
 entry:
   %0 = alloca i32, align 4
   store i32 0, i32* %0, align 4
@@ -56,37 +65,41 @@ entry:
   br i1 %2, label %first, label %second
 
 first:                                            ; preds = %entry
-  %3 = add i32 %1, 1
+  %3 = alloca [100 x i32], align 4
   br label %exit
 
 second:                                           ; preds = %entry
-  %4 = add i32 %1, 2
+  %4 = alloca [100 x i32], align 4
+  store [100 x i32] zeroinitializer, [100 x i32]* %4, align 4
   br label %exit
 
 exit:                                             ; preds = %second, %first
-  %5 = phi i32 [ %3, %first ], [ %4, %second ]
-  %6 = inttoptr i32 %5 to i32*
-  ret i32* %6
+  %5 = phi [100 x i32]* [ %3, %first ], [ %4, %second ]
+  %6 = getelementptr [100 x i32], [100 x i32]* %5, i32 0, i32 0
+  %7 = load i32, i32* %6, align 4
+  ret i32 %7
 }
 
-define i32* @CombineGEPWithPHI() {
+define i32 @Combined() {
 entry:
   %0 = alloca i32, align 4
   store i32 0, i32* %0, align 4
   %1 = load i32, i32* %0, align 4
   %2 = icmp eq i32 %1, 0
   br i1 %2, label %first, label %second
-
 first:                                            ; preds = %entry
-  %3 = add i32 %1, 1
+  %3 = alloca [100 x i32], align 4
   br label %exit
-
 second:                                           ; preds = %entry
-  %4 = add i32 %1, 2
+  %4 = alloca [100 x i32], align 4
+  store [100 x i32] zeroinitializer, [100 x i32]* %4, align 4
   br label %exit
-
 exit:                                             ; preds = %second, %first
-  %5 = phi i32 [ %3, %first ], [ %4, %second ]
-  %6 = getelementptr i32, i32* @__test_value, i32 %5
-  ret i32* %6
+  %5 = phi [100 x i32]* [ %3, %first ], [ %4, %second ]
+  %6 = getelementptr [100 x i32], [100 x i32]* %5, i32 0, i32 0
+  %7 = bitcast i32* %6 to i8*
+  %8 = ptrtoint i8* %7 to i64
+  %9 = add i64 %8, 10
+  %10 = trunc i64 %9 to i32
+  ret i32 %10
 }
