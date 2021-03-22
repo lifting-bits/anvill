@@ -254,10 +254,7 @@ bool InstructionFolderPass::FoldSelectInstruction(
       continue;
     }
 
-
-    for (auto &use : user_instr->uses()) {
-      use.set(replacement);
-    }
+    user_instr->replaceAllUsesWith(replacement);
 
     replaced_instr_list.push_back(user_instr);
     output.push_back(replacement);
@@ -319,9 +316,7 @@ bool InstructionFolderPass::FoldPHINode(
       continue;
     }
 
-    for (auto &use : user_instr->uses()) {
-      use.set(replacement);
-    }
+    user_instr->replaceAllUsesWith(replacement);
 
     replaced_instr_list.push_back(user_instr);
     output.push_back(replacement);
@@ -332,7 +327,7 @@ bool InstructionFolderPass::FoldPHINode(
   auto function_changed = !replaced_instr_list.empty();
 
   for (auto replaced_instr : replaced_instr_list) {
-    if (replaced_instr->use_empty() == 0U) {
+    if (replaced_instr->use_empty()) {
       replaced_instr->eraseFromParent();
     }
   }
@@ -345,7 +340,7 @@ bool InstructionFolderPass::FoldPHINode(
       continue;
     }
 
-    if (value_as_instr->use_empty() == 0U) {
+    if (value_as_instr->use_empty()) {
       value_as_instr->eraseFromParent();
     }
   }
@@ -467,6 +462,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
     IncomingValue new_incoming_value;
     new_incoming_value.value =
         builder.CreateBinOp(opcode, incoming_value.value, operand);
+
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
