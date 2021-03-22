@@ -182,7 +182,9 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
 
       visited_instructions.insert(instr);
 
-      // Attempt to combine this instruction
+      // Attempt to combine this instruction; the folder function also
+      // drops all the instructions that are no longer needed but will
+      // keep `instr` alive for now
       auto instr_folder_it = kInstructionFolderMap.find(instr->getOpcode());
       if (instr_folder_it != kInstructionFolderMap.end()) {
         const auto &instr_folder = instr_folder_it->second;
@@ -190,6 +192,16 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
           function_changed = true;
         }
       }
+    }
+  }
+
+  // Go through the visited instructions and drop the ones we no
+  // longer need. Doing the cleanup now ensures we do not risk
+  // new instructions polluting the unordered_set by ending up
+  // allocated at a memory location we have already seen
+  for (auto &instr : visited_instructions) {
+    if (instr->use_empty()) {
+      instr->eraseFromParent();
     }
   }
 
@@ -251,17 +263,14 @@ bool InstructionFolderPass::FoldSelectInstruction(
     output.push_back(replacement);
   }
 
-  // Finally, drop all the instructions we no longer need
+  // Finally, drop all the instructions we no longer need; the `SelectInst`
+  // instruction will be deleted later by the caller
   auto function_changed = !replaced_instr_list.empty();
 
   for (auto replaced_instr : replaced_instr_list) {
-    if (replaced_instr->getNumUses() == 0U) {
+    if (replaced_instr->use_empty()) {
       replaced_instr->eraseFromParent();
     }
-  }
-
-  if (instr->getNumUses() == 0U) {
-    instr->eraseFromParent();
   }
 
   return function_changed;
@@ -318,32 +327,77 @@ bool InstructionFolderPass::FoldPHINode(
     output.push_back(replacement);
   }
 
-  // Finally, drop all the instructions we no longer need
+  // Finally, drop all the instructions we no longer need; the `PHINode`
+  // instruction will be deleted later by the caller
   auto function_changed = !replaced_instr_list.empty();
 
   for (auto replaced_instr : replaced_instr_list) {
-    if (replaced_instr->getNumUses() == 0U) {
+    if (replaced_instr->use_empty() == 0U) {
       replaced_instr->eraseFromParent();
     }
-  }
-
-  if (instr->getNumUses() == 0U) {
-    instr->eraseFromParent();
   }
 
   for (auto &incoming_value : incoming_value_list) {
     auto value_as_instr =
         llvm::dyn_cast<llvm::Instruction>(incoming_value.value);
+
     if (value_as_instr == nullptr) {
       continue;
     }
 
-    if (value_as_instr->getNumUses() == 0U) {
+    if (value_as_instr->use_empty() == 0U) {
       value_as_instr->eraseFromParent();
     }
   }
 
   return function_changed;
+}
+
+bool InstructionFolderPass::CollectAndValidateGEPIndexes(
+    std::vector<llvm::Value *> &index_list,
+    llvm::Instruction *phi_or_select_instr, llvm::Instruction *gep_instr) {
+
+  index_list.clear();
+
+  // Acquire all the indices and verify them:
+  // 1. If they are instructions, then all the indices in the GEP
+  //    that are preceding our PHI/Select use must NOT reside in the same
+  //    basic block as the GEP (otherwise we won't have them when
+  //    we move the GetElementPtrInst inside the incoming basic block)
+  // 2. All the indices that are following the PHI/Select use must be constants
+  auto instr = llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr);
+  bool phi_or_select_index_found{false};
+
+  for (auto &index_use : instr->indices()) {
+    auto index = index_use.get();
+    index_list.push_back(index);
+
+    // If this is our PHI/Select node, update the verification stage and skip
+    // any check
+    auto index_as_instr = llvm::dyn_cast<llvm::Instruction>(index);
+    if (index_as_instr == phi_or_select_instr) {
+      phi_or_select_index_found = true;
+      continue;
+    }
+
+    if (!phi_or_select_index_found) {
+      // We have not met the PHI/Select index yet, make sure that this
+      // index is still reachable if we move the GEP
+      if (index_as_instr != nullptr &&
+          index_as_instr->getParent() == gep_instr->getParent()) {
+        return false;
+      }
+
+    } else {
+      // We are after the PHI/Select index; make sure that this value is a
+      // constant
+      if (!llvm::isa<llvm::Constant>(index)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 bool InstructionFolderPass::FoldSelectWithBinaryOp(
@@ -360,8 +414,7 @@ bool InstructionFolderPass::FoldSelectWithBinaryOp(
 
   // In order to be able to combine these two instructions, the
   // other operand needs to be a constant
-  if (!(llvm::isa<llvm::Constant>(operand) &&
-        llvm::isa<llvm::ConstantExpr>(operand))) {
+  if (!llvm::isa<llvm::Constant>(operand)) {
     return false;
   }
 
@@ -395,8 +448,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
 
   // In order to be able to combine these two instructions, the
   // other operand needs to be a constant
-  if (!(llvm::isa<llvm::Constant>(operand) &&
-        llvm::isa<llvm::ConstantExpr>(operand))) {
+  if (!llvm::isa<llvm::Constant>(operand)) {
     return false;
   }
 
@@ -516,19 +568,9 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
     llvm::Value *condition, llvm::Value *true_value, llvm::Value *false_value,
     llvm::Instruction *gep_instr) {
 
-  // Acquire all the indices first, and make sure that they
-  // are all constant values
   std::vector<llvm::Value *> index_list;
-
-  {
-    auto instr = llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr);
-    if (!instr->hasAllConstantIndices()) {
-      return false;
-    }
-
-    for (auto &index : instr->indices()) {
-      index_list.push_back(index);
-    }
+  if (!CollectAndValidateGEPIndexes(index_list, select_instr, gep_instr)) {
+    return false;
   }
 
   llvm::IRBuilder<> builder(gep_instr);
@@ -548,46 +590,9 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     InstructionFolderPass::IncomingValueList &incoming_values,
     llvm::Instruction *gep_instr) {
 
-  // Acquire all the indices first, so we can verify them:
-  // 1. If they are instructions, then all the indices in the GEP
-  //    that are preceding our PHI use must NOT reside in the same
-  //    basic block as the GEP (otherwise we won't have them when
-  //    we move the GetElementPtrInst inside the incoming basic block)
-  // 2. All the indices that are following the PHI use must be constants
   std::vector<llvm::Value *> index_list;
-
-  {
-    auto instr = llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr);
-    bool phi_index_found{false};
-
-    for (auto &index : instr->indices()) {
-      index_list.push_back(index);
-
-      // If this is our PHI node, update the verification stage and skip
-      // any check
-      auto index_as_instr = llvm::dyn_cast<llvm::Instruction>(&index);
-      if (index_as_instr == phi_node) {
-        phi_index_found = true;
-        continue;
-      }
-
-      if (!phi_index_found) {
-        // We have not met the PHI index yet, make sure that this
-        // index is still reachable if we move the GEP
-        if (index_as_instr != nullptr &&
-            index_as_instr->getParent() == gep_instr->getParent()) {
-          return false;
-        }
-
-      } else {
-        // We are after the PHI index; make sure that this value is a
-        // constant
-        if (!(llvm::isa<llvm::Constant>(index) &&
-              llvm::isa<llvm::ConstantExpr>(index))) {
-          return false;
-        }
-      }
-    }
+  if (!CollectAndValidateGEPIndexes(index_list, phi_node, gep_instr)) {
+    return false;
   }
 
   // Go through each incoming value and move the `GetElementPtrInst`
