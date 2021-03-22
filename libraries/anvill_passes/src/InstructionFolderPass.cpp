@@ -27,8 +27,16 @@ namespace anvill {
 namespace {
 
 //
-// Instruction folders; these will match first_instr_type -> second_instr_type
-// and call the corresponding callback to attempt the fold operation
+// These maps select the correct fold operation for the given instruction
+// types.
+//
+// The first callback is kInstructionFolderMap[instr_type] which (for now) can
+// handle Select and PHI nodes.
+//
+// Inside the function folder, an additional callback is used, depending on the
+// type of the second instruction being folded. The two maps are:
+//  - SelectInst: kSelectInstructionFolderMap
+//  - PHINode: kPHINodeFolderMap
 //
 
 using InstructionFolder = bool (*)(InstructionFolderPass::InstructionList &,
@@ -41,10 +49,7 @@ const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap
 };
 // clang-format on
 
-//
 // Case handlers for `SelectInst` instructions
-//
-
 using SelectInstructionFolder = bool (*)(llvm::Instruction *&output,
                                          llvm::Instruction *, llvm::Value *,
                                          llvm::Value *, llvm::Value *,
@@ -91,10 +96,7 @@ const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstruct
 };
 // clang-format on
 
-//
 // Case handlers for `PHINode` instructions
-//
-
 using PHINodeInstructionFolder =
     bool (*)(llvm::Instruction *&output, llvm::Instruction *,
              InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
@@ -202,6 +204,7 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
   for (auto &instr : visited_instructions) {
     if (instr->use_empty()) {
       instr->eraseFromParent();
+      function_changed = true;
     }
   }
 
@@ -221,6 +224,8 @@ bool InstructionFolderPass::FoldSelectInstruction(
   llvm::Value *false_value{nullptr};
 
   {
+    // FoldSelectInstruction is automatically called for SelectInst
+    // types (see kInstructionFolderMap)
     auto select_instr = llvm::dyn_cast<llvm::SelectInst>(instr);
 
     condition = select_instr->getCondition();
@@ -228,49 +233,48 @@ bool InstructionFolderPass::FoldSelectInstruction(
     false_value = select_instr->getFalseValue();
   }
 
-  // Since we are iterating over the users, we have to postpone
-  // the deletion after the loop
-  InstructionList replaced_instr_list;
+  // Postpone the replacement and cleanup at the end of the
+  // rewrite to avoid possible issues with PHI nodes or
+  // iterator invalidation
+  InstructionReplacementList inst_replacement_list;
 
   // Go through all the users of this `select` instruction
   for (auto user : instr->users()) {
-    auto user_instr = llvm::dyn_cast<llvm::Instruction>(user);
+    InstructionReplacement repl;
+    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
 
     // Search for a function that knows how to handle this case
     auto instr_folder_it =
-        kSelectInstructionFolderMap.find(user_instr->getOpcode());
+        kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
 
     if (instr_folder_it == kSelectInstructionFolderMap.end()) {
       continue;
     }
 
     const auto &instr_folder = instr_folder_it->second;
-
-    // If we succeed in folding this instruction, then also perform
-    // the replacement and the required cleanup
-    llvm::Instruction *replacement{nullptr};
-    if (!instr_folder(replacement, instr, condition, true_value, false_value,
-                      user_instr)) {
+    if (!instr_folder(repl.replacement_instr, instr, condition, true_value,
+                      false_value, repl.original_instr)) {
       continue;
     }
 
-    user_instr->replaceAllUsesWith(replacement);
-
-    replaced_instr_list.push_back(user_instr);
-    output.push_back(replacement);
+    output.push_back(repl.replacement_instr);
+    inst_replacement_list.push_back(std::move(repl));
   }
 
   // Finally, drop all the instructions we no longer need; the `SelectInst`
   // instruction will be deleted later by the caller
-  auto function_changed = !replaced_instr_list.empty();
-
-  for (auto replaced_instr : replaced_instr_list) {
-    if (replaced_instr->use_empty()) {
-      replaced_instr->eraseFromParent();
-    }
-  }
+  auto function_changed = !inst_replacement_list.empty();
+  PerformInstructionReplacements(inst_replacement_list);
 
   return function_changed;
+}
+
+void InstructionFolderPass::PerformInstructionReplacements(
+    const InstructionReplacementList &replacement_list) {
+  for (const auto &repl : replacement_list) {
+    repl.original_instr->replaceAllUsesWith(repl.replacement_instr);
+    repl.original_instr->eraseFromParent();
+  }
 }
 
 bool InstructionFolderPass::FoldPHINode(
@@ -280,10 +284,11 @@ bool InstructionFolderPass::FoldPHINode(
   IncomingValueList incoming_value_list;
 
   {
+    // FoldPHINode is automatically called for PHINode types
+    // (see kInstructionFolderMap)
     auto phi_node = llvm::dyn_cast<llvm::PHINode>(instr);
 
     auto incoming_value_count = phi_node->getNumIncomingValues();
-
     for (auto i = 0U; i < incoming_value_count; ++i) {
       IncomingValue incoming_value;
       incoming_value.value = phi_node->getIncomingValue(i);
@@ -293,44 +298,37 @@ bool InstructionFolderPass::FoldPHINode(
     }
   }
 
-  // Since we are iterating over the users, we have to postpone
-  // the deletion after the loop
-  InstructionList replaced_instr_list;
+  // Postpone the replacement and cleanup at the end of the
+  // rewrite to avoid possible issues with PHI nodes or
+  // iterator invalidation
+  InstructionReplacementList inst_replacement_list;
 
   // Go through all the users of this `select` instruction
   for (auto user : instr->users()) {
-    auto user_instr = llvm::dyn_cast<llvm::Instruction>(user);
+    InstructionReplacement repl;
+    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
 
     // Search for a function that knows how to handle this case
-    auto instr_folder_it = kPHINodeFolderMap.find(user_instr->getOpcode());
+    auto instr_folder_it =
+        kPHINodeFolderMap.find(repl.original_instr->getOpcode());
     if (instr_folder_it == kPHINodeFolderMap.end()) {
       continue;
     }
 
     const auto &instr_folder = instr_folder_it->second;
-
-    // If we succeed in folding this instruction, then also perform
-    // the replacement and the required cleanup
-    llvm::Instruction *replacement{nullptr};
-    if (!instr_folder(replacement, instr, incoming_value_list, user_instr)) {
+    if (!instr_folder(repl.replacement_instr, instr, incoming_value_list,
+                      repl.original_instr)) {
       continue;
     }
 
-    user_instr->replaceAllUsesWith(replacement);
-
-    replaced_instr_list.push_back(user_instr);
-    output.push_back(replacement);
+    output.push_back(repl.replacement_instr);
+    inst_replacement_list.push_back(std::move(repl));
   }
 
   // Finally, drop all the instructions we no longer need; the `PHINode`
   // instruction will be deleted later by the caller
-  auto function_changed = !replaced_instr_list.empty();
-
-  for (auto replaced_instr : replaced_instr_list) {
-    if (replaced_instr->use_empty()) {
-      replaced_instr->eraseFromParent();
-    }
-  }
+  auto function_changed = !inst_replacement_list.empty();
+  PerformInstructionReplacements(inst_replacement_list);
 
   for (auto &incoming_value : incoming_value_list) {
     auto value_as_instr =
@@ -417,7 +415,7 @@ bool InstructionFolderPass::FoldSelectWithBinaryOp(
   llvm::IRBuilder<> builder(binary_op_instr);
 
   auto opcode =
-      llvm::dyn_cast<llvm::BinaryOperator>(binary_op_instr)->getOpcode();
+      static_cast<llvm::Instruction::BinaryOps>(binary_op_instr->getOpcode());
 
   auto new_true_value = builder.CreateBinOp(opcode, true_value, operand);
   auto new_false_value = builder.CreateBinOp(opcode, false_value, operand);
@@ -538,6 +536,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
     IncomingValue new_incoming_value;
     new_incoming_value.value =
         builder.CreateCast(cast_opcode, incoming_value.value, destination_type);
+
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
   }

@@ -61,6 +61,21 @@ class InstructionFolderPass final
   // A list of incoming values for a PHI node
   using IncomingValueList = std::vector<IncomingValue>;
 
+  // This structure describes an instruction replacement
+  struct InstructionReplacement final {
+    llvm::Instruction *original_instr{nullptr};
+    llvm::Instruction *replacement_instr{nullptr};
+  };
+
+  // A list of instruction replacements to perform at the end of
+  // a folding procedure
+  using InstructionReplacementList = std::vector<InstructionReplacement>;
+
+  // Performs instruction replacements according to the given list, removing the
+  // dropping all the instructions that are no longer needed
+  static void PerformInstructionReplacements(
+      const InstructionReplacementList &replacement_list);
+
   // Folds `PHINode` instructions interacting with `CastInst`,
   // `BinaryOperator` and `GetElementPtrInst` instructions
   //
