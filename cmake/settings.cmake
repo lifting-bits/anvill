@@ -9,15 +9,6 @@
 # This is only executed once; use a macro (and not a function) so that
 # everything defined here does not end up in a separate namespace
 macro(main)
-  # default build type
-  if(WIN32)
-    set(CMAKE_BUILD_TYPE Release)
-  else()
-    if(NOT CMAKE_BUILD_TYPE)
-      set(CMAKE_BUILD_TYPE "RelWithDebInfo")
-    endif()
-  endif()
-
   # overwrite the default install prefix
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     if(DEFINED WIN32)
