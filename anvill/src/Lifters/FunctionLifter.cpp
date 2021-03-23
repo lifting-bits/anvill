@@ -1130,6 +1130,16 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
 
   options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
     if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
+
+      // If we're going to lift the stack frame, then don't store something
+      // like `__anvill_reg_RSP`, otherwise that might confuse later stack
+      // frame recovery (especially if there's an issue eliminating the `State`
+      // structure).
+      if (options.symbolic_stack_pointer &&
+          reg->name == options.arch->StackPointerRegisterName()) {
+        return;
+      }
+
       std::stringstream ss;
       ss << kUnmodelledRegisterPrefix << reg->name;
       const auto reg_name = ss.str();

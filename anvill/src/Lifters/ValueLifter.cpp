@@ -239,12 +239,12 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
       return llvm::Constant::getNullValue(ptr_type);
 
     } else {
-      LOG_IF(ERROR, loc_ea)
+      LOG_IF(WARNING, loc_ea)
           << "Failed to lift address " << std::hex << ea << " referenced by "
           << loc_ea << std::dec << " into a pointer of type "
           << remill::LLVMThingToString(ptr_type);
 
-      LOG_IF(ERROR, !loc_ea)
+      LOG_IF(WARNING, !loc_ea)
           << "Failed to lift address " << std::hex << ea
           << " into a pointer of type " << remill::LLVMThingToString(ptr_type);
 

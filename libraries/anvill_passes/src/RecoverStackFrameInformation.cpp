@@ -81,6 +81,10 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
 
   auto second_stack_frame_uses = second_stack_frame_uses_res.TakeValue();
   if (!second_stack_frame_uses.empty()) {
+    for (auto use : second_stack_frame_uses) {
+      use->getUser()->dump();
+      abort();
+    }
     EmitError(
         SeverityType::Fatal,
         StackAnalysisErrorCode::FunctionTransformationFailed,

@@ -87,7 +87,7 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
     // pointer and we'll re-recurse on that updated value.
     while (inferred_val_type) {
       const auto ret = visit(inst);
-      if (!first_ret) {
+      if (!first_ret || ret.first->getType() == inferred_type) {
         first_ret = ret.first;
       }
       if (ret.second) {
@@ -105,7 +105,7 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
 
     inferred_val_type = nullptr;
     next_inferred_val_type = nullptr;
-    return {first_ret, changed};
+    return {first_ret, changed && first_ret->getType() == inferred_type};
 
   // We are recursively processing the same inference.
   } else if (inferred_val_type == inferred_type) {
@@ -630,32 +630,32 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     ReplaceAllUses(&inst, promoted_load);
     return {promoted_load, true};
   }
-  // Load operand can be a constant expression
-  if (llvm::ConstantExpr *const_expr =
-          llvm::dyn_cast<llvm::ConstantExpr>(inst.getOperand(0))) {
-    llvm::Instruction *expr_as_inst = const_expr->getAsInstruction();
-    expr_as_inst->insertBefore(&inst);
-    // Rather than passing in the inferred resulting type to this load, pass in the type that matches the load.
-    auto [new_const_ptr, changed] = visitInferInst(expr_as_inst, inferred_type);
-    // Here, the initial promotion failed. This could be because of any number of reasons
-    // We can give up, but it might be best to actually do a "best effort" transform 
-    // An example is we can insert a bitcast here, and then forcibly promote the load, allowing other optimizations to continueu 
-    if (!changed) {
-      llvm::IRBuilder ir(&inst);
-      llvm::Value * ptr_cast = ir.CreateBitOrPointerCast(expr_as_inst, inferred_type->getPointerTo());
-      llvm::Value * promoted_load = ir.CreateLoad(inferred_type, ptr_cast);
-      ReplaceAllUses(&inst, promoted_load);
-      // Remove expr_as_inst
-      ReplaceAllUses(expr_as_inst, const_expr);
-      return {promoted_load, true};
-    }
-    llvm::IRBuilder ir(&inst);
-    llvm::Value *promoted_load = ir.CreateLoad(inferred_type, new_const_ptr);
-    ReplaceAllUses(&inst, promoted_load);
-    ReplaceAllUses(expr_as_inst, const_expr);
-
-    return {promoted_load, true};
-  }
+//  // Load operand can be a constant expression
+//  if (llvm::ConstantExpr *const_expr =
+//          llvm::dyn_cast<llvm::ConstantExpr>(inst.getOperand(0))) {
+//    llvm::Instruction *expr_as_inst = const_expr->getAsInstruction();
+//    expr_as_inst->insertBefore(&inst);
+//    // Rather than passing in the inferred resulting type to this load, pass in the type that matches the load.
+//    auto [new_const_ptr, changed] = visitInferInst(expr_as_inst, inferred_type);
+//    // Here, the initial promotion failed. This could be because of any number of reasons
+//    // We can give up, but it might be best to actually do a "best effort" transform
+//    // An example is we can insert a bitcast here, and then forcibly promote the load, allowing other optimizations to continueu
+//    if (!changed) {
+//      llvm::IRBuilder ir(&inst);
+//      llvm::Value * ptr_cast = ir.CreateBitOrPointerCast(expr_as_inst, inferred_type->getPointerTo());
+//      llvm::Value * promoted_load = ir.CreateLoad(inferred_type, ptr_cast);
+//      ReplaceAllUses(&inst, promoted_load);
+//      // Remove expr_as_inst
+//      ReplaceAllUses(expr_as_inst, const_expr);
+//      return {promoted_load, true};
+//    }
+//    llvm::IRBuilder ir(&inst);
+//    llvm::Value *promoted_load = ir.CreateLoad(inferred_type, new_const_ptr);
+//    ReplaceAllUses(&inst, promoted_load);
+//    ReplaceAllUses(expr_as_inst, const_expr);
+//
+//    return {promoted_load, true};
+//  }
   return {&inst, false};
 }
 
