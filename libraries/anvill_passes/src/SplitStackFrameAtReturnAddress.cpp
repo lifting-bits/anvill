@@ -470,7 +470,10 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     gep_instr->eraseFromParent();
   }
 
-  // Now that there are no more usages, we can delete the old AllocaInst
+  // We may still have some remaining instructions, like inttoptr casts. Replace
+  // them with the new stack frame base
+  const auto &new_base_frame = stack_frame_allocs.front().alloca_inst;
+  orig_frame_alloca->replaceAllUsesWith(new_base_frame);
   orig_frame_alloca->eraseFromParent();
 
   return std::monostate();
