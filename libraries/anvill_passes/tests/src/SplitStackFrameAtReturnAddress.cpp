@@ -37,6 +37,12 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
     auto error_manager = ITransformationErrorManager::Create();
     CHECK(RunFunctionPass(module.get(), CreateSplitStackFrameAtReturnAddress(
                                             *error_manager.get())));
+
+    for (const auto &error : error_manager->ErrorList()) {
+      CHECK_MESSAGE(false, error.description);
+    }
+
+    REQUIRE(error_manager->ErrorList().empty());
   }
 
   SCENARIO("Offsets can be converted to StructType element indexes") {

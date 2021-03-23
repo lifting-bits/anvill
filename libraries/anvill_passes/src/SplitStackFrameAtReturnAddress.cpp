@@ -470,9 +470,13 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     gep_instr->eraseFromParent();
   }
 
-  // Now that there are no more usages, we can delete the old AllocaInst
-  orig_frame_alloca->eraseFromParent();
+  // Make sure that we no longer have any other users of the original
+  // AllocaInst, then delete it
+  if (!orig_frame_alloca->use_empty()) {
+    return StackFrameSplitErrorCode::CleanupError;
+  }
 
+  orig_frame_alloca->eraseFromParent();
   return std::monostate();
 }
 

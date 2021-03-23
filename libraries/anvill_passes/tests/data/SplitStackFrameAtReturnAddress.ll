@@ -4,6 +4,7 @@ target datalayout = "e-m:e-p:32:32-p270:32:32-p271:32:32-p272:64:64-f64:32:64-f8
 target triple = "i386-pc-linux-gnu-elf"
 
 %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type = type <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32*, i32*, i32*, i32, i32, i32, i32*, i32*, i32*, i32*, i32* }>
+%sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type = type <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32*, i32*, i32*, i32, i32, i32, i32*, i32*, i32*, i32*, i32* }>
 %struct.Memory = type opaque
 %struct.State = type { %struct.ArchState, [32 x %union.VectorReg], %struct.ArithFlags, %union.anon, %struct.Segments, %struct.AddressSpace, %struct.GPR, %struct.X87Stack, %struct.MMX, %struct.FPUStatusFlags, %union.anon, %union.FPU, %struct.SegmentCaches }
 %struct.ArchState = type { i32, i32, %union.anon }
@@ -62,6 +63,48 @@ define i32 @sub_80482e0__Ai_S_Sb_S_Sbi_B_0(i32 %0, i8** %1, i8** %2) local_unnam
   %19 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type* %5, i32 0, i32 34
   %20 = bitcast i32** %19 to i32*
   %21 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type* %5, i32 0, i32 35
+  %22 = bitcast i32** %21 to i32*
+  %23 = ptrtoint i8* %4 to i32
+  store i32 %23, i32* %16, align 8
+  store i32 %0, i32* %18, align 4
+  %24 = ptrtoint i8** %1 to i32
+  store i32 %24, i32* %20, align 8
+  %25 = ptrtoint i8** %2 to i32
+  store i32 %25, i32* %22, align 4
+  store i32 %0, i32* %13, align 4
+  store i32 %14, i32* %11, align 4
+  store i32 %14, i32* %9, align 8
+  store i32 ptrtoint (i8* getelementptr inbounds ([26 x i8], [26 x i8]* @data_80482e0, i32 0, i32 22) to i32), i32* %7, align 4
+  %26 = bitcast i32** %12 to i32*
+  %27 = call i32 @sub_80483f0__Ai_Sii_B_0(i32 %14, i32* nonnull %26)
+  %28 = load i32, i32* %16, align 8
+  %29 = call %struct.Memory* @__remill_function_return(%struct.State* undef, i32 %28, %struct.Memory* null)
+  ret i32 %27
+}
+
+; Function Attrs: noinline
+define i32 @sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant(i32 %0, i8** %1, i8** %2) local_unnamed_addr #0 {
+  %4 = call i8* @llvm.returnaddress(i32 0)
+  %5 = alloca %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, align 8
+
+  %additional_alloca_usage = ptrtoint %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5 to i64
+
+  %6 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 25
+  %7 = bitcast i32** %6 to i32*
+  %8 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 26
+  %9 = bitcast i32** %8 to i32*
+  %10 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 27
+  %11 = bitcast i32** %10 to i32*
+  %12 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 31
+  %13 = bitcast i32** %12 to i32*
+  %14 = ptrtoint i32** %12 to i32
+  %15 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 32
+  %16 = bitcast i32** %15 to i32*
+  %17 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 33
+  %18 = bitcast i32** %17 to i32*
+  %19 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 34
+  %20 = bitcast i32** %19 to i32*
+  %21 = getelementptr inbounds %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0_variant.frame_type* %5, i32 0, i32 35
   %22 = bitcast i32** %21 to i32*
   %23 = ptrtoint i8* %4 to i32
   store i32 %23, i32* %16, align 8
