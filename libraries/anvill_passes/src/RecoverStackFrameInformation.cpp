@@ -146,10 +146,8 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
   auto stack_related_instr_list = stack_related_instr_list_res.TakeValue();
 
   for (const auto use : stack_related_instr_list) {
-
     // Skip any operand that is not related to the stack pointer
     const auto val = use->get();
-
 
     // Attempt to resolve the constant expression into an offset
     const auto reference = resolver.TryResolveReference(val);
@@ -190,9 +188,10 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
         use, type_size, stack_offset);
   }
 
-  auto stack_frame_size = output.highest_offset - output.lowest_offset;
+  if (!stack_related_instr_list.empty()) {
+    output.size = static_cast<std::size_t>(output.highest_offset - output.lowest_offset);
+  }
 
-  output.size = static_cast<std::size_t>(stack_frame_size);
   return output;
 }
 

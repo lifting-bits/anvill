@@ -180,7 +180,7 @@ BaseFunctionPass<UserFunctionPass>::GetSymbolicValue(llvm::Module &module,
 
   auto symbolic_value = module.getGlobalVariable(name);
   if (symbolic_value != nullptr) {
-    if (type != symbolic_value->getType()) {
+    if (type != symbolic_value->getValueType()) {
       return BaseFunctionPassErrorCode::SymbolicValueConflict;
     }
 
