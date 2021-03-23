@@ -104,7 +104,7 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
   std::pair<llvm::Value *, bool> visitPHINode(llvm::PHINode &inst);
-
+  std::pair<llvm::Value *, bool> visitPtrToIntInst(llvm::PtrToIntInst& inst);
   // Simple wrapper for storing the type information into the list, and then
   // calling visit.
   std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);

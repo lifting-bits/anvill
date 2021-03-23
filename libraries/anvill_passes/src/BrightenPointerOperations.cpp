@@ -370,12 +370,6 @@ PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
     return gep;
   }
 
-  LOG(ERROR) << remill::LLVMThingToString(gep) << "\n";
-  LOG(ERROR) << "pointer type: " << remill::LLVMThingToString(gep->getPointerOperandType()) << "\n";
-  LOG(ERROR) << "type?: " << remill::LLVMThingToString(gep->getType()) << "\n";
-  LOG(ERROR) << "source element type: " << remill::LLVMThingToString(gep->getSourceElementType()) << "\n";
-  LOG(ERROR) << "source element vector?: " << gep->getSourceElementType()->isVectorTy() << "\n";
-  LOG(ERROR) << "result element type:" << remill::LLVMThingToString(gep->getResultElementType()) << "\n";
   // gep a b c d, to:
   // 0 = gep a b c 
   // gep 0 d, etc, etc until its all flat. 
@@ -553,6 +547,30 @@ PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   }
   return {&inst, false};
 }
+
+std::pair<llvm::Value *, bool> 
+PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst& inst) {
+  llvm::Type *inferred_type = inferred_types[&inst];
+  if (!inferred_type) {
+    return {&inst, false};
+  }
+  // If we have an inferred type, it means the result of the ptrtoint
+  // was once again casted to be a pointer, maybe of a different type.
+  // Try and propagate if possible 
+  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(&inst)) {
+    auto [new_ptr, worked] = visitInferInst(ptr_inst, inferred_type);
+    if (worked) {
+      return {new_ptr, worked};
+    }
+  }
+  // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
+  llvm::IRBuilder<> ir(&inst);
+  auto ptr_val = inst.getOperand(0);
+  llvm::Value* cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
+  return {cast, true};
+}
+
+
 /*
 inttoptr instructions indicate there are pointers. There are two cases:
 1. %X = inttoptr i32 255 to i32*
