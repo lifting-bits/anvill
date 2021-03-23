@@ -95,11 +95,6 @@ enum class StackFrameSplitErrorCode {
   // The instruction responsible for allocating the stack frame
   // was not found
   StackFrameAllocationNotFound,
-
-  // Some of the instructions that the function pass has replaced
-  // could not be removed. This likely means that some possible uses
-  // have not been handled
-  CleanupError,
 };
 
 // A store instruction and the offset into the structure being written

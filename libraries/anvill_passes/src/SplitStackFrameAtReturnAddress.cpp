@@ -470,13 +470,12 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
     gep_instr->eraseFromParent();
   }
 
-  // Make sure that we no longer have any other users of the original
-  // AllocaInst, then delete it
-  if (!orig_frame_alloca->use_empty()) {
-    return StackFrameSplitErrorCode::CleanupError;
-  }
-
+  // We may still have some remaining instructions, like inttoptr casts. Replace
+  // them with the new stack frame base
+  const auto &new_base_frame = stack_frame_allocs.front().alloca_inst;
+  orig_frame_alloca->replaceAllUsesWith(new_base_frame);
   orig_frame_alloca->eraseFromParent();
+
   return std::monostate();
 }
 
