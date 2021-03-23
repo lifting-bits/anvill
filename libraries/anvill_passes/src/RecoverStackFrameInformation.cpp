@@ -152,7 +152,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
     // Attempt to resolve the constant expression into an offset
     const auto reference = resolver.TryResolveReference(val);
     if (!reference.is_valid || !reference.references_stack_pointer) {
-      return StackAnalysisErrorCode::StackPointerResolutionError;
+      continue;
     }
 
     // The offset from the stack pointer.
