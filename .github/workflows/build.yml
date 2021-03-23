@@ -354,7 +354,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ 'macos-11.0' ]
+        os: [ 'macos-10.15' ]
         llvm: [ '11' ]
         cxxcommon_version: [ 'v0.1.1' ]
 
@@ -446,7 +446,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_macos-11.0_llvm-${{ matrix.llvm }}_xcode-12.2.0_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-12.1.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/trailofbits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -587,19 +587,31 @@ jobs:
       - name: Store the TGZ package
         uses: actions/upload-artifact@v1
         with:
-          name: macos-11.0_llvm${{ matrix.llvm }}_tgz_package
+          name: ${{ matrix.os }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
 
 
 
-  release_linux:
+  release_packages:
     # Do not run the release procedure if any of the builds has failed
     needs: [ build_linux, build_macos ]
     runs-on: ubuntu-20.04
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
     steps:
+      - name: Clone the anvill repository
+        uses: actions/checkout@v2
+        with:
+          path: anvill
+          fetch-depth: 0
+
+      - name: Generate the changelog
+        shell: bash
+        working-directory: anvill
+        run: |
+          ./scripts/generate_changelog.sh changelog.md
+
       - name: Download all artifacts
         uses: actions/download-artifact@v2
 
@@ -613,16 +625,20 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Version ${{ github.ref }}
+          body_path: anvill/changelog.md
           draft: true
           prerelease: true
 
       - name: Group the packages by platform
         run: |
-          zip -r9 ubuntu-18.04_packages.zip \
+          zip -r9 anvill_ubuntu-18.04_packages.zip \
                   ubuntu-18.04*
 
-          zip -r9 ubuntu-20.04_packages.zip \
+          zip -r9 anvill_ubuntu-20.04_packages.zip \
                   ubuntu-20.04*
+
+          zip -r9 anvill_macos-10.15_packages.zip \
+                  macos-10.15*
 
       - name: Upload the Ubuntu 18.04 packages
         uses: actions/upload-release-asset@v1
@@ -632,8 +648,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ubuntu-18.04_packages.zip
-          asset_name: ubuntu-18.04_packages
+          asset_path: anvill_ubuntu-18.04_packages.zip
+          asset_name: anvill_ubuntu-18.04_packages.zip
           asset_content_type: application/gzip
 
       - name: Upload the Ubuntu 20.04 packages
@@ -644,42 +660,11 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ubuntu-20.04_packages.zip
-          asset_name: ubuntu-20.04_packages
+          asset_path: anvill_ubuntu-20.04_packages.zip
+          asset_name: anvill_ubuntu-20.04_packages.zip
           asset_content_type: application/gzip
 
-
-
-
-  release_macos:
-    # Do not run the release procedure if any of the builds has failed
-    needs: [ build_linux, build_macos ]
-    runs-on: 'macos-11.0'
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v2
-
-      - name: Draft the new release
-        id: create_release
-        uses: actions/create-release@v1
-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Version ${{ github.ref }}
-          draft: true
-          prerelease: true
-
-      - name: Group the packages by platform
-        run: |
-          zip -r9 macos-11.0_packages.zip \
-                  macos-11.0*
-
-      - name: Upload the macOS 11.0 packages
+      - name: Upload the macOS 10.15 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -687,6 +672,6 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: macos-11.0_packages.zip
-          asset_name: macos-11.0_packages
+          asset_path: anvill_macos-10.15_packages.zip
+          asset_name: anvill_macos-10.15_packages.zip
           asset_content_type: application/gzip
