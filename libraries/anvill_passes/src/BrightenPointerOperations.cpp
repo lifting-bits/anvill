@@ -297,14 +297,14 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
       ReplaceAllUses(&inst, new_var_type);
       return {new_var_type, true};
     }
-    LOG(ERROR) << "Bitcast: Failed to propagate info with pointer_inst: "
-               << remill::LLVMThingToString(pointer_inst) << "\n";
+    DLOG(WARNING) << "Bitcast: Failed to propagate info with pointer_inst: "
+                  << remill::LLVMThingToString(pointer_inst) << "\n";
     return {&inst, false};
   }
   // TODO (Carson) make sure in the visitor methods that we dont assume inferred
   // type is the return type, we can fail!
-  LOG(ERROR) << "BitCast, unknown operand type: "
-             << remill::LLVMThingToString(inst.getOperand(0)->getType());
+  DLOG(WARNING) << "BitCast, unknown operand type: "
+                << remill::LLVMThingToString(inst.getOperand(0)->getType());
   return {&inst, false};
 }
 
@@ -448,7 +448,7 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
   // Convert that new `src` to have the correct type.
   auto [casted_src, promoted] = visitInferInst(new_src_inst, inferred_type);
   if (!promoted) {
-    LOG(ERROR) << "Failed to flatten gep, making bitcast!\n";
+    DLOG(INFO) << "Failed to flatten gep, making bitcast!\n";
 
     // TODO (Carson) check
     llvm::IRBuilder<> ir(gep);
@@ -552,7 +552,7 @@ std::pair<llvm::Value *, bool>
 PointerLifter::visitPHINode(llvm::PHINode &inst) {
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
-    LOG(ERROR) << "No type info for load! Returning just the phi node\n";
+    DLOG(WARNING) << "No type info for load! Returning just the phi node\n";
     return {&inst, false};
   }
   llvm::IRBuilder<> ir(&inst);
@@ -576,12 +576,13 @@ PointerLifter::visitPHINode(llvm::PHINode &inst) {
         new_inst = sub_ir.CreateBitOrPointerCast(new_inst, inferred_type);
       }
       new_phi->addIncoming(new_inst, incoming_block);
-    }
+
     // TODO (Carson) handle const expr
-    else {
-      LOG(ERROR) << "Unknown type in Phi op: "
-                 << remill::LLVMThingToString(incoming_val) << "\n";
-      exit(1);
+    } else {
+      DLOG(WARNING) << "Unknown type in Phi op: "
+                    << remill::LLVMThingToString(incoming_val) << "\n";
+      new_phi->eraseFromParent();
+      return {&inst, false};
     }
   }
   // TODO (Carson) do we replace uses here? i dont think so.
@@ -609,16 +610,18 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
   // Are of the same size in bytes.
   // This prevents us from accidentally truncating/extending when we don't want to
   auto dl = mod->getDataLayout();
-  CHECK_EQ(dl.getTypeAllocSizeInBits(inst.getType()),
-           dl.getTypeAllocSizeInBits(inferred_type));
+  if (dl.getTypeAllocSizeInBits(inst.getType()) !=
+      dl.getTypeAllocSizeInBits(inferred_type)) {
+    return {&inst, false};
+  }
 
   // Load operand can be another instruction
   if (llvm::Instruction *possible_mem_loc = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     // Load from potentially a new addr.
     auto [maybe_new_addr, changed] = visitInferInst(possible_mem_loc, inferred_type->getPointerTo());
     if (!changed) {
-      LOG(ERROR) << "Failed to promote load! Operand type not promoted "
-                 << remill::LLVMThingToString(maybe_new_addr) << "\n";
+      DLOG(WARNING) << "Failed to promote load! Operand type not promoted "
+                    << remill::LLVMThingToString(maybe_new_addr) << "\n";
       return {&inst, false};
     }
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type
@@ -721,11 +724,11 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     llvm::IRBuilder ir(inst.getNextNode());
     const auto bb = ir.GetInsertBlock();
 
-    LOG(ERROR) << "Two pointers " << remill::LLVMThingToString(lhs_op)
-               << " and " << remill::LLVMThingToString(rhs_op)
-               << " are added together " << remill::LLVMThingToString(&inst)
-               << " in block " << bb->getName().str() << " in function "
-               << bb->getParent()->getName().str();
+    DLOG(ERROR) << "Two pointers " << remill::LLVMThingToString(lhs_op)
+                << " and " << remill::LLVMThingToString(rhs_op)
+                << " are added together " << remill::LLVMThingToString(&inst)
+                << " in block " << bb->getName().str() << " in function "
+                << bb->getParent()->getName().str();
 
     llvm::Value *new_pointer = ir.CreateIntToPtr(&inst, inferred_type);
     ReplaceAllUses(&inst, new_pointer);
@@ -744,8 +747,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
         return {&inst, false};
       }
       if (!ptr_val->getType()->isPointerTy()) {
-        LOG(ERROR) << "Error! return type is not a pointer: "
-                   << remill::LLVMThingToString(ptr_val);
+        DLOG(ERROR) << "Error! return type is not a pointer: "
+                    << remill::LLVMThingToString(ptr_val);
 
         // Default behavior is just to cast, this is not ideal, because
         // we want to try and propagate as much as we can.
@@ -761,7 +764,9 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       // ^ should be in updated vals. Next create an indexed pointer
       // This could be a GEP, but in some cases might just be a bitcast.
       auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op);
-
+      if (!rhs_const) {
+        return {&inst, false};
+      }
       // CHECK_NE(rhs_const, nullptr);
       // CHECK_EQ(rhs_inst, nullptr);
 

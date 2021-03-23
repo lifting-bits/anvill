@@ -23,6 +23,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -43,7 +44,7 @@ char RemoveTrivialPhisAndSelects::ID = '\0';
 
 bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
 
-  std::vector<llvm::Instruction *> remove;
+  std::unordered_set<llvm::Instruction *> remove;
   std::vector<llvm::Instruction *> work_list;
   std::vector<llvm::Instruction *> next_work_list;
   std::vector<std::pair<llvm::Use *, llvm::Value *>> replacements;
@@ -76,7 +77,7 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
         for (auto &use : phi->uses()) {
           replacements.emplace_back(&use, base_val);
         }
-        remove.push_back(phi);
+        remove.insert(phi);
 
       next:
         continue;
@@ -89,7 +90,7 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
           for (auto &use : sel->uses()) {
             replacements.emplace_back(&use, base_val);
           }
-          remove.push_back(sel);
+          remove.insert(sel);
         }
       }
     }

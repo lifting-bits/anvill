@@ -750,7 +750,8 @@ class BNProgram(Program):
         return func
 
     def get_symbols_impl(self, address):
-        return set(map(lambda x: x.name, self._bv.get_symbols(address, 1)))
+        for s in self._bv.get_symbols(address, 1):
+            yield s.name
 
     @property
     def functions(self):

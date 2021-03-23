@@ -36,10 +36,15 @@ class Program(object):
         self._symbols = collections.defaultdict(set)
 
     def get_symbols(self, ea):
+        syms = self._symbols[ea]
         if ea in self._symbols:
-            return self._symbols[ea]
+            yield from iter(syms)
         else:
-            return self.get_symbols_impl(ea)
+            for name in self.get_symbols_impl(ea):
+                old_len = len(syms)
+                syms.add(name)
+                if old_len < len(syms):
+                    yield name
 
     def get_function(self, ea):
         if ea in self._func_defs:

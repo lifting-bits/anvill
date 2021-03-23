@@ -88,7 +88,7 @@ ProgramTypeProvider::TryGetVariableType(uint64_t address,
   } else if (auto var_decl = program.FindInVariable(address, layout);
              var_decl) {
     CHECK_NOTNULL(var_decl->type);
-    CHECK_LE(address, var_decl->address);
+    CHECK_LE(var_decl->address, address);
     return *var_decl;
   }
 
