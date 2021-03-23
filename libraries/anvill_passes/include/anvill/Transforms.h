@@ -215,7 +215,6 @@ llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
 // combinations:
 // {SelectInst, PHINode}/{BinaryOperator, CastInst, GetElementPtrInst}
 llvm::FunctionPass *
-CreateInstructionFolderPass(ITransformationErrorManager &error_manager,
-                            const LifterOptions &options);
+CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
 
 }  // namespace anvill

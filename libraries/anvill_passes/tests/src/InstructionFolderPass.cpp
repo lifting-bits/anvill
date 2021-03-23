@@ -42,11 +42,10 @@ TEST_SUITE("InstructionFolderPass") {
     REQUIRE(arch != nullptr);
 
     auto error_manager = ITransformationErrorManager::Create();
-    anvill::LifterOptions lift_options(arch.get(), *module);
 
     CHECK(RunFunctionPass(
         module.get(),
-        CreateInstructionFolderPass(*error_manager.get(), lift_options)));
+        CreateInstructionFolderPass(*error_manager.get())));
 
     std::string output;
     llvm::raw_string_ostream output_stream(output);

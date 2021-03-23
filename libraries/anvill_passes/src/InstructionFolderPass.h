@@ -17,27 +17,20 @@
 
 #pragma once
 
-#include <anvill/Lifters/Options.h>
-
 #include "BaseFunctionPass.h"
 
 namespace anvill {
 
 class InstructionFolderPass final
     : public BaseFunctionPass<InstructionFolderPass> {
-  // Lifting options
-  const LifterOptions &options;
-
  public:
-  InstructionFolderPass(ITransformationErrorManager &error_manager,
-                        const LifterOptions &options);
+  explicit InstructionFolderPass(ITransformationErrorManager &error_manager);
 
   virtual ~InstructionFolderPass(void) override = default;
 
   // Creates a new InstructionFolderPass object
   static InstructionFolderPass *
-  Create(ITransformationErrorManager &error_manager,
-         const LifterOptions &options);
+  Create(ITransformationErrorManager &error_manager);
 
   // Function pass entry point
   bool Run(llvm::Function &function);

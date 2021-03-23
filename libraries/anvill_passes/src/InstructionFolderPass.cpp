@@ -145,15 +145,13 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
 }  // namespace
 
 InstructionFolderPass::InstructionFolderPass(
-    ITransformationErrorManager &error_manager, const LifterOptions &options)
-    : BaseFunctionPass(error_manager),
-      options(options) {}
+    ITransformationErrorManager &error_manager)
+    : BaseFunctionPass(error_manager) {}
 
 
 InstructionFolderPass *
-InstructionFolderPass::Create(ITransformationErrorManager &error_manager,
-                              const LifterOptions &options) {
-  return new InstructionFolderPass(error_manager, options);
+InstructionFolderPass::Create(ITransformationErrorManager &error_manager) {
+  return new InstructionFolderPass(error_manager);
 }
 
 bool InstructionFolderPass::Run(llvm::Function &function) {
@@ -623,9 +621,8 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
 }
 
 llvm::FunctionPass *
-CreateInstructionFolderPass(ITransformationErrorManager &error_manager,
-                            const LifterOptions &options) {
-  return InstructionFolderPass::Create(error_manager, options);
+CreateInstructionFolderPass(ITransformationErrorManager &error_manager) {
+  return InstructionFolderPass::Create(error_manager);
 }
 
 }  // namespace anvill
