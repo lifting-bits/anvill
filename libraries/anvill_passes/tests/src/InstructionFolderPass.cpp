@@ -43,14 +43,14 @@ TEST_SUITE("InstructionFolderPass") {
 
     auto error_manager = ITransformationErrorManager::Create();
 
-    CHECK(RunFunctionPass(
-        module.get(),
-        CreateInstructionFolderPass(*error_manager.get())));
+    CHECK(RunFunctionPass(module.get(),
+                          CreateInstructionFolderPass(*error_manager.get())));
 
-    std::string output;
-    llvm::raw_string_ostream output_stream(output);
-    module->print(output_stream, nullptr);
-    std::cout << output << std::endl;
+    for (const auto &error : error_manager->ErrorList()) {
+      CHECK_MESSAGE(false, error.description);
+    }
+
+    REQUIRE(error_manager->ErrorList().empty());
   }
 }
 
