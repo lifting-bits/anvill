@@ -68,6 +68,13 @@ TEST_SUITE("RecoverStackFrameInformation") {
           CHECK(RunFunctionPass(module.get(),
                                 CreateRecoverStackFrameInformation(
                                     *error_manager.get(), lift_options)));
+
+
+          for (const auto &error : error_manager->ErrorList()) {
+            CHECK_MESSAGE(false, error.description);
+          }
+
+          REQUIRE(error_manager->ErrorList().empty());
         }
       }
     }
