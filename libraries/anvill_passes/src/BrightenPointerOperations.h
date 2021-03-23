@@ -90,14 +90,6 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst& inst);
 
   std::pair<llvm::Value *, bool> visitCmpInst(llvm::CmpInst& inst);
-/*
-  // Visit of use of a value `val` by the instruction `user`, where we
-  // believe this use should be a pointer to the type `inferred_value_type`.
-  std::pair<llvm::Value *, bool>
-  visitPossibleCrossReference(llvm::Instruction &user, llvm::Use &use,
-                              llvm::PointerType *inferred_type);
-*/
-  bool canRewriteGep(llvm::GetElementPtrInst &inst, llvm::Type *inferred_type);
   llvm::Value* flattenGEP(llvm::GetElementPtrInst *gep);
   std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
                             llvm::Type *inferred_type);

@@ -117,7 +117,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "multiple_bitcast.ll");
     printFunc(*mod, "valid_test", "BEFORE");
-    printFunc(*mod, "memcpy", "BEFORE");
+    // printFunc(*mod, "memcpy", "BEFORE");
     const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
     const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
     const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
@@ -130,7 +130,7 @@ TEST_SUITE("BrightenPointers") {
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
     CHECK(checkMod(*mod));
     printFunc(*mod, "valid_test", "AFTER");
-    printFunc(*mod, "memcpy", "AFTER");
+    // printFunc(*mod, "memcpy", "AFTER");
 }
 
   TEST_CASE("don't crash on loops") {
@@ -149,9 +149,23 @@ TEST_SUITE("BrightenPointers") {
     CHECK(checkMod(*mod));
     printFunc(*mod, "main", "AFTER");
   }
-// TODO Test (specific) for flatten gep? 
-// TODO Test for loops/phi/select 
-// TODO test for challenge 1 
+
+  TEST_CASE("challenge 1") {
+    llvm::LLVMContext context;
+    auto mod = LoadTestData(context, "rx_message.ll");
+    printFunc(*mod, "rx_message_routine", "BEFORE");
+    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
+    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
+    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
+    REQUIRE(mod != nullptr);
+    LifterOptions options(arch.get(), *mod.get());
+    EntityLifter lifter(options, mem, types);
+    CrossReferenceResolver resolver(mod->getDataLayout());
+    ValueLifter v_lifter(lifter);
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(checkMod(*mod));
+    printFunc(*mod, "rx_message_routine", "AFTER");
+  }
 }
 
 };  // namespace anvill
