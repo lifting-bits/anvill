@@ -35,16 +35,12 @@ namespace anvill {
 
 char PointerLifterPass::ID = '\0';
 
-PointerLifterPass::PointerLifterPass(const EntityLifter &entity_lifter_, const ValueLifter &value_lifter_,
-   const CrossReferenceResolver& xref_lifter_, unsigned max_gas_)
+PointerLifterPass::PointerLifterPass(unsigned max_gas_)
     : FunctionPass(ID),
-      entity_lifter(entity_lifter_),
-      value_lifter(value_lifter_),
-      xref_lifter(xref_lifter_),
       max_gas(max_gas_) {}
 
 bool PointerLifterPass::runOnFunction(llvm::Function &f) {
-  PointerLifter lifter(&f, max_gas, entity_lifter);
+  PointerLifter lifter(&f, max_gas);
   lifter.LiftFunction(f);
 
   // TODO (Carson) have an analysis function which determines modifications
@@ -53,8 +49,7 @@ bool PointerLifterPass::runOnFunction(llvm::Function &f) {
   return true;
 }
 
-PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_,
-                             const EntityLifter &entity_lifter_)
+PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_)
     : max_gas(max_gas_),
       func(func_),
       mod(func->getParent()),
@@ -62,10 +57,7 @@ PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_,
       i32_ty(llvm::Type::getInt32Ty(context)),
       i8_ty(llvm::Type::getInt8Ty(context)),
       i8_ptr_ty(i8_ty->getPointerTo()),
-      dl(mod->getDataLayout()),
-      entity_lifter(entity_lifter_),
-      value_lifter(entity_lifter),
-      xref_resolver(entity_lifter) {}
+      dl(mod->getDataLayout()) {}
 
 // Creates a cast of val to a dest type.
 // This casts whatever value we want to a pointer, propagating the information
@@ -449,7 +441,9 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
         ir.CreateGEP(src->getType()->getPointerElementType(), src, indices);
   }
   llvm::Instruction *new_src_inst = llvm::dyn_cast<llvm::Instruction>(new_src);
-  CHECK(new_src_inst != nullptr);
+  if (!new_src_inst) {
+    return {gep, false};  // E.g. could be an `llvm::Argument *`.
+  }
 
   // Convert that new `src` to have the correct type.
   auto [casted_src, promoted] = visitInferInst(new_src_inst, inferred_type);
@@ -959,6 +953,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     for (auto inst : worklist) {
       visit(inst);
     }
+    worklist.clear();
 
     // Note (For Peter): The reason we are doing deletion here instead of the
     // end, is that if we don't we keep iterating over what should be dead code,
@@ -967,25 +962,26 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     // need to be updated anyway... it gets messy. Removing dead code at the end
     // of each iteration guarantees convergence
 
-    // Note (For Carson): We had a thought about how to change this... but i can't remember
+    // NOTE(Carson): We had a thought about how to change this... but i can't remember
     for (auto inst : to_remove) {
       if (auto rep_inst = rep_map[inst];
-        rep_inst && rep_inst->getType() == inst->getType()) {
+          rep_inst && rep_inst->getType() == inst->getType()) {
         inst->replaceAllUsesWith(rep_inst);
+      }
+    }
+    for (auto inst : to_remove) {
+      if (inst->use_empty()) {
         inst->eraseFromParent();
+        rep_map.erase(inst);
+        inferred_types.erase(inst);
+        next_inferred_types.erase(inst);
       }
     }
     to_remove.clear();
 
-    llvm::legacy::FunctionPassManager fpm(mod);
-    fpm.add(llvm::createDeadCodeEliminationPass());
-    fpm.add(llvm::createDeadInstEliminationPass());
     fpm.doInitialization();
     fpm.run(func);
     fpm.doFinalization();
-
-    worklist.clear();
-
   }
 }
 
@@ -1007,9 +1003,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, const ValueLifter &value_lifter, const CrossReferenceResolver& xref_res,
-                                                    unsigned max_gas) {
-  return new PointerLifterPass(lifter, value_lifter, xref_res, max_gas ? max_gas : 250u);
+llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas) {
+  return new PointerLifterPass(max_gas ? max_gas : 250u);
 }
 
 }  // namespace anvill

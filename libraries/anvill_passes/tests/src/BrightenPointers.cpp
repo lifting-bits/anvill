@@ -97,17 +97,8 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "gep_add.ll");
     printFunc(*mod, "main", "BEFORE");
-    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
-    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
-    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
-
     REQUIRE(mod != nullptr);
-
-    LifterOptions options(arch.get(), *mod.get());
-    EntityLifter lifter(options, mem, types);
-    CrossReferenceResolver resolver(mod->getDataLayout());
-    ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
     printFunc(*mod, "main", "AFTER");
 
@@ -118,16 +109,8 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "multiple_bitcast.ll");
     printFunc(*mod, "valid_test", "BEFORE");
     // printFunc(*mod, "memcpy", "BEFORE");
-    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
-    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
-    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
     REQUIRE(mod != nullptr);
-
-    LifterOptions options(arch.get(), *mod.get());
-    EntityLifter lifter(options, mem, types);
-    CrossReferenceResolver resolver(mod->getDataLayout());
-    ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
     printFunc(*mod, "valid_test", "AFTER");
     // printFunc(*mod, "memcpy", "AFTER");
@@ -137,15 +120,8 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "loop_test.ll");
     printFunc(*mod, "main", "BEFORE");
-    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
-    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
-    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
     REQUIRE(mod != nullptr);
-    LifterOptions options(arch.get(), *mod.get());
-    EntityLifter lifter(options, mem, types);
-    CrossReferenceResolver resolver(mod->getDataLayout());
-    ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
     printFunc(*mod, "main", "AFTER");
   }
@@ -154,15 +130,8 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "rx_message.ll");
     printFunc(*mod, "rx_message_routine", "BEFORE");
-    const remill::Arch::ArchPtr arch{remill::Arch::Build(&context, remill::kOSLinux, remill::kArchAMD64)};
-    const std::shared_ptr<MemoryProvider> mem{MemoryProvider::CreateNullMemoryProvider()};
-    const std::shared_ptr<TypeProvider> types{TypeProvider::CreateNullTypeProvider(context)};
     REQUIRE(mod != nullptr);
-    LifterOptions options(arch.get(), *mod.get());
-    EntityLifter lifter(options, mem, types);
-    CrossReferenceResolver resolver(mod->getDataLayout());
-    ValueLifter v_lifter(lifter);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(lifter, v_lifter, resolver, 250U)));
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
     printFunc(*mod, "rx_message_routine", "AFTER");
   }

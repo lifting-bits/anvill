@@ -134,8 +134,7 @@ llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void);
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(const EntityLifter &lifter, const ValueLifter& value_lifter, const CrossReferenceResolver& xref,
-                                                    unsigned max_gas = 250);
+llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas = 250);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is

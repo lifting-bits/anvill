@@ -17,9 +17,6 @@
 
 #pragma once
 
-#include <anvill/Analysis/CrossReferenceResolver.h>
-#include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Lifters/ValueLifter.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
@@ -49,16 +46,12 @@ class CrossReferenceResolver;
 
 class PointerLifterPass final : public llvm::FunctionPass {
  public:
-  PointerLifterPass(const EntityLifter &entity_lifter_, const ValueLifter &value_lifter_, const CrossReferenceResolver& xref_resolver_, unsigned max_gas_);
+  explicit PointerLifterPass(unsigned max_gas_);
 
   bool runOnFunction(llvm::Function &f) final;
 
  private:
   static char ID;
-
-  const EntityLifter entity_lifter;
-  const ValueLifter value_lifter;
-  const CrossReferenceResolver xref_lifter;
   const unsigned max_gas;
 };
 
@@ -68,8 +61,7 @@ class PointerLifter
   // this is my one requirement: I call a function, get a function pass.
   // I can pass that function a cross-reference resolver instance, and
   // when you get to an llvm::Constant, it will use the xref resolver on that
-  PointerLifter(llvm::Function *func_, unsigned max_gas_,
-                const EntityLifter &entity_lifter_);
+  PointerLifter(llvm::Function *func_, unsigned max_gas_);
 
   // ReplaceAllUses - swaps uses of LLVM inst with other LLVM inst
   // Adds users to the next worklist, for downstream type propagation
@@ -131,12 +123,6 @@ class PointerLifter
   llvm::IntegerType *const i8_ty;
   llvm::PointerType *const i8_ptr_ty;
   const llvm::DataLayout &dl;
-
-  // Used to resolve constant pointers to integer addresses or stack pointer
-  // displacements.
-  const EntityLifter entity_lifter;
-  const ValueLifter value_lifter;
-  const CrossReferenceResolver xref_resolver;
 };
 
 }  // namespace anvill
