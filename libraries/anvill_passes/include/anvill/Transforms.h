@@ -211,4 +211,10 @@ CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
 // as late as possible.
 llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
 
+// This function pass will attempt to fold the following instruction
+// combinations:
+// {SelectInst, PHINode}/{BinaryOperator, CastInst, GetElementPtrInst}
+llvm::FunctionPass *
+CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
+
 }  // namespace anvill

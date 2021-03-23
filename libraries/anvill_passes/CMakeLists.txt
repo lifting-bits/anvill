@@ -29,6 +29,9 @@ add_library(anvill_passes STATIC
   src/RecoverStackFrameInformation.h
   src/RecoverStackFrameInformation.cpp
 
+  src/InstructionFolderPass.h
+  src/InstructionFolderPass.cpp
+
   src/BaseFunctionPass.h
 
   src/Utils.h

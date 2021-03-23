@@ -6,15 +6,23 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-# Find remill first because its config has useful dependency-finding info that
-# needs to be found before the CMake `project` declaration
-find_package(remill COMPONENTS VCPKG_DEPS QUIET)
-include(cmake/vcpkg_helper.cmake)
+if(VCPKG_ROOT)
+  message(WARNING "Building with VCPKG")
+  include(cmake/vcpkg_helper.cmake)
+endif()
 
 project(anvill)
 cmake_minimum_required(VERSION 3.14)
 
 include("cmake/options.cmake")
+
+if(NOT VCPKG_ROOT)
+  message(WARNING "Running the standard CMake build; if this is a mistake, reconfigure again and pass `-DVCPKG_ROOT=/path/to/vcpkg`")
+  include(cmake/system_build.cmake)
+else()
+  find_package(remill CONFIG REQUIRED)
+endif()
+
 include("cmake/settings.cmake")
 include("cmake/utils.cmake")
 
@@ -40,8 +48,10 @@ else()
   set(CMAKE_C_COMPILER_LAUNCHER "${ccache_path}" CACHE FILEPATH "")
 endif()
 
-find_package(remill CONFIG REQUIRED)
-
 add_subdirectory("libraries")
 add_subdirectory("tools")
 add_subdirectory("anvill")
+
+if(ANVILL_ENABLE_SANITIZERS)
+  configureSanitizers("remill_settings")
+endif()

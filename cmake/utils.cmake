@@ -79,3 +79,17 @@ function(appendRemillVersionToTargetOutputName target_name)
     OUTPUT_NAME "${target_name}-${REMILL_LLVM_VERSION}"
   )
 endfunction()
+
+function(configureSanitizers target_name)
+  set(flag_list
+    -fno-omit-frame-pointer
+    -fsanitize=undefined,address
+  )
+
+  target_compile_options("${target_name}" INTERFACE ${flag_list})
+  target_link_options("${target_name}" INTERFACE ${flag_list})
+
+  if(NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    message(WARNING "Debug builds are preferred when using sanitizers (current build type: ${CMAKE_BUILD_TYPE})")
+  endif()
+endfunction()

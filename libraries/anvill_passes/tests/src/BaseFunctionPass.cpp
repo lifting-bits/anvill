@@ -21,81 +21,66 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
 
+#include <iostream>
+
 #include "RecoverStackFrameInformation.h"
+#include "Utils.h"
 
 namespace anvill {
 
 TEST_SUITE("BaseFunctionPass") {
-  TEST_CASE("BaseFunctionPass::InstructionReferencesStackPointer") {
-
-    // Create a simple phi example
+  TEST_CASE("BaseFunctionPass::SelectInstructions") {
     llvm::LLVMContext context;
-    auto module =
-        std::make_unique<llvm::Module>("BaseFunctionPassTest", context);
-
+    auto module = LoadTestData(context, "BaseFunctionPass.ll");
     REQUIRE(module != nullptr);
 
-    auto function_type =
-        llvm::FunctionType::get(llvm::Type::getInt32Ty(context), {}, false);
-    REQUIRE(function_type != nullptr);
-
-    auto function =
-        llvm::Function::Create(function_type, llvm::Function::ExternalLinkage,
-                               "TestFunction", *module.get());
+    auto function = module->getFunction("SelectInstructions");
     REQUIRE(function != nullptr);
 
-    llvm::IRBuilder<> builder(context);
+    auto instruction_list =
+        BaseFunctionPass<std::monostate>::SelectInstructions<llvm::StoreInst>(
+            *function);
 
-    auto entry_bb = llvm::BasicBlock::Create(context, "entry", function);
-    builder.SetInsertPoint(entry_bb);
+    CHECK(instruction_list.size() == 1U);
 
-    auto value_ptr = builder.CreateAlloca(builder.getInt32Ty());
-    builder.CreateStore(llvm::Constant::getNullValue(builder.getInt32Ty()),
-                        value_ptr);
+    instruction_list = BaseFunctionPass<std::monostate>::SelectInstructions<
+        llvm::StoreInst, llvm::LoadInst>(*function);
 
-    auto value = builder.CreateLoad(value_ptr);
-    auto cond = builder.CreateICmpEQ(value, builder.getInt32(0));
+    CHECK(instruction_list.size() == 2U);
 
-    auto first_bb = llvm::BasicBlock::Create(context, "first", function);
-    auto second_bb = llvm::BasicBlock::Create(context, "second", function);
-    builder.CreateCondBr(cond, first_bb, second_bb);
+    instruction_list = BaseFunctionPass<std::monostate>::SelectInstructions<
+        llvm::BinaryOperator, llvm::LoadInst>(*function);
 
-    auto exit_bb = llvm::BasicBlock::Create(context, "exit", function);
+    CHECK(instruction_list.size() == 3U);
 
-    builder.SetInsertPoint(first_bb);
-    auto first_bb_value =
-        builder.CreateBinOp(llvm::Instruction::Add, value, builder.getInt32(1));
+    instruction_list = BaseFunctionPass<std::monostate>::SelectInstructions<
+        llvm::PHINode, llvm::BinaryOperator, llvm::LoadInst>(*function);
 
-    builder.CreateBr(exit_bb);
+    CHECK(instruction_list.size() == 4U);
+  }
 
-    builder.SetInsertPoint(second_bb);
-    auto second_bb_value =
-        builder.CreateBinOp(llvm::Instruction::Add, value, builder.getInt32(2));
+  TEST_CASE("BaseFunctionPass::InstructionReferencesStackPointer") {
+    llvm::LLVMContext context;
+    auto module = LoadTestData(context, "BaseFunctionPass.ll");
+    REQUIRE(module != nullptr);
 
-    builder.CreateBr(exit_bb);
-    builder.SetInsertPoint(exit_bb);
-
-    auto return_value = builder.CreatePHI(builder.getInt32Ty(), 2);
-    return_value->addIncoming(first_bb_value, first_bb);
-    return_value->addIncoming(second_bb_value, second_bb);
-
-    builder.CreateRet(return_value);
-
-    REQUIRE(llvm::verifyModule(*module.get()) == 0);
+    auto function = module->getFunction("InstructionReferencesStackPointer");
+    REQUIRE(function != nullptr);
 
     // Attempt to run the InstructionReferencesStackPointer method on every
     // instruction
     auto data_layout = module->getDataLayout();
 
-    for (auto &basic_block : *function) {
-      for (auto &instruction : basic_block) {
-        auto expected_false =
-            BaseFunctionPass<std::monostate>::InstructionReferencesStackPointer(
-                data_layout, instruction);
+    std::size_t reference_count{};
 
-        CHECK(expected_false == false);
+    for (auto &instruction : llvm::instructions(*function)) {
+      if (BaseFunctionPass<std::monostate>::InstructionReferencesStackPointer(
+              data_layout, instruction)) {
+        ++reference_count;
       }
     }
+
+    CHECK(reference_count == 1U);
   }
 }
 

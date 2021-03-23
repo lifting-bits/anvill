@@ -65,9 +65,6 @@
 
 #pragma once
 
-#include <anvill/ITransformationErrorManager.h>
-#include <anvill/Result.h>
-
 #include "BaseFunctionPass.h"
 
 namespace anvill {
@@ -214,6 +211,7 @@ class SplitStackFrameAtReturnAddress final
 
  private:
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
+  virtual ~SplitStackFrameAtReturnAddress(void) override = default;
 };
 
 }  // namespace anvill

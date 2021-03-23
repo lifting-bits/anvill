@@ -15,20 +15,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "RecoverStackFrameInformation.h"
 
-#include <anvill/ABI.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
-#include <anvill/Analysis/Utils.h>
-#include <glog/logging.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Module.h>
+#include <remill/BC/Util.h>
 
 #include <iostream>
 #include <limits>
 #include <magic_enum.hpp>
-
-#include <remill/BC/Util.h>
 
 #include "Utils.h"
 
@@ -76,9 +71,15 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
 
   // Analyze the __anvill_sp usage again; this time, the resulting
   // instruction list should be empty
-  auto stack_related_instr_list_res = EnumerateStackPointerUsages(function);
-  CHECK(stack_related_instr_list_res.Succeeded());
-  auto second_stack_frame_uses = stack_related_instr_list_res.TakeValue();
+  auto second_stack_frame_uses_res = EnumerateStackPointerUsages(function);
+  if (!second_stack_frame_uses_res.Succeeded()) {
+    EmitError(SeverityType::Fatal, second_stack_frame_uses_res.Error(),
+              "The post-transformation stack frame analysis has failed");
+
+    return false;
+  }
+
+  auto second_stack_frame_uses = second_stack_frame_uses_res.TakeValue();
   if (!second_stack_frame_uses.empty()) {
     EmitError(
         SeverityType::Fatal,

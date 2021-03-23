@@ -158,6 +158,7 @@ std::string GetModuleIR(llvm::Module &module) {
 
   llvm::raw_string_ostream output_stream(output);
   module.print(output_stream, nullptr);
+  output_stream.flush();
 
   return output;
 }

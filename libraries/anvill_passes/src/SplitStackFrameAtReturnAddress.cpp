@@ -15,18 +15,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "SplitStackFrameAtReturnAddress.h"
 
 #include <anvill/ABI.h>
 #include <anvill/Transforms.h>
-#include <glog/logging.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
 #include <remill/BC/Util.h>
 
 #include <magic_enum.hpp>
