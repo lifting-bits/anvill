@@ -217,4 +217,10 @@ llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
 llvm::FunctionPass *
 CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
 
+// Removes trivial PHI and select nodes. These are PHI and select nodes whose
+// incoming values or true/false values match. This can happen as a result of
+// the instruction folding pass that hoists and folds values up through selects
+// and PHI nodes, followed by the select sinking pass, which pushes values down.
+llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
+
 }  // namespace anvill

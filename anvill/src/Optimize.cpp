@@ -114,6 +114,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateInstructionFolderPass(err_man));
   // fpm.add(CreateBrightenPointerOperations(lifter_context));
   fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
+  fpm.add(CreateSinkSelectionsIntoBranchTargets());
+  fpm.add(CreateRemoveTrivialPhisAndSelects());
   fpm.add(CreateRecoverStackFrameInformation(err_man, options));
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
