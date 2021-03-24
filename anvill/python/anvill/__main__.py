@@ -19,6 +19,9 @@ import os
 import sys
 import argparse
 import json
+import platform
+
+import binaryninja as bn
 
 from .util import INIT_DEBUG_FILE
 from .binja import get_program
@@ -57,7 +60,10 @@ def main():
     if args.log_file != os.devnull:
         INIT_DEBUG_FILE(args.log_file)
 
-    p = get_program(args.bin_in)
+    bv = bn.BinaryViewType.get_view_of_file(args.bin_in)
+    p = get_program(bv)
+
+    is_macos = "darwin" in platform.system().lower()
 
     ep = None
     if args.entry_point is not None:
@@ -66,25 +72,42 @@ def main():
         except ValueError:
             ep = args.entry_point
 
+    ep_ea = None
+
     if ep is None:
-        for ea in p.functions:
+        for f in bv.functions:
+            ea = f.start
             p.add_function_definition(ea, args.refs_as_defs)
     elif isinstance(ep, int):
         p.add_function_definition(ep, args.refs_as_defs)
     else:
-        for ea, name in p.symbols:
+        for s in bv.get_symbols():
+            ea, name = s.address, s.name
             if name == ep:
-                p.add_function_definition(ea, args.refs_as_defs)
+                ep_ea = ea
+                break
 
-    def add_symbol(ea):
-        for name in p.get_symbols(ea):
+        # On macOS, we often have underscore-prefixed names, e.g. `_main`, so
+        # with `--entry_point main` we really want to find `_main`, but lift it
+        # as `main`.
+        if ep_ea is None and is_macos:
+            underscore_ep = "_{}".format(ep)
+            for s in bv.get_symbols():
+                ea, name = s.address, s.name
+                if name == underscore_ep:
+                    ep_ea = ea
+                    break
+
+        if ep_ea is not None:
+            p.add_function_definition(ep_ea, args.refs_as_defs)
+            p.add_symbol(ep_ea, ep)  # Add the name from `--entry_point`.
+        else:
+            return 1  # Failed to find the entrypoint.
+
+    for s in bv.get_symbols():
+        ea, name = s.address, s.name
+        if ea != ep_ea:
             p.add_symbol(ea, name)
-
-    for f in p.proto()["functions"]:
-        add_symbol(f["address"])
-
-    for v in p.proto()["variables"]:
-        add_symbol(v["address"])
 
     open(args.spec_out, "w").write(json.dumps(p.proto()))
 

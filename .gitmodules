@@ -1,0 +1,6 @@
+[submodule "libraries/doctest/src"]
+	path = libraries/doctest/src
+	url = https://github.com/onqtam/doctest.git
+[submodule "libraries/magic_enum/src"]
+	path = libraries/magic_enum/src
+	url = https://github.com/Neargye/magic_enum.git

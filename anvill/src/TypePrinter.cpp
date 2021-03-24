@@ -40,7 +40,7 @@ namespace {
 static void
 TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
                       std::unordered_map<llvm::StructType *, size_t> &ids,
-                      const llvm::DataLayout &dl) {
+                      const llvm::DataLayout &dl, bool alphanum) {
   switch (type.getTypeID()) {
     case llvm::Type::VoidTyID: ss << 'v'; break;
 
@@ -93,7 +93,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
             << remill::LLVMThingToString(derived);
 
         const auto num_bytes = (bit_width + 7u) / 8u;
-        ss << "[Bx" << num_bytes << ']';
+        ss << (alphanum ? "_C" : "[") << "Bx" << num_bytes
+           << (alphanum ? "_D" : "]");
       }
 
       break;
@@ -112,20 +113,20 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     // Not valid: (v...v).
     case llvm::Type::FunctionTyID: {
       auto func_ptr = llvm::cast<llvm::FunctionType>(&type);
-      ss << '(';
+      ss << (alphanum ? "_A" : "(");
 
       for (llvm::Type *param : func_ptr->params()) {
-        TranslateTypeInternal(*param, ss, ids, dl);
+        TranslateTypeInternal(*param, ss, ids, dl, alphanum);
       }
 
       if (func_ptr->isVarArg()) {
-        ss << '&';
+        ss << (alphanum ? "_V" : "&");
       } else if (!func_ptr->getNumParams()) {
         ss << 'v';
       }
 
-      TranslateTypeInternal(*func_ptr->getReturnType(), ss, ids, dl);
-      ss << ')';
+      TranslateTypeInternal(*func_ptr->getReturnType(), ss, ids, dl, alphanum);
+      ss << (alphanum ? "_B" : ")");
       break;
     }
 
@@ -136,7 +137,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       // of the structure type, then use a back reference to avoid infinite
       // recursion.
       if (ids.count(struct_ptr)) {
-        ss << '%' << ids[struct_ptr];
+        ss << (alphanum ? "_M" : "%") << ids[struct_ptr];
 
       // We've not yet serialized this structure.
       } else {
@@ -144,7 +145,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
         // Start by emitting a new structure ID for this structure and memoizing
         // it to prevent infinite recursion (e.g. on linked lists).
         ids[struct_ptr] = ids.size();
-        ss << '=' << ids[struct_ptr] << '{';
+        ss << '=' << ids[struct_ptr] << (alphanum ? "_E" : "{");
 
         auto layout = dl.getStructLayout(struct_ptr);
         uint64_t expected_offset = 0u;
@@ -158,7 +159,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
             if (diff == 1u) {
               ss << 'B';
             } else {
-              ss << "[Bx" << diff << ']';
+              ss << (alphanum ? "_C" : "[") << "Bx" << diff
+                 << (alphanum ? "_D" : "]");
             }
 
           // TODO(pag): Investigate this possibility. Does this occur for
@@ -167,7 +169,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
           }
 
           const auto el_ty = struct_ptr->getElementType(i);
-          TranslateTypeInternal(*el_ty, ss, ids, dl);
+          TranslateTypeInternal(*el_ty, ss, ids, dl, alphanum);
           expected_offset = offset + dl.getTypeStoreSize(el_ty);
         }
 
@@ -178,38 +180,40 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
           if (diff == 1u) {
             ss << 'B';
           } else {
-            ss << "[Bx" << diff << ']';
+            ss << (alphanum ? "_C" : "[") << "Bx" << diff
+               << (alphanum ? "_D" : "]");
           }
         }
-        ss << '}';
+        ss << (alphanum ? "_F" : "}");
       }
       break;
     }
 
     case llvm::GetFixedVectorTypeId(): {
       const auto vec_ptr = llvm::cast<llvm::FixedVectorType>(&type);
-      ss << '<';
-      TranslateTypeInternal(*vec_ptr->getElementType(), ss, ids, dl);
-      ss << 'x' << vec_ptr->getNumElements() << '>';
+      ss << (alphanum ? "_G" : "<");
+      TranslateTypeInternal(*vec_ptr->getElementType(), ss, ids, dl, alphanum);
+      ss << 'x' << vec_ptr->getNumElements() << (alphanum ? "_H" : ">");
       break;
     }
 
     case llvm::Type::ArrayTyID: {
       const auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
-      ss << '[';
-      TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl);
-      ss << 'x' << array_ptr->getNumElements() << ']';
+      ss << (alphanum ? "_C" : "[");
+      TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl,
+                            alphanum);
+      ss << 'x' << array_ptr->getNumElements() << (alphanum ? "_D" : "]");
       break;
     }
 
     case llvm::Type::PointerTyID: {
-      ss << '*';
+      ss << (alphanum ? "_S" : "*");
       auto derived = llvm::dyn_cast<llvm::PointerType>(&type);
       auto elem_type = derived->getElementType();
 
       // Get the type of the pointee.
       if (elem_type->isSized()) {
-        TranslateTypeInternal(*elem_type, ss, ids, dl);
+        TranslateTypeInternal(*elem_type, ss, ids, dl, alphanum);
 
       // It's an opaque type, e.g. a structure that is declared but not defined.
       } else {
@@ -226,10 +230,12 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       const auto type_size = dl.getTypeStoreSize(&type);
       const auto aligned_size = dl.getTypeAllocSize(&type);
       if (aligned_size > type_size) {
-        ss << "{[Bx" << type_size << "][Bx" << (aligned_size - type_size)
-           << "]}";
+        ss << (alphanum ? "_E_C" : "{[") << "Bx" << type_size
+           << (alphanum ? "_D_C" : "][") << "Bx" << (aligned_size - type_size)
+           << (alphanum ? "_D_F" : "]}");
       } else {
-        ss << "[Bx" << type_size << ']';
+        ss << (alphanum ? "_C" : "[") << "Bx" << type_size
+           << (alphanum ? "_D" : "]");
       }
     }
   }
@@ -237,10 +243,11 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
 
 }  // namespace
 
-std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl) {
+std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl,
+                          bool alphanum) {
   std::stringstream ss;
   std::unordered_map<llvm::StructType *, size_t> ids = {};
-  TranslateTypeInternal(type, ss, ids, dl);
+  TranslateTypeInternal(type, ss, ids, dl, alphanum);
   return ss.str();
 }
 

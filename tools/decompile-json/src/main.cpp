@@ -43,9 +43,12 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
-#include "anvill/Analyze.h"
+#include <anvill/ABI.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+
 #include "anvill/Decl.h"
-#include "anvill/Lift.h"
 #include "anvill/Optimize.h"
 #include "anvill/Program.h"
 #include "anvill/TypeParser.h"
@@ -173,7 +176,8 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
 //
 static bool ParseTypedRegister(
     const remill::Arch *arch, llvm::LLVMContext &context,
-    std::unordered_map<uint64_t, anvill::TypedRegisterDecl> &reg_map,
+    std::unordered_map<uint64_t, std::vector<anvill::TypedRegisterDecl>>
+        &reg_map,
     llvm::json::Object *obj) {
 
   auto maybe_address = obj->getInteger("address");
@@ -206,6 +210,7 @@ static bool ParseTypedRegister(
     LOG(ERROR) << "Missing 'register' field in typed register";
     return false;
   }
+
   auto maybe_reg = arch->RegisterByName(register_name->str());
   if (!maybe_reg) {
     LOG(ERROR) << "Unable to locate register '" << register_name->str()
@@ -213,9 +218,10 @@ static bool ParseTypedRegister(
                << " at '" << std::hex << *maybe_address << std::dec << "'";
     return false;
   }
+
   decl.reg = maybe_reg;
-  reg_map[*maybe_address] = decl;
-  return ParseValue(arch, decl, obj, "typed register");
+  reg_map[*maybe_address].emplace_back(std::move(decl));
+  return true;
 }
 
 // Parse a return value from the JSON spec.
@@ -628,7 +634,8 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  const auto &buff = remill::GetReference(maybe_buff);
+  const std::unique_ptr<llvm::MemoryBuffer> &buff =
+      remill::GetReference(maybe_buff);
   auto maybe_json = llvm::json::parse(buff->getBuffer());
   if (remill::IsError(maybe_json)) {
     LOG(ERROR) << "Unable to parse JSON spec file '" << FLAGS_spec
@@ -636,7 +643,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto &json = remill::GetReference(maybe_json);
+  llvm::json::Value &json = remill::GetReference(maybe_json);
   const auto spec = json.getAsObject();
   if (!spec) {
     LOG(ERROR) << "JSON spec file '" << FLAGS_spec
@@ -659,6 +666,7 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+  llvm::Module module("lifted_code", context);
 
   // Get a unique pointer to a remill architecture object. The architecture
   // object knows how to deal with everything for this specific architecture,
@@ -669,9 +677,18 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto semantics = remill::LoadArchSemantics(arch);
-
   anvill::Program program;
+  auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
+  auto types =
+      anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+
+  anvill::LifterOptions options(arch.get(), module);
+
+  // NOTE(pag): Unfortunately, we need to load the semantics module first,
+  //            which happens deep inside the `EntityLifter`. Only then does
+  //            Remill properly know about register information, which
+  //            subsequently allows it to parse value decls in specs :-(
+  anvill::EntityLifter lifter(options, memory, types);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -680,40 +697,73 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  anvill::LiftCodeIntoModule(arch.get(), program, *semantics);
-  anvill::OptimizeModule(arch.get(), program, *semantics);
+  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
+    (void) lifter.LiftEntity(*decl);
+    return true;
+  });
+
+  // Lift functions.
+  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
+    (void) lifter.LiftEntity(*decl);
+    return true;
+  });
+
+  // Verify the module
+  if (!remill::VerifyModule(&module)) {
+    std::string json_outs;
+    if (llvm::json::fromJSON(json, json_outs)) {
+      std::cerr << "Couldn't verify module produced from spec:\n"
+                << json_outs << '\n';
+
+    } else {
+      std::cerr << "Couldn't verify module produced from spec:\n"
+                << buff->getBuffer().str() << '\n';
+    }
+    return EXIT_FAILURE;
+  }
+
+  // OLD: Apply optimizations.
+  anvill::OptimizeModule(lifter, arch.get(), program, module, options);
 
   // Apply symbol names to functions if we have the names.
   program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
                                   const anvill::FunctionDecl *fdecl,
                                   const anvill::GlobalVarDecl *vdecl) {
-    llvm::Value *gval{nullptr};
     if (vdecl) {
-      gval = semantics->getGlobalVariable(anvill::CreateVariableName(addr));
+      if (auto var = lifter.DeclareEntity(*vdecl)) {
+        var->setName(name);
+      }
     } else if (fdecl) {
-      gval = semantics->getFunction(anvill::CreateFunctionName(addr));
-    } else {
-      return true;
+      if (auto func = lifter.DeclareEntity(*fdecl)) {
+        func->setName(name);
+      }
     }
-
-    if (gval) {
-      gval->setName(name);
-    }
-
     return true;
   });
+
+  // Clean up by initializing variables.
+  for (auto &var : module.globals()) {
+    if (!var.isDeclaration()) {
+      continue;
+    }
+    const auto name = var.getName();
+    if (name.startswith(anvill::kAnvillNamePrefix)) {
+      var.setInitializer(llvm::Constant::getNullValue(var.getValueType()));
+      var.setLinkage(llvm::GlobalValue::InternalLinkage);
+    }
+  }
 
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
-    if (!remill::StoreModuleIRToFile(semantics.get(), FLAGS_ir_out, true)) {
-      LOG(ERROR) << "Could not save LLVM IR to " << FLAGS_ir_out;
+    if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
+      std::cerr << "Could not save LLVM IR to " << FLAGS_ir_out << '\n';
       ret = EXIT_FAILURE;
     }
   }
   if (!FLAGS_bc_out.empty()) {
-    if (!remill::StoreModuleToFile(semantics.get(), FLAGS_bc_out, true)) {
-      LOG(ERROR) << "Could not save LLVM bitcode to " << FLAGS_bc_out;
+    if (!remill::StoreModuleToFile(&module, FLAGS_bc_out, true)) {
+      std::cerr << "Could not save LLVM bitcode to " << FLAGS_bc_out << '\n';
       ret = EXIT_FAILURE;
     }
   }

@@ -25,6 +25,7 @@ class DataLayout;
 }  // namespace llvm
 namespace anvill {
 
-std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl);
+std::string TranslateType(llvm::Type &type, const llvm::DataLayout &dl,
+                          bool alphanum = false);
 
 }  // namespace anvill
