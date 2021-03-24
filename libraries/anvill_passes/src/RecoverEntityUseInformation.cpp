@@ -18,11 +18,13 @@
 #include "RecoverEntityUseInformation.h"
 
 #include <anvill/Decl.h>
+#include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
 #include <anvill/Providers/TypeProvider.h>
 
 #include <llvm/IR/Constant.h>
 
+#include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
 #include "Utils.h"
@@ -73,11 +75,23 @@ EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
     return output;
   }
 
+  const auto arch = this->entity_lifter.Options().arch;
+  const auto mem_ptr_type = arch->MemoryPointerType();
+  const auto state_ptr_type = arch->StatePointerType();
+
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
       for (auto i = 0u, num_ops = instr.getNumOperands(); i < num_ops; ++i) {
         auto &use = instr.getOperandUse(i);
         auto val = use.get();
+
+        // If we see something related to Remill's `Memory *` or `State *` then
+        // ignore those as being possible cross-references.
+        const auto val_type = val->getType();
+        if (val_type == mem_ptr_type || val_type == state_ptr_type) {
+          continue;
+        }
+
         if (auto ra = xref_resolver.TryResolveReference(val);
             ra.is_valid && !ra.references_return_address &&
             !ra.references_stack_pointer) {

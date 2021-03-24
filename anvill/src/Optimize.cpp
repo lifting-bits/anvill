@@ -88,7 +88,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   mpm.run(module);
 
   llvm::legacy::FunctionPassManager fpm(&module);
-  fpm.add(llvm::createEarlyCSEPass(true));
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(llvm::createConstantPropagationPass());
   fpm.add(llvm::createSinkingPass());
@@ -96,7 +95,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSCCPPass());
   fpm.add(llvm::createDeadStoreEliminationPass());
   fpm.add(llvm::createSROAPass());
-  fpm.add(llvm::createPromoteMemoryToRegisterPass());
+  fpm.add(llvm::createEarlyCSEPass(true));
   fpm.add(llvm::createBitTrackingDCEPass());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createSinkingPass());
@@ -112,9 +111,11 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveCompilerBarriers());
   fpm.add(CreateLowerTypeHintIntrinsics());
   fpm.add(CreateInstructionFolderPass(err_man));
+  fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
   fpm.add(CreateSinkSelectionsIntoBranchTargets());
   fpm.add(CreateRemoveTrivialPhisAndSelects());
+  fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(CreateRecoverStackFrameInformation(err_man, options));
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
