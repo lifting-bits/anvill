@@ -57,7 +57,6 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { name: 'ubuntu', tag: '18.04' }
           - { name: 'ubuntu', tag: '20.04' }
 
         llvm: [ '11' ]
@@ -631,26 +630,11 @@ jobs:
 
       - name: Group the packages by platform
         run: |
-          zip -r9 anvill_ubuntu-18.04_packages.zip \
-                  ubuntu-18.04*
-
           zip -r9 anvill_ubuntu-20.04_packages.zip \
                   ubuntu-20.04*
 
           zip -r9 anvill_macos-10.15_packages.zip \
                   macos-10.15*
-
-      - name: Upload the Ubuntu 18.04 packages
-        uses: actions/upload-release-asset@v1
-
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: anvill_ubuntu-18.04_packages.zip
-          asset_name: anvill_ubuntu-18.04_packages.zip
-          asset_content_type: application/gzip
 
       - name: Upload the Ubuntu 20.04 packages
         uses: actions/upload-release-asset@v1

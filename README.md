@@ -21,7 +21,7 @@ If you are experiencing undocumented problems with Anvill then ask for help in t
 
 ## Supported Platforms
 
-Anvill is supported on Linux platforms and has been tested on Ubuntu 18.04 and 20.04.
+Anvill is supported on Linux platforms and has been tested on Ubuntu 20.04.
 
 ## Dependencies
 
@@ -31,9 +31,9 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | ---- | ------- |
 | [Git](https://git-scm.com/) | Latest |
 | [CMake](https://cmake.org/) | 3.14+ |
-| [Clang](http://clang.llvm.org/) | 8.0+|
+| [Clang](http://clang.llvm.org/) | 11.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
-| [Python](https://www.python.org/) | 3.8 |
+| [Python](https://www.python.org/) | 3.9 |
 | [IDA Pro](https://www.hex-rays.com/products/ida) | 7.5+ |
 | [Binary Ninja](https://binary.ninja/) | Latest |
 
