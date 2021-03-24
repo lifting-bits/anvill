@@ -78,7 +78,6 @@ static void SetVersion(void) {
     ss << "Commit Date: " << anvill::version::GetCommitDate() << "\n";
     ss << "Last commit by: " << anvill::version::GetAuthorName() << " ["
        << anvill::version::GetAuthorEmail() << "]\n";
-    ss << "Commit Subject: [" << anvill::version::GetCommitSubject() << "]\n";
     ss << "\n";
     if (anvill::version::HasUncommittedChanges()) {
       ss << "Uncommitted changes were present during build.\n";

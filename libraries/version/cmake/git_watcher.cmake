@@ -83,8 +83,8 @@ set(_state_variable_names
     GIT_AUTHOR_NAME
     GIT_AUTHOR_EMAIL
     GIT_COMMIT_DATE_ISO8601
-    GIT_COMMIT_SUBJECT
-    GIT_COMMIT_BODY
+    #GIT_COMMIT_SUBJECT
+    #GIT_COMMIT_BODY
     VERSION_STRING
     # >>>
     # 1. Add the name of the additional git variable you're interested in monitoring

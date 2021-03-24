@@ -52,14 +52,6 @@ std::string_view GetCommitDate(void) {
   return "@GIT_COMMIT_DATE_ISO8601@";
 }
 
-std::string_view GetCommitSubject(void) {
-  return "@GIT_COMMIT_SUBJECT@";
-}
-
-std::string_view GetCommitBody(void) {
-  return @GIT_COMMIT_BODY@;
-}
-
 std::string_view GetVersionString(void) {
   return "@VERSION_STRING@";
 }
