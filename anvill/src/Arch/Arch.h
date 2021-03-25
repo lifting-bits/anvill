@@ -165,6 +165,9 @@ class CallingConvention {
   CreateX86_64_SysV(const remill::Arch *arch);
 
   static std::unique_ptr<CallingConvention>
+  CreateAArch32_C(const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention>
   CreateAArch64_C(const remill::Arch *arch);
 
   static std::unique_ptr<CallingConvention>

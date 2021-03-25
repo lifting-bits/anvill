@@ -276,6 +276,10 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
   }
 
   alias_ret->setAliasee(ret);
+
+  // NOTE(akshayk): Adding `alias_ret` to entity map may cause type confusion
+  //                on look up. It gets fixed in the data lifter.
+  //
   ent_lifter.AddEntity(alias_ret, ea);
 
   return alias_ret;

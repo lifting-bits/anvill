@@ -10,6 +10,7 @@ add_library(anvill STATIC
   include/anvill/Type.h
   include/anvill/Result.h
 
+  src/Arch/AArch32_C.cpp
   src/Arch/AArch64_C.cpp
   src/Arch/SPARC32_C.cpp
   src/Arch/SPARC64_C.cpp

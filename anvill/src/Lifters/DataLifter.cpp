@@ -129,7 +129,10 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
     // Fallback to is base is null or offset < 0; bit cast to the
     // correct type
-    const auto ce = llvm::ConstantExpr::getBitCast(found_by_address, type);
+    const auto address_space =
+        found_by_address->getType()->getPointerAddressSpace();
+    const auto ce = llvm::ConstantExpr::getBitCast(
+        found_by_address, type->getPointerTo(address_space));
     lifter_context.AddEntity(ce, decl.address);
     return wrap_with_alias(ce);
   }

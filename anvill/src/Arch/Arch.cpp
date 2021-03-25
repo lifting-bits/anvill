@@ -81,6 +81,7 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
         break;
       }
 
+    case remill::kArchAArch32LittleEndian: return CreateAArch32_C(arch);
     case remill::kArchAArch64LittleEndian: return CreateAArch64_C(arch);
 
     case remill::kArchSparc32:

@@ -183,6 +183,10 @@ def get_arch(bv):
         return X86Arch()
     elif name == "aarch64":
         return AArch64Arch()
+    elif name == "armv7":
+        return AArch32Arch()
+    elif name == "thumb2":
+        return AArch32Arch()
     else:
         raise UnhandledArchitectureType(
             "Missing architecture object type for architecture '{}'".format(name)
@@ -329,11 +333,14 @@ class TypeCache:
         # of the IntegerTypeClass is [10, 12], create a float type
         # int32_t (int32_t arg1, int80_t arg2 @ st0)
         if tinfo.width in [1, 2, 4, 8, 16]:
-            ret = IntegerType(tinfo.width, True)
-            return ret
+            return IntegerType(tinfo.width, True)
         elif tinfo.width in [10, 12]:
-            width = tinfo.width
-            return FloatingPointType(width)
+            return FloatingPointType(tinfo.width)
+        else:
+            # if width is not from one specified. get the default size
+            # to bv.address_size
+            return IntegerType(self._bv.address_size, True)
+
 
     def _convert_named_reference(self, tinfo: bn.types.Type) -> Type:
         """ Convert named type references into a `Type` instance"""
@@ -401,6 +408,7 @@ class TypeCache:
                     TypeCache._err_type_class[tinfo.type_class]
                 )
             )
+            return VoidType()
 
         else:
             raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
@@ -424,14 +432,30 @@ class TypeCache:
 
 
 class CallingConvention:
+
+    _FLOAT_ARGS_REG = {
+        "x86": ["st0", "st1", "st2", "st3", "st4", "st5"],
+        "amd64": ["st0", "st1", "st2", "st3", "st4", "st5"],
+        # AAPCS uses integer register for passing floating point arguments
+        "armv7": ["r0", "r1", "r2", "r3"],
+        # AAPCS_VFP can use s0-15 registers for passing floating point arguments
+        "thumb2": ["s0", "s1", "s2", "s4", "s5", "s6", "s7"]
+    }
+
     def __init__(self, arch, bn_func):
         self._cc = bn_func.calling_convention
         self._arch = arch
         self._bn_func = bn_func
         self._int_arg_regs = self._cc.int_arg_regs
         self._float_arg_regs = self._cc.float_arg_regs
+
+        # set the float_arg_regs for default calling convention (cdecl)
+        # for both x86 and arm architectures
         if self._cc.name == "cdecl":
-            self._float_arg_regs = ["st0", "st1", "st2", "st3", "st4", "st5"]
+            try:
+                self._float_arg_regs = CallingConvention._FLOAT_ARGS_REG[self._cc.arch.name]
+            except IndexError:
+                DEBUG("Unsupported architecture: {}".format(self._cc.arch.name))
 
     def is_sysv(self):
         return self._cc.name == "sysv"
@@ -699,6 +723,12 @@ class BNProgram(Program):
         for var in bn_func.parameter_vars:
             source_type = var.source_type
             var_type = var.type
+
+            # Fails to recover var_type for some function which may fail at later stage
+            # e.g: int32_t __dlmopen(int32_t arg1, int32_t @ r9, int32_t @ r11)
+            if var_type is None:
+                continue
+
             arg_type = self.type_cache.get(var_type)
 
             if source_type == bn.VariableSourceType.RegisterVariableSourceType:

@@ -84,6 +84,8 @@ def _guess_architecture():
     elif "ARM" in inf.procName:
         if inf.is_64bit():
             return "aarch64"
+        elif inf.is_32bit():
+            return "aarch32"
         else:
             raise UnhandledArchitectureType(
                 "Unrecognized 32-bit ARM architecture: {}".format(inf.procName)
@@ -294,6 +296,8 @@ def _get_arch():
         return X86Arch()
     elif name == "aarch64":
         return AArch64Arch()
+    elif name == "aarch32":
+        return AArch32Arch()
     elif name == "sparc32":
         return Sparc32Arch()
     elif name == "sparc64":
@@ -865,6 +869,13 @@ def _get_calling_convention(arch, os, ftd):
             return default_cc, True
         elif (ftd.cc & ida_typeinf.CM_CC_THISCALL) == ida_typeinf.CM_CC_THISCALL:
             return 70, is_variadic
+        else:
+            return default_cc, is_variadic
+
+    elif arch_name == "aarch32":
+        # check for _cdecl calling convention else fallback to default cc
+        if (ftd.cc & ida_typeinf.CM_CC_CDECL) == ida_typeinf.CM_CC_CDECL:
+            return 48, is_variadic
         else:
             return default_cc, is_variadic
 

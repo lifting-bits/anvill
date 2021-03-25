@@ -942,6 +942,191 @@ class AArch64Arch(Arch):
     def pointer_size(self):
         return 8
 
+class AArch32Arch(Arch):
+    """AArch32-specific architecture description (ARMv7, 32-bit)."""
+
+    _REG_FAMILY_Rn = lambda l: (("R{}".format(l), 0, 8))
+
+    _REG_FAMILY_qX = lambda l: (
+        ("q{}".format(l), 0, 16),
+        ("d{}".format(l * 2), 0, 8),
+        ("d{}".format(l * 2 + 1), 8, 16),
+        ("s{}".format(l * 4), 0, 4),
+        ("s{}".format(l * 4 + 1), 4, 8),
+        ("s{}".format(l * 4 + 2), 8, 12),
+        ("s{}".format(l * 4 + 3), 12, 16),
+    )
+
+    _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
+    _REG_FAMILY_q1 = _REG_FAMILY_qX(1)
+    _REG_FAMILY_q2 = _REG_FAMILY_qX(2)
+    _REG_FAMILY_q3 = _REG_FAMILY_qX(3)
+    _REG_FAMILY_q4 = _REG_FAMILY_qX(4)
+    _REG_FAMILY_q5 = _REG_FAMILY_qX(5)
+    _REG_FAMILY_q6 = _REG_FAMILY_qX(6)
+    _REG_FAMILY_q7 = _REG_FAMILY_qX(7)
+    _REG_FAMILY_q8 = _REG_FAMILY_qX(8)
+    _REG_FAMILY_q9 = _REG_FAMILY_qX(9)
+    _REG_FAMILY_q10 = _REG_FAMILY_qX(10)
+    _REG_FAMILY_q11 = _REG_FAMILY_qX(11)
+    _REG_FAMILY_q12 = _REG_FAMILY_qX(12)
+    _REG_FAMILY_q13 = _REG_FAMILY_qX(13)
+    _REG_FAMILY_q14 = _REG_FAMILY_qX(14)
+    _REG_FAMILY_q15 = _REG_FAMILY_qX(15)
+
+    _REG_FAMILY_R0 = _REG_FAMILY_Rn(0)
+    _REG_FAMILY_R1 = _REG_FAMILY_Rn(1)
+    _REG_FAMILY_R2 = _REG_FAMILY_Rn(2)
+    _REG_FAMILY_R3 = _REG_FAMILY_Rn(3)
+    _REG_FAMILY_R4 = _REG_FAMILY_Rn(4)
+    _REG_FAMILY_R5 = _REG_FAMILY_Rn(5)
+    _REG_FAMILY_R6 = _REG_FAMILY_Rn(6)
+    _REG_FAMILY_R7 = _REG_FAMILY_Rn(7)
+    _REG_FAMILY_R8 = _REG_FAMILY_Rn(8)
+    _REG_FAMILY_R9 = _REG_FAMILY_Rn(9)
+    _REG_FAMILY_R10 = _REG_FAMILY_Rn(10)
+    _REG_FAMILY_R11 = _REG_FAMILY_Rn(11)
+    _REG_FAMILY_R12 = _REG_FAMILY_Rn(12)
+
+    _REG_FAMILY = {
+        "R0": _REG_FAMILY_R0,
+        "R1": _REG_FAMILY_R1,
+        "R2": _REG_FAMILY_R2,
+        "R3": _REG_FAMILY_R3,
+        "R4": _REG_FAMILY_R4,
+        "R5": _REG_FAMILY_R5,
+        "R6": _REG_FAMILY_R6,
+        "R7": _REG_FAMILY_R7,
+        "R8": _REG_FAMILY_R8,
+        "R9": _REG_FAMILY_R9,
+        "R10": _REG_FAMILY_R10,
+        "R11": _REG_FAMILY_R11,
+        "R12": _REG_FAMILY_R12,
+        "R13": (("SP", 0, 8)),
+        "R14": (("LR", 0, 8)),
+        "R15": (("PC", 0, 8)),
+
+        "SP": (("SP", 0, 8)),
+        "LR": (("LR", 0, 8)),
+        "PC": (("PC", 0, 8)),
+
+        # floating point extension registers only supported with
+        # VFP and SIMD instructions
+        "q0": _REG_FAMILY_q0,
+        "q1": _REG_FAMILY_q1,
+        "q2": _REG_FAMILY_q2,
+        "q3": _REG_FAMILY_q3,
+        "q4": _REG_FAMILY_q4,
+        "q5": _REG_FAMILY_q5,
+        "q6": _REG_FAMILY_q6,
+        "q7": _REG_FAMILY_q7,
+        "q8": _REG_FAMILY_q8,
+        "q9": _REG_FAMILY_q9,
+        "q10": _REG_FAMILY_q10,
+        "q11": _REG_FAMILY_q11,
+        "q12": _REG_FAMILY_q12,
+        "q13": _REG_FAMILY_q13,
+        "q14": _REG_FAMILY_q14,
+        "q15": _REG_FAMILY_q15,
+
+        "d0": _REG_FAMILY_q0,
+        "d1": _REG_FAMILY_q0,
+        "d2": _REG_FAMILY_q1,
+        "d3": _REG_FAMILY_q1,
+        "d4": _REG_FAMILY_q2,
+        "d5": _REG_FAMILY_q2,
+        "d6": _REG_FAMILY_q3,
+        "d7": _REG_FAMILY_q3,
+        "d8": _REG_FAMILY_q4,
+        "d9": _REG_FAMILY_q4,
+        "d10": _REG_FAMILY_q5,
+        "d11": _REG_FAMILY_q5,
+        "d12": _REG_FAMILY_q6,
+        "d13": _REG_FAMILY_q6,
+        "d14": _REG_FAMILY_q7,
+        "d15": _REG_FAMILY_q7,
+
+        "d16": _REG_FAMILY_q8,
+        "d17": _REG_FAMILY_q8,
+        "d18": _REG_FAMILY_q9,
+        "d19": _REG_FAMILY_q9,
+        "d20": _REG_FAMILY_q10,
+        "d21": _REG_FAMILY_q10,
+        "d22": _REG_FAMILY_q11,
+        "d23": _REG_FAMILY_q11,
+        "d24": _REG_FAMILY_q12,
+        "d25": _REG_FAMILY_q12,
+        "d26": _REG_FAMILY_q13,
+        "d27": _REG_FAMILY_q13,
+        "d28": _REG_FAMILY_q14,
+        "d29": _REG_FAMILY_q14,
+        "d30": _REG_FAMILY_q15,
+        "d31": _REG_FAMILY_q15,
+
+        "s0": _REG_FAMILY_q0,
+        "s1": _REG_FAMILY_q0,
+        "s2": _REG_FAMILY_q0,
+        "s3": _REG_FAMILY_q0,
+        "s4": _REG_FAMILY_q1,
+        "s5": _REG_FAMILY_q1,
+        "s6": _REG_FAMILY_q1,
+        "s7": _REG_FAMILY_q1,
+        "s8": _REG_FAMILY_q2,
+        "s9": _REG_FAMILY_q2,
+        "s10": _REG_FAMILY_q2,
+        "s11": _REG_FAMILY_q2,
+        "s12": _REG_FAMILY_q3,
+        "s13": _REG_FAMILY_q3,
+        "s14": _REG_FAMILY_q3,
+        "s15": _REG_FAMILY_q3,
+        "s16": _REG_FAMILY_q4,
+        "s17": _REG_FAMILY_q4,
+        "s18": _REG_FAMILY_q4,
+        "s19": _REG_FAMILY_q4,
+        "s20": _REG_FAMILY_q5,
+        "s21": _REG_FAMILY_q5,
+        "s22": _REG_FAMILY_q5,
+        "s23": _REG_FAMILY_q5,
+        "s24": _REG_FAMILY_q6,
+        "s25": _REG_FAMILY_q6,
+        "s26": _REG_FAMILY_q6,
+        "s27": _REG_FAMILY_q6,
+        "s28": _REG_FAMILY_q7,
+        "s29": _REG_FAMILY_q7,
+        "s30": _REG_FAMILY_q7,
+        "s31": _REG_FAMILY_q7
+    }
+
+    def name(self):
+        return "aarch32"
+
+    def program_counter_name(self):
+        return "PC"
+
+    def stack_pointer_name(self):
+        return "SP"
+
+    def return_address_proto(self):
+        return {"register": "LR", "type": "I"}
+
+    def return_stack_pointer_proto(self, num_bytes_popped):
+        return {"register": "SP", "offset": abs(num_bytes_popped), "type": "I"}
+
+    def pointer_size(self):
+        return 4
+
+    def register_family(self, reg_name):
+        if reg_name.startswith("%"):
+            return self._REG_FAMILY[reg_name[1:].lower()]
+        else:
+            return self._REG_FAMILY[reg_name.lower()]
+
+    def register_name(self, reg_name):
+        if reg_name.startswith("%"):
+            return reg_name[1:].lower()
+        else:
+            return reg_name.lower()
+
 
 class Sparc32Arch(Arch):
     """SPARCv8 architecture description (32-bit)."""
