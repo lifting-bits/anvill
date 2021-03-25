@@ -12,9 +12,6 @@ add_executable(test_anvill_passes
   src/Utils.h
   src/Utils.cpp
 
-  src/BaseScenario.h
-  src/BaseScenario.cpp
-
   src/BaseFunctionPass.cpp
   src/RecoverStackFrameInformation.cpp
   src/SplitStackFrameAtReturnAddress.cpp

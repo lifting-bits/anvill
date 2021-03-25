@@ -29,7 +29,6 @@
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <iostream>
 
-#include "BaseScenario.h"
 #include "Utils.h"
 
 namespace anvill {
