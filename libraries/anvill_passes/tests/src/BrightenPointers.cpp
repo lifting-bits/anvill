@@ -29,7 +29,6 @@
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <iostream>
 
-#include "BaseScenario.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -96,44 +95,44 @@ TEST_SUITE("BrightenPointers") {
 
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "gep_add.ll");
-    printFunc(*mod, "main", "BEFORE");
+    //printFunc(*mod, "main", "BEFORE");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
-    printFunc(*mod, "main", "AFTER");
+    //printFunc(*mod, "main", "AFTER");
 
   }
 
   TEST_CASE("multiple_bitcast") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "multiple_bitcast.ll");
-    printFunc(*mod, "valid_test", "BEFORE");
+    //printFunc(*mod, "valid_test", "BEFORE");
     // printFunc(*mod, "memcpy", "BEFORE");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
-    printFunc(*mod, "valid_test", "AFTER");
+    //printFunc(*mod, "valid_test", "AFTER");
     // printFunc(*mod, "memcpy", "AFTER");
 }
 
   TEST_CASE("don't crash on loops") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "loop_test.ll");
-    printFunc(*mod, "main", "BEFORE");
+    //printFunc(*mod, "main", "BEFORE");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
-    printFunc(*mod, "main", "AFTER");
+    //printFunc(*mod, "main", "AFTER");
   }
 
   TEST_CASE("challenge 1") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "rx_message.ll");
-    printFunc(*mod, "rx_message_routine", "BEFORE");
+    //printFunc(*mod, "rx_message_routine", "BEFORE");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
-    printFunc(*mod, "rx_message_routine", "AFTER");
+    //printFunc(*mod, "rx_message_routine", "AFTER");
   }
 }
 

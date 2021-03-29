@@ -27,13 +27,31 @@
 #include <remill/BC/Util.h>
 
 #include <magic_enum.hpp>
+#include <unordered_set>
 
 #include "Utils.h"
 
 namespace anvill {
+
+namespace {
+
+// Describes an allocated stack frame part
+struct AllocatedStackFramePart final {
+  // The part information, as taken from the stack analysis
+  FunctionStackAnalysis::StackFramePart part_info;
+
+  // The newily create alloca instruction that allocates this
+  // part
+  llvm::AllocaInst *alloca_instr{nullptr};
+};
+
+// A list of allocated stack frame parts
+using AllocatedStackFramePartList = std::vector<AllocatedStackFramePart>;
+
+}  // namespace
+
 SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
     ITransformationErrorManager &error_manager) {
-  static_cast<void>(error_manager);
   return new SplitStackFrameAtReturnAddress(error_manager);
 }
 
@@ -42,162 +60,439 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
     return false;
   }
 
-  auto module = function.getParent();
-  auto original_ir = GetModuleIR(*module);
-
-  // Check whether the stack frame structure should be considered for
-  // patching
-  auto stack_frame_type_res = GetFunctionStackFrameType(function);
-  if (!stack_frame_type_res.Succeeded()) {
-    return false;
-  }
-
-  auto stack_frame_type = stack_frame_type_res.TakeValue();
-  if (stack_frame_type->getNumElements() <= 1U) {
-
-    // Not an error, the stack frame struct exists but it's either
-    // empty or populated with a single element
-    return false;
-  }
-
-  // Enumerate the store instructions that identify a stack frame
-  // that we need to split
-  auto retn_addr_store_instr_res = GetRetnAddressStoreInstructions(function);
-  if (!retn_addr_store_instr_res.Succeeded()) {
-    auto error_code = retn_addr_store_instr_res.TakeError();
-    if (error_code == StackFrameSplitErrorCode::StackFrameAllocationNotFound) {
+  // Analyze the function first; there may be nothing to do
+  auto analysis_res = AnalyzeFunction(function);
+  if (!analysis_res.Succeeded()) {
+    auto error = analysis_res.TakeError();
+    if (error == StackFrameSplitErrorCode::StackFrameTypeNotFound ||
+        error == StackFrameSplitErrorCode::StackFrameAllocaInstNotFound) {
       return false;
     }
 
-    EmitError(SeverityType::Error, error_code,
-              "Failed to identify which instructions access the stack frame");
+    EmitError(SeverityType::Error, analysis_res.TakeError(),
+              "The function analysis has failed");
 
     return false;
   }
 
-  auto retn_addr_store_instr = retn_addr_store_instr_res.TakeValue();
-  if (retn_addr_store_instr.store_off_pairs.empty()) {
-
-    // No error, the function does not need patching
+  auto analysis = analysis_res.TakeValue();
+  if (analysis.gep_instr_list.empty()) {
     return false;
   }
 
-  if (retn_addr_store_instr.store_off_pairs.size() > 1) {
-
-    // We only handle the first instance, so return an error if
-    // we have more
-    auto error_code = StackFrameSplitErrorCode::NotSupported;
-
-    EmitError(
-        SeverityType::Error, error_code,
-        "There are too many instructios writing the retn address. Aborting");
-
-    return false;
-  }
-
-  const auto &store_off = retn_addr_store_instr.store_off_pairs.front();
-  auto retn_addr_offset = std::get<1>(store_off);
-
-  auto split_res = SplitStackFrameAtOffset(function, retn_addr_offset,
-                                           retn_addr_store_instr.alloca_inst);
-
+  // Attempt to split the stack frame
+  auto split_res = SplitStackFrame(function, analysis);
   if (!split_res.Succeeded()) {
     EmitError(SeverityType::Fatal, split_res.TakeError(),
-              "Failed to transform the function");
+              "The stack frame splitting has failed");
 
-    return false;
+    return true;
+  }
+
+  // Do a second analysis, this time it should fail since we deleted
+  // the `AllocaInst` that we we would expect to find
+  analysis_res = AnalyzeFunction(function);
+  if (analysis_res.Succeeded()) {
+    EmitError(
+        SeverityType::Fatal, StackFrameSplitErrorCode::TransformationFailed,
+        "The second function analysis has found unreplaced stack frame usages");
+
+    return true;
+  }
+
+  // Make sure that the returned error is the correct one; the type should
+  // still be defined, but the origin AllocaInst should no longer be present
+  auto analysis_error = analysis_res.TakeError();
+  if (analysis_error !=
+      StackFrameSplitErrorCode::StackFrameAllocaInstNotFound) {
+
+    EmitError(
+        SeverityType::Fatal, analysis_error,
+        "Failed to verify the correctness of the function transformation");
+
+    return true;
   }
 
   return true;
 }
 
-Result<std::vector<llvm::StructType *>, StackFrameSplitErrorCode>
-SplitStackFrameAtReturnAddress::SplitStackFrameTypeAtOffset(
-    const llvm::Function &function, std::int64_t offset,
-    const llvm::StructType *stack_frame_type) {
+llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
+  return llvm::StringRef("SplitStackFrameAtReturnAddress");
+}
 
-  std::vector<llvm::StructType *> output;
+Result<FunctionStackAnalysis, StackFrameSplitErrorCode>
+SplitStackFrameAtReturnAddress::AnalyzeFunction(llvm::Function &function) {
+  FunctionStackAnalysis output;
 
-  auto module = function.getParent();
+  // Get the stack frame structure for this function. This also
+  // validates its format
+  auto stack_frame_type_res = GetFunctionStackFrameType(function);
+  if (!stack_frame_type_res.Succeeded()) {
+    auto error = stack_frame_type_res.TakeError();
+    if (error == StackFrameSplitErrorCode::StackFrameTypeNotFound) {
+      return output;
+    }
 
-  auto elem_count = stack_frame_type->getNumElements();
-  if (elem_count <= 1U) {
+    return error;
+  }
 
-    // When we only have one element in the stack, there's nothing
-    // we have to patch
+  output.stack_frame_type = stack_frame_type_res.TakeValue();
+
+  // Look for the `AllocaInst` that is allocating the stack frame
+  auto alloca_inst_list = SelectInstructions<llvm::AllocaInst>(function);
+
+  auto alloca_inst_it = std::find_if(
+      alloca_inst_list.begin(), alloca_inst_list.end(),
+
+      [&](const llvm::Instruction *inst) -> bool {
+        auto alloca_inst = llvm::dyn_cast<const llvm::AllocaInst>(inst);
+        auto allocated_type = alloca_inst->getAllocatedType();
+
+        return (allocated_type == output.stack_frame_type);
+      });
+
+  if (alloca_inst_it == alloca_inst_list.end()) {
+    // The stack frame type was found, so we must have failed to
+    // track down the correct instruction
+    return StackFrameSplitErrorCode::StackFrameAllocaInstNotFound;
+  }
+
+  output.stack_frame_alloca = llvm::dyn_cast<llvm::AllocaInst>(*alloca_inst_it);
+
+  // Get the `__anvill_ra` global variable
+  auto &module = *function.getParent();
+
+  auto symbolic_value = module.getGlobalVariable(kSymbolicRAName);
+  if (symbolic_value == nullptr) {
     return output;
   }
 
-  auto elem_index_res =
-      StructOffsetToElementIndex(module, stack_frame_type, offset);
+  // Track down all the `StoreInst` instructions using the return address
+  auto anvill_ra_value = llvm::dyn_cast<llvm::User>(symbolic_value);
 
-  if (!elem_index_res.Succeeded()) {
-    return elem_index_res.TakeError();
+  auto anvill_ra_users = TrackUsersOf<llvm::StoreInst>(anvill_ra_value);
+  if (anvill_ra_users.empty()) {
+    return output;
   }
 
-  auto elem_index = elem_index_res.TakeValue();
+  // Extract the GEPs that are used to write the return address from the
+  // list of store instructions we have found
+  auto data_layout = module.getDataLayout();
 
-  // There are three different outcomes, depending on where the
-  // element we have to isolate lives:
-  //
-  // 1. First element
-  //    struct_definition_list[0] is left empty
-  //    struct_definition_list[1] the retn address
-  //    struct_definition_list[2] contains everything else
-  //
-  // 2. Middle element
-  //    struct_definition_list[0] everything at the left of the retn address
-  //    struct_definition_list[1] the retn address
-  //    struct_definition_list[2] everything at the right of the retn address
-  //
-  // 3. Last element
-  //    struct_definition_list[0] everything at the left of the retn address
-  //    struct_definition_list[1] the retn address
-  //    struct_definition_list[2] is left empty
+  output.stack_frame_size =
+      data_layout.getTypeAllocSize(output.stack_frame_type);
 
-  using StructDefinition = std::vector<llvm::Type *>;
-  std::array<StructDefinition, 3> struct_definition_list;
+  output.pointer_size = data_layout.getPointerSizeInBits(0) / 8U;
 
-  for (auto i = 0U; i < elem_count; ++i) {
-    auto elem_type = stack_frame_type->getElementType(i);
+  std::vector<FunctionStackAnalysis::GEPInstruction> retn_addr_gep_instructions;
 
-    if (i < elem_index) {
-      struct_definition_list[0].push_back(elem_type);
+  for (auto inst : anvill_ra_users) {
+    auto store_inst = llvm::dyn_cast<llvm::StoreInst>(inst);
+    auto store_dest = store_inst->getPointerOperand();
 
-    } else if (i == elem_index) {
-      struct_definition_list[1].push_back(elem_type);
+    // Walk the store dest value until we find the GEP instruction, then
+    // extract its pointer operand
+    auto store_dest_details =
+        remill::StripAndAccumulateConstantOffsets(data_layout, store_dest);
 
-    } else {
-      struct_definition_list[2].push_back(elem_type);
-    }
-  }
+    auto store_ptr_operand = std::get<0>(store_dest_details);
 
-  auto base_stack_frame_type_name = GetFunctionStackFrameTypeName(function);
-
-  auto &context = module->getContext();
-
-  std::size_t part_name{};
-  for (const auto &struct_definition : struct_definition_list) {
-    if (struct_definition.empty()) {
+    // Make sure that the pointer value is an `AllocaInst` instruction
+    auto alloca_inst = llvm::dyn_cast<llvm::AllocaInst>(store_ptr_operand);
+    if (alloca_inst == nullptr) {
       continue;
     }
 
-    auto struct_name =
-        base_stack_frame_type_name + "_part" + std::to_string(part_name);
+    // Discard this instruction unless it's the one that allocates
+    // the stack frame
+    if (output.stack_frame_alloca != alloca_inst) {
+      continue;
+    }
 
-    auto stack_frame_part =
-        llvm::StructType::create(context, struct_definition, struct_name, true);
+    // Validate the write size
+    auto store_value_type = store_inst->getValueOperand()->getType();
 
-    output.push_back(stack_frame_part);
+    auto store_value_size = data_layout.getTypeAllocSize(store_value_type);
+    if (store_value_size != output.pointer_size) {
+      return StackFrameSplitErrorCode::UnexpectedStackFrameUsage;
+    }
 
-    ++part_name;
+    // The GEP instruction should be the store destination.
+    //
+    // The stack frame generated by the `RecoverStackFrameInformation`
+    // function pass always performs a bitcast after the GEP:
+    //
+    // clang-format off
+    //
+    //   %93 = getelementptr %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type, %sub_80482e0__Ai_S_Sb_S_Sbi_B_0.frame_type* %4, i32 0, i32 0, i32 28
+    //   %94 = bitcast i8* %93 to i32*
+    //   store i32 ptrtoint (i8* @__anvill_ra to i32), i32* %94, align 4
+    //
+    // clang-format on
+
+    auto bitcast_instr = llvm::dyn_cast<llvm::BitCastOperator>(store_dest);
+    if (bitcast_instr == nullptr) {
+      return StackFrameSplitErrorCode::UnexpectedStackFrameUsage;
+    }
+
+    auto bitcast_operand = bitcast_instr->getOperand(0U);
+
+    auto gep_instr = llvm::dyn_cast<llvm::GetElementPtrInst>(bitcast_operand);
+    if (gep_instr == nullptr) {
+      return StackFrameSplitErrorCode::UnexpectedStackFrameUsage;
+    }
+
+    FunctionStackAnalysis::GEPInstruction entry;
+    entry.instr = gep_instr;
+    entry.offset = std::get<1>(store_dest_details);
+
+    retn_addr_gep_instructions.push_back(std::move(entry));
+  }
+
+  // Each GEP instruction we have found identifies a store of the return
+  // address. Go through each one of them and precompute the new stack
+  // frame parts
+
+  // clang-format on
+  std::sort(retn_addr_gep_instructions.begin(),
+            retn_addr_gep_instructions.end(),
+
+            [](const FunctionStackAnalysis::GEPInstruction &lhs,
+               const FunctionStackAnalysis::GEPInstruction &rhs) -> bool {
+              return lhs.offset < rhs.offset;
+            });
+  // clang-format off
+
+  std::unordered_set<std::int64_t> visited_offsets;
+  std::int64_t current_offset{};
+
+  for (auto &gep : retn_addr_gep_instructions) {
+    if (visited_offsets.count(gep.offset) > 0U) {
+      continue;
+    }
+
+    visited_offsets.insert(gep.offset);
+
+    auto leading_part = gep.offset - current_offset;
+    if (leading_part != 0) {
+      FunctionStackAnalysis::StackFramePart part;
+      part.start_offset = current_offset;
+      part.end_offset = gep.offset - 1;
+      part.size = leading_part;
+
+      output.stack_frame_parts.push_back(std::move(part));
+    }
+
+    FunctionStackAnalysis::StackFramePart part;
+    part.size = output.pointer_size;
+    part.start_offset = gep.offset;
+    part.end_offset = part.start_offset + part.size - 1U;
+
+    current_offset = part.end_offset + 1U;
+    output.stack_frame_parts.push_back(std::move(part));
+  }
+
+  auto remaining_bytes = output.stack_frame_size - current_offset;
+  if (remaining_bytes != 0) {
+    FunctionStackAnalysis::StackFramePart part;
+    part.size = remaining_bytes;
+    part.start_offset = current_offset;
+    part.end_offset = part.start_offset + part.size;
+
+    output.stack_frame_parts.push_back(std::move(part));
+  }
+
+  // Track down all the GEP instructions we have to rewrite
+  auto stack_frame_gep_list = TrackUsersOf<llvm::GetElementPtrInst>(output.stack_frame_alloca);
+  if (stack_frame_gep_list.empty()) {
+    return StackFrameSplitErrorCode::InternalError;
+  }
+
+  for (auto stack_frame_gep : stack_frame_gep_list) {
+    auto gep_instr = llvm::dyn_cast<llvm::GetElementPtrInst>(stack_frame_gep);
+
+    auto store_dest_details = remill::StripAndAccumulateConstantOffsets(data_layout, gep_instr);
+
+    auto alloca_inst = llvm::dyn_cast<llvm::AllocaInst>(std::get<0>(store_dest_details));
+    if (alloca_inst == nullptr || alloca_inst != output.stack_frame_alloca) {
+      continue;
+    }
+
+    FunctionStackAnalysis::GEPInstruction entry;
+    entry.instr = gep_instr;
+    entry.offset = std::get<1>(store_dest_details);
+
+    output.gep_instr_list.push_back(std::move(entry));
   }
 
   return output;
 }
 
-llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
-  return llvm::StringRef("SplitStackFrameAtReturnAddress");
+SuccessOrStackFrameSplitErrorCode
+SplitStackFrameAtReturnAddress::SplitStackFrame(
+    llvm::Function &function, const FunctionStackAnalysis &stack_analysis) {
+
+  if (stack_analysis.gep_instr_list.empty()) {
+    return std::monostate();
+  }
+
+  //
+  // Allocate the new stack frame parts
+  //
+
+  auto &module = *function.getParent();
+  auto &context = module.getContext();
+  auto data_layout = module.getDataLayout();
+
+  auto byte_type = llvm::Type::getInt8Ty(context);
+
+  llvm::IRBuilder<> builder(stack_analysis.stack_frame_alloca);
+
+  AllocatedStackFramePartList allocated_part_list;
+  std::size_t allocated_stack_parts_size{};
+
+  for (const auto &part_info : stack_analysis.stack_frame_parts) {
+    // First, create the type
+    auto byte_array_type = llvm::ArrayType::get(byte_type, part_info.size);
+    if (byte_array_type == nullptr) {
+      return StackFrameSplitErrorCode::InternalError;
+    }
+
+    auto part_name =
+        GenerateStackFramePartTypeName(function, allocated_part_list.size());
+
+    if (module.getTypeByName(part_name) != nullptr) {
+      return StackFrameSplitErrorCode::TypeConflict;
+    }
+
+    auto part_type =
+        llvm::StructType::create({byte_array_type}, part_name, true);
+
+    if (part_type == nullptr) {
+      return StackFrameSplitErrorCode::InternalError;
+    }
+
+    allocated_stack_parts_size += data_layout.getTypeAllocSize(part_type);
+
+    // Then, write the new `AllocaInst` instruction
+    auto alloca_instr = builder.CreateAlloca(part_type);
+
+    // Save this stack frame part for later, we'll need it to replace
+    // the usages
+    AllocatedStackFramePart allocated_frame_part;
+    allocated_frame_part.part_info = part_info;
+    allocated_frame_part.alloca_instr = alloca_instr;
+
+    allocated_part_list.push_back(allocated_frame_part);
+  }
+
+  // Double check the total size
+  if (allocated_stack_parts_size != stack_analysis.stack_frame_size) {
+    return StackFrameSplitErrorCode::InvalidStackFrameSize;
+  }
+
+  //
+  // Replace the instructions
+  //
+
+  // Write the new GEP instructions
+  for (auto &gep_instr : stack_analysis.gep_instr_list) {
+    // Locate which stack frame part we need to use based on the offset
+    // being accessed
+    auto part_it = std::find_if(
+        allocated_part_list.begin(), allocated_part_list.end(),
+
+        [&](const AllocatedStackFramePart &allocated_part) -> bool {
+          if (gep_instr.offset >= allocated_part.part_info.start_offset &&
+              gep_instr.offset <= allocated_part.part_info.end_offset) {
+            return true;
+          }
+
+          return false;
+        }
+    );
+
+    if (part_it == allocated_part_list.end()) {
+      return StackFrameSplitErrorCode::InternalError;
+    }
+
+    auto stack_frame_part = *part_it;
+
+    // Write a new GEP instruction that accesses the correct
+    // stack frame part
+    builder.SetInsertPoint(gep_instr.instr);
+
+    auto offset = static_cast<std::int32_t>(
+        gep_instr.offset - stack_frame_part.part_info.start_offset);
+
+    auto new_gep = builder.CreateGEP(
+        stack_frame_part.alloca_instr,
+        {builder.getInt32(0), builder.getInt32(0), builder.getInt32(offset)});
+
+    gep_instr.instr->replaceAllUsesWith(new_gep);
+  }
+
+  //
+  // Remove the instructions we no longer need
+  //
+
+  // We should be able to delete all the the GEP instructions
+  std::size_t erased_gep_instr_count{};
+
+  for (auto &gep_instr : stack_analysis.gep_instr_list) {
+    if (!gep_instr.instr->use_empty()) {
+      continue;
+    }
+
+    ++erased_gep_instr_count;
+    gep_instr.instr->eraseFromParent();
+  }
+
+  if (erased_gep_instr_count != stack_analysis.gep_instr_list.size()) {
+    return StackFrameSplitErrorCode::FunctionCleanupError;
+  }
+
+  // The original alloca instruction may still be in use; replace those
+  // usages with the first stack frame part
+  if (!stack_analysis.stack_frame_alloca->use_empty()) {
+    auto &first_stack_frame_part = allocated_part_list.front();
+
+    stack_analysis.stack_frame_alloca->replaceAllUsesWith(
+        first_stack_frame_part.alloca_instr);
+  }
+
+  if (!stack_analysis.stack_frame_alloca->use_empty()) {
+    return StackFrameSplitErrorCode::FunctionCleanupError;
+  }
+
+  stack_analysis.stack_frame_alloca->eraseFromParent();
+
+  //
+  // Verify the original stack frame type is no longer used
+  //
+
+  // Double check that no one is using the original stack frame type
+  // anymore
+  auto instr_list =
+      SelectInstructions<llvm::AllocaInst, llvm::GetElementPtrInst>(function);
+
+  for (const auto &instr : instr_list) {
+    if (auto alloca_instr = llvm::dyn_cast<llvm::AllocaInst>(instr);
+        alloca_instr != nullptr) {
+      if (alloca_instr->getAllocatedType() == stack_analysis.stack_frame_type) {
+        return StackFrameSplitErrorCode::TransformationFailed;
+      }
+
+    } else if (auto gep_instr = llvm::dyn_cast<llvm::GetElementPtrInst>(instr);
+               gep_instr != nullptr) {
+      if (gep_instr->getPointerOperandType() ==
+          stack_analysis.stack_frame_type) {
+        return StackFrameSplitErrorCode::TransformationFailed;
+      }
+    }
+  }
+
+  return std::monostate();
 }
 
 std::string SplitStackFrameAtReturnAddress::GetFunctionStackFrameTypeName(
@@ -205,7 +500,7 @@ std::string SplitStackFrameAtReturnAddress::GetFunctionStackFrameTypeName(
   return function.getName().str() + kStackFrameTypeNameSuffix;
 }
 
-Result<const llvm::StructType *, StackFrameSplitErrorCode>
+Result<llvm::StructType *, StackFrameSplitErrorCode>
 SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
     const llvm::Function &function) {
 
@@ -213,270 +508,37 @@ SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
 
   auto type = module->getTypeByName(GetFunctionStackFrameTypeName(function));
   if (type == nullptr) {
-    return StackFrameSplitErrorCode::MissingFunctionStackFrameType;
+    return StackFrameSplitErrorCode::StackFrameTypeNotFound;
   }
 
-  return type;
+  auto struct_type = llvm::dyn_cast<llvm::StructType>(type);
+  if (struct_type == nullptr) {
+    return StackFrameSplitErrorCode::UnexpectedStackFrameTypeFormat;
+  }
+
+  // This stack frame must be a struct containing an array of i8 integers
+  if (struct_type->getNumElements() != 1U) {
+    return StackFrameSplitErrorCode::UnexpectedStackFrameTypeFormat;
+  }
+
+  auto inner_type = struct_type->getElementType(0U);
+  if (!inner_type->isArrayTy()) {
+    return StackFrameSplitErrorCode::UnexpectedStackFrameTypeFormat;
+  }
+
+  auto inner_array = llvm::dyn_cast<llvm::ArrayType>(inner_type);
+  if (inner_array->getElementType() !=
+      llvm::Type::getInt8Ty(module->getContext())) {
+    return StackFrameSplitErrorCode::UnexpectedStackFrameTypeFormat;
+  }
+
+  return struct_type;
 }
 
-Result<llvm::AllocaInst *, StackFrameSplitErrorCode>
-SplitStackFrameAtReturnAddress::GetStackFrameAllocaInst(
-    llvm::Function &valid_func) {
-
-  auto expected_type_name = GetFunctionStackFrameTypeName(valid_func);
-
-  auto &entry_block = valid_func.getEntryBlock();
-  for (auto &instr : entry_block) {
-    auto alloca_inst = llvm::dyn_cast<llvm::AllocaInst>(&instr);
-    if (alloca_inst == nullptr) {
-      continue;
-    }
-
-    auto allocated_type = alloca_inst->getAllocatedType();
-
-    auto type_name = allocated_type->getStructName().str();
-    if (type_name == expected_type_name) {
-      return alloca_inst;
-    }
-  }
-
-  return StackFrameSplitErrorCode::StackFrameAllocationNotFound;
-}
-
-const llvm::CallInst *
-SplitStackFrameAtReturnAddress::GetReturnAddressInstrinsicCall(
-    const llvm::Function &valid_func) {
-  static const std::string kExpectedCallDestination{"llvm.returnaddress"};
-
-  const auto &entry_block = valid_func.getEntryBlock();
-  for (const auto &instr : entry_block) {
-    auto call_inst = llvm::dyn_cast<llvm::CallInst>(&instr);
-    if (call_inst == nullptr) {
-      continue;
-    }
-
-    auto intr_id = call_inst->getIntrinsicID();
-    if (intr_id == llvm::Intrinsic::returnaddress) {
-      return call_inst;
-    }
-  }
-
-  return nullptr;
-}
-
-Result<RetnAddressStoreInstructions, StackFrameSplitErrorCode>
-SplitStackFrameAtReturnAddress::GetRetnAddressStoreInstructions(
-    llvm::Function &function) {
-
-  RetnAddressStoreInstructions output{};
-  if (function.isDeclaration()) {
-    return output;
-  }
-
-  // Look for the one and only instruction that allocates the stack frame
-  auto stack_frame_alloca_res = GetStackFrameAllocaInst(function);
-  if (!stack_frame_alloca_res.Succeeded()) {
-    return stack_frame_alloca_res.TakeError();
-  }
-
-  auto stack_frame_alloca = stack_frame_alloca_res.TakeValue();
-
-  // Look for the call to the llvm.returnaddress instrinsic; we need it
-  // to identify where we need to split the stack frame
-  auto retnaddr_intr_call = GetReturnAddressInstrinsicCall(function);
-  if (retnaddr_intr_call == nullptr) {
-    return output;
-  }
-
-  // Enumerate all the `store` instructions that are saving the
-  // llvm.returnaddress value
-  auto store_inst_list = TrackUsersOf<llvm::StoreInst>(retnaddr_intr_call);
-
-  // Go through each `store`, and find the one that operates on the
-  // `alloca` instruction that we have identified
-  using StoreAndOffsetPair = std::pair<const llvm::StoreInst *, std::int64_t>;
-
-  auto module = function.getParent();
-  auto data_layout = module->getDataLayout();
-
-  for (const auto &store_inst : store_inst_list) {
-    auto store_dest = store_inst->getPointerOperand();
-
-    // Deconstruct the GetElementPointer instruction, then look whether it is
-    // operating on the original `alloca` instruction we are tracking
-    auto dest_value_offset = remill::StripAndAccumulateConstantOffsets(
-        data_layout, const_cast<llvm::Value *>(store_dest));
-
-    const auto dest_value = std::get<0>(dest_value_offset);
-    if (dest_value != stack_frame_alloca) {
-      continue;
-    }
-
-    const auto offset = std::get<1>(dest_value_offset);
-
-    auto store_and_offset = std::make_pair(store_inst, offset);
-    output.store_off_pairs.push_back(std::move(store_and_offset));
-  }
-
-  output.alloca_inst = stack_frame_alloca;
-  return output;
-}
-
-Result<std::uint32_t, StackFrameSplitErrorCode>
-SplitStackFrameAtReturnAddress::StructOffsetToElementIndex(
-    const llvm::Module *module, const llvm::StructType *struct_type,
-    std::int64_t offset) {
-
-  auto elem_count = struct_type->getNumElements();
-  auto data_layout = module->getDataLayout();
-
-  std::int64_t current_elem_offset{};
-  for (auto i = 0U; i < elem_count; ++i) {
-    auto elem_type = struct_type->getElementType(i);
-    auto elem_size = data_layout.getTypeAllocSize(elem_type);
-
-    if (current_elem_offset == offset) {
-      return i;
-    }
-
-    current_elem_offset += elem_size;
-  }
-
-  return StackFrameSplitErrorCode::StackFrameOffsetError;
-}
-
-SuccessOrStackSplitError
-SplitStackFrameAtReturnAddress::SplitStackFrameAtOffset(
-    llvm::Function &function, std::int64_t offset,
-    llvm::AllocaInst *orig_frame_alloca) {
-
-  auto stack_frame_type_res = GetFunctionStackFrameType(function);
-  if (!stack_frame_type_res.Succeeded()) {
-    return stack_frame_type_res.TakeError();
-  }
-
-  auto stack_frame_type = stack_frame_type_res.TakeValue();
-
-  // Attempt to split the function stack frame, isolating the element
-  // containing the return address
-  auto stack_frame_parts_res =
-      SplitStackFrameTypeAtOffset(function, offset, stack_frame_type);
-
-  if (!stack_frame_parts_res.Succeeded()) {
-    return stack_frame_parts_res.TakeError();
-  }
-
-  auto stack_frame_parts = stack_frame_parts_res.TakeValue();
-
-  if (stack_frame_parts.empty()) {
-
-    // This is not an error, the stack does not need splitting
-    return std::monostate();
-  }
-
-  // Replace the AllocaInst that creates the original stack frame
-  llvm::IRBuilder<> builder(orig_frame_alloca);
-
-  struct StackFrameAlloc final {
-    llvm::AllocaInst *alloca_inst{nullptr};
-    std::size_t base_index{};
-    std::size_t elem_count{};
-  };
-
-  std::vector<StackFrameAlloc> stack_frame_allocs;
-  std::size_t base_index{};
-
-  for (const auto &stack_frame_part : stack_frame_parts) {
-    StackFrameAlloc new_frame;
-    new_frame.alloca_inst = builder.CreateAlloca(stack_frame_part);
-    new_frame.base_index = base_index;
-
-    new_frame.elem_count = stack_frame_part->getNumElements();
-    base_index += new_frame.elem_count;
-
-    stack_frame_allocs.push_back(new_frame);
-  }
-
-  // Track down all the GEP instructions operating on the original
-  // stack frame allocation
-  auto gep_instr_list =
-      TrackUsersOf<llvm::GetElementPtrInst>(orig_frame_alloca);
-
-  if (gep_instr_list.empty()) {
-
-    // This is an error. We already know that there is a write, so if
-    // we end up inside here then we have failed to track down the
-    // instructions we need
-    return StackFrameSplitErrorCode::InstructionTrackingError;
-  }
-
-  auto module = function.getParent();
-  auto data_layout = module->getDataLayout();
-
-  for (auto gep_instr : gep_instr_list) {
-
-    // Translate the GEP instruction to a raw offset
-    auto dest_value_offset =
-        remill::StripAndAccumulateConstantOffsets(data_layout, gep_instr);
-
-    auto offset = std::get<1>(dest_value_offset);
-
-    // Translate the offset to an element index into the original frame type
-    auto orig_elem_index_res =
-        StructOffsetToElementIndex(module, stack_frame_type, offset);
-
-    if (!orig_elem_index_res.Succeeded()) {
-      return orig_elem_index_res.TakeError();
-    }
-
-    auto original_elem_index = orig_elem_index_res.TakeValue();
-
-    // Determine where we need to reroute this GEP instruction
-    // There are two different cases to handle:
-    // - 2x new frame types: the element we isolated was at the start
-    //                       or at the end of the original frame type
-    //
-    // - 3x new frame types: the element we isolated was in the middle
-    //                       of the original frame type
-
-    llvm::AllocaInst *new_frame_part = nullptr;
-    std::int32_t new_index = 0;
-
-    for (auto stack_frame_alloc : stack_frame_allocs) {
-      if (original_elem_index >= stack_frame_alloc.base_index &&
-          original_elem_index <
-              stack_frame_alloc.base_index + stack_frame_alloc.elem_count) {
-
-        new_frame_part = stack_frame_alloc.alloca_inst;
-        new_index = original_elem_index - stack_frame_alloc.base_index;
-
-        break;
-      }
-    }
-
-    if (new_frame_part == nullptr) {
-
-      // This is an error, we have failed to locate the alloca instruction
-      // for the stack frame replacement
-      return StackFrameSplitErrorCode::InternalError;
-    }
-
-    // Overwrite the GEP instruction
-    llvm::IRBuilder<> builder(gep_instr);
-    auto new_destination = builder.CreateGEP(
-        new_frame_part, {builder.getInt32(0), builder.getInt32(new_index)});
-
-    gep_instr->replaceAllUsesWith(new_destination);
-    gep_instr->eraseFromParent();
-  }
-
-  // We may still have some remaining instructions, like inttoptr casts. Replace
-  // them with the new stack frame base
-  const auto &new_base_frame = stack_frame_allocs.front().alloca_inst;
-  orig_frame_alloca->replaceAllUsesWith(new_base_frame);
-  orig_frame_alloca->eraseFromParent();
-
-  return std::monostate();
+std::string SplitStackFrameAtReturnAddress::GenerateStackFramePartTypeName(
+    const llvm::Function &function, std::size_t part_number) {
+  return function.getName().str() + kStackFrameTypeNameSuffix + "_part" +
+         std::to_string(part_number);
 }
 
 SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(

@@ -71,49 +71,84 @@ namespace anvill {
 
 // Function pass outcome
 enum class StackFrameSplitErrorCode {
+  // The stack frame type was not found
+  StackFrameTypeNotFound,
 
-  // The pass has either succeeded or decided that the function
-  // does not need any patching
-  Success,
+  // The stack frame allocation instruction was not found
+  StackFrameAllocaInstNotFound,
 
-  // The function possesses features that the pass does not support
-  NotSupported,
+  // Unexpected stack frame type format
+  UnexpectedStackFrameTypeFormat,
 
-  // An internal error, most likely a logic bug
+  // Unexpected stack frame usage, causing the instruction tracking to fail
+  UnexpectedStackFrameUsage,
+
+  // The post-transformation verification step has failed
+  TransformationFailed,
+
+  // An unexpected, internal error
   InternalError,
 
-  // An error has occurred while trying to track instructions/uses
-  InstructionTrackingError,
+  // A type could not be defined due to an existing type with
+  // the same name
+  TypeConflict,
 
-  // The structure offset is not valid, and could not be mapped
-  // back to a valid StructType element index
-  StackFrameOffsetError,
+  // The function cleanup has failed; some of the GEP instructions could
+  // not be erased since they still had uses that were not replaced
+  // correctly
+  FunctionCleanupError,
 
-  // The stack frame type for this function is missing
-  MissingFunctionStackFrameType,
-
-  // The instruction responsible for allocating the stack frame
-  // was not found
-  StackFrameAllocationNotFound,
+  // An error has occurred while the stack frame was split and the
+  // resulting size is not correct
+  InvalidStackFrameSize,
 };
 
-// A store instruction and the offset into the structure being written
-using StoreInstAndOffsetPair = std::pair<const llvm::StoreInst *, std::int64_t>;
-
-// Output data for GetRetnAddressStoreInstructions
-struct RetnAddressStoreInstructions final {
-
-  // A list of store instructions and offsets that operate
-  // on the stack frame allocated by the `alloca_inst` instruction
-  std::vector<StoreInstAndOffsetPair> store_off_pairs;
-
-  // This is the instruction that allocates the stack frame
-  // of the function
-  llvm::AllocaInst *alloca_inst{nullptr};
-};
-
-using SuccessOrStackSplitError =
+// A Result<> object where the value is not tracked
+using SuccessOrStackFrameSplitErrorCode =
     Result<std::monostate, StackFrameSplitErrorCode>;
+
+// Contains the necessary information to perform the stack splitting operation
+struct FunctionStackAnalysis final {
+  // Describes a GEP instruction
+  struct GEPInstruction final {
+    // The original instruction
+    llvm::GetElementPtrInst *instr{nullptr};
+
+    // The offset into the structure
+    std::int64_t offset{};
+  };
+
+  // A stack frame part
+  struct StackFramePart final {
+    // Start offset
+    std::int64_t start_offset{};
+
+    // End offset
+    std::int64_t end_offset{};
+
+    // Part size
+    std::int64_t size{};
+  };
+
+  // The stack frame type
+  llvm::StructType *stack_frame_type{nullptr};
+
+  // Stack frame size
+  std::size_t stack_frame_size{};
+
+  // The instruction allocating the stack frame
+  llvm::AllocaInst *stack_frame_alloca{nullptr};
+
+  // The size of a pointer
+  std::size_t pointer_size{};
+
+  // A list of GEP instructions that are operating on the
+  // stack frame
+  std::vector<GEPInstruction> gep_instr_list;
+
+  // A list of new stack frame parts
+  std::vector<StackFramePart> stack_frame_parts;
+};
 
 // Splits the stack frame type of the given function, isolating the
 // llvm.returnaddress (if present) in its own StructType to allow for
@@ -133,6 +168,17 @@ class SplitStackFrameAtReturnAddress final
   // Returns the pass name
   virtual llvm::StringRef getPassName(void) const override;
 
+  // Analyses the function to determine the necessary steps to split
+  // the function's stack frame
+  static Result<FunctionStackAnalysis, StackFrameSplitErrorCode>
+  AnalyzeFunction(llvm::Function &function);
+
+  // Updates the function to split the stack frame usage around the
+  // return address value
+  static SuccessOrStackFrameSplitErrorCode
+  SplitStackFrame(llvm::Function &function,
+                  const FunctionStackAnalysis &stack_analysis);
+
   // Executes the function pass logic
   Result<bool, StackFrameSplitErrorCode> execute(llvm::Function &function);
 
@@ -141,73 +187,13 @@ class SplitStackFrameAtReturnAddress final
   GetFunctionStackFrameTypeName(const llvm::Function &function);
 
   // Returns the stack frame type for the given function
-  static Result<const llvm::StructType *, StackFrameSplitErrorCode>
+  static Result<llvm::StructType *, StackFrameSplitErrorCode>
   GetFunctionStackFrameType(const llvm::Function &function);
 
-  // Returns the `alloca` instruction for the function's stackframe, or
-  // nullptr if not found
-  static Result<llvm::AllocaInst *, StackFrameSplitErrorCode>
-  GetStackFrameAllocaInst(llvm::Function &function);
-
-  // Returns the first `call` instruction to the llvm.returnaddress intrinsic
-  // in the entry block or nullptr if not found
-  static const llvm::CallInst *
-  GetReturnAddressInstrinsicCall(const llvm::Function &function);
-
-  // Returns a list of StoreInstAndOffsetPair that identify stores
-  // instructions that are saving the value of the llvm.returnaddress
-  // intrinsic and the alloca inst that allocates the stack frame
-  static Result<RetnAddressStoreInstructions, StackFrameSplitErrorCode>
-  GetRetnAddressStoreInstructions(llvm::Function &function);
-
-  // Given an offset into the specified StructType, it returns the matching
-  // struct element index
-  static Result<std::uint32_t, StackFrameSplitErrorCode>
-  StructOffsetToElementIndex(const llvm::Module *module,
-                             const llvm::StructType *struct_type,
-                             std::int64_t offset);
-
-  // Takes the function's stack frame type and splits it into three parts, isolating
-  // the element at the given index in its own structure
-  static Result<std::vector<llvm::StructType *>, StackFrameSplitErrorCode>
-  SplitStackFrameTypeAtOffset(const llvm::Function &function,
-                              std::int64_t offset,
-                              const llvm::StructType *stack_frame_type);
-
-  // Takes the function's stack frame and splits it by patching the IR
-  static SuccessOrStackSplitError
-  SplitStackFrameAtOffset(llvm::Function &function, std::int64_t offset,
-                          llvm::AllocaInst *orig_frame_alloca);
-
-  // Tracks down all the direct and indirect users of source_instr that are
-  // of type InstructionType
-  template <typename InstructionType>
-  static std::vector<InstructionType *>
-  TrackUsersOf(const llvm::Instruction *source_instr) {
-
-    std::vector<const llvm::Value *> pending_queue{source_instr};
-    std::vector<InstructionType *> user_instr_list;
-
-    do {
-      auto queue = std::move(pending_queue);
-      pending_queue.clear();
-
-      for (const auto &instr : queue) {
-        for (const auto &use : instr->uses()) {
-          const auto user = use.getUser();
-
-          auto user_instr = llvm::dyn_cast<InstructionType>(user);
-          if (user_instr != nullptr) {
-            user_instr_list.push_back(user_instr);
-          } else {
-            pending_queue.push_back(user);
-          }
-        }
-      }
-    } while (!pending_queue.empty());
-
-    return user_instr_list;
-  }
+  // Generates a new name for a stack frame part
+  static std::string
+  GenerateStackFramePartTypeName(const llvm::Function &function,
+                                 std::size_t part_number);
 
  private:
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);

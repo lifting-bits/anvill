@@ -31,6 +31,7 @@
 
 #include <magic_enum.hpp>
 #include <sstream>
+#include <unordered_set>
 
 #include "Utils.h"
 
@@ -103,12 +104,20 @@ class BaseFunctionPass : public llvm::FunctionPass {
                  const std::string &message,
                  llvm::Instruction *instr = nullptr);
 
-  // A list of instructions
+  // A list of llvm::Instruction pointers
   using InstructionList = std::vector<llvm::Instruction *>;
+
+  // A list of llvm::User pointers
+  using UserList = std::vector<llvm::User *>;
 
   // Returns a list of the instructions matching the given types
   template <class... Types>
   static InstructionList SelectInstructions(llvm::Function &function);
+
+  // Tracks down all the direct and indirect users of source_instr that are
+  // of the requested type
+  template <class... Types>
+  static UserList TrackUsersOf(llvm::User *initial_user);
 };
 
 template <typename UserFunctionPass>
@@ -266,6 +275,40 @@ BaseFunctionPass<UserFunctionPass>::SelectInstructions(
   }
 
   return output;
+}
+
+template <typename UserFunctionPass>
+template <class... Types>
+typename BaseFunctionPass<UserFunctionPass>::UserList
+BaseFunctionPass<UserFunctionPass>::TrackUsersOf(llvm::User *initial_user) {
+  std::vector<llvm::User *> pending_queue{initial_user};
+  std::vector<llvm::User *> user_list;
+  std::unordered_set<llvm::User *> visited;
+
+  do {
+    auto queue = std::move(pending_queue);
+    pending_queue.clear();
+
+    for (auto &instr : queue) {
+      for (auto &use : instr->uses()) {
+        auto user = use.getUser();
+        if (visited.count(user) > 0U) {
+          continue;
+        }
+
+        visited.insert(user);
+
+        bool selected = (llvm::dyn_cast<Types>(user) || ...);
+        if (selected) {
+          user_list.push_back(llvm::dyn_cast<llvm::User>(user));
+        } else {
+          pending_queue.push_back(user);
+        }
+      }
+    }
+  } while (!pending_queue.empty());
+
+  return user_list;
 }
 
 }  // namespace anvill
