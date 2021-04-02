@@ -21,9 +21,7 @@
 #include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
 #include <anvill/Providers/TypeProvider.h>
-
 #include <llvm/IR/Constant.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
@@ -126,7 +124,8 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
     const auto val_type = val->getType();
     const auto ra = xref_use.xref;
 
-    const auto user_inst = llvm::dyn_cast<llvm::Instruction>(xref_use.use->getUser());
+    const auto user_inst =
+        llvm::dyn_cast<llvm::Instruction>(xref_use.use->getUser());
     llvm::IRBuilder<> ir(user_inst);
     llvm::PointerType *inferred_type = nullptr;
     llvm::Value *entity = nullptr;
@@ -167,15 +166,15 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
         entity = entity_lifter.DeclareEntity(*maybe_func_decl);
 
       // Try to look it up as a variable.
-      } else if (auto maybe_var_decl = type_provider.TryGetVariableType(
-                     ra.u.address, dl)) {
+      } else if (auto maybe_var_decl =
+                     type_provider.TryGetVariableType(ra.u.address, dl)) {
         is_var = true;
         var_address = maybe_var_decl->address;
         entity = entity_lifter.LiftEntity(*maybe_var_decl);
 
       // Try to see if it's one past the end of a known entity.
-      } else if (auto maybe_prev_var_decl = type_provider.TryGetVariableType(
-                    ra.u.address - 1u, dl);
+      } else if (auto maybe_prev_var_decl =
+                     type_provider.TryGetVariableType(ra.u.address - 1u, dl);
                  maybe_prev_var_decl && ra.u.address) {
 
         is_var = true;
@@ -194,8 +193,8 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
     if (entity) {
       if (val_type->isIntegerTy()) {
         const auto intptr_ty = llvm::Type::getIntNTy(
-            context,
-            dl.getPointerSize(entity->getType()->getPointerAddressSpace()));
+            context, dl.getPointerSizeInBits(
+                         entity->getType()->getPointerAddressSpace()));
         entity = ir.CreatePtrToInt(entity, intptr_ty);
         entity = ir.CreateZExtOrTrunc(entity, val->getType());
         xref_use.use->set(entity);
@@ -205,6 +204,7 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
         xref_use.use->set(entity);
 
       } else {
+
         // TODO(pag): Report error/warning?
       }
 
@@ -214,6 +214,7 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
       }
 
     } else {
+
       // TODO(pag): Report warning/informational?
     }
   }
