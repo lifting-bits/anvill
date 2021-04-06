@@ -469,7 +469,7 @@ class ELFParser(ImageParser):
                 )
 
                 function_thunk = ImageFunctionThunk()
-                function_thunk.rva = elf_relocation.r_offset
+                function_thunk.start = elf_relocation.r_offset
                 function_thunk.name = symbol_name
 
                 self._function_thunk_list.append(function_thunk)

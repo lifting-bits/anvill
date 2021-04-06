@@ -236,9 +236,9 @@ class IDAProgram(Program):
                 continue
 
             redirection_dest = (
-                ida_bytes.get_wide_dword(function_thunk.rva)
+                ida_bytes.get_wide_dword(function_thunk.start)
                 if is_32_bit
-                else ida_bytes.get_qword(function_thunk.rva)
+                else ida_bytes.get_qword(function_thunk.start)
             )
 
             caller_address = ida_xref.get_first_cref_to(redirection_dest)
@@ -249,7 +249,7 @@ class IDAProgram(Program):
 
             print(
                 "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
-                    function_thunk.rva,
+                    function_thunk.start,
                     function_thunk.name,
                     redirection_source,
                     redirection_dest,

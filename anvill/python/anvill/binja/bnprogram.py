@@ -190,13 +190,13 @@ class BNProgram(Program):
 
         for function_thunk in function_thunk_list:
             # Read the call destination
-            reader.seek(function_thunk.rva)
+            reader.seek(function_thunk.start)
             redirection_dest = reader.read32() if is_32_bit else reader.read64()
 
             # Get the variable defined at the dest address
-            func_location = self._bv.get_data_var_at(function_thunk.rva)
+            func_location = self._bv.get_data_var_at(function_thunk.start)
             if not func_location:
-                print("anvill: No variable defined for {:x}".format(function_thunk.rva))
+                print("anvill: No variable defined for {:x}".format(function_thunk.start))
                 continue
 
             # We should only have one caller
@@ -216,7 +216,7 @@ class BNProgram(Program):
 
                     print(
                         "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
-                            function_thunk.rva,
+                            function_thunk.start,
                             function_thunk.name,
                             redirection_source,
                             redirection_dest,
@@ -236,7 +236,7 @@ class BNProgram(Program):
 
                 print(
                     "anvill: Thunk {:x} ({}) could not be redirected".format(
-                        function_thunk.rva, function_thunk.name
+                        function_thunk.start, function_thunk.name
                     )
                 )
 

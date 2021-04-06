@@ -338,14 +338,17 @@ std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64
   // address
   auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
   if (!opt_function_decl.has_value() && redirected_addr != address) {
-    redirected_addr = address;
-    opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
+    // When we retry using the original address, still keep the (possibly)
+    // redirected value
+    opt_function_decl = type_provider.TryGetFunctionType(address);
   }
 
   if (!opt_function_decl.has_value()) {
     return std::nullopt;
   }
 
+  // The `redirected_addr` value can either be the original one or the
+  // redirected address
   auto function_decl = opt_function_decl.value();
   function_decl.address = redirected_addr;
 

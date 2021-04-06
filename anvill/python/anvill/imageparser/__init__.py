@@ -23,7 +23,7 @@ from typing import List
 class ImageFunctionThunk:
     """A function thunk, used to call imported functions"""
 
-    rva: int = 0
+    start: int = 0
     name: str = ""
 
 
