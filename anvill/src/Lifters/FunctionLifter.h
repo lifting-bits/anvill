@@ -159,6 +159,10 @@ class FunctionLifter {
   // instruction.
   llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
 
+  // Attempts to lookup any redirection of the given address, and then
+  // calls GetOrCreateBlock
+  llvm::BasicBlock *GetOrCreateTargetBlock(uint64_t addr);
+
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are
   // simulated by a single-entry, single-exit function, called a semantics
