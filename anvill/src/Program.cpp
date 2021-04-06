@@ -104,8 +104,8 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   FunctionDecl *FindFunction(uint64_t address);
 
-  bool GetControlFlowRedirection(std::uint64_t &destination,
-                                 std::uint64_t address) const;
+  bool TryGetControlFlowRedirection(std::uint64_t &destination,
+                                    std::uint64_t address) const;
 
   void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
 
@@ -560,7 +560,7 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
   }
 }
 
-bool Program::Impl::GetControlFlowRedirection(std::uint64_t &destination,
+bool Program::Impl::TryGetControlFlowRedirection(std::uint64_t &destination,
                                               std::uint64_t address) const {
   destination = 0U;
 
@@ -990,9 +990,9 @@ void Program::ForEachFunctionWithName(
   }
 }
 
-bool Program::GetControlFlowRedirection(std::uint64_t &destination,
-                                        std::uint64_t address) const {
-  return impl->GetControlFlowRedirection(destination, address);
+bool Program::TryGetControlFlowRedirection(std::uint64_t &destination,
+                                           std::uint64_t address) const {
+  return impl->TryGetControlFlowRedirection(destination, address);
 }
 
 void Program::AddControlFlowRedirection(std::uint64_t from, std::uint64_t to) {

@@ -32,7 +32,7 @@ ControlFlowProvider::~ControlFlowProvider(void) = default;
 
 std::uint64_t ControlFlowProvider::GetRedirection(std::uint64_t address) const {
   std::uint64_t destination{};
-  if (!d->program.GetControlFlowRedirection(destination, address)) {
+  if (!d->program.TryGetControlFlowRedirection(destination, address)) {
     destination = address;
   }
 

@@ -334,7 +334,14 @@ void FunctionLifter::VisitConditionalFunctionReturn(
 std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
   auto redirected_addr = control_flow_provider->GetRedirection(address);
 
+  // In case we get redirected but still fail, try once more with the original
+  // address
   auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
+  if (!opt_function_decl.has_value() && redirected_addr != address) {
+    redirected_addr = address;
+    opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
+  }
+
   if (!opt_function_decl.has_value()) {
     return std::nullopt;
   }
@@ -1025,8 +1032,8 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           continue;
         }
 
-        LOG(ERROR) << "Failed to call native function at " << std::hex
-                   << decl.address
+        LOG(ERROR) << "Failed to call native function " << std::hex
+                   << decl.address << " at " << inst_addr
                    << " via fall-through or tail call from function "
                    << func_address << std::dec;
 
@@ -1536,7 +1543,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // instruction.
   //
   // NOTE(pag): This also introduces the first element to the work list.
-  ir.CreateBr(GetOrCreateTargetBlock(func_address));
+  //
+  // TODO: This could be a thunk, that we are maybe lifting on purpose.
+  //       How should control flow redirection behave in this case?
+  ir.CreateBr(GetOrCreateBlock(func_address));
 
   // Go lift all instructions!
   VisitInstructions(func_address);
