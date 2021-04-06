@@ -33,6 +33,7 @@ class Program(object):
         self._var_decls = {}
         self._func_defs = {}
         self._func_decls = {}
+        self._control_flow_redirections = {}
         self._symbols = collections.defaultdict(set)
 
     def get_symbols(self, ea):
@@ -85,6 +86,13 @@ class Program(object):
             return True
         else:
             return False
+
+    def add_control_flow_redirection(self, source_ea, destination_ea):
+        if source_ea in self._control_flow_redirections:
+            return False
+
+        self._control_flow_redirections[source_ea] = destination_ea
+        return True
 
     def add_variable_definition(self, ea, add_refs_as_defs=False):
         var = self.get_variable(ea)
@@ -152,6 +160,7 @@ class Program(object):
         proto["arch"] = self._arch.name()
         proto["os"] = self._os.name()
         proto["functions"] = []
+        proto["control_flow_redirections"] = []
         proto["variables"] = []
         proto["symbols"] = []
 
@@ -164,6 +173,9 @@ class Program(object):
 
         for func in self._func_defs.values():
             proto["functions"].append(func.proto())
+
+        for source, target in self._control_flow_redirections.items():
+            proto["control_flow_redirections"].append([source, target])
 
         for var in self._var_decls.values():
             proto["variables"].append(var.proto())

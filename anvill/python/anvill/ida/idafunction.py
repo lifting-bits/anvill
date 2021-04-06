@@ -18,6 +18,7 @@ import ida_funcs
 import ida_segment
 import idc
 import ida_bytes
+import ida_name
 
 
 from .utils import *

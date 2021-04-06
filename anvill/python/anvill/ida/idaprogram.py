@@ -21,14 +21,19 @@ import ida_idp
 import idc
 import ida_bytes
 import ida_frame
+import ida_auto
+import ida_ida
+import ida_name
 
 
 from .utils import *
 from .idafunction import *
+from .idavariable import *
 
 
 from anvill.program import *
 from anvill.type import *
+from anvill.imageparser import *
 
 
 TYPE_CONTEXT_NESTED = 0
@@ -42,7 +47,12 @@ _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 class IDAProgram(Program):
     def __init__(self, arch, os):
+        # Wait until IDA has finished analysis before we proceed, otherwise
+        # we will end up missing code, data and cross references
+        ida_auto.auto_wait()
+
         super(IDAProgram, self).__init__(arch, os)
+        self._init_ctrl_flow_redirections()
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -197,6 +207,57 @@ class IDAProgram(Program):
         )
         self.add_symbol(address, _function_name(address))
         return func
+
+
+    def _init_ctrl_flow_redirections(self):
+        """Initializes the control flow redirections using function thunks"""
+
+        # We only support the ELF format for now
+        inf = ida_idaapi.get_inf_structure()
+        if inf.filetype != ida_ida.f_ELF:
+            return
+
+        # List the function thunks first
+        input_file_path = ida_nalt.get_input_file_path()
+        image_parser = create_elf_image_parser(input_file_path)
+        function_thunk_list = image_parser.get_function_thunk_list()
+
+        # Go through each function thunk, and look at its cross references; there
+        # should always be only one user, which is the wrapper around the imported
+        # function
+        #
+        # Note that the __libc_start_main # thunk does not need redirection since
+        # it's called directly without any wrapper function from the module entry
+        # point
+        is_32_bit = image_parser.get_image_bitness() == 32
+
+        for function_thunk in function_thunk_list:
+            if function_thunk.name == "__libc_start_main":
+                continue
+
+            redirection_dest = (
+                ida_bytes.get_wide_dword(function_thunk.rva)
+                if is_32_bit
+                else ida_bytes.get_qword(function_thunk.rva)
+            )
+
+            caller_address = ida_xref.get_first_cref_to(redirection_dest)
+            if caller_address == ida_idaapi.BADADDR:
+                continue
+
+            redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)
+
+            print(
+                "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
+                    function_thunk.rva,
+                    function_thunk.name,
+                    redirection_source,
+                    redirection_dest,
+                )
+            )
+
+            self.add_control_flow_redirection(redirection_source, redirection_dest)
+
 
 def _convert_ida_type(tinfo, cache, depth, context):
     """Convert an IDA `tinfo_t` instance into a `Type` instance."""
