@@ -331,6 +331,20 @@ void FunctionLifter::VisitConditionalFunctionReturn(
                            not_taken_block);
 }
 
+std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
+  auto redirected_addr = control_flow_provider->GetRedirection(address);
+
+  auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
+  if (!opt_function_decl.has_value()) {
+    return std::nullopt;
+  }
+
+  auto function_decl = opt_function_decl.value();
+  function_decl.address = redirected_addr;
+
+  return function_decl;
+}
+
 // Try to resolve `inst.branch_taken_pc` to a lifted function, and introduce
 // a function call to that address in `block`. Failing this, add a call
 // to `__remill_function_call`.
@@ -339,17 +353,18 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
 
   // First, try to see if it's actually related to another function. This is
   // equivalent to a tail-call in the original code.
-  const auto maybe_other_decl =
-      type_provider.TryGetFunctionType(inst.branch_taken_pc);
+  const auto maybe_other_decl = TryGetTargetFunctionType(inst.branch_taken_pc);
 
-  if (maybe_other_decl) {
-    if (const auto other_decl = DeclareFunction(*maybe_other_decl)) {
+  if (maybe_other_decl.has_value()) {
+    auto other_decl = maybe_other_decl.value();
+
+    if (const auto other_func = DeclareFunction(other_decl)) {
       const auto mem_ptr_from_call =
-          TryCallNativeFunction(inst.branch_taken_pc, other_decl, block);
+          TryCallNativeFunction(other_decl.address, other_func, block);
 
       if (!mem_ptr_from_call) {
         LOG(ERROR) << "Failed to call native function at address " << std::hex
-                   << inst.branch_taken_pc << " via call at address " << inst.pc
+                   << other_decl.address << " via call at address " << inst.pc
                    << " in function at address " << func_address << std::dec;
 
         // If we fail to create an ABI specification for this function then
@@ -998,18 +1013,20 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     //            back to the entrypoint of our function. In this case, treat it
     //            like a tail-call.
     if (inst_addr != func_address || from_addr) {
-      auto maybe_decl = type_provider.TryGetFunctionType(inst_addr);
-      if (maybe_decl) {
-        llvm::Function *const other_decl = DeclareFunction(*maybe_decl);
+
+      auto maybe_decl = TryGetTargetFunctionType(inst_addr);
+      if (maybe_decl.has_value()) {
+        auto decl = maybe_decl.value();
+        llvm::Function *const other_decl = DeclareFunction(decl);
 
         if (const auto mem_ptr_from_call =
-                TryCallNativeFunction(inst_addr, other_decl, block)) {
+                TryCallNativeFunction(decl.address, other_decl, block)) {
           llvm::ReturnInst::Create(llvm_context, mem_ptr_from_call, block);
           continue;
         }
 
         LOG(ERROR) << "Failed to call native function at " << std::hex
-                   << inst_addr
+                   << decl.address
                    << " via fall-through or tail call from function "
                    << func_address << std::dec;
 

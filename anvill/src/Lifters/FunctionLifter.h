@@ -238,6 +238,11 @@ class FunctionLifter {
   // to `__remill_function_call`.
   void CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block);
 
+  // A wrapper around the type provider's TryGetFunctionType that makes use
+  // of the control flow provider to handle control flow redirections for
+  // thunks
+  std::optional<FunctionDecl> TryGetTargetFunctionType(std::uint64_t address);
+
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
   // `inst.branch_taken_pc`. In practice, what we do in this situation is try
