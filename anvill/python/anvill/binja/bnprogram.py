@@ -25,6 +25,7 @@ from .bnvariable import *
 from anvill.program import *
 from anvill.arch import *
 from anvill.os import *
+from anvill.imageparser import *
 
 
 class BNProgram(Program):
@@ -33,6 +34,7 @@ class BNProgram(Program):
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
         self._type_cache: Final[TypeCache] = TypeCache(self._bv)
+        self._init_ctrl_flow_redirections()
 
     @property
     def bv(self):
@@ -164,6 +166,79 @@ class BNProgram(Program):
     def symbols(self):
         for s in self._bv.get_symbols():
             yield (s.address, s.name)
+
+    def _init_ctrl_flow_redirections(self):
+        """Initializes the control flow redirections using function thunks"""
+
+        # We only support the ELF format for now
+        # TODO
+
+        # List the function thunks first
+        input_file_path = self._bv.file.filename
+        image_parser = create_elf_image_parser(input_file_path)
+        function_thunk_list = image_parser.get_function_thunk_list()
+
+        # Go through each function thunk and add the redirection. Note that
+        # the __libc_start_main thunk does not need redirection since it's
+        # called directly without any wrapper function from the module entry
+        # point
+        is_32_bit = image_parser.get_image_bitness() == 32
+
+        reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
+
+        redirected_thunk_list = []
+
+        for function_thunk in function_thunk_list:
+            # Read the call destination
+            reader.seek(function_thunk.rva)
+            redirection_dest = reader.read32() if is_32_bit else reader.read64()
+
+            # Get the variable defined at the dest address
+            func_location = self._bv.get_data_var_at(function_thunk.rva)
+            if not func_location:
+                print("anvill: No variable defined for {:x}".format(function_thunk.rva))
+                continue
+
+            # We should only have one caller
+            for caller in func_location.code_refs:
+                # Get the function containing this address; we need it to determine
+                # its start address
+                for caller_function in self._bv.get_functions_containing(
+                    caller.address
+                ):
+                    if (
+                        function_thunk.name == "__libc_start_main"
+                        or function_thunk.name not in caller_function.name
+                    ):
+                        continue
+
+                    redirection_source = caller_function.start
+
+                    print(
+                        "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
+                            function_thunk.rva,
+                            function_thunk.name,
+                            redirection_source,
+                            redirection_dest,
+                        )
+                    )
+
+                    self.add_control_flow_redirection(
+                        redirection_source, redirection_dest
+                    )
+                    redirected_thunk_list.append(function_thunk.name)
+
+        # Now check whether we successfully redirected all thunks
+        for function_thunk in function_thunk_list:
+            if function_thunk.name not in redirected_thunk_list:
+                if function_thunk.name == "__libc_start_main":
+                    continue
+
+                print(
+                    "anvill: Thunk {:x} ({}) could not be redirected".format(
+                        function_thunk.rva, function_thunk.name
+                    )
+                )
 
 
 def _get_os(bv):
