@@ -19,6 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/Providers/IControlFlowProvider.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -54,7 +55,8 @@ class FunctionLifter {
 
   FunctionLifter(const LifterOptions &options_,
                  MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_);
+                 TypeProvider &type_provider_,
+                 const Program &program);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -78,6 +80,7 @@ class FunctionLifter {
   const LifterOptions options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
+  IControlFlowProvider::Ptr control_flow_provider;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;

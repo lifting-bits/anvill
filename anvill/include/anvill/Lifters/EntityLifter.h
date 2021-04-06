@@ -42,6 +42,7 @@ class MemoryProvider;
 class TypeProvider;
 class ValueLifter;
 class ValueLifterImpl;
+class Program;
 
 // Lifting context for ANVILL. The lifting context keeps track of the options
 // used for lifting, the module into which lifted objects are placed, and
@@ -54,7 +55,8 @@ class EntityLifter {
   explicit EntityLifter(
       const LifterOptions &options,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<::anvill::TypeProvider> &type_provider_);
+      const std::shared_ptr<::anvill::TypeProvider> &type_provider_,
+      const Program &program);
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.

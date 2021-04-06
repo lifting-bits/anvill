@@ -239,6 +239,14 @@ class Program {
       const std::string &name,
       std::function<bool(const FunctionDecl *)> callback) const;
 
+  // Returns a possible control flow redirection for the given address
+  // or the input address itself if nothing is found
+  bool GetControlFlowRedirection(std::uint64_t &destination,
+                                 std::uint64_t address) const;
+
+  // Adds a new control flow redirection entry
+  void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
+
   // Add a name to an address.
   void AddNameToAddress(const std::string &name, uint64_t address) const;
 

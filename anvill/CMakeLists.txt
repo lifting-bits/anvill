@@ -78,6 +78,10 @@ add_library(anvill STATIC
   
   include/anvill/Providers/TypeProvider.h
   src/Providers/TypeProvider.cpp
+
+  include/anvill/Providers/IControlFlowProvider.h
+  src/Providers/ControlFlowProvider.h
+  src/Providers/ControlFlowProvider.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)

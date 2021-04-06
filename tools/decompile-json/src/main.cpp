@@ -480,6 +480,60 @@ static bool ParseRange(anvill::Program &program, llvm::json::Object *obj) {
   return true;
 }
 
+static bool ParseControlFlowRedirection(anvill::Program &program,
+                                        llvm::json::Array &redirection_list) {
+
+  auto index{0U};
+
+  std::stringstream buffer;
+
+  for (const llvm::json::Value &list_entry : redirection_list) {
+    auto address_pair = list_entry.getAsArray();
+    if (address_pair == nullptr) {
+      LOG(ERROR) << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    const auto &source_address_obj = address_pair->operator[](0);
+    auto opt_source_address = source_address_obj.getAsInteger();
+    if (!opt_source_address) {
+      LOG(ERROR) << "Invalid integer value in source address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    const auto &dest_address_obj = address_pair->operator[](1);
+    auto opt_dest_address = dest_address_obj.getAsInteger();
+    if (!opt_dest_address) {
+      LOG(ERROR) << "Invalid integer value in destination address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    auto source_address = opt_source_address.getValue();
+    auto dest_address = opt_dest_address.getValue();
+
+    buffer << "  " << std::hex << source_address << " -> " << dest_address << "\n";
+
+    program.AddControlFlowRedirection(source_address, dest_address);
+
+    ++index;
+  }
+
+  auto redirection_output = buffer.str();
+  if (!redirection_output.empty()) {
+    std::cout << "Control flow redirections:\n" << redirection_output;
+  }
+
+  return true;
+}
+
 // Parse the core data out of a JSON specification, and do a small
 // amount of validation. A JSON spec contains the following:
 //
@@ -524,6 +578,22 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   } else if (spec->find("functions") != spec->end()) {
     LOG(ERROR) << "Non-JSON array value for 'functions' in spec file '"
                << FLAGS_spec << "'";
+    return false;
+  }
+
+  if (auto redirection_list = spec->getArray("control_flow_redirections")) {
+    if (!ParseControlFlowRedirection(program, *redirection_list)) {
+      LOG(ERROR)
+          << "Failed to parse the 'control_flow_redirections' section in spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+  } else if (spec->find("control_flow_redirections") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'control_flow_redirections' in spec file '"
+        << FLAGS_spec << "'";
     return false;
   }
 
@@ -687,7 +757,7 @@ int main(int argc, char *argv[]) {
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(options, memory, types);
+  anvill::EntityLifter lifter(options, memory, types, program);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an

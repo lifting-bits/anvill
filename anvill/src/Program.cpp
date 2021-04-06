@@ -104,6 +104,11 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   FunctionDecl *FindFunction(uint64_t address);
 
+  bool GetControlFlowRedirection(std::uint64_t &destination,
+                                 std::uint64_t address) const;
+
+  void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
+
   llvm::Error DeclareVariable(const GlobalVarDecl &decl_template);
 
   GlobalVarDecl *FindVariable(uint64_t address);
@@ -133,6 +138,9 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
   bool funcs_are_sorted{true};
   std::vector<std::unique_ptr<FunctionDecl>> funcs;
   std::unordered_map<uint64_t, FunctionDecl *> ea_to_func;
+
+  // Control flow redirections
+  std::unordered_map<std::uint64_t, std::uint64_t> ctrl_flow_redirections;
 
   // Declarations for the variables.
   bool vars_are_sorted{true};
@@ -552,6 +560,25 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
   }
 }
 
+bool Program::Impl::GetControlFlowRedirection(std::uint64_t &destination,
+                                              std::uint64_t address) const {
+  destination = 0U;
+
+  auto it = ctrl_flow_redirections.find(address);
+  if (it == ctrl_flow_redirections.end()) {
+    return false;
+  }
+
+  destination = it->second;
+  return true;
+}
+
+void Program::Impl::AddControlFlowRedirection(std::uint64_t from,
+                                              std::uint64_t to) {
+  CHECK_EQ(ctrl_flow_redirections.count(from), 0U);
+  ctrl_flow_redirections.insert({from, to});
+}
+
 // Declare a variable in this view.
 llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
 
@@ -961,6 +988,15 @@ void Program::ForEachFunctionWithName(
       }
     }
   }
+}
+
+bool Program::GetControlFlowRedirection(std::uint64_t &destination,
+                                        std::uint64_t address) const {
+  return impl->GetControlFlowRedirection(destination, address);
+}
+
+void Program::AddControlFlowRedirection(std::uint64_t from, std::uint64_t to) {
+  return impl->AddControlFlowRedirection(from, to);
 }
 
 // Apply a function `cb` to each name of the address `address`.
