@@ -45,6 +45,8 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
     auto error_manager = ITransformationErrorManager::Create();
 
+    anvill::Program program;
+
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto init_strategy : kInitStackSettings) {
         for (auto padding_bytes : kTestPaddingSettings) {
@@ -60,7 +62,14 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
           REQUIRE(arch != nullptr);
 
-          anvill::LifterOptions lift_options(arch.get(), *module);
+          auto ctrl_flow_provider_res =
+              anvill::IControlFlowProvider::Create(program);
+
+          REQUIRE(ctrl_flow_provider_res.Succeeded());
+
+          anvill::LifterOptions lift_options(
+              arch.get(), *module, ctrl_flow_provider_res.TakeValue());
+
           lift_options.stack_frame_struct_init_procedure = init_strategy;
           lift_options.stack_frame_lower_padding =
               lift_options.stack_frame_higher_padding = padding_bytes / 2U;

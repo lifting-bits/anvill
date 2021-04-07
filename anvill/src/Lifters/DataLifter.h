@@ -59,7 +59,7 @@ class DataLifter {
  private:
   friend class FunctionLifter;
 
-  const LifterOptions options;
+  const LifterOptions &options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
 

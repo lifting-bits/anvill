@@ -75,7 +75,7 @@ class FunctionLifter {
                                        EntityLifterImpl &lifter_context) const;
 
  private:
-  const LifterOptions options;
+  const LifterOptions &options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
 
@@ -156,6 +156,10 @@ class FunctionLifter {
   // instruction.
   llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
 
+  // Attempts to lookup any redirection of the given address, and then
+  // calls GetOrCreateBlock
+  llvm::BasicBlock *GetOrCreateTargetBlock(uint64_t addr);
+
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are
   // simulated by a single-entry, single-exit function, called a semantics
@@ -230,6 +234,11 @@ class FunctionLifter {
   // a function call to that address in `block`. Failing this, add a call
   // to `__remill_function_call`.
   void CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block);
+
+  // A wrapper around the type provider's TryGetFunctionType that makes use
+  // of the control flow provider to handle control flow redirections for
+  // thunks
+  std::optional<FunctionDecl> TryGetTargetFunctionType(std::uint64_t address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in

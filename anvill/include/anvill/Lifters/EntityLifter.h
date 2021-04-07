@@ -42,6 +42,7 @@ class MemoryProvider;
 class TypeProvider;
 class ValueLifter;
 class ValueLifterImpl;
+class Program;
 
 // Lifting context for ANVILL. The lifting context keeps track of the options
 // used for lifting, the module into which lifted objects are placed, and

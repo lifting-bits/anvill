@@ -24,7 +24,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
-
+#include <magic_enum.hpp>
 #include "anvill/Version.h"
 
 // clang-format off
@@ -480,6 +480,60 @@ static bool ParseRange(anvill::Program &program, llvm::json::Object *obj) {
   return true;
 }
 
+static bool ParseControlFlowRedirection(anvill::Program &program,
+                                        llvm::json::Array &redirection_list) {
+
+  auto index{0U};
+
+  std::stringstream buffer;
+
+  for (const llvm::json::Value &list_entry : redirection_list) {
+    auto address_pair = list_entry.getAsArray();
+    if (address_pair == nullptr) {
+      LOG(ERROR) << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    const auto &source_address_obj = address_pair->operator[](0);
+    auto opt_source_address = source_address_obj.getAsInteger();
+    if (!opt_source_address) {
+      LOG(ERROR) << "Invalid integer value in source address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    const auto &dest_address_obj = address_pair->operator[](1);
+    auto opt_dest_address = dest_address_obj.getAsInteger();
+    if (!opt_dest_address) {
+      LOG(ERROR) << "Invalid integer value in destination address for the #"
+                 << index << " of the control_flow_redirections in the following spec file: '"
+                 << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    auto source_address = opt_source_address.getValue();
+    auto dest_address = opt_dest_address.getValue();
+
+    buffer << "  " << std::hex << source_address << " -> " << dest_address << "\n";
+
+    program.AddControlFlowRedirection(source_address, dest_address);
+
+    ++index;
+  }
+
+  auto redirection_output = buffer.str();
+  if (!redirection_output.empty()) {
+    std::cout << "Control flow redirections:\n" << redirection_output;
+  }
+
+  return true;
+}
+
 // Parse the core data out of a JSON specification, and do a small
 // amount of validation. A JSON spec contains the following:
 //
@@ -524,6 +578,22 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   } else if (spec->find("functions") != spec->end()) {
     LOG(ERROR) << "Non-JSON array value for 'functions' in spec file '"
                << FLAGS_spec << "'";
+    return false;
+  }
+
+  if (auto redirection_list = spec->getArray("control_flow_redirections")) {
+    if (!ParseControlFlowRedirection(program, *redirection_list)) {
+      LOG(ERROR)
+          << "Failed to parse the 'control_flow_redirections' section in spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+  } else if (spec->find("control_flow_redirections") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'control_flow_redirections' in spec file '"
+        << FLAGS_spec << "'";
     return false;
   }
 
@@ -681,7 +751,18 @@ int main(int argc, char *argv[]) {
   auto types =
       anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
-  anvill::LifterOptions options(arch.get(), module);
+  auto ctrl_flow_provider_res = anvill::IControlFlowProvider::Create(program);
+  if (!ctrl_flow_provider_res.Succeeded()) {
+    auto error = ctrl_flow_provider_res.TakeError();
+
+    std::cerr << "Failed to create the control flow provider: "
+              << magic_enum::enum_name(error) << "\n";
+
+    return EXIT_FAILURE;
+  }
+
+  anvill::LifterOptions
+      options(arch.get(), module,ctrl_flow_provider_res.TakeValue());
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does
