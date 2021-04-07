@@ -171,7 +171,8 @@ class BNProgram(Program):
         """Initializes the control flow redirections using function thunks"""
 
         # We only support the ELF format for now
-        # TODO
+        if self._bv.view_type != "ELF":
+            return
 
         # List the function thunks first
         input_file_path = self._bv.file.filename
