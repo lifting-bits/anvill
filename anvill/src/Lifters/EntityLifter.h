@@ -19,7 +19,6 @@
 
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
-#include <anvill/Providers/IControlFlowProvider.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
 
@@ -51,8 +50,7 @@ class EntityLifterImpl {
   explicit EntityLifterImpl(
       const LifterOptions &options_,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<TypeProvider> &type_provider_,
-      const Program &program);
+      const std::shared_ptr<TypeProvider> &type_provider_);
 
   // Tells the entity lifter that `entity` is the lifted function/data at
   // `address`. There is some collusion between the `Context`, the
@@ -78,7 +76,7 @@ class EntityLifterImpl {
   EntityLifterImpl(void) = delete;
 
   // Options used to guide how lifting should occur.
-  const LifterOptions options;
+  const LifterOptions &options;
 
   // Provider of memory when asking for bytes for instructions or data.
   const std::shared_ptr<MemoryProvider> memory_provider;

@@ -19,6 +19,8 @@
 
 #include <cstddef>
 
+#include <anvill/Providers/IControlFlowProvider.h>
+
 namespace llvm {
 class Module;
 }  // namespace llvm
@@ -83,9 +85,11 @@ enum class StackFrameStructureInitializationProcedure : char {
 class LifterOptions {
  public:
   inline explicit LifterOptions(const remill::Arch *arch_,
-                                llvm::Module &module_)
+                                llvm::Module &module_,
+                                IControlFlowProvider::Ptr ctrl_flow_provider_)
       : arch(arch_),
         module(&module_),
+        ctrl_flow_provider(std::move(ctrl_flow_provider_)),
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
         stack_frame_struct_init_procedure(
@@ -105,6 +109,9 @@ class LifterOptions {
 
   // Target module into which code will be lifted.
   llvm::Module *const module;
+
+  // The control flow provider, used for thunk redirections
+  IControlFlowProvider::Ptr ctrl_flow_provider;
 
   // The function lifter produces functions with Remill's state structure
   // allocated on the stack. This configuration option determines how the

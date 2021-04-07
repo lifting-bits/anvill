@@ -55,8 +55,7 @@ class EntityLifter {
   explicit EntityLifter(
       const LifterOptions &options,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<::anvill::TypeProvider> &type_provider_,
-      const Program &program);
+      const std::shared_ptr<::anvill::TypeProvider> &type_provider_);
 
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.

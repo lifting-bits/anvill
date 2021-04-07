@@ -24,7 +24,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
-
+#include <magic_enum.hpp>
 #include "anvill/Version.h"
 
 // clang-format off
@@ -751,13 +751,24 @@ int main(int argc, char *argv[]) {
   auto types =
       anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
-  anvill::LifterOptions options(arch.get(), module);
+  auto ctrl_flow_provider_res = anvill::IControlFlowProvider::Create(program);
+  if (!ctrl_flow_provider_res.Succeeded()) {
+    auto error = ctrl_flow_provider_res.TakeError();
+
+    std::cerr << "Failed to create the control flow provider: "
+              << magic_enum::enum_name(error) << "\n";
+
+    return EXIT_FAILURE;
+  }
+
+  anvill::LifterOptions
+      options(arch.get(), module,ctrl_flow_provider_res.TakeValue());
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(options, memory, types, program);
+  anvill::EntityLifter lifter(options, memory, types);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an

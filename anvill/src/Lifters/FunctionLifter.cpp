@@ -121,8 +121,7 @@ FunctionLifter::~FunctionLifter(void) {}
 
 FunctionLifter::FunctionLifter(const LifterOptions &options_,
                                MemoryProvider &memory_provider_,
-                               TypeProvider &type_provider_,
-                               const Program &program)
+                               TypeProvider &type_provider_)
     : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
@@ -141,12 +140,7 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
           llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
               options.arch->StatePointerType(), llvm_context))),
       address_type(
-          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)) {
-    auto ctrl_flow_provider_res = IControlFlowProvider::Create(program);
-    CHECK(ctrl_flow_provider_res.Succeeded());
-
-    control_flow_provider = ctrl_flow_provider_res.TakeValue();
-  }
+          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)) {}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -173,7 +167,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
 }
 
 llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(uint64_t addr) {
-  return GetOrCreateBlock(control_flow_provider->GetRedirection(addr));
+  return GetOrCreateBlock(options.ctrl_flow_provider->GetRedirection(addr));
 }
 
 // Try to decode an instruction at address `addr` into `*inst_out`. Returns
@@ -332,7 +326,7 @@ void FunctionLifter::VisitConditionalFunctionReturn(
 }
 
 std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
-  auto redirected_addr = control_flow_provider->GetRedirection(address);
+  auto redirected_addr = options.ctrl_flow_provider->GetRedirection(address);
 
   // In case we get redirected but still fail, try once more with the original
   // address

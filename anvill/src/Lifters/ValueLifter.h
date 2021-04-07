@@ -87,7 +87,7 @@ class ValueLifterImpl {
                                 EntityLifterImpl &ent_lifter,
                                 llvm::PointerType *ptr_type = nullptr) const;
 
-  const LifterOptions options;
+  const LifterOptions &options;
   const llvm::DataLayout &dl;
   llvm::LLVMContext &context;
 };

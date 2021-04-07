@@ -37,13 +37,12 @@ EntityLifterImpl::~EntityLifterImpl(void) {}
 EntityLifterImpl::EntityLifterImpl(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<TypeProvider> &type_provider_,
-    const Program &program)
+    const std::shared_ptr<TypeProvider> &type_provider_)
     : options(options_),
       memory_provider(mem_provider_),
       type_provider(type_provider_),
       value_lifter(options),
-      function_lifter(options, *mem_provider_, *type_provider_, program),
+      function_lifter(options, *mem_provider_, *type_provider_),
       data_lifter(options, *mem_provider_, *type_provider_) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
@@ -93,11 +92,9 @@ EntityLifter::~EntityLifter(void) {}
 EntityLifter::EntityLifter(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<::anvill::TypeProvider> &type_provider_,
-    const Program &program)
+    const std::shared_ptr<::anvill::TypeProvider> &type_provider_)
     : impl(std::make_shared<EntityLifterImpl>(options_, mem_provider_,
-                                              type_provider_,
-                                              program)) {}
+                                              type_provider_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
