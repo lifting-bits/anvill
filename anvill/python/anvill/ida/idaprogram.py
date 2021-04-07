@@ -235,10 +235,12 @@ class IDAProgram(Program):
             if function_thunk.name == "__libc_start_main":
                 continue
 
+            thunk_va = ida_nalt.get_imagebase() + function_thunk.start
+
             redirection_dest = (
-                ida_bytes.get_wide_dword(function_thunk.start)
+                ida_bytes.get_wide_dword(thunk_va)
                 if is_32_bit
-                else ida_bytes.get_qword(function_thunk.start)
+                else ida_bytes.get_qword(thunk_va)
             )
 
             caller_address = ida_xref.get_first_cref_to(redirection_dest)
@@ -248,10 +250,10 @@ class IDAProgram(Program):
             redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)
 
             print(
-                "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
-                    function_thunk.start,
-                    function_thunk.name,
+                "anvill: Redirecting the user {:x} of thunk {} at rva {:x} to {:x}".format(
                     redirection_source,
+                    function_thunk.name,
+                    function_thunk.start,
                     redirection_dest,
                 )
             )

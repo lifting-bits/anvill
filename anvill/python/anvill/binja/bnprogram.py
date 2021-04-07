@@ -186,11 +186,14 @@ class BNProgram(Program):
 
         reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
 
-        redirected_thunk_list = []
+        image_base_address = self._bv.start
 
+        redirected_thunk_list = []
         for function_thunk in function_thunk_list:
             # Read the call destination
-            reader.seek(function_thunk.start)
+            thunk_va = image_base_address + function_thunk.start
+
+            reader.seek(thunk_va)
             redirection_dest = reader.read32() if is_32_bit else reader.read64()
 
             # Get the variable defined at the dest address
@@ -215,10 +218,10 @@ class BNProgram(Program):
                     redirection_source = caller_function.start
 
                     print(
-                        "anvill: Redirecting thunk {:x}/{} user {:x} to {:x}".format(
-                            function_thunk.start,
-                            function_thunk.name,
+                        "anvill: Redirecting the user {:x} of thunk {} at rva {:x} to {:x}".format(
                             redirection_source,
+                            function_thunk.name,
+                            function_thunk.start,
                             redirection_dest,
                         )
                     )
