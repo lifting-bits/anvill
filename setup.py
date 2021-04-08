@@ -30,7 +30,10 @@ setuptools.setup(
     url="https://github.com/lifting-bits/anvill",
     license="AGPL 3",
     py_modules=[
-        "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja",
-        "anvill.exc", "anvill.function", "anvill.ida", "anvill.loc",
+        "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja.__init__",
+        "anvill.binja.bnfunction", "anvill.binja.bnprogram", "anvill.binja.bnvariable",
+        "anvill.binja.callingconvention", "anvill.binja.typecache", "anvill.binja.xrefstype",
+        "anvill.exc", "anvill.function", "anvill.ida.__init__", "anvill.ida.idafunction",
+        "anvill.ida.idaprogram", "anvill.ida.idavariable", "anvill.ida.utils", "anvill.loc",
         "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
         "anvill.var", "anvill.util"])
