@@ -41,6 +41,7 @@ add_library(anvill_passes STATIC
   include/anvill/ITransformationErrorManager.h
   src/TransformationErrorManager.h
   src/TransformationErrorManager.cpp
+  src/TransformRemillJumpIntrinsics.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC

@@ -169,6 +169,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   CHECK(!err_man.HasFatalError());
 
+  fpm.add(CreateTransformRemillJumpIntrinsics(lifter_context));
   fpm.add(CreateRemoveRemillFunctionReturns(lifter_context));
   fpm.add(CreateLowerRemillUndefinedIntrinsics());
   fpm.doInitialization();
