@@ -32,7 +32,7 @@ setuptools.setup(
     py_modules=[
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja.__init__",
         "anvill.binja.bnfunction", "anvill.binja.bnprogram", "anvill.binja.bnvariable",
-        "anvill.binja.callingconvention", "anvill.binja.typecache", "anvill.binja.xrefstype",
+        "anvill.binja.callingconvention", "anvill.binja.typecache", "anvill.binja.xreftype",
         "anvill.exc", "anvill.function", "anvill.ida.__init__", "anvill.ida.idafunction",
         "anvill.ida.idaprogram", "anvill.ida.idavariable", "anvill.ida.utils", "anvill.loc",
         "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
