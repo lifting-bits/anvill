@@ -18,6 +18,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List
 
+from anvill.util import *
+
 
 @dataclass
 class ImageFunctionThunk:
