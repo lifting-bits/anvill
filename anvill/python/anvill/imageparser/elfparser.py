@@ -351,7 +351,8 @@ class ELFParser(ImageParser):
 
         dynsym_section_header = self._get_section_header(".dynsym")
         if dynsym_section_header is None:
-            raise RuntimeError("Failed to acquire the '.dynsym' section")
+            DEBUG("WARNING: Failed to acquire the '.dynsym' section")
+            return
 
         is_32_bit = self.get_image_bitness() == 32
 
@@ -387,7 +388,8 @@ class ELFParser(ImageParser):
 
         dynstr_section = self._get_section(".dynstr")
         if dynstr_section is None:
-            raise RuntimeError("Failed to acquire the '.dynstr' section")
+            DEBUG("WARNING: Failed to acquire the '.dynstr' section")
+            return
 
         for section_header in self._section_header_list:
             if section_header.sh_type != SHT_REL and section_header.sh_type != SHT_RELA:
