@@ -29,10 +29,20 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/__init__.py
     anvill/__main__.py
     anvill/arch.py
-    anvill/binja.py
+    anvill/binja/__init__.py
+    anvill/binja/bnprogram.py
+    anvill/binja/bnvariable.py
+    anvill/binja/bnfunction.py
+    anvill/binja/callingconvention.py
+    anvill/binja/typecache.py
+    anvill/binja/xreftype.py
     anvill/exc.py
     anvill/function.py
-    anvill/ida.py
+    anvill/ida/__init__.py
+    anvill/ida/idafunction.py
+    anvill/ida/idaprogram.py
+    anvill/ida/idavariable.py
+    anvill/ida/utils.py
     anvill/loc.py
     anvill/mem.py
     anvill/os.py
