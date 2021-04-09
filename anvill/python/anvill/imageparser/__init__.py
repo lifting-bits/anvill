@@ -78,11 +78,12 @@ class ImageParser:
 
         for _ in range(0, _MAX_STRING_SIZE):
             byte = self._read(1)
-            buffer += byte
 
             as_int = int.from_bytes(byte, byteorder="little", signed=False)
             if as_int == 0:
                 break
+
+            buffer += byte
 
         return buffer.decode("utf-8")
 
@@ -124,8 +125,6 @@ class ImageParser:
 
     def _read_uptr(self) -> int:
         """Reads a ptr-sized unsigned integer from the current offset
-
-        Requires the FileHeader structure in the NT headers
 
         Returns:
             The ptr-sized integer at the current offset

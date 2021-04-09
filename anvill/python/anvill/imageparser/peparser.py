@@ -300,6 +300,8 @@ class PEParser(ImageParser):
             self._nt_headers.OptionalHeader.DataDirectory.append(data_directory)
 
     def _read_section_headers(self):
+        """Reads the section headers from the PE file"""
+
         # first section header: nt headers offset + signature + file header = optional header size
         offset = (
             self._dos_header.e_lfanew
@@ -327,6 +329,8 @@ class PEParser(ImageParser):
             self._section_header_list.append(section_header)
 
     def _rva_to_file_offset(self, rva: int) -> int:
+        """Converts an rva to a file offset"""
+
         for section_header in self._section_header_list:
             section_size = section_header.SizeOfRawData
             if section_size == 0:
@@ -345,6 +349,8 @@ class PEParser(ImageParser):
         return None
 
     def _read_import_data_directory(self):
+        """Reads the import data directory"""
+
         if _IMAGE_DIRECTORY_ENTRY_IMPORT > len(
             self._nt_headers.OptionalHeader.DataDirectory
         ):
@@ -374,6 +380,8 @@ class PEParser(ImageParser):
             self._import_descriptor_list.append(import_descriptor)
 
     def _process_function_thunks(self):
+        """Processes the import data directory to generate the function thunk list"""
+
         for import_descriptor in self._import_descriptor_list:
             module_name_offset = self._rva_to_file_offset(import_descriptor.Name)
             if module_name_offset is None:
