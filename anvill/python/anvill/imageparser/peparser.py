@@ -29,8 +29,6 @@ _IMAGE_DIRECTORY_ENTRY_IMPORT = 1
 
 _IMAGE_SIZE_OF_SHORT_NAME = 8
 
-_MAX_STRING_SIZE = 1024
-
 _IMAGE_ORDINAL_FLAG = 0x80000000
 
 
@@ -160,7 +158,6 @@ class PEParser(ImageParser):
     methods implemented here.
     """
 
-    _input_file = None
     _dos_header: ImageDosHeader = ImageDosHeader()
     _nt_headers: ImageNTHeaders = ImageNTHeaders()
     _section_header_list: List[ImageSectionHeader] = []
@@ -177,7 +174,7 @@ class PEParser(ImageParser):
             input_file_path: Path to the input file path
         """
 
-        self._input_file = open(input_file_path, "rb")
+        super(PEParser, self).__init__(input_file_path)
 
         self._read_dos_header()
         self._read_nt_headers()
@@ -201,85 +198,6 @@ class PEParser(ImageParser):
             return 64
         else:
             return 32
-
-    def _seek(self, offset: int):
-        """Moves the current read offset"""
-        self._input_file.seek(offset)
-
-    def _read(self, size: int) -> bytearray:
-        """Reads the specified amount of bytes from the current offset
-
-        Args:
-            size: How many bytes to read
-
-        Returns:
-            The buffer of size `size` from the current offset
-        """
-
-        read_buffer = self._input_file.read(size)
-        if len(read_buffer) != size:
-            raise IOError()
-
-        return read_buffer
-
-    def _read_str(self) -> str:
-        buffer: bytearray = bytearray()
-
-        for _ in range(0, _MAX_STRING_SIZE):
-            byte = self._read(1)
-            buffer += byte
-
-            as_int = int.from_bytes(byte, byteorder="little", signed=False)
-            if as_int == 0:
-                break
-
-        return buffer.decode("utf-8")
-
-    def _read_u8(self) -> int:
-        """Reads an 8-bit unsigned integer from the current offset
-
-        Returns:
-            The u8 at the current offset
-        """
-        return int.from_bytes(self._read(1), byteorder="little", signed=False)
-
-    def _read_u16(self) -> int:
-        """Reads a 16-bit unsigned integer from the current offset
-
-        Returns:
-            The u16 at the current offset
-        """
-        return int.from_bytes(self._read(2), byteorder="little", signed=False)
-
-    def _read_u32(self) -> int:
-        """Reads a 32-bit unsigned integer from the current offset
-
-        Returns:
-            The u32 at the current offset
-        """
-
-        return int.from_bytes(self._read(4), byteorder="little", signed=False)
-
-    def _read_u64(self) -> int:
-        """Reads a 64-bit unsigned integer from the current offset
-
-        Returns:
-            The u64 at the current offset
-        """
-
-        return int.from_bytes(self._read(8), byteorder="little", signed=False)
-
-    def _read_uptr(self) -> int:
-        """Reads a ptr-sized unsigned integer from the current offset
-
-        Requires the FileHeader structure in the NT headers
-
-        Returns:
-            The ptr-sized integer at the current offset
-        """
-
-        type_size = int(self.get_image_bitness() / 8)
-        return int.from_bytes(self._read(type_size), byteorder="little", signed=False)
 
     def _read_dos_header(self):
         """Acquires the DOS header,
