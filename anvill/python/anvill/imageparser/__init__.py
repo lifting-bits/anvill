@@ -59,6 +59,7 @@ class ImageParser:
 
 
 from .elfparser import *
+from .peparser import *
 
 
 def create_elf_image_parser(input_file_path: str) -> ImageParser:
@@ -72,3 +73,16 @@ def create_elf_image_parser(input_file_path: str) -> ImageParser:
     """
 
     return ELFParser(input_file_path)
+
+
+def create_pe_image_parser(input_file_path: str) -> ImageParser:
+    """Creates a new ImageParser object for PE files
+
+    Args:
+        The path to the input file
+
+    Returns:
+        An image parser object for ELF files
+    """
+
+    return PEParser(input_file_path)

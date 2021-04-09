@@ -212,14 +212,19 @@ class IDAProgram(Program):
     def _init_ctrl_flow_redirections(self):
         """Initializes the control flow redirections using function thunks"""
 
-        # We only support the ELF format for now
-        inf = ida_idaapi.get_inf_structure()
-        if inf.filetype != ida_ida.f_ELF:
-            return
-
         # List the function thunks first
         input_file_path = ida_nalt.get_input_file_path()
-        image_parser = create_elf_image_parser(input_file_path)
+
+        inf = ida_idaapi.get_inf_structure()
+        if inf.filetype == ida_ida.f_ELF:
+            image_parser = create_elf_image_parser(input_file_path)
+
+        elif inf.filetype == ida_ida.f_PE:
+            image_parser = create_pe_image_parser(input_file_path)
+
+        else:
+            return
+
         function_thunk_list = image_parser.get_function_thunk_list()
 
         # Go through each function thunk, and look at its cross references; there
