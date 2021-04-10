@@ -111,7 +111,7 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(const llvm::DataLayout &dl,
 // with the given function type
 static llvm::Function *FindIntrinsic(llvm::Module *module,
                                      llvm::FunctionType *type,
-                                     std::string name) {
+                                     const std::string &name) {
   auto function = module->getFunction(name);
   if (!function) {
     function = llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage,
