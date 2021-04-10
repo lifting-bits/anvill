@@ -209,12 +209,27 @@ bool IsProgramCounter(llvm::Value *val) {
 
 // Returns `true` if it looks like `val` is the return address.
 bool IsReturnAddress(llvm::Value *val) {
+  const auto addressofreturnaddress = [](llvm::CallBase *call) -> bool {
+    return call &&
+           call->getIntrinsicID() == llvm::Intrinsic::addressofreturnaddress;
+  };
+
   if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     return gv->getName() == kSymbolicRAName;
 
   } else if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    return call->getIntrinsicID() == llvm::Intrinsic::returnaddress;
-
+    if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
+      return true;
+    } else if (auto func = call->getCalledFunction();
+               func && func->getName().startswith("__remill_read_memory_")) {
+      return addressofreturnaddress(
+          llvm::dyn_cast<llvm::CallBase>(call->getArgOperand(1)));
+    } else {
+      return false;
+    }
+  } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
+    return addressofreturnaddress(
+        llvm::dyn_cast<llvm::CallBase>(li->getPointerOperand()));
   } else {
     return false;
   }
@@ -237,10 +252,8 @@ bool CanBeAliased(llvm::Value *val) {
     switch (ce->getOpcode()) {
       case llvm::Instruction::BitCast:
       case llvm::Instruction::PtrToInt:
-      case llvm::Instruction::IntToPtr:
-        return CanBeAliased(ce->getOperand(0));
-      default:
-        return false;
+      case llvm::Instruction::IntToPtr: return CanBeAliased(ce->getOperand(0));
+      default: return false;
     }
   } else {
     return false;

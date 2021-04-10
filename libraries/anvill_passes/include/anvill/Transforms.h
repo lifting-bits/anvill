@@ -17,9 +17,9 @@
 
 #pragma once
 
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Lifters/Options.h>
-#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Lifters/ValueLifter.h>
 
 namespace llvm {
@@ -163,8 +163,8 @@ llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas = 250);
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
-    const EntityLifter &lifter);
+llvm::FunctionPass *
+CreateRemoveRemillFunctionReturns(const EntityLifter &lifter);
 
 // This function pass makes use of the `__anvill_sp` usages to create an
 // `llvm::StructType` that acts as a stack frame. This initial stack frame
@@ -221,5 +221,22 @@ CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
 // the instruction folding pass that hoists and folds values up through selects
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
 llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
+
+
+// The pass transforms bitcode to replace the calls to `__remill_jump` into
+// `__remill_function_return` if a value returned by `llvm.returnaddress`, or
+// casted from `__anvill_ra`, reaches to its `PC` argument.
+//
+// The transform is written to fix the bitcode generated for aarch32 architecture
+// where multiple instructions semantic can be used to return from the function
+// and they might be categorized as (conditional/unconditional) indirect jumps
+//
+// It identifies the possible cases where a return instruction is lifted as
+// indirect jump and fixes the intrinsics for them.
+
+// NOTE: The pass should be run as late as possible in the list but before
+// `RemoveRemillFunctionReturns` transform
+llvm::FunctionPass *
+CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter);
 
 }  // namespace anvill
