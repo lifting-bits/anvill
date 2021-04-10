@@ -25,8 +25,15 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
 #include <llvm/Pass.h>
+#include <llvm/Transforms/IPO.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Transforms/Utils/Local.h>
+#include <remill/BC/ABI.h>
+#include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
 #include <utility>
@@ -36,8 +43,9 @@
 namespace anvill {
 namespace {
 
-const std::string_view remill_jump = "__remill_jump";
-const std::string_view remill_function_return = "__remill_function_return";
+const std::string kRemillJumpIntrinsicName = "__remill_jump";
+const std::string kRemillFunctionReturnIntrinsicName =
+    "__remill_function_return";
 
 enum ReturnAddressResult {
 
@@ -71,7 +79,6 @@ class TransformRemillJumpIntrinsics final : public llvm::FunctionPass {
   const CrossReferenceResolver xref_resolver_;
 };
 
-
 char TransformRemillJumpIntrinsics::ID = '\0';
 
 // Returns `true` if `val` is a possible return address
@@ -79,24 +86,7 @@ ReturnAddressResult
 TransformRemillJumpIntrinsics::QueryReturnAddress(const llvm::DataLayout &dl,
                                                   llvm::Value *val) const {
 
-  if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
-      return kReturnAddressProgramCounter;
-    } else if (auto func = call->getCalledFunction()) {
-      if (func->getName().startswith("__remill_read_memory_")) {
-        auto addr = call->getArgOperand(1);  // Address
-
-        // Could it be address of return address ??
-        auto addr_of_ret = llvm::dyn_cast<llvm::CallBase>(addr);
-        if (addr_of_ret->getIntrinsicID() ==
-            llvm::Intrinsic::addressofreturnaddress) {
-          return kReturnAddressProgramCounter;
-        }
-      }
-    }
-
-  } else if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val);
-             gv && IsReturnAddress(gv)) {
+  if (IsReturnAddress(val)) {
     return kReturnAddressProgramCounter;
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
@@ -121,7 +111,7 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(const llvm::DataLayout &dl,
 // with the given function type
 static llvm::Function *FindIntrinsic(llvm::Module *module,
                                      llvm::FunctionType *type,
-                                     const char *name) {
+                                     std::string name) {
   auto function = module->getFunction(name);
   if (!function) {
     function = llvm::Function::Create(type, llvm::GlobalValue::ExternalLinkage,
@@ -141,9 +131,8 @@ static llvm::Function *FindIntrinsic(llvm::Module *module,
 
 // Find the call site of the given function and add them to vector
 // if `pred(call)` is true
-static std::vector<llvm::CallBase *>
-FindFunctionCalls(llvm::Function &func,
-                  std::function<bool(llvm::CallBase *)> pred) {
+template <typename T>
+std::vector<llvm::CallBase *> FindFunctionCalls(llvm::Function &func, T pred) {
   std::vector<llvm::CallBase *> found;
   for (auto &inst : llvm::instructions(func)) {
     if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst); call && pred(call)) {
@@ -161,10 +150,16 @@ bool TransformRemillJumpIntrinsics::TransformJumpIntrinsic(
   bool func_replaced = false;
 
   const auto called_func = call->getCalledFunction();
-  if (called_func && called_func->getName() == remill_jump.data()) {
+  if (called_func && called_func->getName() == kRemillJumpIntrinsicName) {
     auto func_type = call->getCalledFunction()->getFunctionType();
     auto intrinsic =
-        FindIntrinsic(module, func_type, remill_function_return.data());
+        FindIntrinsic(module, func_type, kRemillFunctionReturnIntrinsicName);
+
+    // undef state pointer argument
+    auto state_ptr_arg = call->getArgOperand(remill::kStatePointerArgNum);
+    auto undef_val = llvm::UndefValue::get(state_ptr_arg->getType());
+    call->setArgOperand(remill::kStatePointerArgNum, undef_val);
+
     call->setCalledOperand(intrinsic);
 
     // if the called function has no uses delete them
@@ -186,7 +181,7 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
   const auto &dl = module->getDataLayout();
   auto calls = FindFunctionCalls(func, [&](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
-    if (!func || !(func->getName() == remill_jump.data())) {
+    if (!func || func->getName() != kRemillJumpIntrinsicName) {
       return false;
     }
 
@@ -201,6 +196,20 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
   auto ret = false;
   for (auto call : calls) {
     ret = TransformJumpIntrinsic(call) || ret;
+  }
+
+  if (ret) {
+
+    // Run private function passes if the jump instrinsics
+    // are replaced
+    llvm::legacy::FunctionPassManager fpm(module);
+    fpm.add(llvm::createDeadCodeEliminationPass());
+    fpm.add(llvm::createSROAPass());
+    fpm.add(llvm::createCFGSimplificationPass());
+    fpm.add(llvm::createInstructionCombiningPass());
+    fpm.doInitialization();
+    fpm.run(func);
+    fpm.doFinalization();
   }
 
   return ret;
