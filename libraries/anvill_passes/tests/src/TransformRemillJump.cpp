@@ -39,6 +39,8 @@ TEST_SUITE("TransformRemillJump") {
     REQUIRE(arch != nullptr);
 
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
+
+    // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(),
