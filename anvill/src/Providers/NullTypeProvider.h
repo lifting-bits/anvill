@@ -18,37 +18,33 @@
 #pragma once
 
 #include <anvill/Decl.h>
-#include <anvill/Lifters/Options.h>
-#include <anvill/Providers/IMemoryProvider.h>
 #include <anvill/Providers/ITypeProvider.h>
-
-#include <cstdint>
-#include <map>
-#include <memory>
-#include <set>
-#include <unordered_map>
+#include <glog/logging.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Type.h>
+#include <remill/BC/Util.h>
 
 namespace anvill {
 
-// Orchestrates lifting of instructions and control-flow between instructions.
-class DataLifter final {
+class NullTypeProvider final : public ITypeProvider {
  public:
-  ~DataLifter(void);
+  static Ptr Create(void);
+  virtual ~NullTypeProvider(void) override;
 
-  DataLifter(const LifterOptions &options, IMemoryProvider &memory_provider,
-             ITypeProvider &type_provider);
+  std::optional<FunctionDecl> TryGetFunctionType(uint64_t) override;
 
-  // Lift a function. Will return `nullptr` if the memory is not accessible.
-  llvm::Constant *LiftData(const GlobalVarDecl &decl,
-                           EntityLifterImpl &lifter_context);
+  std::optional<GlobalVarDecl>
+  TryGetVariableType(uint64_t, const llvm::DataLayout &) override;
 
-  // Declare a lifted a variable. Will not return `nullptr`.
-  llvm::Constant *GetOrDeclareData(const GlobalVarDecl &decl,
-                                   EntityLifterImpl &lifter_context);
+  virtual void QueryRegisterStateAtInstruction(
+      uint64_t, uint64_t,
+      std::function<void(const std::string &, llvm::Type *,
+                         std::optional<uint64_t>)>) override;
 
  private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
+  NullTypeProvider(void);
 };
 
 }  // namespace anvill

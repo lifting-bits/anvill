@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <anvill/Program.h>
+#include <anvill/IProgram.h>
 #include <anvill/Result.h>
 
 #include <memory>
@@ -32,7 +32,7 @@ class IControlFlowProvider {
  public:
   using Ptr = std::unique_ptr<IControlFlowProvider>;
 
-  static Result<Ptr, ControlFlowProviderError> Create(const Program &program);
+  static Result<Ptr, ControlFlowProviderError> Create(const IProgram &program);
   virtual ~IControlFlowProvider(void) = default;
 
   // Returns a possible redirection for the given target

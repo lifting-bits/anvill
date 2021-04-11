@@ -32,7 +32,8 @@ add_library(anvill STATIC
   include/anvill/TypePrinter.h
   src/TypePrinter.cpp
 
-  include/anvill/Program.h
+  include/anvill/IProgram.h
+  src/Program.h
   src/Program.cpp
 
   include/anvill/Decl.h
@@ -73,11 +74,23 @@ add_library(anvill STATIC
   include/anvill/Analysis/CrossReferenceResolver.h  
   src/Analysis/CrossReferenceResolver.cpp
 
-  include/anvill/Providers/MemoryProvider.h
-  src/Providers/MemoryProvider.cpp
+  include/anvill/Providers/IMemoryProvider.h
+  src/Providers/IMemoryProvider.cpp
   
-  include/anvill/Providers/TypeProvider.h
-  src/Providers/TypeProvider.cpp
+  src/Providers/ProgramMemoryProvider.h
+  src/Providers/ProgramMemoryProvider.cpp
+  
+  src/Providers/NullMemoryProvider.h
+  src/Providers/NullMemoryProvider.cpp
+  
+  include/anvill/Providers/ITypeProvider.h
+  src/Providers/ITypeProvider.cpp
+  
+  src/Providers/ProgramTypeProvider.h
+  src/Providers/ProgramTypeProvider.cpp
+  
+  src/Providers/NullTypeProvider.h
+  src/Providers/NullTypeProvider.cpp
 
   include/anvill/Providers/IControlFlowProvider.h
   src/Providers/ControlFlowProvider.h
@@ -98,20 +111,20 @@ target_link_libraries(anvill PUBLIC
   anvill_passes
 )
 
-macro(target_public_headers TARGET)
-  set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
-endmacro()
+#macro(target_public_headers TARGET)
+#  set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
+#endmacro()
 
-target_public_headers(anvill
-  include/anvill/Decl.h
-  include/anvill/Optimize.h
-  include/anvill/Program.h
-  include/anvill/Result.h
-  include/anvill/Type.h
-  include/anvill/TypeParser.h
-  include/anvill/TypePrinter.h
-  include/anvill/Util.h
-)
+#target_public_headers(anvill
+#  include/anvill/Decl.h
+#  include/anvill/Optimize.h
+#  include/anvill/IProgram.h
+#  include/anvill/Result.h
+#  include/anvill/Type.h
+#  include/anvill/TypeParser.h
+#  include/anvill/TypePrinter.h
+#  include/anvill/Util.h
+#)
 
 add_subdirectory("python")
 

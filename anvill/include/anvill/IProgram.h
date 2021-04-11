@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Trail of Bits, Inc.
+ * Copyright (c) 2020 Trail of Bits, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,23 +17,26 @@
 
 #pragma once
 
-#include <anvill/Providers/IControlFlowProvider.h>
+#include <memory>
 
 namespace anvill {
 
-class ControlFlowProvider final : public IControlFlowProvider {
+// A view into a program binary and its data.
+class IProgram {
  public:
-  virtual ~ControlFlowProvider(void) override;
+  using Ptr = std::unique_ptr<IProgram>;
 
-  virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
+  static Ptr Create(void);
+  virtual ~IProgram(void) = default;
+
+  IProgram(const IProgram &) = default;
+  IProgram(IProgram &&) noexcept = default;
+
+  IProgram &operator=(const IProgram &) = default;
+  IProgram &operator=(IProgram &&) noexcept = default;
 
  private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
-
-  ControlFlowProvider(const IProgram &program);
-
-  friend class IControlFlowProvider;
+  IProgram(void) = default;
 };
 
 }  // namespace anvill

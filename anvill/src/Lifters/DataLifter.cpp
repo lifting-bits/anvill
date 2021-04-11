@@ -20,7 +20,6 @@
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Decl.h>
-#include <anvill/Providers/MemoryProvider.h>
 #include <anvill/TypePrinter.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
@@ -34,19 +33,30 @@
 
 namespace anvill {
 
+struct DataLifter::PrivateData final {
+  PrivateData(const LifterOptions &options_, IMemoryProvider &memory_provider_,
+              ITypeProvider &type_provider_)
+      : options(options_),
+        memory_provider(memory_provider_),
+        type_provider(type_provider_),
+        context(options_.module->getContext()) {}
+
+  const LifterOptions &options;
+  MemoryProvider &memory_provider;
+  TypeProvider &type_provider;
+  llvm::LLVMContext &context;
+};
+
 DataLifter::~DataLifter(void) {}
 
-DataLifter::DataLifter(const LifterOptions &options_,
-                       MemoryProvider &memory_provider_,
-                       TypeProvider &type_provider_)
-    : options(options_),
-      memory_provider(memory_provider_),
-      type_provider(type_provider_),
-      context(options.module->getContext()) {}
+DataLifter::DataLifter(const LifterOptions &options,
+                       IMemoryProvider &memory_provider,
+                       ITypeProvider &type_provider)
+    : d(new PrivateData(options, memory_provider, type_provider)) {}
 
 // Declare a lifted a variable. Will not return `nullptr`.
 llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
-                                             EntityLifterImpl &lifter_context) {
+                                             EntityLifter &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);

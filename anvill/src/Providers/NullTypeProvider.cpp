@@ -15,25 +15,28 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-#include <anvill/Providers/IControlFlowProvider.h>
+#include "NullTypeProvider.h"
 
 namespace anvill {
 
-class ControlFlowProvider final : public IControlFlowProvider {
- public:
-  virtual ~ControlFlowProvider(void) override;
+NullTypeProvider::NullTypeProvider(void) {}
 
-  virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
+std::optional<FunctionDecl> NullTypeProvider::TryGetFunctionType(uint64_t) {
+  return std::nullopt;
+}
 
- private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
+std::optional<GlobalVarDecl>
+NullTypeProvider::TryGetVariableType(uint64_t, const llvm::DataLayout &) {
+  return std::nullopt;
+}
 
-  ControlFlowProvider(const IProgram &program);
+void NullTypeProvider::QueryRegisterStateAtInstruction(
+    uint64_t, uint64_t,
+    std::function<void(const std::string &, llvm::Type *,
+                       std::optional<uint64_t>)>) {}
 
-  friend class IControlFlowProvider;
-};
+ITypeProvider::Ptr NullTypeProvider::Create(void) {
+  return Ptr(new NullTypeProvider());
+}
 
 }  // namespace anvill

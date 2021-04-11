@@ -17,23 +17,21 @@
 
 #pragma once
 
-#include <anvill/Providers/IControlFlowProvider.h>
+#include <anvill/Providers/IMemoryProvider.h>
 
 namespace anvill {
 
-class ControlFlowProvider final : public IControlFlowProvider {
+class NullMemoryProvider final : public IMemoryProvider {
  public:
-  virtual ~ControlFlowProvider(void) override;
+  static Ptr Create();
 
-  virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
+  virtual ~NullMemoryProvider(void) override = default;
 
- private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
+  virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) const override;
 
-  ControlFlowProvider(const IProgram &program);
-
-  friend class IControlFlowProvider;
+ protected:
+  NullMemoryProvider(void) = default;
 };
 
 }  // namespace anvill

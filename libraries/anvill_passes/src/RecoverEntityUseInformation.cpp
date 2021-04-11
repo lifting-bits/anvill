@@ -20,11 +20,11 @@
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
-#include <anvill/Providers/TypeProvider.h>
 #include <llvm/IR/Constant.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
+#include "../../../anvill/include/anvill/Providers/ITypeProvider.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -154,7 +154,7 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
       //            unresolved references in order to satisfy the request.
       entity = address_lifter.Lift(ra.u.address, inferred_type);
 
-    // We have not inferred information about this, time to go find it.
+      // We have not inferred information about this, time to go find it.
     } else {
 
       bool is_var = false;
@@ -165,14 +165,14 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
           maybe_func_decl) {
         entity = entity_lifter.DeclareEntity(*maybe_func_decl);
 
-      // Try to look it up as a variable.
+        // Try to look it up as a variable.
       } else if (auto maybe_var_decl =
                      type_provider.TryGetVariableType(ra.u.address, dl)) {
         is_var = true;
         var_address = maybe_var_decl->address;
         entity = entity_lifter.LiftEntity(*maybe_var_decl);
 
-      // Try to see if it's one past the end of a known entity.
+        // Try to see if it's one past the end of a known entity.
       } else if (auto maybe_prev_var_decl =
                      type_provider.TryGetVariableType(ra.u.address - 1u, dl);
                  maybe_prev_var_decl && ra.u.address) {

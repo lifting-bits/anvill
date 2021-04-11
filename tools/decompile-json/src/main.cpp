@@ -21,10 +21,11 @@
 #include <cstdint>
 #include <ios>
 #include <iostream>
+#include <magic_enum.hpp>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <magic_enum.hpp>
+
 #include "anvill/Version.h"
 
 // clang-format off
@@ -45,12 +46,12 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
+#include "../../../anvill/include/anvill/IProgram.h"
+#include "../../../anvill/include/anvill/Providers/IMemoryProvider.h"
+#include "../../../anvill/include/anvill/Providers/ITypeProvider.h"
 
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
-#include "anvill/Program.h"
 #include "anvill/TypeParser.h"
 #include "anvill/Util.h"
 
@@ -490,8 +491,9 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
   for (const llvm::json::Value &list_entry : redirection_list) {
     auto address_pair = list_entry.getAsArray();
     if (address_pair == nullptr) {
-      LOG(ERROR) << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
+          << FLAGS_spec << "'";
 
       return false;
     }
@@ -499,9 +501,10 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     const auto &source_address_obj = address_pair->operator[](0);
     auto opt_source_address = source_address_obj.getAsInteger();
     if (!opt_source_address) {
-      LOG(ERROR) << "Invalid integer value in source address for the #"
-                 << index << " of the control_flow_redirections in the following spec file: '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Invalid integer value in source address for the #" << index
+          << " of the control_flow_redirections in the following spec file: '"
+          << FLAGS_spec << "'";
 
       return false;
     }
@@ -509,9 +512,10 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     const auto &dest_address_obj = address_pair->operator[](1);
     auto opt_dest_address = dest_address_obj.getAsInteger();
     if (!opt_dest_address) {
-      LOG(ERROR) << "Invalid integer value in destination address for the #"
-                 << index << " of the control_flow_redirections in the following spec file: '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Invalid integer value in destination address for the #" << index
+          << " of the control_flow_redirections in the following spec file: '"
+          << FLAGS_spec << "'";
 
       return false;
     }
@@ -519,7 +523,8 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     auto source_address = opt_source_address.getValue();
     auto dest_address = opt_dest_address.getValue();
 
-    buffer << "  " << std::hex << source_address << " -> " << dest_address << "\n";
+    buffer << "  " << std::hex << source_address << " -> " << dest_address
+           << "\n";
 
     program.AddControlFlowRedirection(source_address, dest_address);
 
@@ -761,8 +766,8 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  anvill::LifterOptions
-      options(arch.get(), module,ctrl_flow_provider_res.TakeValue());
+  anvill::LifterOptions options(arch.get(), module,
+                                ctrl_flow_provider_res.TakeValue());
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does

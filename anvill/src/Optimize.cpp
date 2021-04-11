@@ -49,10 +49,10 @@
 
 #include "anvill/ABI.h"
 #include "anvill/Decl.h"
-#include "anvill/Program.h"
 #include "anvill/Util.h"
 
 #include <anvill/Transforms.h>
+#include "../include/anvill/IProgram.h"
 
 namespace anvill {
 

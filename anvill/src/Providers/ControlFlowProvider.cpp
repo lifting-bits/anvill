@@ -17,15 +17,18 @@
 
 #include "ControlFlowProvider.h"
 
+#include "../Program.h"
+
 namespace anvill {
 
 struct ControlFlowProvider::PrivateData final {
-  PrivateData(const Program &program_) : program(program_) {}
+  PrivateData(const IProgram &program_)
+      : program(static_cast<const Program &>(program_)) {}
 
   const Program &program;
 };
 
-ControlFlowProvider::ControlFlowProvider(const Program &program)
+ControlFlowProvider::ControlFlowProvider(const IProgram &program)
     : d(new PrivateData(program)) {}
 
 ControlFlowProvider::~ControlFlowProvider(void) = default;
@@ -40,7 +43,7 @@ std::uint64_t ControlFlowProvider::GetRedirection(std::uint64_t address) const {
 }
 
 Result<IControlFlowProvider::Ptr, ControlFlowProviderError>
-IControlFlowProvider::Create(const Program &program) {
+IControlFlowProvider::Create(const IProgram &program) {
   try {
     return Ptr(new ControlFlowProvider(program));
 

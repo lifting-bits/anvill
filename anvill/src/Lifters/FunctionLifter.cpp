@@ -19,8 +19,6 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Lifters/DeclLifter.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
 #include <anvill/TypePrinter.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -48,6 +46,8 @@
 
 #include <sstream>
 
+#include "../../include/anvill/Providers/IMemoryProvider.h"
+#include "../../include/anvill/Providers/ITypeProvider.h"
 #include "EntityLifter.h"
 
 // TODO(pag): Externalize this into some kind of `LifterOptions` struct.
@@ -325,7 +325,8 @@ void FunctionLifter::VisitConditionalFunctionReturn(
                            not_taken_block);
 }
 
-std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
+std::optional<FunctionDecl>
+FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
   auto redirected_addr = options.ctrl_flow_provider->GetRedirection(address);
 
   // In case we get redirected but still fail, try once more with the original
@@ -593,7 +594,8 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc), taken_block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc),
+                           taken_block);
   llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
                            not_taken_block);
 }
@@ -1043,7 +1045,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     if (!inst_block) {
       inst_block = block;
 
-    // We've already lifted this instruction via another control-flow edge.
+      // We've already lifted this instruction via another control-flow edge.
     } else {
       llvm::BranchInst::Create(inst_block, block);
       continue;
@@ -1057,7 +1059,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
-    // Didn't get a valid instruction.
+      // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
@@ -1750,8 +1752,8 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
       CHECK(new_version->isDeclaration());
     }
 
-  // It's possible that we've lifted this function before, but that it was
-  // renamed by user code, and so the above check failed. Go check for that.
+    // It's possible that we've lifted this function before, but that it was
+    // renamed by user code, and so the above check failed. Go check for that.
   } else {
     lifter_context.ForEachEntityAtAddress(address, [&](llvm::Constant *gv) {
       if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);

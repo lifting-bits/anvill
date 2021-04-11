@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <anvill/IProgram.h>
 #include <remill/BC/Compat/Error.h>
 
 #include <cstdint>
@@ -179,15 +180,11 @@ struct GlobalVarDecl;
 //            as the intended target, which would could be a
 //            function defined in a shared library, also present
 //            in the address space.
-class Program {
+class Program final : public IProgram {
  public:
   Program(void);
 
-  ~Program(void);
-  Program(const Program &) = default;
-  Program(Program &&) noexcept = default;
-  Program &operator=(const Program &) = default;
-  Program &operator=(Program &&) noexcept = default;
+  virtual ~Program(void) override;
 
   static llvm::Expected<Program> Containing(const FunctionDecl *decl);
   static llvm::Expected<Program> Containing(const GlobalVarDecl *decl);

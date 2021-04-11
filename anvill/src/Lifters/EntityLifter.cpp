@@ -17,8 +17,6 @@
 
 #include "EntityLifter.h"
 
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
@@ -29,6 +27,9 @@
 #include <remill/BC/Util.h>
 
 #include <sstream>
+
+#include "../../include/anvill/Providers/IMemoryProvider.h"
+#include "../../include/anvill/Providers/ITypeProvider.h"
 
 namespace anvill {
 

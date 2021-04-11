@@ -19,8 +19,6 @@
 
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
 
 #include <functional>
 #include <unordered_map>
@@ -28,6 +26,8 @@
 #include <utility>
 #include <vector>
 
+#include "../../include/anvill/Providers/IMemoryProvider.h"
+#include "../../include/anvill/Providers/ITypeProvider.h"
 #include "DataLifter.h"
 #include "FunctionLifter.h"
 #include "ValueLifter.h"

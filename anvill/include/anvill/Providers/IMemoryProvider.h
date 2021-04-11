@@ -17,13 +17,13 @@
 
 #pragma once
 
+#include <anvill/IProgram.h>
+
 #include <cstdint>
 #include <memory>
 #include <tuple>
 
 namespace anvill {
-
-class Program;
 
 enum class BytePermission : uint8_t {
   kUnknown,
@@ -46,50 +46,25 @@ enum class ByteAvailability : uint8_t {
 };
 
 // Provides bytes of memory from some source.
-class MemoryProvider {
+class IMemoryProvider {
  public:
-  virtual ~MemoryProvider(void);
+  using Ptr = std::unique_ptr<IMemoryProvider>;
 
-  inline static bool HasByte(ByteAvailability availability) {
-    return ByteAvailability::kAvailable == availability;
-  }
+  static Ptr CreateFromProgram(const IProgram &program);
+  static Ptr CreateNull();
 
-  inline static bool IsValidAddress(ByteAvailability availability) {
-    switch (availability) {
-      case ByteAvailability::kUnknown:
-      case ByteAvailability::kAvailable: return true;
-      default: return false;
-    }
-  }
-
-  inline static bool IsExecutable(BytePermission perms) {
-    switch (perms) {
-      case BytePermission::kUnknown:
-      case BytePermission::kReadableWritableExecutable:
-      case BytePermission::kReadableExecutable: return true;
-      default: return false;
-    }
-  }
+  virtual ~IMemoryProvider(void) = default;
+  IMemoryProvider(void) = default;
 
   // Query for the value, availability, and permission of a byte.
   virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
-  Query(uint64_t address) = 0;
+  Query(uint64_t address) const = 0;
 
-  // Sources bytes from an `anvill::Program`.
-  static std::shared_ptr<MemoryProvider>
-  CreateProgramMemoryProvider(const Program &program);
+  IMemoryProvider(const IMemoryProvider &) = delete;
+  IMemoryProvider(IMemoryProvider &&) noexcept = delete;
 
-  // Creates a memory provider that gives access to no memory.
-  static std::shared_ptr<MemoryProvider> CreateNullMemoryProvider(void);
-
- protected:
-  MemoryProvider(void) = default;
-
- private:
-  MemoryProvider(const MemoryProvider &) = delete;
-  MemoryProvider(MemoryProvider &&) noexcept = delete;
-  MemoryProvider &operator=(const MemoryProvider &) = delete;
-  MemoryProvider &operator=(MemoryProvider &&) noexcept = delete;
+  IMemoryProvider &operator=(const IMemoryProvider &) = delete;
+  IMemoryProvider &operator=(IMemoryProvider &&) noexcept = delete;
 };
 
 }  // namespace anvill

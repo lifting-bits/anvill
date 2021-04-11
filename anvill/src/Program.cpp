@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "anvill/Program.h"
+#include "../Program.h"
 
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
@@ -34,6 +34,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../include/anvill/IProgram.h"
 #include "anvill/Decl.h"
 
 namespace anvill {
@@ -494,12 +495,12 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
   } else if (tpl.returns.size() == 1) {
     ret_type = tpl.returns[0].type;
 
-  // The multiple return value case is most interesting, and somewhere
-  // where we see some divergence between C and what we will decompile.
-  // For example, on 32-bit x86, a 64-bit return value might be spread
-  // across EAX:EDX. Instead of representing this by a single value, we
-  // represent it as a structure if two 32-bit ints, and make sure to say
-  // that one part is in EAX, and the other is in EDX.
+    // The multiple return value case is most interesting, and somewhere
+    // where we see some divergence between C and what we will decompile.
+    // For example, on 32-bit x86, a 64-bit return value might be spread
+    // across EAX:EDX. Instead of representing this by a single value, we
+    // represent it as a structure if two 32-bit ints, and make sure to say
+    // that one part is in EAX, and the other is in EDX.
   } else {
     llvm::SmallVector<llvm::Type *, 8> ret_types;
     for (auto &ret_val : tpl.returns) {
@@ -561,7 +562,7 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
 }
 
 bool Program::Impl::TryGetControlFlowRedirection(std::uint64_t &destination,
-                                              std::uint64_t address) const {
+                                                 std::uint64_t address) const {
   destination = 0U;
 
   auto it = ctrl_flow_redirections.find(address);

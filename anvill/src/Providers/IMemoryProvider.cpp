@@ -15,25 +15,20 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include <anvill/Providers/IMemoryProvider.h>
 
-#include <anvill/Providers/IControlFlowProvider.h>
+#include "NullMemoryProvider.h"
+#include "ProgramMemoryProvider.h"
 
 namespace anvill {
 
-class ControlFlowProvider final : public IControlFlowProvider {
- public:
-  virtual ~ControlFlowProvider(void) override;
+IMemoryProvider::Ptr
+IMemoryProvider::CreateFromProgram(const IProgram &program) {
+  return ProgramMemoryProvider::Create(program);
+}
 
-  virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
-
- private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
-
-  ControlFlowProvider(const IProgram &program);
-
-  friend class IControlFlowProvider;
-};
+IMemoryProvider::Ptr IMemoryProvider::CreateNull(void) {
+  return NullMemoryProvider::Create();
+}
 
 }  // namespace anvill

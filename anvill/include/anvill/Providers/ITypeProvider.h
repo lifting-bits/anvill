@@ -18,6 +18,7 @@
 #pragma once
 
 #include <anvill/Decl.h>
+#include <anvill/IProgram.h>
 
 #include <cstdint>
 #include <functional>
@@ -26,19 +27,19 @@
 #include <string>
 #include <utility>
 
-namespace llvm {
-class FunctionType;
-class LLVMContext;
-class Type;
-}  // namespace llvm
 namespace anvill {
 
-class Program;
-
 // Provides bytes of memory from some source.
-class TypeProvider {
+class ITypeProvider {
  public:
-  virtual ~TypeProvider(void);
+  using Ptr = std::unique_ptr<ITypeProvider>;
+
+  static Ptr CreateFromProgram(llvm::LLVMContext &context,
+                               const IProgram &program);
+  static Ptr CreateNull();
+
+  virtual ~ITypeProvider(void) = default;
+  ITypeProvider() = default;
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
@@ -55,28 +56,13 @@ class TypeProvider {
       uint64_t func_address, uint64_t inst_address,
       std::function<void(const std::string &, llvm::Type *,
                          std::optional<uint64_t>)>
-          typed_reg_cb);
+          typed_reg_cb) = 0;
 
-  // Sources types from an `anvill::Program`.
-  static std::shared_ptr<TypeProvider>
-  CreateProgramTypeProvider(llvm::LLVMContext &context_,
-                            const Program &program);
+  ITypeProvider(const ITypeProvider &) = delete;
+  ITypeProvider(ITypeProvider &&) noexcept = delete;
 
-  // Creates a type provider that always fails to provide type information.
-  static std::shared_ptr<TypeProvider>
-  CreateNullTypeProvider(llvm::LLVMContext &context_);
-
- protected:
-  explicit TypeProvider(llvm::LLVMContext &context_);
-
-  llvm::LLVMContext &context;
-
- private:
-  TypeProvider(const TypeProvider &) = delete;
-  TypeProvider(TypeProvider &&) noexcept = delete;
-  TypeProvider &operator=(const TypeProvider &) = delete;
-  TypeProvider &operator=(TypeProvider &&) noexcept = delete;
-  TypeProvider(void) = delete;
+  ITypeProvider &operator=(const ITypeProvider &) = delete;
+  ITypeProvider &operator=(ITypeProvider &&) noexcept = delete;
 };
 
 }  // namespace anvill

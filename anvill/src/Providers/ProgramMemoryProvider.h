@@ -17,38 +17,26 @@
 
 #pragma once
 
-#include <anvill/Decl.h>
-#include <anvill/Lifters/Options.h>
 #include <anvill/Providers/IMemoryProvider.h>
-#include <anvill/Providers/ITypeProvider.h>
 
-#include <cstdint>
-#include <map>
 #include <memory>
-#include <set>
-#include <unordered_map>
 
 namespace anvill {
 
-// Orchestrates lifting of instructions and control-flow between instructions.
-class DataLifter final {
+class ProgramMemoryProvider final : public IMemoryProvider {
  public:
-  ~DataLifter(void);
+  static Ptr Create(const IProgram &program);
+  virtual ~ProgramMemoryProvider(void) override;
 
-  DataLifter(const LifterOptions &options, IMemoryProvider &memory_provider,
-             ITypeProvider &type_provider);
-
-  // Lift a function. Will return `nullptr` if the memory is not accessible.
-  llvm::Constant *LiftData(const GlobalVarDecl &decl,
-                           EntityLifterImpl &lifter_context);
-
-  // Declare a lifted a variable. Will not return `nullptr`.
-  llvm::Constant *GetOrDeclareData(const GlobalVarDecl &decl,
-                                   EntityLifterImpl &lifter_context);
+  virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) const override;
 
  private:
   struct PrivateData;
   std::unique_ptr<PrivateData> d;
+
+  ProgramMemoryProvider(const IProgram &program_);
 };
+
 
 }  // namespace anvill
