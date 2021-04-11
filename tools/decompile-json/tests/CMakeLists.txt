@@ -20,3 +20,8 @@ add_test(NAME anvill_test_jmp_ret0
   COMMAND "$<TARGET_FILE:anvill-decompile-json>" -spec "${CMAKE_CURRENT_SOURCE_DIR}/specs/jmp_ret0.json" -bc_out "${CMAKE_CURRENT_BINARY_DIR}/jmp_ret0.bc" -ir_out "${CMAKE_CURRENT_BINARY_DIR}/jmp_ret0.ir"
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
+
+add_test(NAME anvill_test_jmp_ret1
+  COMMAND "$<TARGET_FILE:anvill-decompile-json>" -spec "${CMAKE_CURRENT_SOURCE_DIR}/specs/jmp_ret1.json" -bc_out "${CMAKE_CURRENT_BINARY_DIR}/jmp_ret1.bc" -ir_out "${CMAKE_CURRENT_BINARY_DIR}/jmp_ret1.ir"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+)
