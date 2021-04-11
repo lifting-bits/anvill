@@ -17,6 +17,7 @@ add_executable(test_anvill_passes
   src/SplitStackFrameAtReturnAddress.cpp
   src/InstructionFolderPass.cpp
   src/BrightenPointers.cpp
+  src/TransformRemillJump.cpp
 )
 
 target_link_libraries(test_anvill_passes PRIVATE
