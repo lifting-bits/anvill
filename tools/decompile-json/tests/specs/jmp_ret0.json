@@ -1,0 +1,48 @@
+{
+    "arch": "amd64",
+    "control_flow_redirections": [],
+    "functions": [
+        {
+            "address": 0,
+            "return_address": {
+                "memory": {
+                    "offset": 0,
+                    "register": "RSP"
+                },
+                "type": "L"
+            },
+            "return_stack_pointer": {
+                "offset": 8,
+                "register": "RSP",
+                "type": "L"
+            },
+            "return_values": [
+                {
+                    "register": "RAX",
+                    "type": "l"
+                }
+            ]
+        }
+    ],
+    "memory": [
+        {
+            "address": 0,
+            "data": "b8080000005bffe3",
+            "is_executable": true,
+            "is_writeable": false
+        }
+    ],
+    "os": "linux",
+    "stack": {
+        "address": 87960930222080,
+        "size": 24576,
+        "start_offset": 4096
+    },
+    "symbols": [
+        [
+            0,
+            "slice"
+        ]
+    ],
+    "variables": []
+}
