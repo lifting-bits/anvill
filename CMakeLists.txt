@@ -51,6 +51,7 @@ endif()
 add_subdirectory("libraries")
 add_subdirectory("tools")
 add_subdirectory("anvill")
+add_subdirectory("components")
 
 if(ANVILL_ENABLE_SANITIZERS)
   configureSanitizers("remill_settings")

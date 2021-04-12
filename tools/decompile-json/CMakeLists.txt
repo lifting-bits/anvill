@@ -12,7 +12,6 @@ add_executable(anvill-decompile-json
 
 target_link_libraries(anvill-decompile-json PRIVATE
   anvill
-  thirdparty_magicenum
 )
 
 appendRemillVersionToTargetOutputName(anvill-decompile-json)

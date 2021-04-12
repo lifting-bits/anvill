@@ -14,8 +14,8 @@ endif()
 
 set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Build type")
 
-option(ANVILL_ENABLE_INSTALL_TARGET "Set to ON to enable the install directives. This installs both the native and python components" true)
-option(ANVILL_ENABLE_TESTS "Set to ON to enable the tests" true)
+option(ANVILL_ENABLE_INSTALL_TARGET "Set to ON to enable the install directives. This installs both the native and python components" false)
+option(ANVILL_ENABLE_TESTS "Set to ON to enable the tests" false)
 option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries to the **local machine** at build time. Mostly used for local development, not required for packaging")
 option(ANVILL_ENABLE_SANITIZERS "Set to ON to enable sanitizers. May not work with VCPKG")
 

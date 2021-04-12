@@ -15,8 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Decl.h>
-#include <anvill/Lifters/DeclLifter.h>
+#include "Decl/Decl.h"
+#include "Lifters/DeclLifter.h"
+
 #include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -31,7 +32,6 @@
 
 namespace anvill {
 namespace {
-
 
 // Adapt `src` to another type (likely an integer type) that is `dest_type`.
 static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,

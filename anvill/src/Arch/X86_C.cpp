@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Decl.h>
+#include "Decl/Decl.h"
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>

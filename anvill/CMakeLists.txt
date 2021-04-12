@@ -6,95 +6,59 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-add_library(anvill STATIC
-  include/anvill/Type.h
-  include/anvill/Result.h
+set(public_anvill_header_list
+  include/anvill/IEntityLifter.h
+  include/anvill/ILifterOptions.h
+)
 
+add_library(anvill STATIC
+  ${public_anvill_header_list}
+
+  src/Common/Result.h
+
+  src/Common/LifterOptions.h
+  src/Common/LifterOptions.cpp
+
+  src/Program/Byte.h
+  src/Program/Byte.cpp
+
+  src/Program/ByteSequence.h
+  src/Program/ByteSequence.cpp
+
+  src/Program/Program.h
+  src/Program/Program.cpp
+
+  src/Decl/Decl.h
+  src/Decl/TypedRegisterDecl.h
+
+  src/Decl/FunctionDecl.h
+  src/Decl/FunctionDecl.cpp
+
+  src/Decl/GlobalVarDecl.h
+  src/Decl/GlobalVarDecl.cpp
+
+  src/Decl/ParameterDecl.h
+  src/Decl/ParameterDecl.cpp
+
+  src/Decl/ValueDecl.h
+  src/Decl/ValueDecl.cpp
+
+  src/Lifters/DeclLifter.h
+  src/Lifters/DeclLifter.cpp
+
+  src/Arch/Arch.h
+  src/Arch/Arch.cpp
   src/Arch/AArch32_C.cpp
   src/Arch/AArch64_C.cpp
+  src/Arch/AllocationState.cpp
+  src/Arch/AllocationState.h
   src/Arch/SPARC32_C.cpp
   src/Arch/SPARC64_C.cpp
+  src/Arch/X86_64_SysV.cpp
   src/Arch/X86_C.cpp
   src/Arch/X86_FastCall.cpp
   src/Arch/X86_StdCall.cpp
   src/Arch/X86_ThisCall.cpp
-  src/Arch/X86_64_SysV.cpp
-
-  src/Arch/AllocationState.h
-  src/Arch/AllocationState.cpp
-
-  src/Arch/Arch.h
-  src/Arch/Arch.cpp
-
-  include/anvill/TypeParser.h
-  src/TypeParser.cpp
-
-  include/anvill/TypePrinter.h
-  src/TypePrinter.cpp
-
-  include/anvill/IProgram.h
-  src/Program.h
-  src/Program.cpp
-
-  include/anvill/Decl.h
-  src/Decl.cpp
-
-  include/anvill/Optimize.h
-  src/Optimize.cpp
-
-  include/anvill/Util.h
-  src/Util.cpp
-  
-  include/anvill/Lifters/Options.h
-  src/Lifters/Options.cpp
-  
-  include/anvill/Lifters/ValueLifter.h
-  src/Lifters/ValueLifter.h
-  src/Lifters/ValueLifter.cpp
-  
-  include/anvill/Lifters/EntityLifter.h
-  src/Lifters/EntityLifter.h
-  src/Lifters/EntityLifter.cpp
-  
-  include/anvill/Lifters/DeclLifter.h
-  src/Lifters/DeclLifter.cpp
-  
-  src/Lifters/FunctionLifter.h
-  src/Lifters/FunctionLifter.cpp
-  
-  src/Lifters/DataLifter.h
-  src/Lifters/DataLifter.cpp
-  
-  include/anvill/ABI.h
-  src/ABI.cpp
-
-  include/anvill/Analysis/Utils.h
-  src/Analysis/Utils.cpp
-
-  include/anvill/Analysis/CrossReferenceResolver.h  
-  src/Analysis/CrossReferenceResolver.cpp
-
-  include/anvill/Providers/IMemoryProvider.h
-  src/Providers/IMemoryProvider.cpp
-  
-  src/Providers/ProgramMemoryProvider.h
-  src/Providers/ProgramMemoryProvider.cpp
-  
-  src/Providers/NullMemoryProvider.h
-  src/Providers/NullMemoryProvider.cpp
-  
-  include/anvill/Providers/ITypeProvider.h
-  src/Providers/ITypeProvider.cpp
-  
-  src/Providers/ProgramTypeProvider.h
-  src/Providers/ProgramTypeProvider.cpp
-  
-  src/Providers/NullTypeProvider.h
-  src/Providers/NullTypeProvider.cpp
-
-  include/anvill/Providers/IControlFlowProvider.h
-  src/Providers/ControlFlowProvider.h
-  src/Providers/ControlFlowProvider.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)
@@ -102,29 +66,19 @@ appendRemillVersionToTargetOutputName(anvill)
 target_include_directories(anvill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
 target_link_libraries(anvill PUBLIC
   remill_settings
   remill
   anvill_version
-  anvill_passes
+  llvm_utils
 )
 
-#macro(target_public_headers TARGET)
-#  set_target_properties(${TARGET} PROPERTIES PUBLIC_HEADER "${ARGN}")
-#endmacro()
-
-#target_public_headers(anvill
-#  include/anvill/Decl.h
-#  include/anvill/Optimize.h
-#  include/anvill/IProgram.h
-#  include/anvill/Result.h
-#  include/anvill/Type.h
-#  include/anvill/TypeParser.h
-#  include/anvill/TypePrinter.h
-#  include/anvill/Util.h
-#)
+set_target_properties(anvill PROPERTIES
+  PUBLIC_HEADER "${public_anvill_header_list}"
+)
 
 add_subdirectory("python")
 

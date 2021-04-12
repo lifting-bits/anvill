@@ -24,8 +24,6 @@
 
 #include <algorithm>
 
-#include "anvill/Decl.h"
-
 namespace anvill {
 namespace {
 
