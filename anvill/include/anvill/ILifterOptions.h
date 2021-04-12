@@ -167,7 +167,7 @@ class ILifterOptions {
   using Ptr = std::unique_ptr<ILifterOptions>;
   static Ptr CreateFromSpecFile(const remill::Arch *arch, llvm::Module &module, const std::filesystem::path &spec_file_path, const Configuration &config);
 
-  virtual const Configuration &config(void) const = 0;
+  virtual const Configuration &Config(void) const = 0;
 
   ILifterOptions(void) = default;
   virtual ~ILifterOptions(void) = default;

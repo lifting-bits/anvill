@@ -17,28 +17,21 @@
 
 #pragma once
 
-#include <anvill/ILifterOptions.h>
-
-#include "Providers/ControlFlowProvider.h"
+#include "Providers/IMemoryProvider.h"
 
 namespace anvill {
 
-// Options that direct the behavior of the code and data lifters.
-class LifterOptions final : public ILifterOptions {
+class NullMemoryProvider final : public IMemoryProvider {
  public:
-  virtual ~LifterOptions(void) override;
+  static Ptr Create();
 
-  virtual const Configuration &Config(void) const override;
+  virtual ~NullMemoryProvider(void) override = default;
 
-  const ControlFlowProvider &GetControlFlowProvider(void ) const;
+  virtual std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) const override;
 
-private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
-
-  LifterOptions(const remill::Arch *arch, llvm::Module &module, const std::filesystem::path &spec_file_path, const Configuration &config);
-  
-  friend class ILifterOptions;
+ protected:
+  NullMemoryProvider(void) = default;
 };
 
 }  // namespace anvill

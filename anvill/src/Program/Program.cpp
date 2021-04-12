@@ -251,7 +251,7 @@ FunctionDecl *Program::FindFunction(uint64_t address) {
 }
 
 bool Program::TryGetControlFlowRedirection(std::uint64_t &destination,
-                                                 std::uint64_t address) {
+                                                 std::uint64_t address) const {
   destination = 0U;
 
   auto it = ctrl_flow_redirections.find(address);

@@ -27,18 +27,30 @@ struct LifterOptions::PrivateData final {
   const remill::Arch *arch{nullptr};
   Configuration configuration;
   Program::Ptr program;
+  ControlFlowProvider::Ptr ctrl_flow_provider;
 };
 
 LifterOptions::~LifterOptions() {}
 
-const ILifterOptions::Configuration &LifterOptions::config(void) const {
+const ILifterOptions::Configuration &LifterOptions::Config(void) const {
   return d->configuration;
+}
+
+const ControlFlowProvider &LifterOptions::GetControlFlowProvider(void) const {
+  return *d->ctrl_flow_provider.get();
 }
 
 LifterOptions::LifterOptions(const remill::Arch *arch, llvm::Module &module, const std::filesystem::path &spec_file_path, const Configuration &config) : d(new PrivateData(module)) {
   d->arch = arch;
   d->configuration = config;
   d->program = Program::CreateFromSpecFile(arch, module.getContext(), spec_file_path);
+  
+  auto ctrl_flow_prov_res = ControlFlowProvider::Create(*d->program.get());
+  if (!ctrl_flow_prov_res.Succeeded()) {
+    throw std::runtime_error("Failed to create the control flow provider");
+  }
+
+  d->ctrl_flow_provider = ctrl_flow_prov_res.TakeValue();
 }
 
 ILifterOptions::Ptr ILifterOptions::CreateFromSpecFile(const remill::Arch *arch, llvm::Module &module, const std::filesystem::path &spec_file_path, const Configuration &config) {

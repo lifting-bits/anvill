@@ -46,6 +46,15 @@ add_library(anvill STATIC
   src/Lifters/DeclLifter.h
   src/Lifters/DeclLifter.cpp
 
+  src/Providers/ControlFlowProvider.h
+  src/Providers/ControlFlowProvider.cpp
+
+  src/Providers/IMemoryProvider.h
+  src/Providers/IMemoryProvider.cpp
+
+  src/Providers/MemoryProviders/NullMemoryProvider.h
+  src/Providers/MemoryProviders/NullMemoryProvider.cpp
+
   src/Arch/Arch.h
   src/Arch/Arch.cpp
   src/Arch/AArch32_C.cpp

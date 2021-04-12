@@ -15,30 +15,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
-#include <anvill/ILifterOptions.h>
-
-#include "Providers/ControlFlowProvider.h"
+#include "NullMemoryProvider.h"
 
 namespace anvill {
 
-// Options that direct the behavior of the code and data lifters.
-class LifterOptions final : public ILifterOptions {
- public:
-  virtual ~LifterOptions(void) override;
+std::tuple<uint8_t, ByteAvailability, BytePermission>
+NullMemoryProvider::Query(uint64_t address) const {
+  return {0, ByteAvailability::kUnknown, BytePermission::kUnknown};
+}
 
-  virtual const Configuration &Config(void) const override;
-
-  const ControlFlowProvider &GetControlFlowProvider(void ) const;
-
-private:
-  struct PrivateData;
-  std::unique_ptr<PrivateData> d;
-
-  LifterOptions(const remill::Arch *arch, llvm::Module &module, const std::filesystem::path &spec_file_path, const Configuration &config);
-  
-  friend class ILifterOptions;
-};
+IMemoryProvider::Ptr NullMemoryProvider::Create() {
+  return Ptr(new (NullMemoryProvider));
+}
 
 }  // namespace anvill
