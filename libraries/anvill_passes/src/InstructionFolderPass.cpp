@@ -47,6 +47,7 @@ const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap
   { llvm::Instruction::Select, InstructionFolderPass::FoldSelectInstruction },
   { llvm::Instruction::PHI, InstructionFolderPass::FoldPHINode },
 };
+
 // clang-format on
 
 // Case handlers for `SelectInst` instructions
@@ -57,6 +58,7 @@ using SelectInstructionFolder = bool (*)(llvm::Instruction *&output,
 
 // clang-format off
 const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstructionFolderMap = {
+
   // Binary operators
   { llvm::Instruction::Add, InstructionFolderPass::FoldSelectWithBinaryOp },
   { llvm::Instruction::FAdd, InstructionFolderPass::FoldSelectWithBinaryOp },
@@ -94,6 +96,7 @@ const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstruct
   // Memory operators
   { llvm::Instruction::GetElementPtr, InstructionFolderPass::FoldSelectWithGEPInst },
 };
+
 // clang-format on
 
 // Case handlers for `PHINode` instructions
@@ -103,6 +106,7 @@ using PHINodeInstructionFolder =
 
 // clang-format off
 const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolderMap = {
+
   // Binary operators
   { llvm::Instruction::Add, InstructionFolderPass::FoldPHINodeWithBinaryOp },
   { llvm::Instruction::FAdd, InstructionFolderPass::FoldPHINodeWithBinaryOp },
@@ -133,6 +137,12 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   { llvm::Instruction::SIToFP, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::FPTrunc, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::FPExt, InstructionFolderPass::FoldPHINodeWithCastInst },
+
+
+  // NOTE: The folding of phi nodes with PtrToInt, IntToPtr, and BitCast is disabled
+  //       in the function since bouncing these into each other can cause folding
+  //       to enter into infinite loop.
+  //
   { llvm::Instruction::PtrToInt, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::IntToPtr, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::BitCast, InstructionFolderPass::FoldPHINodeWithCastInst },
@@ -140,6 +150,7 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   // Memory operators
   { llvm::Instruction::GetElementPtr, InstructionFolderPass::FoldPHINodeWithGEPInst },
 };
+
 // clang-format on
 
 }  // namespace
@@ -174,6 +185,7 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
     next_worklist.clear();
 
     for (auto instr : worklist) {
+
       // Keep track of the instructions we have visited so we don't
       // loop forever
       if (visited_instructions.count(instr) != 0U) {
@@ -222,6 +234,7 @@ bool InstructionFolderPass::FoldSelectInstruction(
   llvm::Value *false_value{nullptr};
 
   {
+
     // FoldSelectInstruction is automatically called for SelectInst
     // types (see kInstructionFolderMap)
     auto select_instr = llvm::dyn_cast<llvm::SelectInst>(instr);
@@ -275,6 +288,22 @@ void InstructionFolderPass::PerformInstructionReplacements(
   }
 }
 
+// If there is cyclic dependency incoming values on phi node; It can't be folded. The
+// utility function checks such cases.
+static inline bool
+isPHINodeFoldable(llvm::Instruction *phi_node,
+                  InstructionFolderPass::IncomingValueList &incoming_values) {
+  bool canFold = true;
+  for (auto &incoming_value : incoming_values) {
+    for (auto user : phi_node->users()) {
+      if (user == incoming_value.value) {
+        canFold = false;
+      }
+    }
+  }
+  return canFold;
+}
+
 bool InstructionFolderPass::FoldPHINode(
     InstructionFolderPass::InstructionList &output, llvm::Instruction *instr) {
 
@@ -282,6 +311,7 @@ bool InstructionFolderPass::FoldPHINode(
   IncomingValueList incoming_value_list;
 
   {
+
     // FoldPHINode is automatically called for PHINode types
     // (see kInstructionFolderMap)
     auto phi_node = llvm::dyn_cast<llvm::PHINode>(instr);
@@ -289,6 +319,7 @@ bool InstructionFolderPass::FoldPHINode(
     auto incoming_value_count = phi_node->getNumIncomingValues();
     for (auto i = 0U; i < incoming_value_count; ++i) {
       IncomingValue incoming_value;
+
       incoming_value.value = phi_node->getIncomingValue(i);
       incoming_value.basic_block = phi_node->getIncomingBlock(i);
 
@@ -296,12 +327,16 @@ bool InstructionFolderPass::FoldPHINode(
     }
   }
 
+  if (!isPHINodeFoldable(instr, incoming_value_list)) {
+    return false;
+  }
+
   // Postpone the replacement and cleanup at the end of the
   // rewrite to avoid possible issues with PHI nodes or
   // iterator invalidation
   InstructionReplacementList inst_replacement_list;
 
-  // Go through all the users of this `select` instruction
+  // Go through all the users of this `phi` instruction
   for (auto user : instr->users()) {
     InstructionReplacement repl;
     repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
@@ -372,6 +407,7 @@ bool InstructionFolderPass::CollectAndValidateGEPIndexes(
     }
 
     if (!phi_or_select_index_found) {
+
       // We have not met the PHI/Select index yet, make sure that this
       // index is still reachable if we move the GEP
       if (index_as_instr != nullptr &&
@@ -380,6 +416,7 @@ bool InstructionFolderPass::CollectAndValidateGEPIndexes(
       }
 
     } else {
+
       // We are after the PHI/Select index; make sure that this value is a
       // constant
       if (!llvm::isa<llvm::Constant>(index)) {
@@ -452,6 +489,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
   IncomingValueList new_incoming_values;
 
   for (auto &incoming_value : incoming_values) {
+
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
@@ -523,11 +561,23 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
     destination_type = instr->getDestTy();
   }
 
+  // NOTE(akshayk) : A phi node folding with cast instructions like IntToPtr
+  //                 PtrToInt, and BitCast may enter into an infinite loop
+  //                 if the folding instruction bounce between each other. Added
+  //                 checks to avoid such cases.
+  //
+  if ((cast_instr->getOpcode() == llvm::Instruction::IntToPtr) ||
+      (cast_instr->getOpcode() == llvm::Instruction::PtrToInt) ||
+      (cast_instr->getOpcode() == llvm::Instruction::BitCast)) {
+    return false;
+  }
+
   // Go through each incoming value, and try to push the cast operator
   // on the other side of the PHI node
   IncomingValueList new_incoming_values;
 
   for (auto &incoming_value : incoming_values) {
+
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
@@ -555,6 +605,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
   output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
   return true;
 }
+
 
 bool InstructionFolderPass::FoldSelectWithGEPInst(
     llvm::Instruction *&output, llvm::Instruction *select_instr,
@@ -593,6 +644,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
   IncomingValueList new_incoming_values;
 
   for (auto &incoming_value : incoming_values) {
+
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
