@@ -139,13 +139,15 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   { llvm::Instruction::FPExt, InstructionFolderPass::FoldPHINodeWithCastInst },
 
 
-  // NOTE: The folding of phi nodes with PtrToInt, IntToPtr, and BitCast is disabled
-  //       in the function since bouncing these into each other can cause folding
-  //       to enter into infinite loop.
-  //
+  // NOTE(akshayk): A phi node folding with cast instructions like IntToPtr
+  //                PtrToInt, and BitCast may enter into an infinite loop if
+  //                the folding instruction bounce between each other. Disable
+  //                them in the map and revisit when we have the fix.
+#if 0
   { llvm::Instruction::PtrToInt, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::IntToPtr, InstructionFolderPass::FoldPHINodeWithCastInst },
   { llvm::Instruction::BitCast, InstructionFolderPass::FoldPHINodeWithCastInst },
+#endif
 
   // Memory operators
   { llvm::Instruction::GetElementPtr, InstructionFolderPass::FoldPHINodeWithGEPInst },
@@ -291,11 +293,11 @@ void InstructionFolderPass::PerformInstructionReplacements(
 // If there is cyclic dependency incoming values on phi node; It can't be folded. The
 // utility function checks such cases.
 static inline bool
-isPHINodeFoldable(llvm::Instruction *phi_node,
+IsPHINodeFoldable(llvm::Instruction *instr,
                   InstructionFolderPass::IncomingValueList &incoming_values) {
   bool canFold = true;
   for (auto &incoming_value : incoming_values) {
-    for (auto user : phi_node->users()) {
+    for (auto user : instr->users()) {
       if (user == incoming_value.value) {
         canFold = false;
       }
@@ -327,7 +329,7 @@ bool InstructionFolderPass::FoldPHINode(
     }
   }
 
-  if (!isPHINodeFoldable(instr, incoming_value_list)) {
+  if (!IsPHINodeFoldable(instr, incoming_value_list)) {
     return false;
   }
 
@@ -559,17 +561,6 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
 
     cast_opcode = instr->getOpcode();
     destination_type = instr->getDestTy();
-  }
-
-  // NOTE(akshayk) : A phi node folding with cast instructions like IntToPtr
-  //                 PtrToInt, and BitCast may enter into an infinite loop
-  //                 if the folding instruction bounce between each other. Added
-  //                 checks to avoid such cases.
-  //
-  if ((cast_instr->getOpcode() == llvm::Instruction::IntToPtr) ||
-      (cast_instr->getOpcode() == llvm::Instruction::PtrToInt) ||
-      (cast_instr->getOpcode() == llvm::Instruction::BitCast)) {
-    return false;
   }
 
   // Go through each incoming value, and try to push the cast operator
