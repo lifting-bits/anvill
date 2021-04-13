@@ -55,9 +55,9 @@ class IDAProgram(Program):
         super(IDAProgram, self).__init__(arch, os)
 
         try:
-            self._init_ctrl_flow_redirections()
+            self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG("Failed to initialize control flow redirections")
+            DEBUG("Failed to initialize the control flow information for functin thunks")
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -214,8 +214,9 @@ class IDAProgram(Program):
         return func
 
 
-    def _init_ctrl_flow_redirections(self):
-        """Initializes the control flow redirections using function thunks"""
+    def _init_func_thunk_ctrl_flow(self):
+        """Initializes the control flow redirections and targets
+        using function thunks"""
 
         # We only support the ELF format for now
         inf = ida_idaapi.get_inf_structure()
@@ -264,6 +265,7 @@ class IDAProgram(Program):
             )
 
             self.add_control_flow_redirection(redirection_source, redirection_dest)
+            self.set_control_flow_targets(redirection_source, [redirection_dest], True)
 
 
 def _convert_ida_type(tinfo, cache, depth, context):

@@ -65,7 +65,7 @@ def create_elf_image_parser(input_file_path: str) -> ImageParser:
     """Creates a new ImageParser object for ELF files
 
     Args:
-        The path to the input file
+        input_file_path: The path to the input file
 
     Returns:
         An image parser object for ELF files

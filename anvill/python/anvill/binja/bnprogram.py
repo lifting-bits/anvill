@@ -37,9 +37,9 @@ class BNProgram(Program):
         self._type_cache: Final[TypeCache] = TypeCache(self._bv)
 
         try:
-            self._init_ctrl_flow_redirections()
+            self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG("Failed to initialize control flow redirections")
+            DEBUG("Failed to initialize the control flow information for functin thunks")
 
     @property
     def bv(self):
@@ -172,8 +172,9 @@ class BNProgram(Program):
         for s in self._bv.get_symbols():
             yield (s.address, s.name)
 
-    def _init_ctrl_flow_redirections(self):
-        """Initializes the control flow redirections using function thunks"""
+    def _init_func_thunk_ctrl_flow(self):
+        """Initializes the control flow redirections and targets
+        using function thunks"""
 
         # We only support the ELF format for now
         if self._bv.view_type != "ELF":
@@ -231,6 +232,8 @@ class BNProgram(Program):
                     self.add_control_flow_redirection(
                         redirection_source, redirection_dest
                     )
+
+                    self.set_control_flow_targets(redirection_source, [redirection_dest], True)
 
                     redirected_thunk_list.append(function_thunk.name)
 
