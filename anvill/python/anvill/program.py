@@ -45,7 +45,7 @@ class Program(object):
         self._func_defs = {}
         self._func_decls = {}
         self._control_flow_redirections = {}
-        self._ctrl_flow_targets: Dict[int, ControlFlowTargetList] = {}
+        self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
         self._symbols = collections.defaultdict(set)
 
     def get_symbols(self, ea):
@@ -147,7 +147,7 @@ class Program(object):
             return False
 
     def set_control_flow_targets(self, source: int, destination_list: List[int], complete: bool):
-        if source in self._ctrl_flow_targets:
+        if source in self._control_flow_targets:
             return False
 
         entry = ControlFlowTargetList()
@@ -155,7 +155,7 @@ class Program(object):
         entry.destination_list = destination_list
         entry.complete = complete
 
-        self._ctrl_flow_targets[entry.source] = entry
+        self._control_flow_targets[entry.source] = entry
         return True
 
     def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
@@ -208,7 +208,7 @@ class Program(object):
             # handle integers in two different ways
             proto["control_flow_redirections"].append([source, target])
 
-        for entry in self._ctrl_flow_targets.values():
+        for entry in self._control_flow_targets.values():
             obj = {}
             obj["complete"] = entry.complete
             obj["source"] = entry.source
