@@ -52,7 +52,11 @@ class IDAProgram(Program):
         ida_auto.auto_wait()
 
         super(IDAProgram, self).__init__(arch, os)
-        self._init_ctrl_flow_redirections()
+
+        try:
+            self._init_ctrl_flow_redirections()
+        except:
+            print("Failed to initialize control flow redirections")
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or

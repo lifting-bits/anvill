@@ -34,7 +34,11 @@ class BNProgram(Program):
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
         self._type_cache: Final[TypeCache] = TypeCache(self._bv)
-        self._init_ctrl_flow_redirections()
+
+        try:
+            self._init_ctrl_flow_redirections()
+        except:
+            print("Failed to initialize control flow redirections")
 
     @property
     def bv(self):
