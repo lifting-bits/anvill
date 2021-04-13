@@ -187,20 +187,16 @@ class BNProgram(Program):
 
         reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
 
-        image_base_address = self._bv.start
-
         redirected_thunk_list = []
         for function_thunk in function_thunk_list:
             # Read the call destination
-            thunk_va = image_base_address + function_thunk.start
-
-            reader.seek(thunk_va)
+            reader.seek(function_thunk.start)
             redirection_dest = reader.read32() if is_32_bit else reader.read64()
 
             # Get the variable defined at the dest address
             func_location = self._bv.get_data_var_at(function_thunk.start)
             if not func_location:
-                print("anvill: No variable defined for {:x}".format(function_thunk.start))
+                print("anvill: No variable defined for {:x}/{}".format(function_thunk.start, function_thunk.name))
                 continue
 
             # We should only have one caller
@@ -219,7 +215,7 @@ class BNProgram(Program):
                     redirection_source = caller_function.start
 
                     print(
-                        "anvill: Redirecting the user {:x} of thunk {} at rva {:x} to {:x}".format(
+                        "anvill: Redirecting the user {:x} of thunk {} at {:x} to {:x}".format(
                             redirection_source,
                             function_thunk.name,
                             function_thunk.start,
@@ -230,6 +226,7 @@ class BNProgram(Program):
                     self.add_control_flow_redirection(
                         redirection_source, redirection_dest
                     )
+
                     redirected_thunk_list.append(function_thunk.name)
 
         # Now check whether we successfully redirected all thunks
