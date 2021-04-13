@@ -23,6 +23,7 @@
 #include <functional>
 #include <memory>
 #include <string_view>
+#include <optional>
 
 // Forward declare
 namespace llvm {
@@ -162,6 +163,20 @@ struct ByteSequence {
   size_t size{0};
 };
 
+// Describes a list of targets reachable from a given source address
+struct ControlFlowTargetList final {
+	// Source address
+	std::uint64_t source{};
+
+	// Destination list
+	std::vector<std::uint64_t> destination_list;
+
+	// True if this destination list appears to be complete. As a
+	// general rule, this is set to true when the target recovery has
+	// been completely performed by the disassembler tool
+	bool complete{false};
+};
+
 struct FunctionDecl;
 struct GlobalVarDecl;
 
@@ -246,6 +261,14 @@ class Program {
 
   // Adds a new control flow redirection entry
   void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
+
+  // Returns a list of targets reachable from the given address
+  std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(std::uint64_t address) const;
+
+  // Sets a list of targets reachable from the given address; fails if the
+  // specified source address already has an existing target list
+  bool TrySetControlFlowTargets(const ControlFlowTargetList &target_list);
 
   // Add a name to an address.
   void AddNameToAddress(const std::string &name, uint64_t address) const;
