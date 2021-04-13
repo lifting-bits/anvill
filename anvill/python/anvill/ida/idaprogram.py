@@ -34,6 +34,7 @@ from .idavariable import *
 from anvill.program import *
 from anvill.type import *
 from anvill.imageparser import *
+from anvill.util import *
 
 
 TYPE_CONTEXT_NESTED = 0
@@ -56,7 +57,7 @@ class IDAProgram(Program):
         try:
             self._init_ctrl_flow_redirections()
         except:
-            print("Failed to initialize control flow redirections")
+            DEBUG("Failed to initialize control flow redirections")
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or

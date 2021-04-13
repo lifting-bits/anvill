@@ -26,6 +26,7 @@ from anvill.program import *
 from anvill.arch import *
 from anvill.os import *
 from anvill.imageparser import *
+from anvill.util import *
 
 
 class BNProgram(Program):
@@ -38,7 +39,7 @@ class BNProgram(Program):
         try:
             self._init_ctrl_flow_redirections()
         except:
-            print("Failed to initialize control flow redirections")
+            DEBUG("Failed to initialize control flow redirections")
 
     @property
     def bv(self):
