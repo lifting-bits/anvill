@@ -21,10 +21,11 @@
 #include <cstdint>
 #include <ios>
 #include <iostream>
+#include <magic_enum.hpp>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <magic_enum.hpp>
+
 #include "anvill/Version.h"
 
 // clang-format off
@@ -490,8 +491,17 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
   for (const llvm::json::Value &list_entry : redirection_list) {
     auto address_pair = list_entry.getAsArray();
     if (address_pair == nullptr) {
-      LOG(ERROR) << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Non-JSON list entry in 'control_flow_redirections' array of spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+    if (address_pair->size() != 2U) {
+      LOG(ERROR)
+          << "Non-integer pair value in the control_flow_redirections entry #"
+          << index << " of the the following spec file: '" << FLAGS_spec << "'";
 
       return false;
     }
@@ -499,9 +509,10 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     const auto &source_address_obj = address_pair->operator[](0);
     auto opt_source_address = source_address_obj.getAsInteger();
     if (!opt_source_address) {
-      LOG(ERROR) << "Invalid integer value in source address for the #"
-                 << index << " of the control_flow_redirections in the following spec file: '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Invalid integer value in source address for the #" << index
+          << " of the control_flow_redirections in the following spec file: '"
+          << FLAGS_spec << "'";
 
       return false;
     }
@@ -509,9 +520,10 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     const auto &dest_address_obj = address_pair->operator[](1);
     auto opt_dest_address = dest_address_obj.getAsInteger();
     if (!opt_dest_address) {
-      LOG(ERROR) << "Invalid integer value in destination address for the #"
-                 << index << " of the control_flow_redirections in the following spec file: '"
-                 << FLAGS_spec << "'";
+      LOG(ERROR)
+          << "Invalid integer value in destination address for the #" << index
+          << " of the control_flow_redirections in the following spec file: '"
+          << FLAGS_spec << "'";
 
       return false;
     }
@@ -519,7 +531,8 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
     auto source_address = opt_source_address.getValue();
     auto dest_address = opt_dest_address.getValue();
 
-    buffer << "  " << std::hex << source_address << " -> " << dest_address << "\n";
+    buffer << "  " << std::hex << source_address << " -> " << dest_address
+           << "\n";
 
     program.AddControlFlowRedirection(source_address, dest_address);
 
@@ -530,6 +543,116 @@ static bool ParseControlFlowRedirection(anvill::Program &program,
   if (!redirection_output.empty()) {
     std::cout << "Control flow redirections:\n" << redirection_output;
   }
+  std::cout << "\n";
+
+  return true;
+}
+
+static bool ParseControlFlowTargets(anvill::Program &program,
+                                    llvm::json::Array &ctrl_flow_target_list) {
+
+  auto index{0U};
+
+  std::stringstream buffer;
+
+  for (const llvm::json::Value &list_entry : ctrl_flow_target_list) {
+    auto entry_as_obj = list_entry.getAsObject();
+    if (entry_as_obj == nullptr) {
+      LOG(ERROR)
+          << "Non-object list entry in 'control_flow_targets' array of spec file '"
+          << FLAGS_spec << "' at index " << index;
+
+      return false;
+    }
+
+    anvill::ControlFlowTargetList ctrl_flow_target_list = {};
+
+    auto maybe_source = entry_as_obj->getInteger("source");
+    if (!maybe_source.hasValue()) {
+      LOG(ERROR)
+          << "Invalid 'source' value in 'control_flow_targets' array of spec file '"
+          << FLAGS_spec << "' at index " << index;
+
+      return false;
+    }
+
+    ctrl_flow_target_list.source = maybe_source.getValue();
+
+    auto maybe_complete = entry_as_obj->getBoolean("complete");
+    if (!maybe_complete.hasValue()) {
+      LOG(ERROR)
+          << "Invalid 'complete' value in 'control_flow_targets' array of spec file '"
+          << FLAGS_spec << "' at index " << index;
+
+      return false;
+    }
+
+    ctrl_flow_target_list.complete = maybe_complete.getValue();
+
+    auto destination_list = entry_as_obj->getArray("destination_list");
+    if (destination_list == nullptr) {
+      LOG(ERROR)
+          << "Non-array 'destination_list' node in 'control_flow_targets' array of spec file '"
+          << FLAGS_spec << "' at index " << index;
+
+      return false;
+    }
+
+    for (const auto &destination_list_entry : *destination_list) {
+      auto maybe_destination = destination_list_entry.getAsInteger();
+      if (!maybe_destination.hasValue()) {
+        LOG(ERROR)
+            << "Non-integer 'destination_list' entry value in 'control_flow_targets' array of spec file '"
+            << FLAGS_spec << "' at index " << index;
+
+        return false;
+      }
+
+      auto destination = maybe_destination.getValue();
+      ctrl_flow_target_list.destination_list.push_back(destination);
+    }
+
+    std::sort(ctrl_flow_target_list.destination_list.begin(),
+              ctrl_flow_target_list.destination_list.end());
+
+    auto erase_it = std::unique(ctrl_flow_target_list.destination_list.begin(),
+                                ctrl_flow_target_list.destination_list.end());
+
+    ctrl_flow_target_list.destination_list.erase(
+        erase_it, ctrl_flow_target_list.destination_list.end());
+
+    buffer << "  " << std::hex << ctrl_flow_target_list.source << " -> [ ";
+
+    for (auto dest_it = ctrl_flow_target_list.destination_list.begin();
+         dest_it != ctrl_flow_target_list.destination_list.end(); ++dest_it) {
+
+      buffer << (*dest_it);
+      if (std::next(dest_it, 1) !=
+          ctrl_flow_target_list.destination_list.end()) {
+        buffer << ", ";
+      }
+    }
+
+    buffer << " ] ("
+           << (ctrl_flow_target_list.complete ? "complete" : "incomplete")
+           << ")\n";
+
+    if (!program.TrySetControlFlowTargets(ctrl_flow_target_list)) {
+      LOG(ERROR)
+          << "The 'control_flow_targets' entry in the array of spec file '"
+          << FLAGS_spec << "' contains duplicates";
+
+      return false;
+    }
+
+    ++index;
+  }
+
+  auto redirection_output = buffer.str();
+  if (!redirection_output.empty()) {
+    std::cout << "Control flow targets:\n" << redirection_output;
+  }
+  std::cout << "\n";
 
   return true;
 }
@@ -593,6 +716,22 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   } else if (spec->find("control_flow_redirections") != spec->end()) {
     LOG(ERROR)
         << "Non-JSON array value for 'control_flow_redirections' in spec file '"
+        << FLAGS_spec << "'";
+    return false;
+  }
+
+  if (auto ctrl_flow_targets = spec->getArray("control_flow_targets")) {
+    if (!ParseControlFlowTargets(program, *ctrl_flow_targets)) {
+      LOG(ERROR)
+          << "Failed to parse the 'control_flow_targets' section in spec file '"
+          << FLAGS_spec << "'";
+
+      return false;
+    }
+
+  } else if (spec->find("control_flow_targets") != spec->end()) {
+    LOG(ERROR)
+        << "Non-JSON array value for 'control_flow_targets' in spec file '"
         << FLAGS_spec << "'";
     return false;
   }
@@ -761,8 +900,8 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  anvill::LifterOptions
-      options(arch.get(), module,ctrl_flow_provider_res.TakeValue());
+  anvill::LifterOptions options(arch.get(), module,
+                                ctrl_flow_provider_res.TakeValue());
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does

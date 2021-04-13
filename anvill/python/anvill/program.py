@@ -15,11 +15,22 @@
 
 
 import collections
+from dataclasses import dataclass, field
+from typing import List, Dict
 
 from .function import *
 from .var import *
 from .mem import *
 from .exc import *
+
+
+@dataclass
+class ControlFlowTargetList:
+    """A list of targets reachable from a given address"""
+
+    source: int = 0
+    destination_list: List[int] = field(default_factory=list)
+    complete: bool = False
 
 
 class Program(object):
@@ -34,6 +45,7 @@ class Program(object):
         self._func_defs = {}
         self._func_decls = {}
         self._control_flow_redirections = {}
+        self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
         self._symbols = collections.defaultdict(set)
 
     def get_symbols(self, ea):
@@ -134,6 +146,18 @@ class Program(object):
         else:
             return False
 
+    def set_control_flow_targets(self, source: int, destination_list: List[int], complete: bool):
+        if source in self._control_flow_targets:
+            return False
+
+        entry = ControlFlowTargetList()
+        entry.source = source
+        entry.destination_list = destination_list
+        entry.complete = complete
+
+        self._control_flow_targets[entry.source] = entry
+        return True
+
     def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
         if add_refs_as_defs:
             try:
@@ -164,6 +188,7 @@ class Program(object):
         proto["os"] = self._os.name()
         proto["functions"] = []
         proto["control_flow_redirections"] = []
+        proto["control_flow_targets"] = []
         proto["variables"] = []
         proto["symbols"] = []
 
@@ -178,7 +203,18 @@ class Program(object):
             proto["functions"].append(func.proto())
 
         for source, target in self._control_flow_redirections.items():
+            # Use 2-entry lists so that we don't use 'source' as a key. That
+            # would turn it into a string in the final JSON forcing us to
+            # handle integers in two different ways
             proto["control_flow_redirections"].append([source, target])
+
+        for entry in self._control_flow_targets.values():
+            obj = {}
+            obj["complete"] = entry.complete
+            obj["source"] = entry.source
+            obj["destination_list"] = entry.destination_list
+
+            proto["control_flow_targets"].append(obj)
 
         for var in self._var_decls.values():
             proto["variables"].append(var.proto())

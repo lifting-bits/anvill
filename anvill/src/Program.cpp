@@ -109,6 +109,11 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
 
+  std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(std::uint64_t address) const;
+
+  bool TrySetControlFlowTargets(const ControlFlowTargetList &target_list);
+
   llvm::Error DeclareVariable(const GlobalVarDecl &decl_template);
 
   GlobalVarDecl *FindVariable(uint64_t address);
@@ -141,6 +146,9 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   // Control flow redirections
   std::unordered_map<std::uint64_t, std::uint64_t> ctrl_flow_redirections;
+
+  // Control flow targets
+  std::unordered_map<std::uint64_t, ControlFlowTargetList> ctrl_flow_targets;
 
   // Declarations for the variables.
   bool vars_are_sorted{true};
@@ -561,7 +569,7 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
 }
 
 bool Program::Impl::TryGetControlFlowRedirection(std::uint64_t &destination,
-                                              std::uint64_t address) const {
+                                                 std::uint64_t address) const {
   destination = 0U;
 
   auto it = ctrl_flow_redirections.find(address);
@@ -577,6 +585,26 @@ void Program::Impl::AddControlFlowRedirection(std::uint64_t from,
                                               std::uint64_t to) {
   CHECK_EQ(ctrl_flow_redirections.count(from), 0U);
   ctrl_flow_redirections.insert({from, to});
+}
+
+std::optional<ControlFlowTargetList>
+Program::Impl::TryGetControlFlowTargets(std::uint64_t address) const {
+  auto it = ctrl_flow_targets.find(address);
+  if (it == ctrl_flow_targets.end()) {
+    return std::nullopt;
+  }
+
+  return it->second;
+}
+
+bool Program::Impl::TrySetControlFlowTargets(
+    const ControlFlowTargetList &target_list) {
+  if (ctrl_flow_targets.count(target_list.source) != 0U) {
+    return false;
+  }
+
+  ctrl_flow_targets.insert({target_list.source, target_list});
+  return true;
 }
 
 // Declare a variable in this view.
@@ -997,6 +1025,16 @@ bool Program::TryGetControlFlowRedirection(std::uint64_t &destination,
 
 void Program::AddControlFlowRedirection(std::uint64_t from, std::uint64_t to) {
   return impl->AddControlFlowRedirection(from, to);
+}
+
+std::optional<ControlFlowTargetList>
+Program::TryGetControlFlowTargets(std::uint64_t address) const {
+  return impl->TryGetControlFlowTargets(address);
+}
+
+bool Program::TrySetControlFlowTargets(
+    const ControlFlowTargetList &target_list) {
+  return impl->TrySetControlFlowTargets(target_list);
 }
 
 // Apply a function `cb` to each name of the address `address`.
