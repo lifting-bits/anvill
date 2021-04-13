@@ -87,7 +87,10 @@ class Program(object):
         else:
             return False
 
-    def add_control_flow_redirection(self, source_ea, destination_ea):
+    def add_control_flow_redirection(self, source_ea: int , destination_ea: int) -> bool:
+        if type(source_ea) != int or type(destination_ea) != int:
+            return False
+
         if source_ea in self._control_flow_redirections:
             return False
 

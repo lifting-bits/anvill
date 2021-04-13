@@ -34,6 +34,7 @@ from .idavariable import *
 from anvill.program import *
 from anvill.type import *
 from anvill.imageparser import *
+from anvill.util import *
 
 
 TYPE_CONTEXT_NESTED = 0
@@ -52,7 +53,11 @@ class IDAProgram(Program):
         ida_auto.auto_wait()
 
         super(IDAProgram, self).__init__(arch, os)
-        self._init_ctrl_flow_redirections()
+
+        try:
+            self._init_ctrl_flow_redirections()
+        except:
+            DEBUG("Failed to initialize control flow redirections")
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -235,7 +240,7 @@ class IDAProgram(Program):
             if function_thunk.name == "__libc_start_main":
                 continue
 
-            thunk_va = ida_nalt.get_imagebase() + function_thunk.start
+            thunk_va = function_thunk.start
 
             redirection_dest = (
                 ida_bytes.get_wide_dword(thunk_va)
