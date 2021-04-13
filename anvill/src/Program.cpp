@@ -569,7 +569,7 @@ FunctionDecl *Program::Impl::FindFunction(uint64_t address) {
 }
 
 bool Program::Impl::TryGetControlFlowRedirection(std::uint64_t &destination,
-                                              std::uint64_t address) const {
+                                                 std::uint64_t address) const {
   destination = 0U;
 
   auto it = ctrl_flow_redirections.find(address);
@@ -589,22 +589,22 @@ void Program::Impl::AddControlFlowRedirection(std::uint64_t from,
 
 std::optional<ControlFlowTargetList>
 Program::Impl::TryGetControlFlowTargets(std::uint64_t address) const {
-	auto it = ctrl_flow_targets.find(address);
-	if (it == ctrl_flow_targets.end()) {
-		return std::nullopt;
-	}
+  auto it = ctrl_flow_targets.find(address);
+  if (it == ctrl_flow_targets.end()) {
+    return std::nullopt;
+  }
 
-	return it->second;
+  return it->second;
 }
 
-bool
-Program::Impl::TrySetControlFlowTargets(const ControlFlowTargetList &target_list) {
-	if (ctrl_flow_targets.count(target_list.source) != 0U) {
-		return false;
-	}
+bool Program::Impl::TrySetControlFlowTargets(
+    const ControlFlowTargetList &target_list) {
+  if (ctrl_flow_targets.count(target_list.source) != 0U) {
+    return false;
+  }
 
-	ctrl_flow_targets.insert({target_list.source, target_list});
-	return true;
+  ctrl_flow_targets.insert({target_list.source, target_list});
+  return true;
 }
 
 // Declare a variable in this view.
@@ -1029,12 +1029,12 @@ void Program::AddControlFlowRedirection(std::uint64_t from, std::uint64_t to) {
 
 std::optional<ControlFlowTargetList>
 Program::TryGetControlFlowTargets(std::uint64_t address) const {
-	return impl->TryGetControlFlowTargets(address);
+  return impl->TryGetControlFlowTargets(address);
 }
 
-bool
-Program::TrySetControlFlowTargets(const ControlFlowTargetList &target_list) {
-	return impl->TrySetControlFlowTargets(target_list);
+bool Program::TrySetControlFlowTargets(
+    const ControlFlowTargetList &target_list) {
+  return impl->TrySetControlFlowTargets(target_list);
 }
 
 // Apply a function `cb` to each name of the address `address`.

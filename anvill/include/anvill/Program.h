@@ -22,8 +22,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <optional>
+#include <string_view>
 
 // Forward declare
 namespace llvm {
@@ -165,16 +165,17 @@ struct ByteSequence {
 
 // Describes a list of targets reachable from a given source address
 struct ControlFlowTargetList final {
-	// Source address
-	std::uint64_t source{};
 
-	// Destination list
-	std::vector<std::uint64_t> destination_list;
+  // Source address
+  std::uint64_t source{};
 
-	// True if this destination list appears to be complete. As a
-	// general rule, this is set to true when the target recovery has
-	// been completely performed by the disassembler tool
-	bool complete{false};
+  // Destination list
+  std::vector<std::uint64_t> destination_list;
+
+  // True if this destination list appears to be complete. As a
+  // general rule, this is set to true when the target recovery has
+  // been completely performed by the disassembler tool
+  bool complete{false};
 };
 
 struct FunctionDecl;
