@@ -235,7 +235,7 @@ class IDAProgram(Program):
             if function_thunk.name == "__libc_start_main":
                 continue
 
-            thunk_va = ida_nalt.get_imagebase() + function_thunk.start
+            thunk_va = function_thunk.start
 
             redirection_dest = (
                 ida_bytes.get_wide_dword(thunk_va)
