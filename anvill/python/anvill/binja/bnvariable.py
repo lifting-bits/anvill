@@ -39,7 +39,7 @@ class BNVariable(Variable):
 
         bv = program.bv
         br = bn.BinaryReader(bv)
-        mem = program.memory()
+        mem = program.memory
         begin = self._address
         end = begin + self._type.size(self._arch)
 
