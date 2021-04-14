@@ -22,7 +22,9 @@ class CallingConvention:
         # AAPCS uses integer register for passing floating point arguments
         "armv7": ["r0", "r1", "r2", "r3"],
         # AAPCS_VFP can use s0-15 registers for passing floating point arguments
-        "thumb2": ["s0", "s1", "s2", "s4", "s5", "s6", "s7"]
+        "thumb2": ["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7"],
+        # Floating point registers with quad size
+        "aarch64": ["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"],
     }
 
     def __init__(self, arch, bn_func):
@@ -36,8 +38,10 @@ class CallingConvention:
         # for both x86 and arm architectures
         if self._cc.name == "cdecl":
             try:
-                self._float_arg_regs = CallingConvention._FLOAT_ARGS_REG[self._cc.arch.name]
-            except IndexError:
+                self._float_arg_regs = CallingConvention._FLOAT_ARGS_REG[
+                    self._cc.arch.name
+                ]
+            except KeyError:
                 DEBUG("Unsupported architecture: {}".format(self._cc.arch.name))
 
     def is_sysv(self):
