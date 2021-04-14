@@ -21,6 +21,7 @@
 #include <anvill/Result.h>
 
 #include <memory>
+#include <optional>
 
 namespace anvill {
 
@@ -37,6 +38,10 @@ class IControlFlowProvider {
 
   // Returns a possible redirection for the given target
   virtual std::uint64_t GetRedirection(std::uint64_t address) const = 0;
+
+  // Returns a list of targets reachable from the given address
+  virtual std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(std::uint64_t address) const = 0;
 
  protected:
   IControlFlowProvider(void) = default;

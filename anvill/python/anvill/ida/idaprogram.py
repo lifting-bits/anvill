@@ -231,16 +231,9 @@ class IDAProgram(Program):
         # Go through each function thunk, and look at its cross references; there
         # should always be only one user, which is the wrapper around the imported
         # function
-        #
-        # Note that the __libc_start_main # thunk does not need redirection since
-        # it's called directly without any wrapper function from the module entry
-        # point
         is_32_bit = image_parser.get_image_bitness() == 32
 
         for function_thunk in function_thunk_list:
-            if function_thunk.name == "__libc_start_main":
-                continue
-
             thunk_va = function_thunk.start
 
             redirection_dest = (
@@ -254,18 +247,26 @@ class IDAProgram(Program):
                 continue
 
             redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)
+            caller_function_name = ida_funcs.get_func_name(redirection_source)
 
-            print(
-                "anvill: Redirecting the user {:x} of thunk {} at rva {:x} to {:x}".format(
-                    redirection_source,
-                    function_thunk.name,
-                    function_thunk.start,
-                    redirection_dest,
+            if function_thunk.name in caller_function_name:
+                print(
+                    "anvill: Redirecting the user {:x} of thunk {} at rva {:x} to {:x}".format(
+                        redirection_source,
+                        function_thunk.name,
+                        function_thunk.start,
+                        redirection_dest,
+                    )
                 )
-            )
 
-            self.add_control_flow_redirection(redirection_source, redirection_dest)
-            self.set_control_flow_targets(redirection_source, [redirection_dest], True)
+                self.add_control_flow_redirection(redirection_source, redirection_dest)
+
+            print("anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(caller_address,
+                                                                                           redirection_dest,
+                                                                                           function_thunk.name))
+
+            self.set_control_flow_targets(caller_address, [redirection_dest], True)
+
 
 
 def _convert_ida_type(tinfo, cache, depth, context):

@@ -39,6 +39,11 @@ std::uint64_t ControlFlowProvider::GetRedirection(std::uint64_t address) const {
   return destination;
 }
 
+std::optional<ControlFlowTargetList>
+ControlFlowProvider::TryGetControlFlowTargets(std::uint64_t address) const {
+  return d->program.TryGetControlFlowTargets(address);
+}
+
 Result<IControlFlowProvider::Ptr, ControlFlowProviderError>
 IControlFlowProvider::Create(const Program &program) {
   try {

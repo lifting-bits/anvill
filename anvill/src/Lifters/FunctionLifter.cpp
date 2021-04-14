@@ -269,7 +269,63 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  remill::AddTerminatingTailCall(block, intrinsics.jump);
+
+  // Attempt to get the target list for this control flow instruction
+  auto maybe_target_list =
+      options.ctrl_flow_provider->TryGetControlFlowTargets(inst.pc);
+
+  // Unless we are sure we detected all possible targets, we will still
+  // add a trailing remill jump intrinsic
+  auto add_remill_jump{true};
+  llvm::BasicBlock *current_bb = block;
+
+  // If we have targets, we can lift this in a less generic way
+  if (maybe_target_list.has_value()) {
+
+    // If we are sure we have exactly one target, we can use a direct jump.
+    // Otherwise, use a switch - and if the target list is not complete, then
+    // also add the remill jump intrinsic
+    const auto &target_list = maybe_target_list.value();
+    add_remill_jump = !target_list.complete;
+
+    if (target_list.destination_list.size() == 1U && target_list.complete) {
+      auto destination = target_list.destination_list.front();
+      llvm::BranchInst::Create(GetOrCreateTargetBlock(destination), block);
+
+    } else {
+
+      // TODO: options.symbolic_program_counter
+      auto pc = inst_lifter.LoadRegValue(
+          block, state_ptr, options.arch->ProgramCounterRegisterName());
+
+      llvm::BasicBlock *default_case{nullptr};
+      if (!target_list.complete) {
+        default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+        current_bb = default_case;
+      }
+
+      llvm::IRBuilder<> ir(block);
+      auto switch_inst = ir.CreateSwitch(pc, default_case,
+                                         target_list.destination_list.size());
+
+      // TODO: How to get the address size for the current architecture?
+      auto address_type = llvm::IntegerType::getInt64Ty(llvm_context);
+
+      for (auto destination : target_list.destination_list) {
+        llvm::ConstantInt *address_const =
+            llvm::ConstantInt::get(address_type, destination);
+
+        auto dest_block = GetOrCreateTargetBlock(destination);
+        switch_inst->addCase(address_const, dest_block);
+      }
+    }
+  }
+
+  // Either we didn't find any target list from the control flow provider, or we
+  // did but it wasn't marked as `complete`
+  if (add_remill_jump) {
+    remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+  }
 }
 
 // Visit a conditional indirect jump control-flow instruction. This is a mix
@@ -325,13 +381,15 @@ void FunctionLifter::VisitConditionalFunctionReturn(
                            not_taken_block);
 }
 
-std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
+std::optional<FunctionDecl>
+FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
   auto redirected_addr = options.ctrl_flow_provider->GetRedirection(address);
 
   // In case we get redirected but still fail, try once more with the original
   // address
   auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
   if (!opt_function_decl.has_value() && redirected_addr != address) {
+
     // When we retry using the original address, still keep the (possibly)
     // redirected value
     opt_function_decl = type_provider.TryGetFunctionType(address);
@@ -593,7 +651,8 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc), taken_block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc),
+                           taken_block);
   llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
                            not_taken_block);
 }
