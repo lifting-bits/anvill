@@ -136,6 +136,9 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
       case llvm::Instruction::AShr:
       case llvm::Instruction::UDiv:
       case llvm::Instruction::SDiv:
+      case llvm::Instruction::Trunc:
+      case llvm::Instruction::SExt:
+      case llvm::Instruction::ZExt:
         return IsRelatedToStackPointer(dl, ce->getOperand(0));
       case llvm::Instruction::Add:
       case llvm::Instruction::Sub:
@@ -143,10 +146,15 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
       case llvm::Instruction::And:
       case llvm::Instruction::Or:
       case llvm::Instruction::Xor:
+      case llvm::Instruction::ICmp:
         return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
                IsRelatedToStackPointer(dl, ce->getOperand(1));
       case llvm::Instruction::Select:
         return IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
+               IsRelatedToStackPointer(dl, ce->getOperand(2));
+      case llvm::Instruction::FCmp:
+        return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
+               IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
                IsRelatedToStackPointer(dl, ce->getOperand(2));
       default: return false;
     }
