@@ -14,9 +14,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from abc import ABC, abstractmethod
 import collections
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, DefaultDict, Dict, Iterator, Optional, Set
 
 from .function import *
 from .var import *
@@ -33,22 +34,22 @@ class ControlFlowTargetList:
     complete: bool = False
 
 
-class Program(object):
+class Program(ABC):
     """Represents a program."""
 
     def __init__(self, arch, os):
         self._arch = arch
         self._os = os
         self._memory = Memory()
-        self._var_defs = {}
-        self._var_decls = {}
-        self._func_defs = {}
-        self._func_decls = {}
-        self._control_flow_redirections = {}
+        self._var_defs: Dict[int, Variable] = {}
+        self._var_decls: Dict[int, Variable] = {}
+        self._func_defs: Dict[int, Function] = {}
+        self._func_decls: Dict[int, Function] = {}
+        self._control_flow_redirections: Dict[int, int] = {}
         self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
-        self._symbols = collections.defaultdict(set)
+        self._symbols: DefaultDict[int, Set[str]] = collections.defaultdict(set)
 
-    def get_symbols(self, ea):
+    def get_symbols(self, ea) -> Iterator[str]:
         syms = self._symbols[ea]
         if ea in self._symbols:
             yield from iter(syms)
@@ -59,36 +60,41 @@ class Program(object):
                 if old_len < len(syms):
                     yield name
 
-    def get_function(self, ea):
+    def get_function(self, ea: int) -> Optional[Function]:
         if ea in self._func_defs:
+            assert ea not in self._func_decls
             return self._func_defs[ea]
         elif ea in self._func_decls:
             return self._func_decls[ea]
         else:
             return self.get_function_impl(ea)
 
-    def get_variable(self, ea):
+    def get_variable(self, ea: int) -> Optional[Variable]:
         if ea in self._var_defs:
+            assert ea not in self._var_decls
             return self._var_defs[ea]
         elif ea in self._var_decls:
             return self._var_decls[ea]
         else:
             return self.get_variable_impl(ea)
 
-    def get_symbols_impl(self, ea):
-        raise NotImplementedError()
+    @abstractmethod
+    def get_symbols_impl(self, ea: int) -> Iterator[str]:
+        ...
 
-    def get_function_impl(self, ea):
-        raise NotImplementedError()
+    @abstractmethod
+    def get_function_impl(self, ea: int) -> Optional[Function]:
+        ...
 
-    def get_variable_impl(self, ea):
-        raise NotImplementedError()
+    @abstractmethod
+    def get_variable_impl(self, ea: int) -> Optional[Variable]:
+        ...
 
-    def add_symbol(self, ea, name):
+    def add_symbol(self, ea: int, name: str):
         if len(name):
             self._symbols[ea].add(name)
 
-    def add_variable_declaration(self, ea, add_refs_as_defs=False):
+    def add_variable_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
         var = self.get_variable(ea)
         if isinstance(var, Variable):
             ea = var.address()
@@ -99,17 +105,15 @@ class Program(object):
         else:
             return False
 
-    def add_control_flow_redirection(self, source_ea: int , destination_ea: int) -> bool:
-        if type(source_ea) != int or type(destination_ea) != int:
-            return False
+    def add_control_flow_redirection(self, source_ea: int, destination_ea: int):
+        assert isinstance(source_ea, int)
+        assert isinstance(destination_ea, int)
 
-        if source_ea in self._control_flow_redirections:
-            return False
-
+        self.try_add_referenced_entity(source_ea, False)
+        self.try_add_referenced_entity(destination_ea, False)
         self._control_flow_redirections[source_ea] = destination_ea
-        return True
 
-    def add_variable_definition(self, ea, add_refs_as_defs=False):
+    def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         var = self.get_variable(ea)
         if isinstance(var, Variable):
             ea = var.address()
@@ -122,7 +126,7 @@ class Program(object):
         else:
             return False
 
-    def add_function_definition(self, ea, add_refs_as_defs=False):
+    def add_function_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         func = self.get_function(ea)
         if isinstance(func, Function):
             ea = func.address()
@@ -135,7 +139,7 @@ class Program(object):
         else:
             return False
 
-    def add_function_declaration(self, ea, add_refs_as_defs=False):
+    def add_function_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
         func = self.get_function(ea)
         if isinstance(func, Function):
             ea = func.address()
@@ -146,19 +150,24 @@ class Program(object):
         else:
             return False
 
-    def set_control_flow_targets(self, source: int, destination_list: List[int], complete: bool):
-        if source in self._control_flow_targets:
+    def set_control_flow_targets(self, source_ea: int, destination_list: List[int], complete: bool) -> bool:
+        
+        self.try_add_referenced_entity(source_ea, False)
+        for dest_ea in destination_list:
+            self.try_add_referenced_entity(dest_ea, False)
+
+        if source_ea in self._control_flow_targets:
             return False
 
         entry = ControlFlowTargetList()
-        entry.source = source
+        entry.source = source_ea
         entry.destination_list = destination_list
         entry.complete = complete
 
         self._control_flow_targets[entry.source] = entry
         return True
 
-    def try_add_referenced_entity(self, ea, add_refs_as_defs=False):
+    def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False) -> bool:
         if add_refs_as_defs:
             try:
                 self.add_function_definition(ea, add_refs_as_defs)
@@ -179,10 +188,11 @@ class Program(object):
             except InvalidVariableException as e2:
                 return False
 
-    def memory(self):
+    @property
+    def memory(self) -> Memory:
         return self._memory
 
-    def proto(self):
+    def proto(self) -> Dict:
         proto = {}
         proto["arch"] = self._arch.name()
         proto["os"] = self._os.name()
@@ -223,28 +233,5 @@ class Program(object):
             proto["variables"].append(var.proto())
 
         proto["memory"] = self._memory.proto()
-
-        if self._arch.pointer_size() == 4:
-            stack_mask = 0x7FFFFFFF
-            page_mask = 0x7FFFF000
-        else:
-            stack_mask = 0x7FFFFFFFFFFF
-            page_mask = 0x7FFFFFFFF000
-
-        int_type = stack_mask.__class__
-
-        # Go find the maximum address.
-        max_addr = 0
-        for range_proto in proto["memory"]:
-            max_addr = max(
-                max_addr, range_proto["address"] + (len(range_proto["data"]) / 2)
-            )
-
-        stack_base = (
-            int_type(max_addr + int_type((stack_mask - max_addr) * 5.0 / 8.0))
-            & page_mask
-        )
-
-        proto["stack"] = {"address": stack_base, "size": 24576, "start_offset": 4096}
 
         return proto

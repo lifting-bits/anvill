@@ -40,5 +40,5 @@ class IDAVariable(Variable):
         if not is_definition:
             return
 
-        memory = program.memory()
+        memory = program.memory
         # TODO

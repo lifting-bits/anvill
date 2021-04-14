@@ -15,7 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #include "RecoverStackFrameInformation.h"
 
 #include <anvill/Analysis/CrossReferenceResolver.h>
@@ -110,8 +109,7 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
     for (auto &instr : basic_block) {
       for (auto i = 0u, num_ops = instr.getNumOperands(); i < num_ops; ++i) {
         auto &use = instr.getOperandUse(i);
-        auto val = use.get();
-        if (IsRelatedToStackPointer(data_layout, val)) {
+        if (auto val = use.get(); IsRelatedToStackPointer(data_layout, val)) {
           output.emplace_back(&use);
         }
       }
@@ -389,7 +387,7 @@ RecoverStackFrameInformation::UpdateFunction(
   }
 
   // The stack analysis we have performed earlier contains all the
-  // operand uses we have to update
+  // operand uses we have to update.
   for (auto &sp_use : stack_frame_analysis.instruction_uses) {
 
     const auto instr = llvm::dyn_cast<llvm::Instruction>(sp_use.use->getUser());
