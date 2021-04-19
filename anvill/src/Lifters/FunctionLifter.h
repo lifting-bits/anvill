@@ -100,6 +100,7 @@ class FunctionLifter {
   llvm::PointerType *const mem_ptr_type;
   llvm::PointerType *const state_ptr_type;
   llvm::IntegerType *const address_type;
+  llvm::Type *const pc_reg_type{nullptr};
 
   // Address of the function currently being lifted.
   uint64_t func_address{0};
@@ -407,6 +408,18 @@ class FunctionLifter {
   void
   InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
 
+  // Generates a new program counter
+  llvm::Value *GenerateProgramCounter(llvm::BasicBlock *block,
+                                      std::uint64_t address);
+
+  // Updates the program counter value
+  void UpdateProgramCounter(llvm::BasicBlock *block, llvm::Value *pc);
+
+  // Generates a symbolic program counter value, used primarily by
+  // InitializeSymbolicProgramCounter
+  llvm::Value *GenerateSymbolicProgramCounter(llvm::BasicBlock *block,
+                                              std::uint64_t address);
+
   // Initialize a symbolic program counter value in a lifted function. This
   // mechanism is used to improve cross-reference discovery by using a
   // relocatable constant expression as the initial value for a program counter.
@@ -415,13 +428,18 @@ class FunctionLifter {
   // and therefore can be found.
   llvm::Value *InitializeSymbolicProgramCounter(llvm::BasicBlock *block);
 
+  // Generates a concrete program counter value, used primarily by
+  // InitializeConcreteProgramCounter
+  llvm::Value *GenerateConcreteProgramCounter(llvm::BasicBlock *block,
+                                              std::uint64_t address);
+
   // Initialize the program value with a concrete integer address.
   llvm::Value *InitializeConcreteProgramCounter(llvm::BasicBlock *block);
 
   // Initialize a symbolic stack pointer value in a lifted function. This
   // mechanism is used to improve stack frame recovery, in a similar way that
   // a symbolic PC improves cross-reference discovery.
-  void InitialzieSymbolicStackPointer(llvm::BasicBlock *block);
+  void InitializeSymbolicStackPointer(llvm::BasicBlock *block);
 
   // Initialize a symbolic return address. This is similar to symbolic program
   // counters/stack pointers.
