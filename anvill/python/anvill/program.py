@@ -150,8 +150,10 @@ class Program(ABC):
         else:
             return False
 
-    def set_control_flow_targets(self, source_ea: int, destination_list: List[int], complete: bool) -> bool:
-        
+    def set_control_flow_targets(
+        self, source_ea: int, destination_list: List[int], complete: bool
+    ) -> bool:
+
         self.try_add_referenced_entity(source_ea, False)
         for dest_ea in destination_list:
             self.try_add_referenced_entity(dest_ea, False)

@@ -523,6 +523,8 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
 
   const auto func_type =
       llvm::FunctionType::get(ret_type, param_types, tpl.is_variadic);
+
+
   if (tpl.type && tpl.type != func_type) {
     LOG(ERROR) << remill::LLVMThingToString(tpl.type);
     LOG(ERROR) << remill::LLVMThingToString(func_type);
@@ -538,7 +540,11 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
   const auto decl_ptr = decl.get();
   decl_ptr->return_address = return_address;
   decl_ptr->owner = this;
-  decl->type = func_type;
+  decl_ptr->type = func_type;
+
+  LOG_IF(FATAL, !decl_ptr->type)
+      << "Function decl at address " << std::hex << decl_ptr->address
+      << std::dec << " has invalid function type";
 
   if (funcs_are_sorted && !funcs.empty() &&
       funcs.back()->address > decl->address) {

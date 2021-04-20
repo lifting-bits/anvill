@@ -21,12 +21,22 @@ from .typecache import *
 from .bnfunction import *
 from .bnvariable import *
 
-
 from anvill.program import *
 from anvill.arch import *
 from anvill.os import *
 from anvill.imageparser import *
 from anvill.util import *
+from anvill.type import *
+
+
+def _is_function_pointer(bn_var):
+    var_tinfo = bn_var.type
+    if (
+        var_tinfo.type_class == bn.TypeClass.PointerTypeClass
+        and var_tinfo.element_type.type_class == bn.TypeClass.FunctionTypeClass
+    ):
+        return True
+    return False
 
 
 class BNProgram(Program):
@@ -39,7 +49,9 @@ class BNProgram(Program):
         try:
             self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG("Failed to initialize the control flow information for functin thunks")
+            DEBUG(
+                "Failed to initialize the control flow information for functin thunks"
+            )
 
     @property
     def bv(self):
@@ -83,8 +95,160 @@ class BNProgram(Program):
         if isinstance(var_type, VoidType):
             var_type = ArrayType()
             var_type.set_num_elements(1)
+            return
 
         return BNVariable(bn_var, arch, address, var_type)
+
+    def _get_function_from_bnvariable(self, address, bn_var):
+        """Get the `Function` instance from the data variable of function
+        pointer type. Raise an `InvalidFunctionException` exception if
+        the data variable is not of function pointer type.
+        """
+        if bn_var is None:
+            return None
+
+        # if the bn_var is an external symbol; discard it It will not get
+        # recovered as function or variables
+        symbol = self._bv.get_symbol_at(address)
+        if symbol != None and symbol.type == bn.SymbolType.ExternalSymbol:
+            return None
+
+        if symbol != None and symbol.type != bn.SymbolType.ImportAddressSymbol:
+            raise InvalidFunctionException(
+                "Not an imported address symbol defined at address {:x}".format(address)
+            )
+
+        if not _is_function_pointer(bn_var):
+            raise InvalidFunctionException(
+                "No function pointer is defined at address {:x}".format(address)
+            )
+
+        arch = self._arch
+        func_tinfo = bn_var.type.element_type
+
+        # TODO(akshayk): The type information may not have calling convention
+        # information. It does not recover the parameters and get the function
+        # in such case. A working solution could be handing the default calling
+        # convention for each architecture. This is in todo list.
+        # cc = func_tinfo.calling_convention
+        # if cc is None:
+        #     cc = self._bv.arch.calling_conventions[0]
+
+        # calling_conv = CallingConvention(arch, func_tinfo, cc)
+
+        func_type = self.type_cache.get(func_tinfo)
+
+        # Get the start address of function which is assigned to global variable
+        is_64bit = self._bv.arch.address_size == 8
+        binary_reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
+        binary_reader.seek(address)
+        function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
+
+        variable = self._bv.get_data_var_at(function_start)
+        func = BNFunction(variable, arch, function_start, [], [], func_type, True)
+        return func
+
+    def _get_function_parameters(self, bn_func):
+        """Get the list of function parameters from the function type. If
+        the function type is incorrect or violate the calling conv, return
+        the empty list
+        """
+        param_list = []
+
+        if not isinstance(bn_func, bn.Function):
+            return param_list
+
+        index = 0
+        calling_conv = CallingConvention(
+            self._arch, bn_func, bn_func.calling_convention
+        )
+
+        try:
+            for var in bn_func.parameter_vars:
+                source_type = var.source_type
+                var_type = var.type
+
+                # Fails to recover var_type for some function which may fail at later stage
+                # e.g: int32_t __dlmopen(int32_t arg1, int32_t @ r9, int32_t @ r11)
+                if var_type is None:
+                    continue
+
+                arg_type = self.type_cache.get(var_type)
+
+                if source_type == bn.VariableSourceType.RegisterVariableSourceType:
+
+                    # For some functions binary ninja identifies the function type incorrectly. The
+                    # register allocation in such cases violate calling convention.
+                    #
+                    # https://github.com/Vector35/binaryninja-api/issues/2399
+                    # https://github.com/Vector35/binaryninja-api/issues/2400
+                    #
+                    # Identify the storage register and discard the parameter variable
+                    # if they does not follow calling convention
+                    # e.g: int32_t main(int32_t arg1, void* arg2, int128_t arg3 @ q1, int64_t arg4 @ q2)
+                    #
+                    storage_reg_name = self._bv.arch.get_reg_name(var.storage)
+                    if not (
+                        storage_reg_name in calling_conv.int_arg_reg
+                        or storage_reg_name in calling_conv.float_arg_reg
+                    ):
+                        raise InvalidParameterException(
+                            "Invalid parameters for function at {:x}: {}".format(
+                                bn_func.start, bn_func.name
+                            )
+                        )
+
+                    if (
+                        bn.TypeClass.IntegerTypeClass == var_type.type_class
+                        or bn.TypeClass.PointerTypeClass == var_type.type_class
+                    ):
+                        reg_name = calling_conv.next_int_arg_reg
+                    elif bn.TypeClass.FloatTypeClass == var_type.type_class:
+                        reg_name = calling_conv.next_float_arg_reg
+                    elif bn.TypeClass.NamedTypeReferenceClass == var_type.type_class:
+                        # The function paramater could be named alias of a float type.
+                        # TODO(akshayk) Should check the underlying types as well for aliases??
+                        if isinstance(arg_type, FloatingPointType):
+                            reg_name = calling_conv.next_float_arg_reg
+                        else:
+                            reg_name = calling_conv.next_int_arg_reg
+                    elif bn.TypeClass.VoidTypeClass == var_type.type_class:
+                        reg_name = None
+                        raise InvalidParameterException(
+                            "Void type parameter for function at {:x}: {}".format(
+                                bn_func.start, bn_func.name
+                            )
+                        )
+                    else:
+                        reg_name = None
+                        raise InvalidParameterException(
+                            "No variable type defined for function parameters at {:x}: {}".format(
+                                bn_func.start, bn_func.name
+                            )
+                        )
+
+                    # Binja may identify the function type wrongly not following
+                    # the calling convention. The reg_name in such cases will be
+                    # None. Discard such parameters.
+                    if reg_name is not None:
+                        loc = Location()
+                        loc.set_register(self._arch.register_name(reg_name))
+                        loc.set_type(arg_type)
+                        param_list.append(loc)
+
+                elif source_type == bn.VariableSourceType.StackVariableSourceType:
+                    loc = Location()
+                    loc.set_memory(self._arch.stack_pointer_name(), var.storage)
+                    loc.set_type(arg_type)
+                    param_list.append(loc)
+
+                index += 1
+
+            return param_list
+
+        except InvalidParameterException as e:
+            DEBUG(e)
+            return []
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
@@ -97,72 +261,29 @@ class BNProgram(Program):
             if func_contains and len(func_contains):
                 bn_func = func_contains[0]
 
+        # A function symbol may be identified as variable by binja.
         if not bn_func:
-            raise InvalidFunctionException(
-                "No function defined at or containing address {:x}".format(address)
-            )
+            bn_var = self._bv.get_data_var_at(address)
+            if bn_var is not None:
+                return self._get_function_from_bnvariable(address, bn_var)
+            else:
+                raise InvalidFunctionException(
+                    "No function defined at or containing address {:x}".format(address)
+                )
 
         self._try_add_symbol(address)
 
         func_type = self.type_cache.get(bn_func.function_type)
-        calling_conv = CallingConvention(arch, bn_func)
-
-        index = 0
-        param_list = []
-        for var in bn_func.parameter_vars:
-            source_type = var.source_type
-            var_type = var.type
-
-            # Fails to recover var_type for some function which may fail at later stage
-            # e.g: int32_t __dlmopen(int32_t arg1, int32_t @ r9, int32_t @ r11)
-            if var_type is None:
-                continue
-
-            arg_type = self.type_cache.get(var_type)
-
-            if source_type == bn.VariableSourceType.RegisterVariableSourceType:
-                if (
-                    bn.TypeClass.IntegerTypeClass == var_type.type_class
-                    or bn.TypeClass.PointerTypeClass == var_type.type_class
-                ):
-                    reg_name = calling_conv.next_int_arg_reg
-                elif bn.TypeClass.FloatTypeClass == var_type.type_class:
-                    reg_name = calling_conv.next_float_arg_reg
-                elif bn.TypeClass.NamedTypeReferenceClass == var_type.type_class:
-                    # The function paramater could be named alias of a float type.
-                    # TODO(akshayk) Should check the underlying types as well for aliases??
-                    if isinstance(arg_type, FloatingPointType):
-                        reg_name = calling_conv.next_float_arg_reg
-                    else:
-                        reg_name = calling_conv.next_int_arg_reg
-                elif bn.TypeClass.VoidTypeClass == var_type.type_class:
-                    reg_name = "invalid void"
-                else:
-                    reg_name = None
-                    raise AnvillException(
-                        "No variable type defined for function parameters"
-                    )
-
-                loc = Location()
-                loc.set_register(reg_name.upper())
-                loc.set_type(arg_type)
-                param_list.append(loc)
-
-            elif source_type == bn.VariableSourceType.StackVariableSourceType:
-                loc = Location()
-                loc.set_memory(self._bv.arch.stack_pointer.upper(), var.storage)
-                loc.set_type(arg_type)
-                param_list.append(loc)
-
-            index += 1
+        calling_conv = CallingConvention(arch, bn_func, bn_func.calling_convention)
+        param_list = self._get_function_parameters(bn_func)
 
         ret_list = []
-        retTy = self.type_cache.get(bn_func.return_type)
-        if not isinstance(retTy, VoidType):
+        ret_ty = self.type_cache.get(bn_func.return_type)
+        if not isinstance(ret_ty, VoidType):
             for reg in calling_conv.return_regs:
                 loc = Location()
-                loc.set_register(reg.upper())
-                loc.set_type(retTy)
+                loc.set_register(self._arch.register_name(reg))
+                loc.set_type(ret_ty)
                 ret_list.append(loc)
 
         func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
@@ -209,7 +330,11 @@ class BNProgram(Program):
             # Get the variable defined at the dest address
             func_location = self._bv.get_data_var_at(function_thunk.start)
             if not func_location:
-                print("anvill: No variable defined for {:x}/{}".format(function_thunk.start, function_thunk.name))
+                DEBUG(
+                    "anvill: No variable defined for {:x}/{}".format(
+                        function_thunk.start, function_thunk.name
+                    )
+                )
                 continue
 
             # We should only have one caller
@@ -233,11 +358,15 @@ class BNProgram(Program):
                             caller_function.start, redirection_dest
                         )
 
-                    print("anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(caller.address,
-                                                                                                   redirection_dest,
-                                                                                                   function_thunk.name))
+                    print(
+                        "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                            caller.address, redirection_dest, function_thunk.name
+                        )
+                    )
 
-                    self.set_control_flow_targets(caller.address, [redirection_dest], True)
+                    self.set_control_flow_targets(
+                        caller.address, [redirection_dest], True
+                    )
 
                     redirected_thunk_list.append(function_thunk.name)
 

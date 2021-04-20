@@ -108,4 +108,11 @@ class Function(object):
             proto["register_info"] = [
                 loc.proto(self._arch) for loc in self._register_info
             ]
+
+        # The function type information is only available with the
+        # functions that are external. The lifter will handle the function
+        # types and ignore params and return values
+        if self.is_external():
+            proto["type"] = self.type().proto(self._arch)
+
         return proto
