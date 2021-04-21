@@ -116,13 +116,16 @@ static void MuteStateEscape(llvm::CallInst *call) {
   call->setArgOperand(remill::kStatePointerArgNum, undef_val);
 }
 
+// This returns a special anvill built-in used to describe jumps tables
+// inside lifted code
 static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
                                            bool complete) {
 
-  auto func_name =
+  const auto &func_name =
       complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
 
-  if (auto func = module.getFunction(func_name)) {
+  auto func = module.getFunction(func_name);
+  if (func != nullptr) {
     return func;
   }
 
@@ -133,8 +136,8 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
 
   auto func_type = llvm::FunctionType::get(return_type, func_parameters, true);
 
-  auto func = llvm::Function::Create(
-      func_type, llvm::GlobalValue::ExternalLinkage, func_name.c_str(), module);
+  func = llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
+                                func_name, module);
 
   func->addFnAttr(llvm::Attribute::ReadNone);
 
@@ -290,18 +293,15 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
   llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc), block);
 }
 
-// This is a list of the possibilities we want to cover:
-//
-// 1. No target: AddTerminatingTailCall
-// 2. Single target, complete: normal jump
-// 3. Multiple targets, complete: switch with no default case
-// 4. Single or multiple targets, not complete: switch with default case
-//    containing AddTerminatingTailCall
-//
-// See the function declaration in the header file for more information
+// Visit an indirect jump control-flow instruction. This may be register- or
+// memory-indirect, e.g. `jmp rax` or `jmp [rax]` on x86. Thus, the target is
+// not know a priori and our default mechanism for handling this is to perform
+// a tail-call to the `__remill_jump` function, whose role is to be a stand-in
+// something that enacts the effect of "transfer to target."
 void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
+
   VisitDelayedInstruction(inst, delayed_inst, block, true);
 
   // Attempt to get the target list for this control flow instruction
@@ -312,37 +312,42 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
 
+  // This is a list of the possibilities we want to cover:
+  //
+  // 1. No target: AddTerminatingTailCall
+  // 2. Single target, complete: normal jump
+  // 3. Multiple targets, complete: switch with no default case
+  // 4. Single or multiple targets, not complete: switch with default case
+  //    containing AddTerminatingTailCall
+
   if (maybe_target_list.has_value()) {
     const auto &target_list = maybe_target_list.value();
 
+    // If the target list is complete and has only one destination, then we
+    // can handle it as normal jump
     if (target_list.destination_list.size() == 1U && target_list.complete) {
-
-      // If the target list is complete and has only one destination, then we
-      // can handle it as normal jump
       add_remill_jump = false;
 
       auto destination = target_list.destination_list.front();
       llvm::BranchInst::Create(GetOrCreateTargetBlock(destination), block);
 
+    // We have multiple destinations. Handle this with a switch. If the target
+    // list is not marked as complete, then we'll still add __remill_jump
+    // inside the default block
     } else {
-
-      // We have multiple destinations. Handle this with a switch. If the target
-      // list is not marked as complete, then we'll still add __remill_jump
-      // inside the default block
       llvm::BasicBlock *default_case{nullptr};
-      if (target_list.complete) {
 
-        // Create a default case that is not reachable
+      // Create a default case that is not reachable
+      if (target_list.complete) {
         add_remill_jump = false;
         default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
 
         llvm::IRBuilder<> builder(default_case);
         builder.CreateUnreachable();
 
+      // Create a default case that will contain the __remill_jump. For this
+      // to work, we need to update `current_bb`
       } else {
-
-        // Create a default case that will contain the __remill_jump. For this
-        // to work, we need to update `current_bb`
         add_remill_jump = true;
 
         default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
