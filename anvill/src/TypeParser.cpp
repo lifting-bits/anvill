@@ -526,8 +526,10 @@ ParseType(llvm::LLVMContext &context, std::vector<llvm::Type *> &ids,
 
 }  // namespace
 
-llvm::Expected<llvm::Type *> ParseType(llvm::LLVMContext &context,
-                                       llvm::StringRef spec) {
+llvm::Expected<llvm::Type *>
+ParseType(bool &is_function, llvm::LLVMContext &context, llvm::StringRef spec) {
+  is_function = false;
+
   std::vector<llvm::Type *> ids;
   size_t i = 0;
   llvm::SmallPtrSet<llvm::Type *, 8> size_checked;
@@ -541,6 +543,11 @@ llvm::Expected<llvm::Type *> ParseType(llvm::LLVMContext &context,
     }
 
     auto type = remill::GetReference(ret);
+    if (type->isFunctionTy()) {
+      is_function = true;
+      return type;
+    }
+
     if (!type->isSized(&size_checked)) {
       return llvm::createStringError(
           std::make_error_code(std::errc::invalid_argument),

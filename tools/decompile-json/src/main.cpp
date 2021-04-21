@@ -163,9 +163,15 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+  bool is_function{false};
+  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
     LOG(ERROR) << remill::GetErrorString(maybe_type);
+    return false;
+  }
+
+  if (is_function) {
+    LOG(ERROR) << "Unhandled function type case";
     return false;
   }
 
@@ -197,9 +203,15 @@ static bool ParseTypedRegister(
     return false;
   }
 
-  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+  bool is_function{false};
+  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
     LOG(ERROR) << remill::GetErrorString(maybe_type);
+    return false;
+  }
+
+  if (is_function) {
+    LOG(ERROR) << "Unhandled function type case";
     return false;
   }
 
@@ -235,9 +247,15 @@ static bool ParseReturnValue(const remill::Arch *arch,
     return false;
   }
 
-  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+  bool is_function{false};
+  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
     LOG(ERROR) << remill::GetErrorString(maybe_type);
+    return false;
+  }
+
+  if (is_function) {
+    LOG(ERROR) << "Unhandled function type case";
     return false;
   }
 
@@ -379,8 +397,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
 
 // Try to unserialize variable information.
 static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
-                          anvill::Program &program, llvm::json::Object *obj) {
-  anvill::GlobalVarDecl decl;
+                          anvill::Program &program, llvm::json::Object *obj,
+                          llvm::Module &module) {
 
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
@@ -388,7 +406,7 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  decl.address = static_cast<uint64_t>(*maybe_ea);
+  auto address = static_cast<uint64_t>(*maybe_ea);
 
   auto maybe_type_str = obj->getString("type");
   if (!maybe_type_str) {
@@ -396,13 +414,51 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  auto maybe_type = anvill::ParseType(context, *maybe_type_str);
+  bool is_function{false};
+  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
   if (remill::IsError(maybe_type)) {
     LOG(ERROR) << remill::GetErrorString(maybe_type);
     return false;
   }
 
-  decl.type = remill::GetReference(maybe_type);
+  auto type = remill::GetReference(maybe_type);
+
+  if (is_function) {
+    auto type_as_func_ty = llvm::dyn_cast<llvm::FunctionType>(type);
+    if (type_as_func_ty == nullptr) {
+      LOG(ERROR) << "Failed to cast the function type ptr";
+      return false;
+    }
+
+    std::stringstream buffer;
+    buffer << "function_variable_" << std::hex << address;
+
+    auto dummy_function =
+        llvm::Function::Create(type_as_func_ty, llvm::Function::ExternalLinkage,
+                               buffer.str().c_str(), module);
+
+    auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
+    if (remill::IsError(maybe_decl)) {
+      LOG(ERROR) << "Unable to create FunctionDecl for variable of type "
+                 << remill::LLVMThingToString(type) << " defined at "
+                 << std::hex << address;
+      return false;
+    }
+
+    auto function_decl = std::move(remill::GetReference(maybe_decl));
+    auto err = program.DeclareFunction(function_decl);
+    if (remill::IsError(err)) {
+      LOG(ERROR) << remill::GetErrorString(err);
+      return false;
+    }
+
+    return true;
+  }
+
+  anvill::GlobalVarDecl decl;
+  decl.type = type;
+  decl.address = address;
+
   auto err = program.DeclareVariable(decl);
   if (remill::IsError(err)) {
     LOG(ERROR) << remill::GetErrorString(err);
@@ -681,7 +737,8 @@ static bool ParseControlFlowTargets(anvill::Program &program,
 //    - Permissions (is_readable, is_writeable, is_executable).
 //    - Data (hex-encoded byte string).
 static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
-                      anvill::Program &program, llvm::json::Object *spec) {
+                      anvill::Program &program, llvm::json::Object *spec,
+                      llvm::Module &module) {
 
   auto num_funcs = 0;
   if (auto funcs = spec->getArray("functions")) {
@@ -739,7 +796,7 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto vars = spec->getArray("variables")) {
     for (llvm::json::Value &var : *vars) {
       if (auto var_obj = var.getAsObject()) {
-        if (!ParseVariable(arch, context, program, var_obj)) {
+        if (!ParseVariable(arch, context, program, var_obj, module)) {
           return false;
         }
       } else {
@@ -912,7 +969,7 @@ int main(int argc, char *argv[]) {
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
   // anvill::Program object, which is effectively a representation of the spec
-  if (!ParseSpec(arch.get(), context, program, spec)) {
+  if (!ParseSpec(arch.get(), context, program, spec, module)) {
     return EXIT_FAILURE;
   }
 
