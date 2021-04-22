@@ -61,6 +61,14 @@ def main():
         INIT_DEBUG_FILE(args.log_file)
 
     bv = bn.BinaryViewType.get_view_of_file(args.bin_in)
+    # Do a sanity check to ensure that a BinaryView was loaded.
+    # The user may have provided a file for an architecture that
+    # BinaryNinja does not support or some other unloadable file
+    if not bv:
+        sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
+        sys.stderr.write("Does BinaryNinja support this architecture?\n")
+        sys.exit(1)
+
     p = get_program(bv)
 
     is_macos = "darwin" in platform.system().lower()
