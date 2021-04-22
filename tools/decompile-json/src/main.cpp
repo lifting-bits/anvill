@@ -453,6 +453,8 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
                                buffer.str().c_str(), module);
 
     auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
+    dummy_function->eraseFromParent();
+
     if (remill::IsError(maybe_decl)) {
       LOG(ERROR) << "Unable to create FunctionDecl for variable of type "
                  << remill::LLVMThingToString(type) << " defined at "
@@ -461,6 +463,8 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     }
 
     auto function_decl = std::move(remill::GetReference(maybe_decl));
+    function_decl.address = address;
+
     auto err = program.DeclareFunction(function_decl);
     if (remill::IsError(err)) {
       LOG(ERROR) << remill::GetErrorString(err);
