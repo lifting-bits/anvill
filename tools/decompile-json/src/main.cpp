@@ -48,11 +48,11 @@
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/ITypeSpecification.h>
 
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
 #include "anvill/Program.h"
-#include "anvill/TypeParser.h"
 #include "anvill/Util.h"
 
 DECLARE_string(arch);
@@ -163,19 +163,23 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  bool is_function{false};
-  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
-  if (remill::IsError(maybe_type)) {
-    LOG(ERROR) << remill::GetErrorString(maybe_type);
+  auto type_spec_res =
+      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  if (!type_spec_res.Succeeded()) {
+    auto error = type_spec_res.TakeError();
+
+    LOG(ERROR) << error.message << " in spec " << error.spec;
     return false;
   }
 
-  if (is_function) {
-    LOG(ERROR) << "Unhandled function type case";
+  auto type_spec = type_spec_res.TakeValue();
+  if (!type_spec->Sized()) {
+    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
+               << " -> " << type_spec->Description();
     return false;
   }
 
-  decl.type = remill::GetReference(maybe_type);
+  decl.type = type_spec->Type();
   return ParseValue(arch, decl, obj, "function parameter");
 }
 
@@ -203,19 +207,23 @@ static bool ParseTypedRegister(
     return false;
   }
 
-  bool is_function{false};
-  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
-  if (remill::IsError(maybe_type)) {
-    LOG(ERROR) << remill::GetErrorString(maybe_type);
+  auto type_spec_res =
+      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  if (!type_spec_res.Succeeded()) {
+    auto error = type_spec_res.TakeError();
+
+    LOG(ERROR) << error.message << " in spec " << error.spec;
     return false;
   }
 
-  if (is_function) {
-    LOG(ERROR) << "Unhandled function type case";
+  auto type_spec = type_spec_res.TakeValue();
+  if (!type_spec->Sized()) {
+    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
+               << " -> " << type_spec->Description();
     return false;
   }
 
-  decl.type = remill::GetReference(maybe_type);
+  decl.type = type_spec->Type();
 
   auto register_name = obj->getString("register");
   if (!register_name) {
@@ -247,19 +255,23 @@ static bool ParseReturnValue(const remill::Arch *arch,
     return false;
   }
 
-  bool is_function{false};
-  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
-  if (remill::IsError(maybe_type)) {
-    LOG(ERROR) << remill::GetErrorString(maybe_type);
+  auto type_spec_res =
+      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  if (!type_spec_res.Succeeded()) {
+    auto error = type_spec_res.TakeError();
+
+    LOG(ERROR) << error.message << " in spec " << error.spec;
     return false;
   }
 
-  if (is_function) {
-    LOG(ERROR) << "Unhandled function type case";
+  auto type_spec = type_spec_res.TakeValue();
+  if (!type_spec->Sized()) {
+    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
+               << " -> " << type_spec->Description();
     return false;
   }
 
-  decl.type = remill::GetReference(maybe_type);
+  decl.type = type_spec->Type();
   return ParseValue(arch, decl, obj, "function return value");
 }
 
@@ -414,16 +426,19 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  bool is_function{false};
-  auto maybe_type = anvill::ParseType(is_function, context, *maybe_type_str);
-  if (remill::IsError(maybe_type)) {
-    LOG(ERROR) << remill::GetErrorString(maybe_type);
+  auto type_spec_res =
+      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  if (!type_spec_res.Succeeded()) {
+    auto error = type_spec_res.TakeError();
+
+    LOG(ERROR) << error.message << " in spec " << error.spec;
     return false;
   }
 
-  auto type = remill::GetReference(maybe_type);
+  auto type_spec = type_spec_res.TakeValue();
+  auto type = type_spec->Type();
 
-  if (is_function) {
+  if (type->isFunctionTy()) {
     auto type_as_func_ty = llvm::dyn_cast<llvm::FunctionType>(type);
     if (type_as_func_ty == nullptr) {
       LOG(ERROR) << "Failed to cast the function type ptr";
@@ -453,6 +468,12 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     }
 
     return true;
+  }
+
+  if (!type_spec->Sized()) {
+    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
+               << " -> " << type_spec->Description();
+    return false;
   }
 
   anvill::GlobalVarDecl decl;

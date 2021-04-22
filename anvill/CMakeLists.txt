@@ -26,8 +26,9 @@ add_library(anvill STATIC
   src/Arch/Arch.h
   src/Arch/Arch.cpp
 
-  include/anvill/TypeParser.h
-  src/TypeParser.cpp
+  include/anvill/ITypeSpecification.h
+  src/TypeSpecification.h
+  src/TypeSpecification.cpp
 
   include/anvill/TypePrinter.h
   src/TypePrinter.cpp
@@ -108,7 +109,7 @@ target_public_headers(anvill
   include/anvill/Program.h
   include/anvill/Result.h
   include/anvill/Type.h
-  include/anvill/TypeParser.h
+  include/anvill/ITypeSpecification.h
   include/anvill/TypePrinter.h
   include/anvill/Util.h
 )
