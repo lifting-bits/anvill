@@ -72,4 +72,8 @@ const std::string kGlobalAliasNamePrefix("data_");
 
 const std::string kSymbolicStackFrameValuePrefix(kAnvillNamePrefix + "stack_");
 
+const std::string kAnvillSwitchCompleteFunc(kAnvillNamePrefix + "complete_switch");
+
+const std::string kAnvillSwitchIncompleteFunc(kAnvillNamePrefix + "incomplete_switch");
+
 }  // namespace anvill

@@ -27,6 +27,9 @@ class ControlFlowProvider final : public IControlFlowProvider {
 
   virtual std::uint64_t GetRedirection(std::uint64_t address) const override;
 
+  virtual std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(std::uint64_t address) const override;
+
  private:
   struct PrivateData;
   std::unique_ptr<PrivateData> d;

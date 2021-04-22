@@ -17,7 +17,10 @@
 
 #pragma once
 
-#include <llvm/Support/Error.h>
+#include <anvill/Result.h>
+
+#include <memory>
+#include <string>
 
 namespace llvm {
 class LLVMContext;
@@ -53,7 +56,36 @@ namespace anvill {
 //    integer_type: 'b' | 'B' | 'h' | 'H' | 'i' | 'I' | 'l' | 'L' | 'M'
 //    float_type: 'f' | 'd' | 'D'
 //
-llvm::Expected<llvm::Type *> ParseType(llvm::LLVMContext &context,
-                                       llvm::StringRef spec);
+
+struct TypeSpecificationError final {
+  enum class ErrorCode {
+    MemoryAllocationFailure,
+    InvalidSpecFormat,
+    InvalidState,
+  };
+
+  std::string spec;
+  ErrorCode error_code;
+  std::string message;
+};
+
+class ITypeSpecification {
+ public:
+  ITypeSpecification(void) = default;
+  virtual ~ITypeSpecification(void) = default;
+
+  using Ptr = std::unique_ptr<ITypeSpecification>;
+  static Result<Ptr, TypeSpecificationError>
+  Create(llvm::LLVMContext &llvm_context, llvm::StringRef spec);
+
+  virtual llvm::Type *Type(void) const = 0;
+  virtual bool Sized(void) const = 0;
+
+  virtual const std::string &Spec(void) const = 0;
+  virtual const std::string &Description(void) const = 0;
+
+  ITypeSpecification(const ITypeSpecification &) = delete;
+  ITypeSpecification &operator=(const ITypeSpecification &) = delete;
+};
 
 }  // namespace anvill

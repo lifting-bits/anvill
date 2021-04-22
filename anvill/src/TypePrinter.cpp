@@ -36,7 +36,7 @@ namespace anvill {
 namespace {
 
 // Translates an llvm::Type to a type that conforms to the spec in
-// TypeParser.cpp
+// TypeSpecification.cpp
 static void
 TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
                       std::unordered_map<llvm::StructType *, size_t> &ids,

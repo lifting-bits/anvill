@@ -185,10 +185,7 @@ class BNProgram(Program):
         image_parser = create_elf_image_parser(input_file_path)
         function_thunk_list = image_parser.get_function_thunk_list()
 
-        # Go through each function thunk and add the redirection. Note that
-        # the __libc_start_main thunk does not need redirection since it's
-        # called directly without any wrapper function from the module entry
-        # point
+        # Go through each function thunk and add the redirection and targets
         is_32_bit = image_parser.get_image_bitness() == 32
 
         reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
@@ -212,28 +209,25 @@ class BNProgram(Program):
                 for caller_function in self._bv.get_functions_containing(
                     caller.address
                 ):
-                    if (
-                        function_thunk.name == "__libc_start_main"
-                        or function_thunk.name not in caller_function.name
-                    ):
-                        continue
-
-                    redirection_source = caller_function.start
-
-                    print(
-                        "anvill: Redirecting the user {:x} of thunk {} at {:x} to {:x}".format(
-                            redirection_source,
-                            function_thunk.name,
-                            function_thunk.start,
-                            redirection_dest,
+                    if function_thunk.name in caller_function.name:
+                        print(
+                            "anvill: Redirecting the user {:x} of thunk {} at {:x} to {:x}".format(
+                                caller_function.start,
+                                function_thunk.name,
+                                function_thunk.start,
+                                redirection_dest,
+                            )
                         )
-                    )
 
-                    self.add_control_flow_redirection(
-                        redirection_source, redirection_dest
-                    )
+                        self.add_control_flow_redirection(
+                            caller_function.start, redirection_dest
+                        )
 
-                    self.set_control_flow_targets(redirection_source, [redirection_dest], True)
+                    print("anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(caller.address,
+                                                                                                   redirection_dest,
+                                                                                                   function_thunk.name))
+
+                    self.set_control_flow_targets(caller.address, [redirection_dest], True)
 
                     redirected_thunk_list.append(function_thunk.name)
 

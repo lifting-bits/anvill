@@ -41,7 +41,7 @@ class BNFunction(Function):
         if not is_definition:
             return
 
-        mem = program.memory()
+        mem = program.memory
 
         ref_eas: Set[int] = set()
         ea = self._bn_func.start

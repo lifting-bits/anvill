@@ -58,7 +58,7 @@ class IDAFunction(Function):
         if not is_definition:
             return
 
-        memory = program.memory()
+        memory = program.memory
 
         seg_ref = [None]
 

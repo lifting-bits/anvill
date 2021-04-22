@@ -76,4 +76,10 @@ extern const std::string kGlobalAliasNamePrefix;
 // Prefix used to identify symbolic values for stack frame values
 extern const std::string kSymbolicStackFrameValuePrefix;
 
+// The anvill function used to handle complete switch cases
+extern const std::string kAnvillSwitchCompleteFunc;
+
+// The anvill function used to handle incomplete switch cases
+extern const std::string kAnvillSwitchIncompleteFunc;
+
 }  // namespace anvill

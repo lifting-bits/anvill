@@ -35,6 +35,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
@@ -115,6 +116,34 @@ static void MuteStateEscape(llvm::CallInst *call) {
   call->setArgOperand(remill::kStatePointerArgNum, undef_val);
 }
 
+// This returns a special anvill built-in used to describe jumps tables
+// inside lifted code
+static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
+                                           bool complete) {
+
+  const auto &func_name =
+      complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
+
+  auto func = module.getFunction(func_name);
+  if (func != nullptr) {
+    return func;
+  }
+
+  auto &context = module.getContext();
+  auto return_type = llvm::Type::getInt64Ty(context);
+  const std::vector<llvm::Type *> func_parameters = {
+      llvm::Type::getInt64Ty(context)};
+
+  auto func_type = llvm::FunctionType::get(return_type, func_parameters, true);
+
+  func = llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
+                                func_name, module);
+
+  func->addFnAttr(llvm::Attribute::ReadNone);
+
+  return func;
+}
+
 }  // namespace
 
 FunctionLifter::~FunctionLifter(void) {}
@@ -140,7 +169,11 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
           llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
               options.arch->StatePointerType(), llvm_context))),
       address_type(
-          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)) {}
+          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
+      pc_reg_type(
+          options.arch
+              ->RegisterByName(options.arch->ProgramCounterRegisterName())
+              ->type) {}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -268,8 +301,100 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
 void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
                                        remill::Instruction *delayed_inst,
                                        llvm::BasicBlock *block) {
+
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  remill::AddTerminatingTailCall(block, intrinsics.jump);
+
+  // Attempt to get the target list for this control flow instruction
+  // so that we can handle this jump in a less generic way
+  auto maybe_target_list =
+      options.ctrl_flow_provider->TryGetControlFlowTargets(inst.pc);
+
+  auto add_remill_jump{true};
+  llvm::BasicBlock *current_bb = block;
+
+  // This is a list of the possibilities we want to cover:
+  //
+  // 1. No target: AddTerminatingTailCall
+  // 2. Single target, complete: normal jump
+  // 3. Multiple targets, complete: switch with no default case
+  // 4. Single or multiple targets, not complete: switch with default case
+  //    containing AddTerminatingTailCall
+
+  if (maybe_target_list.has_value()) {
+    const auto &target_list = maybe_target_list.value();
+
+    // If the target list is complete and has only one destination, then we
+    // can handle it as normal jump
+    if (target_list.destination_list.size() == 1U && target_list.complete) {
+      add_remill_jump = false;
+
+      auto destination = target_list.destination_list.front();
+      llvm::BranchInst::Create(GetOrCreateTargetBlock(destination), block);
+
+    // We have multiple destinations. Handle this with a switch. If the target
+    // list is not marked as complete, then we'll still add __remill_jump
+    // inside the default block
+    } else {
+      llvm::BasicBlock *default_case{nullptr};
+
+      // Create a default case that is not reachable
+      if (target_list.complete) {
+        add_remill_jump = false;
+        default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+
+        llvm::IRBuilder<> builder(default_case);
+        builder.CreateUnreachable();
+
+      // Create a default case that will contain the __remill_jump. For this
+      // to work, we need to update `current_bb`
+      } else {
+        add_remill_jump = true;
+
+        default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+        current_bb = default_case;
+      }
+
+      // Create the parameters for the special anvill switch
+      auto pc = inst_lifter.LoadRegValue(
+          block, state_ptr, options.arch->ProgramCounterRegisterName());
+
+      std::vector<llvm::Value *> switch_parameters;
+      switch_parameters.push_back(pc);
+
+      for (auto destination : target_list.destination_list) {
+        auto dest_as_value = GenerateProgramCounter(block, destination);
+        switch_parameters.push_back(dest_as_value);
+      }
+
+      // Invoke the anvill switch
+      auto &module = *block->getModule();
+      auto anvill_switch_func =
+          GetAnvillSwitchFunc(module, target_list.complete);
+
+      llvm::IRBuilder<> ir(block);
+      auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
+
+      // Now use the anvill switch output with a SwitchInst, mapping cases
+      // by index
+      auto dest_count = target_list.destination_list.size();
+      auto switch_inst = ir.CreateSwitch(next_pc, default_case, dest_count);
+
+      for (std::size_t dest_id{0U}; dest_id < dest_count; ++dest_id) {
+        auto dest = target_list.destination_list.at(dest_id);
+        auto dest_block = GetOrCreateTargetBlock(dest);
+
+        auto dest_id_as_value = ir.getInt64(dest_id);
+        switch_inst->addCase(dest_id_as_value, dest_block);
+      }
+    }
+  }
+
+  if (add_remill_jump) {
+
+    // Either we didn't find any target list from the control flow provider, or we
+    // did but it wasn't marked as `complete`
+    remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+  }
 }
 
 // Visit a conditional indirect jump control-flow instruction. This is a mix
@@ -325,13 +450,15 @@ void FunctionLifter::VisitConditionalFunctionReturn(
                            not_taken_block);
 }
 
-std::optional<FunctionDecl> FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
+std::optional<FunctionDecl>
+FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
   auto redirected_addr = options.ctrl_flow_provider->GetRedirection(address);
 
   // In case we get redirected but still fail, try once more with the original
   // address
   auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
   if (!opt_function_decl.has_value() && redirected_addr != address) {
+
     // When we retry using the original address, still keep the (possibly)
     // redirected value
     opt_function_decl = type_provider.TryGetFunctionType(address);
@@ -593,7 +720,8 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc), taken_block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc),
+                           taken_block);
   llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
                            not_taken_block);
 }
@@ -1188,19 +1316,29 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
   });
 }
 
-// Initialize a symbolic program counter value in a lifted function. This
-// mechanism is used to improve cross-reference discovery by using a
-// relocatable constant expression as the initial value for a program counter.
-// After optimizations, the net effect is that anything derived from this
-// initial program counter is "tainted" by this initial constant expression,
-// and therefore can be found.
-llvm::Value *
-FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
+llvm::Value *FunctionLifter::GenerateProgramCounter(llvm::BasicBlock *block,
+                                                    std::uint64_t address) {
+  if (options.symbolic_program_counter) {
+    return GenerateSymbolicProgramCounter(block, address);
+  } else {
+    return GenerateConcreteProgramCounter(block, address);
+  }
+}
 
+void FunctionLifter::UpdateProgramCounter(llvm::BasicBlock *block,
+                                          llvm::Value *pc) {
   auto pc_reg =
       options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
+
   auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
 
+  llvm::IRBuilder<> ir(block);
+  ir.CreateStore(pc, pc_reg_ptr);
+}
+
+llvm::Value *
+FunctionLifter::GenerateSymbolicProgramCounter(llvm::BasicBlock *block,
+                                               std::uint64_t address) {
   auto base_pc = semantics_module->getGlobalVariable(kSymbolicPCName);
   if (!base_pc) {
     base_pc = new llvm::GlobalVariable(*semantics_module, i8_type, false,
@@ -1209,32 +1347,48 @@ FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
   }
 
   auto pc = llvm::ConstantExpr::getAdd(
-      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg->type),
-      llvm::ConstantInt::get(pc_reg->type, func_address, false));
+      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg_type),
+      llvm::ConstantInt::get(pc_reg_type, address, false));
 
-  llvm::IRBuilder<> ir(block);
-  ir.CreateStore(pc, pc_reg_ptr);
   return pc;
 }
 
-// Initialize the program value with a concrete integer address.
+// Initialize a symbolic program counter value in a lifted function. This
+// mechanism is used to improve cross-reference discovery by using a
+// relocatable constant expression as the initial value for a program counter.
+// After optimizations, the net effect is that anything derived from this
+// initial program counter is "tainted" by this initial constant expression,
+// and therefore can be found.
+llvm::Value *
+FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
+  auto pc = GenerateSymbolicProgramCounter(block, func_address);
+  UpdateProgramCounter(block, pc);
+
+  return pc;
+}
+
+llvm::Value *
+FunctionLifter::GenerateConcreteProgramCounter(llvm::BasicBlock *block,
+                                               std::uint64_t address) {
+  auto pc = llvm::ConstantInt::get(pc_reg_type, address, false);
+  return pc;
+}
+
 llvm::Value *
 FunctionLifter::InitializeConcreteProgramCounter(llvm::BasicBlock *block) {
-  auto pc_reg =
-      options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
-  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
-  auto pc = llvm::ConstantInt::get(pc_reg->type, func_address, false);
-  llvm::IRBuilder<> ir(block);
-  ir.CreateStore(pc, pc_reg_ptr);
+  auto pc = GenerateConcreteProgramCounter(block, func_address);
+  UpdateProgramCounter(block, pc);
+
   return pc;
 }
 
 // Initialize a symbolic stack pointer value in a lifted function. This
 // mechanism is used to improve stack frame recovery, in a similar way that
 // a symbolic PC improves cross-reference discovery.
-void FunctionLifter::InitialzieSymbolicStackPointer(llvm::BasicBlock *block) {
+void FunctionLifter::InitializeSymbolicStackPointer(llvm::BasicBlock *block) {
   auto sp_reg =
       options.arch->RegisterByName(options.arch->StackPointerRegisterName());
+
   auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
 
   auto base_sp = semantics_module->getGlobalVariable(kSymbolicSPName);
@@ -1339,7 +1493,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
 
   // Initialize the stack pointer.
   if (options.symbolic_stack_pointer) {
-    InitialzieSymbolicStackPointer(block);
+    InitializeSymbolicStackPointer(block);
   }
 
   // Put the function's return address wherever it needs to go.
