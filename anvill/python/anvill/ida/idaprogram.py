@@ -14,6 +14,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import argparse
+from typing import Optional
+
+
 import ida_funcs
 import ida_typeinf
 import ida_nalt
@@ -24,6 +28,7 @@ import ida_frame
 import ida_auto
 import ida_ida
 import ida_name
+import ida_segment
 
 
 from .utils import *
@@ -47,7 +52,15 @@ _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 
 class IDAProgram(Program):
-    def __init__(self, arch, os):
+    def __init__(self, arch: str, os: str, maybe_base_address: Optional[int] = None):
+        if maybe_base_address is not None:
+            delta = abs(ida_nalt.get_imagebase() - maybe_base_address)
+            if maybe_base_address < ida_nalt.get_imagebase():
+                delta = delta * -1
+
+            if ida_segment.rebase_program(delta, ida_segment.MSF_FIXONCE) != 0:
+                raise RuntimeError("Failed to rebase the program")
+
         # Wait until IDA has finished analysis before we proceed, otherwise
         # we will end up missing code, data and cross references
         ida_auto.auto_wait()
@@ -57,7 +70,9 @@ class IDAProgram(Program):
         try:
             self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG("Failed to initialize the control flow information for functin thunks")
+            DEBUG(
+                "Failed to initialize the control flow information for functin thunks"
+            )
 
     def get_variable_impl(self, address):
         """Given an address, return a `Variable` instance, or
@@ -100,6 +115,9 @@ class IDAProgram(Program):
             arch, address, var_type, find_segment_containing_ea(address, seg_ref)
         )
         return var
+
+    def get_symbols_impl(self, ea: int) -> Iterator[str]:
+        return None
 
     def get_function_impl(self, address):
         """Given an address, return a `Function` instance or
@@ -213,7 +231,6 @@ class IDAProgram(Program):
         self.add_symbol(address, _function_name(address))
         return func
 
-
     def _init_func_thunk_ctrl_flow(self):
         """Initializes the control flow redirections and targets
         using function thunks"""
@@ -261,12 +278,13 @@ class IDAProgram(Program):
 
                 self.add_control_flow_redirection(redirection_source, redirection_dest)
 
-            print("anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(caller_address,
-                                                                                           redirection_dest,
-                                                                                           function_thunk.name))
+            print(
+                "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                    caller_address, redirection_dest, function_thunk.name
+                )
+            )
 
             self.set_control_flow_targets(caller_address, [redirection_dest], True)
-
 
 
 def _convert_ida_type(tinfo, cache, depth, context):

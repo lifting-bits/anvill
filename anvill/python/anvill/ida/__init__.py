@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from typing import Optional
+
 
 import ida_idp
 import ida_idaapi
@@ -26,6 +28,7 @@ from .idaprogram import *
 
 from anvill.arch import *
 from anvill.os import *
+from anvill.program import *
 
 
 def _guess_os():
@@ -126,7 +129,13 @@ def _get_os():
             "Missing operating system object type for OS '{}'".format(name)
         )
 
-def get_program(arch=None, os=None, cache=False):
+
+def get_program(
+    arch: Optional[str] = None,
+    os: Optional[str] = None,
+    maybe_base_address: Optional[int] = None,
+    cache: bool = False,
+) -> Optional[Program]:
     if cache:
         DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
@@ -136,4 +145,4 @@ def get_program(arch=None, os=None, cache=False):
     if not os:
         os = _get_os()
 
-    return IDAProgram(arch, os)
+    return IDAProgram(arch, os, maybe_base_address)

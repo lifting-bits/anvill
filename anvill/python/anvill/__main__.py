@@ -51,8 +51,15 @@ def main():
 
     arg_parser.add_argument(
         "--log_file",
-        type=argparse.FileType('w'), default=os.devnull,
-        help="Log to a specific file."
+        type=argparse.FileType("w"),
+        default=os.devnull,
+        help="Log to a specific file.",
+    )
+
+    arg_parser.add_argument(
+        "--base_address",
+        type=str,
+        help="Where the image should be loaded, expressed as an hex integer.",
     )
 
     args = arg_parser.parse_args()
@@ -60,16 +67,27 @@ def main():
     if args.log_file != os.devnull:
         INIT_DEBUG_FILE(args.log_file)
 
-    bv = bn.BinaryViewType.get_view_of_file(args.bin_in)
-    # Do a sanity check to ensure that a BinaryView was loaded.
-    # The user may have provided a file for an architecture that
-    # BinaryNinja does not support or some other unloadable file
-    if not bv:
+    maybe_base_address: Optional[int] = None
+    if args.base_address is not None:
+        try:
+            maybe_base_address = int(args.base_address, 16)
+            print(
+                "Binary Ninja will attempt to load the image at virtual address 0x{:x}".format(
+                    maybe_base_address
+                )
+            )
+
+        except:
+            print("The specified address it not valid: '{}'".format(args.base_address))
+            return 1
+
+    p = get_program(args.bin_in, maybe_base_address)
+    if p is None:
         sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
         sys.stderr.write("Does BinaryNinja support this architecture?\n")
         sys.exit(1)
 
-    p = get_program(bv)
+    bv = p.bv
 
     is_macos = "darwin" in platform.system().lower()
 

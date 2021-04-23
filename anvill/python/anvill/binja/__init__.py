@@ -14,6 +14,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from typing import Optional
+
+
 import binaryninja as bn
 
 
@@ -21,23 +24,30 @@ from .bnprogram import *
 
 
 from anvill.util import *
+from anvill.program import *
 
 
-def get_program(arg, cache=False):
+def get_program(
+    binary_path: str, maybe_base_address: Optional[int] = None, cache: bool = False
+) -> Optional[Program]:
     if cache:
         DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
-    path: Optional[str] = None
-    bv: Optional[bn.BinaryView] = None
-    if isinstance(arg, str):
-        path = arg
-        bv = bn.BinaryViewType.get_view_of_file(path)
-    elif isinstance(arg, bn.BinaryView):
-        bv = arg
-        path = bv.file.original_filename
+    if maybe_base_address is not None:
+        # Force the new image base address; according to the documentation, we will
+        # not inherit any of the default load options that we get when calling the
+        # get_view_of_file method
+        bv = bn.BinaryViewType.get_view_of_file_with_options(
+            binary_path, options={"loader.imageBase": maybe_base_address}
+        )
+
     else:
+        # Use the auto-generated load options
+        bv = bn.BinaryViewType.get_view_of_file(binary_path)
+
+    if bv is None:
+        DEBUG("Failed to create the BinaryView")
         return None
 
-    DEBUG("Recovering program {}".format(path))
-    prog = BNProgram(bv, path)
-    return prog
+    DEBUG("Recovering program {}".format(binary_path))
+    return BNProgram(bv, binary_path)
