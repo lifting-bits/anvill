@@ -94,6 +94,12 @@ class BNFunction(Function):
         elif isinstance(item_or_list, bn.Variable):
             if item_or_list.type is None:
                 return results
+            # Sometimes the backing storage is a `temp` register, and not a real
+            # register. If so, ignore it.
+            # The use of LLIL_REG_IS_TEMP is correct here, as there is no MLIL equivalent
+            # and it seem to use the same underlying data
+            if bn.LLIL_REG_IS_TEMP(item_or_list.storage):
+                return results
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
                 if (
