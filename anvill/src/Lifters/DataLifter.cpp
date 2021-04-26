@@ -20,8 +20,8 @@
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Decl.h>
+#include <anvill/ITypeSpecification.h>
 #include <anvill/Providers/MemoryProvider.h>
-#include <anvill/TypePrinter.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/GlobalAlias.h>
@@ -85,7 +85,7 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-       << TranslateType(*type, dl, true);
+       << ITypeSpecification::TypeToString(*type, dl, true);
     const auto name = ss.str();
     const auto ga = llvm::GlobalAlias::create(
         type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
@@ -153,7 +153,7 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
   std::stringstream ss2;
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
-      << TranslateType(*type, dl, true);
+      << ITypeSpecification::TypeToString(*type, dl, true);
 
   const auto var_name = ss2.str();
   auto var = options.module->getGlobalVariable(var_name);

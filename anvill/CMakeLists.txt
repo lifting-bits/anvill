@@ -30,9 +30,6 @@ add_library(anvill STATIC
   src/TypeSpecification.h
   src/TypeSpecification.cpp
 
-  include/anvill/TypePrinter.h
-  src/TypePrinter.cpp
-
   include/anvill/Program.h
   src/Program.cpp
 
@@ -110,7 +107,6 @@ target_public_headers(anvill
   include/anvill/Result.h
   include/anvill/Type.h
   include/anvill/ITypeSpecification.h
-  include/anvill/TypePrinter.h
   include/anvill/Util.h
 )
 

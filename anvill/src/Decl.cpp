@@ -17,8 +17,8 @@
 
 #include "anvill/Decl.h"
 
+#include <anvill/ITypeSpecification.h>
 #include <anvill/Lifters/DeclLifter.h>
-#include <anvill/TypePrinter.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
@@ -232,9 +232,10 @@ FunctionDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
         llvm::json::ObjectKey("register"), this->return_stack_pointer->name});
     return_stack_pointer_json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("offset"), this->return_stack_pointer_offset});
-    return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("type"),
-        TranslateType(*this->return_stack_pointer->type, dl)});
+    return_stack_pointer_json.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("type"),
+                               ITypeSpecification::TypeToString(
+                                   *this->return_stack_pointer->type, dl)});
 
     json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("return_stack_pointer"),
@@ -293,8 +294,9 @@ ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
     LOG(FATAL) << "Trying to serialize a value that has not been allocated";
   }
 
-  value_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-                                           TranslateType(*type, dl)});
+  value_json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("type"),
+                             ITypeSpecification::TypeToString(*type, dl)});
 
   return value_json;
 }

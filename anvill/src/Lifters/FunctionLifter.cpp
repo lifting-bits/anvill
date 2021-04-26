@@ -18,10 +18,10 @@
 #include "FunctionLifter.h"
 
 #include <anvill/ABI.h>
+#include <anvill/ITypeSpecification.h>
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
-#include <anvill/TypePrinter.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>
@@ -796,7 +796,8 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   // std::hex << pc << "_" << reg->name
 
   std::stringstream ss;
-  ss << kTypeHintFunctionPrefix << TranslateType(*goal_type, dl, true);
+  ss << kTypeHintFunctionPrefix
+     << ITypeSpecification::TypeToString(*goal_type, dl, true);
   const auto func_name = ss.str();
 
   llvm::Type *return_type = goal_type;
@@ -1215,7 +1216,8 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   // starting address, its type, and its calling convention.
   std::stringstream ss;
   ss << "sub_" << std::hex << decl.address << '_'
-     << TranslateType(*func_type, semantics_module->getDataLayout(), true)
+     << ITypeSpecification::TypeToString(
+            *func_type, semantics_module->getDataLayout(), true)
      << '_' << std::dec << decl.calling_convention;
 
   const auto base_name = ss.str();

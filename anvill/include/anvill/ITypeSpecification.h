@@ -18,6 +18,8 @@
 #pragma once
 
 #include <anvill/Result.h>
+#include <llvm/IR/DataLayout.h>
+#include <llvm/IR/Type.h>
 
 #include <memory>
 #include <string>
@@ -25,7 +27,6 @@
 namespace llvm {
 class LLVMContext;
 class StringRef;
-class Type;
 }  // namespace llvm
 namespace anvill {
 
@@ -77,6 +78,10 @@ class ITypeSpecification {
   using Ptr = std::unique_ptr<ITypeSpecification>;
   static Result<Ptr, TypeSpecificationError>
   Create(llvm::LLVMContext &llvm_context, llvm::StringRef spec);
+
+  static std::string TypeToString(const llvm::Type &type,
+                                  const llvm::DataLayout &dl,
+                                  bool alphanum = false);
 
   virtual llvm::Type *Type(void) const = 0;
   virtual bool Sized(void) const = 0;
