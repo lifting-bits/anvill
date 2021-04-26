@@ -73,12 +73,19 @@ Assuming we have [Remill](https://github.com/lifting-bits/remill) properly insta
 ```shell
 # clone anvill repository
 git clone https://github.com/lifting-bits/anvill.git
+
+# update the git submodules
+git submodule update --init --recursive
+
 # create a build dir
 mkdir anvill-build && cd anvill-build
+
 # configure
 CC=clang cmake ../anvill
+
 # build
 make -j 5
+
 # install
 sudo make install
 ```
