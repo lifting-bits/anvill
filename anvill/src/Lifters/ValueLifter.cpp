@@ -19,7 +19,7 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
-#include <anvill/TypePrinter.h>
+#include <anvill/ITypeSpecification.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
@@ -265,7 +265,8 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
 
   std::stringstream ss;
   ss << kGlobalAliasNamePrefix << std::hex << ea << '_'
-     << TranslateType(*type, options.module->getDataLayout(), true);
+     << ITypeSpecification::TypeToString(*type, options.module->getDataLayout(),
+                                         true);
   const auto name = ss.str();
   auto alias_ret = llvm::GlobalAlias::create(type, addr_space,
                                              llvm::GlobalValue::ExternalLinkage,

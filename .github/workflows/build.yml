@@ -561,6 +561,13 @@ jobs:
 
           echo ::set-output name=PATH::${DESTDIR}
 
+      - name: Run the tests not requiring Binary Ninja
+
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
+        run: |
+          ctest -V
+
       - name: Create the packages
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
