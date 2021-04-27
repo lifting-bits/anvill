@@ -105,7 +105,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
-  fpm.add(CreateSinkSelectionsIntoBranchTargets());
+  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
@@ -113,7 +113,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateInstructionFolderPass(err_man));
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
-  fpm.add(CreateSinkSelectionsIntoBranchTargets());
+  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
   fpm.add(CreateRemoveTrivialPhisAndSelects());
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(CreateRecoverStackFrameInformation(err_man, options));

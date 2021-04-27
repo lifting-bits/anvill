@@ -16,6 +16,8 @@ add_library(anvill_passes STATIC
   src/RemoveRemillFunctionReturns.cpp
   src/RemoveTrivialPhisAndSelects.cpp
   src/RemoveUnusedFPClassificationCalls.cpp
+
+  src/SinkSelectionsIntoBranchTargets.h
   src/SinkSelectionsIntoBranchTargets.cpp
 
   src/SplitStackFrameAtReturnAddress.h
