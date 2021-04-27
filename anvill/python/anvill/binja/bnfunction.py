@@ -41,6 +41,13 @@ class BNFunction(Function):
         if not is_definition:
             return
 
+        # The lifter does not support thumb2 instruction set. If the function
+        # is of arch type `thumb2` then don't visit them and fill the memory
+        # bytes. These functions will be declared but not defined in the lifted
+        # code
+        if self._bn_func.arch.name == "thumb2":
+            return
+
         mem = program.memory
 
         ref_eas: Set[int] = set()
