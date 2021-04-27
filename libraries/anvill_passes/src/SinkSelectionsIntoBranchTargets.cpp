@@ -15,6 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+#include "SinkSelectionsIntoBranchTargets.h"
+
 #include <anvill/Transforms.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
@@ -23,114 +26,158 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
+#include <magic_enum.hpp>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "Utils.h"
+
+
 namespace anvill {
+
 namespace {
 
-class SinkSelectionsIntoBranchTargets final : public llvm::FunctionPass {
- public:
-  SinkSelectionsIntoBranchTargets(void) : llvm::FunctionPass(ID) {}
+using BranchList = std::vector<llvm::BranchInst *>;
 
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char SinkSelectionsIntoBranchTargets::ID = '\0';
-
-// Try to sink selected values.
-bool SinkSelectionsIntoBranchTargets::runOnFunction(llvm::Function &func) {
-
-  std::vector<std::pair<llvm::SelectInst *, llvm::BranchInst *>>
-      select_branches;
-
-  // Go identify all `select` instructions in `func`, where the `select`
-  // shares the same condition as a conditional branch.
-  for (auto &inst : llvm::instructions(func)) {
-    if (auto select = llvm::dyn_cast<llvm::SelectInst>(&inst)) {
-      const auto sel_cond = select->getCondition();
-      for (auto &use : sel_cond->uses()) {
-        if (const auto br = llvm::dyn_cast<llvm::BranchInst>(use.getUser());
-            br && br->isConditional() && br->getCondition() == sel_cond) {
-          select_branches.emplace_back(select, br);
-        }
-      }
-    }
-  }
-
-  if (select_branches.empty()) {
-    return false;
-  }
-
-  llvm::DominatorTree doms(func);
-  std::vector<std::pair<llvm::Use *, llvm::Value *>> replacements;
-
-  // Go find all uses of the `select` that are dominated by one of the edges
-  // flowing out of the branch.
-  for (auto [sel, br] : select_branches) {
-    llvm::BasicBlockEdge taken_edge(br->getParent(), br->getSuccessor(0));
-    llvm::BasicBlockEdge not_taken_edge(br->getParent(), br->getSuccessor(1));
-
-    const auto true_val = sel->getTrueValue();
-    const auto false_val = sel->getFalseValue();
-
-    for (auto &sel_use : sel->uses()) {
-      if (doms.dominates(taken_edge, sel_use)) {
-        replacements.emplace_back(&sel_use, true_val);
-      } else if (doms.dominates(not_taken_edge, sel_use)) {
-        replacements.emplace_back(&sel_use, false_val);
-      }
-    }
-  }
-
-  // Apply any replacements, thereby sinking the selected values at their
-  // usage sites.
-  for (auto [use_of_select, selected_val_to_sink] : replacements) {
-    use_of_select->set(selected_val_to_sink);
-  }
-
-  // Clean up the unneeded selects.
-  for (auto [sel, br] : select_branches) {
-    if (sel->use_empty()) {
-      sel->eraseFromParent();
-    }
-  }
-
-  return !replacements.empty();
-}
+using SelectListMap = std::unordered_map<llvm::SelectInst *, BranchList>;
 
 }  // namespace
 
-// When lifting conditional control-flow, we end up with the following pattern:
-//
-//        %25 = icmp eq i8 %24, 0
-//        %26 = select i1 %25, i64 TAKEN_PC, i64 NOT_TAKEN_PC
-//        br i1 %25, label %27, label %34
-//
-//        27:
-//        ... use of %26
-//
-//        34:
-//        ... use of %26
-//
-// This function pass transforms the above pattern into the following:
-//
-//        %25 = icmp eq i8 %24, 0
-//        br i1 %25, label %27, label %34
-//
-//        27:
-//        ... use of TAKEN_PC
-//
-//        34:
-//        ... use of NOT_TAKEN_PC
-//
-// When this happens, we're better able to fold cross-references at the targets
-// of conditional branches.
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(void) {
-  return new SinkSelectionsIntoBranchTargets;
+SinkSelectionsIntoBranchTargets *SinkSelectionsIntoBranchTargets::Create(
+    ITransformationErrorManager &error_manager) {
+  return new SinkSelectionsIntoBranchTargets(error_manager);
+}
+
+SinkSelectionsIntoBranchTargets::FunctionAnalysis
+SinkSelectionsIntoBranchTargets::AnalyzeFunction(llvm::Function &function) {
+
+  // Collect all the applicable instructions
+  SelectListMap select_list_map;
+
+  for (auto &instruction : llvm::instructions(function)) {
+
+    // Look for `SelectInst` instructions
+    auto select_inst = llvm::dyn_cast<llvm::SelectInst>(&instruction);
+    if (select_inst == nullptr) {
+      continue;
+    }
+
+    const auto select_condition = select_inst->getCondition();
+
+    for (auto &use : select_condition->uses()) {
+
+      // Look for users that are conditional branches
+      const auto branch_inst = llvm::dyn_cast<llvm::BranchInst>(use.getUser());
+      if (branch_inst == nullptr) {
+        continue;
+      }
+
+      if (!branch_inst->isConditional()) {
+        continue;
+      }
+
+      // The `SelectInst` and `BranchInst` must share the same
+      // condition
+      if (branch_inst->getCondition() != select_condition) {
+        continue;
+      }
+
+      auto select_list_it = select_list_map.find(select_inst);
+      if (select_list_it == select_list_map.end()) {
+        auto insert_status = select_list_map.insert({select_inst, {}});
+        select_list_it = insert_status.first;
+      }
+
+      auto &branch_list = select_list_it->second;
+      branch_list.emplace_back(branch_inst);
+    }
+  }
+
+  // Determine which replacements need to happen
+  FunctionAnalysis output;
+
+  llvm::DominatorTree doms(function);
+
+  for (auto &select_list_map_p : select_list_map) {
+    auto select_inst = select_list_map_p.first;
+    auto &branch_list = select_list_map_p.second;
+
+    for (auto branch : branch_list) {
+      llvm::BasicBlockEdge taken_edge(branch->getParent(),
+                                      branch->getSuccessor(0));
+
+      llvm::BasicBlockEdge not_taken_edge(branch->getParent(),
+                                          branch->getSuccessor(1));
+
+      const auto true_val = select_inst->getTrueValue();
+      const auto false_val = select_inst->getFalseValue();
+
+      for (auto &select_inst_use : select_inst->uses()) {
+        FunctionAnalysis::Replacement replacement;
+        replacement.use_to_replace = &select_inst_use;
+
+        if (doms.dominates(taken_edge, select_inst_use)) {
+          replacement.replace_with = true_val;
+
+        } else if (doms.dominates(not_taken_edge, select_inst_use)) {
+          replacement.replace_with = false_val;
+        }
+
+        if (replacement.replace_with == nullptr) {
+          continue;
+        }
+
+        output.disposable_instruction_list.insert(select_inst);
+        output.replacement_list.push_back(std::move(replacement));
+      }
+    }
+  }
+
+  return output;
+}
+
+void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
+    const FunctionAnalysis &analysis) {
+
+  for (const auto &replacement : analysis.replacement_list) {
+    replacement.use_to_replace->set(replacement.replace_with);
+  }
+
+  for (auto select_inst : analysis.disposable_instruction_list) {
+    if (!select_inst->use_empty()) {
+      continue;
+    }
+
+    select_inst->eraseFromParent();
+  }
+}
+
+bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
+  if (function.isDeclaration()) {
+    return false;
+  }
+
+  auto function_analysis = AnalyzeFunction(function);
+  if (function_analysis.replacement_list.empty()) {
+    return false;
+  }
+
+  SinkSelectInstructions(function_analysis);
+  return true;
+}
+
+llvm::StringRef SinkSelectionsIntoBranchTargets::getPassName(void) const {
+  return llvm::StringRef("SinkSelectionsIntoBranchTargets");
+}
+
+SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
+    ITransformationErrorManager &error_manager)
+    : BaseFunctionPass(error_manager) {}
+
+llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
+    ITransformationErrorManager &error_manager) {
+  return SinkSelectionsIntoBranchTargets::Create(error_manager);
 }
 
 }  // namespace anvill

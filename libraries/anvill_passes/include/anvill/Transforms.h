@@ -55,7 +55,8 @@ class EntityLifter;
 //
 // When this happens, we're better able to fold cross-references at the targets
 // of conditional branches.
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(void);
+llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
+    ITransformationErrorManager &error_manager);
 
 // Remill semantics sometimes contain compiler barriers (empty inline assembly
 // statements), especially related to floating point code (i.e. preventing
