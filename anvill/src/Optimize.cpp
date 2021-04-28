@@ -120,7 +120,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
-  fpm.add(CreateBrightenPointerOperations(1024u));
+  fpm.add(CreateBrightenPointerOperations(8u));
 
   fpm.doInitialization();
   for (auto &func : module) {
