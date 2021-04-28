@@ -431,11 +431,18 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
               "Missing closing ']' in type specification");
         }
 
-        if (!num_elems) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Invalid zero-sized array in type specification");
-        }
+        // An array can be of size `0` used in the variable length object. The specs for
+        // them will have size zero. e.g:
+        //     struct dir {
+        //        int32_t fd;           *=0{ii[bx0]}
+        //        int32_t errcode;
+        //        char data[0x0];
+        //     };
+        //
+        //Don't throw error if the number of elements is zero.
+
+        LOG_IF(INFO, !num_elems)
+            << "Zero-sized array in type specification " << spec.str();
 
         i += 1;
         return llvm::ArrayType::get(elem_type, num_elems);
@@ -506,13 +513,10 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         if (elem_type->isVoidTy()) {
           return llvm::IntegerType::getInt8PtrTy(llvm_context, 0);
 
-        } else if (!elem_type->isFunctionTy() &&
-                   !elem_type->isSized(&size_checked)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Cannot create a pointer to an unsized type in type specification");
-
         } else {
+
+          // The element type of a pointer could an unsized type as well. Get the
+          // pointer type from the element
           return llvm::PointerType::get(elem_type, 0);
         }
       }
