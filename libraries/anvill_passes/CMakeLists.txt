@@ -56,6 +56,10 @@ target_link_libraries(anvill_passes PUBLIC
   anvill
 )
 
+target_compile_definitions(anvill_passes PRIVATE
+  "LLVM_MAJOR_VERSION=${LLVM_MAJOR_VERSION}"
+)
+
 addMagicEnumLibrary(anvill_passes)
 
 if(ANVILL_ENABLE_TESTS)

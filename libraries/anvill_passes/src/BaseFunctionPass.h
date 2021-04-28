@@ -118,6 +118,10 @@ class BaseFunctionPass : public llvm::FunctionPass {
   // of the requested type
   template <class... Types>
   static UserList TrackUsersOf(llvm::User *initial_user);
+
+  // Compatibility method for LLVM < 12
+  static llvm::StructType *getTypeByName(const llvm::Module &module,
+                                         llvm::StringRef name);
 };
 
 template <typename UserFunctionPass>
@@ -309,6 +313,19 @@ BaseFunctionPass<UserFunctionPass>::TrackUsersOf(llvm::User *initial_user) {
   } while (!pending_queue.empty());
 
   return user_list;
+}
+
+template <typename UserFunctionPass>
+llvm::StructType *
+BaseFunctionPass<UserFunctionPass>::getTypeByName(const llvm::Module &module,
+                                                  llvm::StringRef name) {
+#if LLVM_MAJOR_VERSION >= 12
+  auto &context = module.getContext();
+  return llvm::StructType::getTypeByName(context, name);
+
+#else
+  return module.getTypeByName(name);
+#endif
 }
 
 }  // namespace anvill

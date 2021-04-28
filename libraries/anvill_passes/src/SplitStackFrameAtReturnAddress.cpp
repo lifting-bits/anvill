@@ -37,6 +37,7 @@ namespace {
 
 // Describes an allocated stack frame part
 struct AllocatedStackFramePart final {
+
   // The part information, as taken from the stack analysis
   FunctionStackAnalysis::StackFramePart part_info;
 
@@ -152,6 +153,7 @@ SplitStackFrameAtReturnAddress::AnalyzeFunction(llvm::Function &function) {
       });
 
   if (alloca_inst_it == alloca_inst_list.end()) {
+
     // The stack frame type was found, so we must have failed to
     // track down the correct instruction
     return StackFrameSplitErrorCode::StackFrameAllocaInstNotFound;
@@ -261,6 +263,7 @@ SplitStackFrameAtReturnAddress::AnalyzeFunction(llvm::Function &function) {
                const FunctionStackAnalysis::GEPInstruction &rhs) -> bool {
               return lhs.offset < rhs.offset;
             });
+
   // clang-format off
 
   std::unordered_set<std::int64_t> visited_offsets;
@@ -352,6 +355,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
   std::size_t allocated_stack_parts_size{};
 
   for (const auto &part_info : stack_analysis.stack_frame_parts) {
+
     // First, create the type
     auto byte_array_type = llvm::ArrayType::get(byte_type, part_info.size);
     if (byte_array_type == nullptr) {
@@ -361,7 +365,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
     auto part_name =
         GenerateStackFramePartTypeName(function, allocated_part_list.size());
 
-    if (module.getTypeByName(part_name) != nullptr) {
+    if (getTypeByName(module, part_name) != nullptr) {
       return StackFrameSplitErrorCode::TypeConflict;
     }
 
@@ -397,6 +401,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
 
   // Write the new GEP instructions
   for (auto &gep_instr : stack_analysis.gep_instr_list) {
+
     // Locate which stack frame part we need to use based on the offset
     // being accessed
     auto part_it = std::find_if(
@@ -506,7 +511,7 @@ SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
 
   auto module = function.getParent();
 
-  auto type = module->getTypeByName(GetFunctionStackFrameTypeName(function));
+  auto type = getTypeByName(*module, GetFunctionStackFrameTypeName(function));
   if (type == nullptr) {
     return StackFrameSplitErrorCode::StackFrameTypeNotFound;
   }
