@@ -40,6 +40,7 @@
 
 // clang-format on
 
+#include <anvill/Transforms.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Optimizer.h>
@@ -52,8 +53,6 @@
 #include "anvill/Decl.h"
 #include "anvill/Program.h"
 #include "anvill/Util.h"
-
-#include <anvill/Transforms.h>
 
 namespace anvill {
 
@@ -120,7 +119,13 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
+
+  // Pointer brightening operation is causing lifter to hang for
+  // some of the binaries. Changing gas value also does not help.
+  // Disable it and come back later.
+#if 0
   fpm.add(CreateBrightenPointerOperations(8u));
+#endif
 
   fpm.doInitialization();
   for (auto &func : module) {
