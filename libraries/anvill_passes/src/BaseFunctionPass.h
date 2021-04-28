@@ -28,6 +28,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 
 #include <magic_enum.hpp>
 #include <sstream>
@@ -319,7 +320,7 @@ template <typename UserFunctionPass>
 llvm::StructType *
 BaseFunctionPass<UserFunctionPass>::getTypeByName(const llvm::Module &module,
                                                   llvm::StringRef name) {
-#if LLVM_MAJOR_VERSION >= 12
+#if LLVM_VERSION_MAJOR >= 12
   auto &context = module.getContext();
   return llvm::StructType::getTypeByName(context, name);
 

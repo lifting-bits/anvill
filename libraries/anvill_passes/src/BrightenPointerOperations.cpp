@@ -940,7 +940,6 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
   // Deadcode remove stale geps. 
   llvm::legacy::FunctionPassManager fpm(mod);
   fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createDeadInstEliminationPass());
   fpm.doInitialization();
   fpm.run(func);
   fpm.doFinalization();

@@ -144,7 +144,6 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
   auto stack_related_instr_list = stack_related_instr_list_res.TakeValue();
 
   for (const auto use : stack_related_instr_list) {
-
     // Skip any operand that is not related to the stack pointer
     const auto val = use->get();
 
@@ -158,8 +157,8 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
     const auto stack_offset = reference.Displacement(data_layout);
 
     // Update the boundaries, based on the offset we have found
-    std::uint64_t type_size =
-        data_layout.getTypeAllocSize(val->getType()).getFixedSize();
+    std::uint64_t type_size = data_layout.getTypeAllocSize(
+        val->getType()).getFixedSize();
 
     // In the case of `store` instructions, we want to record the size of the
     // stored value as the type size or updating the stack offset.
@@ -171,25 +170,24 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
 
     // In the case of `load` instructions, we want to redord the size of the
     // loaded value.
-    } else if (auto load_inst =
-                   llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
-      type_size =
-          data_layout.getTypeAllocSize(load_inst->getType()).getFixedSize();
+    } else if (auto load_inst = llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
+      type_size = data_layout.getTypeAllocSize(load_inst->getType()).getFixedSize();
     }
 
-    output.highest_offset =
-        std::max(output.highest_offset,
-                 stack_offset + static_cast<std::int64_t>(type_size));
+    output.highest_offset = std::max(
+        output.highest_offset,
+        stack_offset + static_cast<std::int64_t>(type_size));
 
-    output.lowest_offset = std::min(output.lowest_offset, stack_offset);
+    output.lowest_offset =
+        std::min(output.lowest_offset, stack_offset);
 
     // Save the operand use.
-    output.instruction_uses.emplace_back(use, type_size, stack_offset);
+    output.instruction_uses.emplace_back(
+        use, type_size, stack_offset);
   }
 
   if (!stack_related_instr_list.empty()) {
-    output.size =
-        static_cast<std::size_t>(output.highest_offset - output.lowest_offset);
+    output.size = static_cast<std::size_t>(output.highest_offset - output.lowest_offset);
   }
 
   return output;
@@ -209,6 +207,7 @@ RecoverStackFrameInformation::GenerateStackFrameType(
 
   // Make sure this type is not defined already
   auto &module = *function.getParent();
+  auto &context = module.getContext();
   auto stack_frame_type = getTypeByName(module, stack_frame_type_name);
   if (stack_frame_type != nullptr) {
     return StackAnalysisErrorCode::StackFrameTypeAlreadyExists;
@@ -221,8 +220,6 @@ RecoverStackFrameInformation::GenerateStackFrameType(
   auto stack_frame_size = padding_bytes + stack_frame_analysis.size;
 
   // Generate the stack frame using a byte array
-  auto &context = module.getContext();
-
   auto array_elem_type = llvm::Type::getInt8Ty(context);
   auto byte_array_type =
       llvm::ArrayType::get(array_elem_type, stack_frame_size);
@@ -416,8 +413,8 @@ RecoverStackFrameInformation::UpdateFunction(
         stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
                              builder.getInt32(zero_based_offset)});
 
-    stack_frame_ptr =
-        builder.CreateBitOrPointerCast(stack_frame_ptr, obj->getType());
+    stack_frame_ptr = builder.CreateBitOrPointerCast(
+        stack_frame_ptr, obj->getType());
 
     // We now have to replace the operand; it is not correct to use
     // `replaceAllUsesWith` on the operand, because the scope of a constant

@@ -21,6 +21,7 @@
 
 // clang-format off
 #include <remill/BC/Compat/CTypes.h>
+#include <remill/BC/Compat/ScalarTransforms.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -89,7 +90,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   llvm::legacy::FunctionPassManager fpm(&module);
   fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createConstantPropagationPass());
   fpm.add(llvm::createSinkingPass());
   fpm.add(llvm::createNewGVNPass());
   fpm.add(llvm::createSCCPPass());

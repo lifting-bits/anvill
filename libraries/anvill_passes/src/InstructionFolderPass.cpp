@@ -182,7 +182,7 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
   InstructionList worklist;
   bool function_changed{false};
 
-  while (!next_worklist.empty()) {
+  for (auto gas = 0u; gas < 8u && !next_worklist.empty(); ++gas) {
     worklist.swap(next_worklist);
     next_worklist.clear();
 
@@ -295,15 +295,17 @@ void InstructionFolderPass::PerformInstructionReplacements(
 static inline bool
 IsPHINodeFoldable(llvm::Instruction *instr,
                   InstructionFolderPass::IncomingValueList &incoming_values) {
-  bool canFold = true;
   for (auto &incoming_value : incoming_values) {
+    if (llvm::isa<llvm::PHINode>(incoming_value.value)) {
+      return false;
+    }
     for (auto user : instr->users()) {
       if (user == incoming_value.value) {
-        canFold = false;
+        return false;
       }
     }
   }
-  return canFold;
+  return true;
 }
 
 bool InstructionFolderPass::FoldPHINode(
