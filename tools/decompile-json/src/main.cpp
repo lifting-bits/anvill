@@ -19,6 +19,7 @@
 #include <glog/logging.h>
 
 #include <cstdint>
+#include <iomanip>
 #include <ios>
 #include <iostream>
 #include <magic_enum.hpp>
@@ -36,6 +37,11 @@
 
 // clang-format on
 
+#include <anvill/ABI.h>
+#include <anvill/ITypeSpecification.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
@@ -43,12 +49,6 @@
 #include <remill/BC/Lifter.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
-
-#include <anvill/ABI.h>
-#include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
-#include <anvill/ITypeSpecification.h>
 
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
@@ -1036,13 +1036,36 @@ int main(int argc, char *argv[]) {
       }
     } else if (fdecl) {
       if (auto func = lifter.DeclareEntity(*fdecl)) {
-        func->setName(name);
+        if (func->isDeclaration()) {
+          func->setName(name);
+        } else {
+          std::stringstream ss;
+          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_"
+             << name;
+          func->setName(ss.str());
+        }
       }
     }
+
     return true;
   });
 
-  // Clean up by initializing variables.
+  // Traverse through the function decl and fix the symbol name
+  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+                                  const anvill::FunctionDecl *fdecl,
+                                  const anvill::GlobalVarDecl *vdecl) {
+    if (fdecl) {
+      if (auto func = lifter.DeclareEntity(*fdecl)) {
+        if (auto func_with_name = module.getFunction(name); !func_with_name) {
+          func->setName(name);
+        }
+      }
+    }
+
+    return true;
+  });
+
+
   for (auto &var : module.globals()) {
     if (!var.isDeclaration()) {
       continue;
