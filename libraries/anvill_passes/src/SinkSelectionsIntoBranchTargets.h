@@ -51,13 +51,6 @@
 
 namespace anvill {
 
-// Function pass outcome
-enum class StackFrameSplitErrorCode {
-
-  // An unexpected, internal error
-  InternalError,
-};
-
 class SinkSelectionsIntoBranchTargets final
     : public BaseFunctionPass<SinkSelectionsIntoBranchTargets> {
 
