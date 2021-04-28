@@ -505,7 +505,6 @@ SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
     const llvm::Function &function) {
 
   auto module = function.getParent();
-  auto &context = module->getContext();
 
   auto type = getTypeByName(*module, GetFunctionStackFrameTypeName(function));
   if (type == nullptr) {
