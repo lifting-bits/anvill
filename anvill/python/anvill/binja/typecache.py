@@ -158,14 +158,32 @@ class TypeCache:
             # to bv.address_size
             return IntegerType(self._bv.address_size, True)
 
-
     def _convert_named_reference(self, tinfo: bn.types.Type) -> Type:
         """ Convert named type references into a `Type` instance"""
 
         assert tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass
 
         named_tinfo = tinfo.named_type_reference
+
         ref_type = self._bv.get_type_by_name(named_tinfo.name)
+        if ref_type is None:
+            # check if the reference is present with type_id
+            ref_type = self._bv.get_type_by_id(named_tinfo.type_id)
+
+            # A reference type for the named references could be None. Add warning
+            # log and return Interger of width tinfo.width or self._bv.address_size
+            if ref_type is None:
+                DEBUG(
+                    "WARNING: failed to get reference type for named references {}".format(
+                        named_tinfo
+                    )
+                )
+                return (
+                    IntegerType(self._bv.address_size, False)
+                    if tinfo.width == 0
+                    else IntegerType(tinfo.width, False)
+                )
+
         if named_tinfo.type_class == bn.NamedTypeReferenceClass.StructNamedTypeClass:
             return self._convert_struct(ref_type)
 
@@ -180,7 +198,11 @@ class TypeCache:
 
         else:
             DEBUG("WARNING: Unknown named type {} not handled".format(named_tinfo))
-            return VoidType()
+            return (
+                IntegerType(self._bv.address_size, False)
+                if tinfo.width == 0
+                else IntegerType(tinfo.width, False)
+            )
 
     def _convert_bn_type(self, tinfo: bn.types.Type) -> Type:
         """Convert an bn `Type` instance into a `Type` instance."""
