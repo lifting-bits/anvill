@@ -22,6 +22,7 @@ from .callingconvention import *
 
 from anvill.type import *
 from anvill.function import *
+from anvill.util import *
 
 
 class TypeCache:
