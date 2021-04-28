@@ -15,7 +15,7 @@
 
 
 import binaryninja as bn
-
+from typing import Optional
 
 from .typecache import *
 from .bnfunction import *
@@ -49,7 +49,14 @@ class BNProgram(Program):
     def type_cache(self):
         return self._type_cache
 
-    def get_variable_impl(self, address):
+    def _try_add_symbol(self, ea: int):
+        sym: Optional[bn.Symbol] = self._bv.get_symbol_at(ea)
+        if not sym:
+            return
+
+        self.add_symbol(ea, sym.full_name)
+
+    def get_variable_impl(self, address: int):
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
 
@@ -68,6 +75,7 @@ class BNProgram(Program):
                 "Missing BN data variable at {:x}".format(address)
             )
 
+        self._try_add_symbol(address)
         var_type = self.type_cache.get(bn_var.type)
 
         # fall back onto an array of bytes type for variables
@@ -93,6 +101,8 @@ class BNProgram(Program):
             raise InvalidFunctionException(
                 "No function defined at or containing address {:x}".format(address)
             )
+
+        self._try_add_symbol(address)
 
         func_type = self.type_cache.get(bn_func.function_type)
         calling_conv = CallingConvention(arch, bn_func)
