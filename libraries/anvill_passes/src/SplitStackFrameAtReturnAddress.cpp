@@ -361,7 +361,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
     auto part_name =
         GenerateStackFramePartTypeName(function, allocated_part_list.size());
 
-    if (getTypeByName(part_name) != nullptr) {
+    if (getTypeByName(module, part_name) != nullptr) {
       return StackFrameSplitErrorCode::TypeConflict;
     }
 
@@ -507,7 +507,7 @@ SplitStackFrameAtReturnAddress::GetFunctionStackFrameType(
   auto module = function.getParent();
   auto &context = module->getContext();
 
-  auto type = getTypeByName(GetFunctionStackFrameTypeName(function));
+  auto type = getTypeByName(*module, GetFunctionStackFrameTypeName(function));
   if (type == nullptr) {
     return StackFrameSplitErrorCode::StackFrameTypeNotFound;
   }

@@ -208,7 +208,7 @@ RecoverStackFrameInformation::GenerateStackFrameType(
   // Make sure this type is not defined already
   auto &module = *function.getParent();
   auto &context = module.getContext();
-  auto stack_frame_type = getTypeByName(stack_frame_type_name);
+  auto stack_frame_type = getTypeByName(module, stack_frame_type_name);
   if (stack_frame_type != nullptr) {
     return StackAnalysisErrorCode::StackFrameTypeAlreadyExists;
   }
