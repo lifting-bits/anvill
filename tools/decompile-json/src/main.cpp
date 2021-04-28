@@ -19,13 +19,14 @@
 #include <glog/logging.h>
 
 #include <cstdint>
-#include <iomanip>
 #include <ios>
 #include <iostream>
+#include <iomanip>
 #include <magic_enum.hpp>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 #include "anvill/Version.h"
 
@@ -37,11 +38,6 @@
 
 // clang-format on
 
-#include <anvill/ABI.h>
-#include <anvill/ITypeSpecification.h>
-#include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
@@ -49,6 +45,12 @@
 #include <remill/BC/Lifter.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
+
+#include <anvill/ABI.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
+#include <anvill/ITypeSpecification.h>
 
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
@@ -445,30 +447,32 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
       return false;
     }
 
-    std::stringstream buffer;
-    buffer << "function_variable_" << std::hex << address;
+    if ( auto func_decl = program.FindFunction(address); !func_decl) {
+      std::stringstream buffer;
+      buffer << "function_variable_" << std::hex << address;
 
-    auto dummy_function =
-        llvm::Function::Create(type_as_func_ty, llvm::Function::ExternalLinkage,
-                               buffer.str().c_str(), module);
+      auto dummy_function =
+          llvm::Function::Create(type_as_func_ty, llvm::Function::ExternalLinkage,
+                                 buffer.str().c_str(), module);
 
-    auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
-    dummy_function->eraseFromParent();
+      auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
+      dummy_function->eraseFromParent();
 
-    if (remill::IsError(maybe_decl)) {
-      LOG(ERROR) << "Unable to create FunctionDecl for variable of type "
-                 << remill::LLVMThingToString(type) << " defined at "
-                 << std::hex << address;
-      return false;
-    }
+      if (remill::IsError(maybe_decl)) {
+        LOG(ERROR) << "Unable to create FunctionDecl for variable of type "
+                   << remill::LLVMThingToString(type) << " defined at "
+                   << std::hex << address;
+        return false;
+      }
 
-    auto function_decl = std::move(remill::GetReference(maybe_decl));
-    function_decl.address = address;
+      auto function_decl = std::move(remill::GetReference(maybe_decl));
+      function_decl.address = address;
 
-    auto err = program.DeclareFunction(function_decl);
-    if (remill::IsError(err)) {
-      LOG(ERROR) << remill::GetErrorString(err);
-      return false;
+      auto err = program.DeclareFunction(function_decl);
+      if (remill::IsError(err)) {
+        LOG(ERROR) << remill::GetErrorString(err);
+        return false;
+      }
     }
 
     return true;
@@ -1012,7 +1016,13 @@ int main(int argc, char *argv[]) {
   // Verify the module
   if (!remill::VerifyModule(&module)) {
     std::string json_outs;
-    if (llvm::json::fromJSON(json, json_outs)) {
+#if LLVM_VERSION_MAJOR >= 12
+    llvm::json::Path::Root path("");
+    auto ret = llvm::json::fromJSON(json, json_outs, path);
+#else
+    auto ret = llvm::json::fromJSON(json, json_outs);
+#endif
+    if (ret) {
       std::cerr << "Couldn't verify module produced from spec:\n"
                 << json_outs << '\n';
 
@@ -1026,46 +1036,103 @@ int main(int argc, char *argv[]) {
   // OLD: Apply optimizations.
   anvill::OptimizeModule(lifter, arch.get(), program, module, options);
 
-  // Apply symbol names to functions if we have the names.
-  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-                                  const anvill::FunctionDecl *fdecl,
-                                  const anvill::GlobalVarDecl *vdecl) {
-    if (vdecl) {
-      if (auto var = lifter.DeclareEntity(*vdecl)) {
-        var->setName(name);
-      }
-    } else if (fdecl) {
-      if (auto func = lifter.DeclareEntity(*fdecl)) {
-        if (func->isDeclaration()) {
-          func->setName(name);
-        } else {
-          std::stringstream ss;
-          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_"
-             << name;
-          func->setName(ss.str());
-        }
+  std::unordered_set<llvm::Constant *> has_name;
+
+  auto is_called = +[] (llvm::Function &func) -> bool {
+    for (auto user : func.users()) {
+      if (llvm::isa<llvm::CallBase>(user)) {
+        return true;
       }
     }
+    return false;
+  };
 
-    return true;
-  });
-
-  // Traverse through the function decl and fix the symbol name
-  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-                                  const anvill::FunctionDecl *fdecl,
-                                  const anvill::GlobalVarDecl *vdecl) {
-    if (fdecl) {
-      if (auto func = lifter.DeclareEntity(*fdecl)) {
-        if (auto func_with_name = module.getFunction(name); !func_with_name) {
-          func->setName(name);
+  for (auto &func : module) {
+    if (auto maybe_addr = lifter.AddressOfEntity(&func);
+        maybe_addr && !func.isDeclaration()) {
+      program.ForEachNameOfAddress(
+          *maybe_addr, [&] (const std::string &name,
+                            const anvill::FunctionDecl *,
+                            const anvill::GlobalVarDecl *) {
+        if (!has_name.count(&func)) {
+          has_name.insert(&func);
+          func.setName(name);
         }
-      }
+        return true;
+      });
     }
+  }
 
-    return true;
-  });
+  for (auto &func : module) {
+    if (auto maybe_addr = lifter.AddressOfEntity(&func);
+        maybe_addr && is_called(func) && !has_name.count(&func)) {
+      program.ForEachNameOfAddress(
+          *maybe_addr, [&] (const std::string &name,
+                            const anvill::FunctionDecl *,
+                            const anvill::GlobalVarDecl *) {
+        if (!has_name.count(&func)) {
+          has_name.insert(&func);
+          func.setName(name);
+        }
+        return true;
+      });
+    }
+  }
+
+  for (auto &func : module) {
+    if (auto maybe_addr = lifter.AddressOfEntity(&func);
+        maybe_addr && !has_name.count(&func)) {
+      program.ForEachNameOfAddress(
+          *maybe_addr, [&] (const std::string &name,
+                            const anvill::FunctionDecl *,
+                            const anvill::GlobalVarDecl *) {
+        if (!has_name.count(&func)) {
+          has_name.insert(&func);
+          func.setName(name);
+        }
+        return true;
+      });
+    }
+  }
+
+//  // Apply symbol names to functions if we have the names.
+//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+//                                  const anvill::FunctionDecl *fdecl,
+//                                  const anvill::GlobalVarDecl *vdecl) {
+//    if (vdecl) {
+//      if (auto var = lifter.DeclareEntity(*vdecl)) {
+//        var->setName(name);
+//      }
+//    } else if (fdecl) {
+//      if (auto func = lifter.DeclareEntity(*fdecl)) {
+//        if (func->isDeclaration()) {
+//          func->setName(name);
+//        } else {
+//          std::stringstream ss;
+//          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_" << name;
+//          func->setName(ss.str());
+//        }
+//      }
+//    }
+//    return true;
+//  });
+//
+//  // Traverse through the function decl and fix the symbol name
+//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+//                                  const anvill::FunctionDecl *fdecl,
+//                                  const anvill::GlobalVarDecl *vdecl) {
+//    if (fdecl) {
+//      if (auto func = lifter.DeclareEntity(*fdecl)) {
+//        if (auto func_with_name = module.getFunction(name);!func_with_name) {
+//          func->setName(name);
+//        }
+//      }
+//    }
+//    return true;
+//  });
 
 
+  // Clean up by initializing variables.
   for (auto &var : module.globals()) {
     if (!var.isDeclaration()) {
       continue;

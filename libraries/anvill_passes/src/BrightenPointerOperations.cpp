@@ -297,14 +297,14 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
       ReplaceAllUses(&inst, new_var_type);
       return {new_var_type, true};
     }
-    DLOG(WARNING) << "Bitcast: Failed to propagate info with pointer_inst: "
-                  << remill::LLVMThingToString(pointer_inst) << "\n";
+//    DLOG(WARNING) << "Bitcast: Failed to propagate info with pointer_inst: "
+//                  << remill::LLVMThingToString(pointer_inst) << "\n";
     return {&inst, false};
   }
   // TODO (Carson) make sure in the visitor methods that we dont assume inferred
   // type is the return type, we can fail!
-  DLOG(WARNING) << "BitCast, unknown operand type: "
-                << remill::LLVMThingToString(inst.getOperand(0)->getType());
+//  DLOG(WARNING) << "BitCast, unknown operand type: "
+//                << remill::LLVMThingToString(inst.getOperand(0)->getType());
   return {&inst, false};
 }
 
@@ -448,7 +448,7 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
   // Convert that new `src` to have the correct type.
   auto [casted_src, promoted] = visitInferInst(new_src_inst, inferred_type);
   if (!promoted) {
-    DLOG(INFO) << "Failed to flatten gep, making bitcast!\n";
+//    DLOG(INFO) << "Failed to flatten gep, making bitcast!\n";
 
     // TODO (Carson) check
     llvm::IRBuilder<> ir(gep);
@@ -552,7 +552,7 @@ std::pair<llvm::Value *, bool>
 PointerLifter::visitPHINode(llvm::PHINode &inst) {
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
-    DLOG(WARNING) << "No type info for load! Returning just the phi node\n";
+//    DLOG(WARNING) << "No type info for load! Returning just the phi node\n";
     return {&inst, false};
   }
   llvm::IRBuilder<> ir(&inst);
@@ -579,8 +579,8 @@ PointerLifter::visitPHINode(llvm::PHINode &inst) {
 
     // TODO (Carson) handle const expr
     } else {
-      DLOG(WARNING) << "Unknown type in Phi op: "
-                    << remill::LLVMThingToString(incoming_val) << "\n";
+//      DLOG(WARNING) << "Unknown type in Phi op: "
+//                    << remill::LLVMThingToString(incoming_val) << "\n";
       new_phi->eraseFromParent();
       return {&inst, false};
     }
@@ -620,8 +620,8 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     // Load from potentially a new addr.
     auto [maybe_new_addr, changed] = visitInferInst(possible_mem_loc, inferred_type->getPointerTo());
     if (!changed) {
-      DLOG(WARNING) << "Failed to promote load! Operand type not promoted "
-                    << remill::LLVMThingToString(maybe_new_addr) << "\n";
+//      DLOG(WARNING) << "Failed to promote load! Operand type not promoted "
+//                    << remill::LLVMThingToString(maybe_new_addr) << "\n";
       return {&inst, false};
     }
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type

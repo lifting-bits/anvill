@@ -144,7 +144,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
         // Start by emitting a new structure ID for this structure and memoizing
         // it to prevent infinite recursion (e.g. on linked lists).
         ids[struct_ptr] = ids.size();
-        ss << '=' << ids[struct_ptr] << (alphanum ? "_E" : "{");
+        ss << (alphanum ? "_X" : "=") << ids[struct_ptr] << (alphanum ? "_E" : "{");
 
         auto layout = dl.getStructLayout(struct_ptr);
         uint64_t expected_offset = 0u;
@@ -348,6 +348,9 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
 
             // `_V` -> `&`.
             case 'V': ch = '&'; goto retry;
+
+            // `_X` -> `=`.
+            case 'X': ch = '='; goto retry;
           }
         }
 
