@@ -101,32 +101,32 @@ TEST_SUITE("TypeSpecification") {
     auto struct_type = llvm::StructType::create(struct_part_list, "", false);
 
     kTestEntryList.push_back(
-        {struct_type, "=0{hhhhhhhhhh}", "=0_Ehhhhhhhhhh_F"});
+        {struct_type, "=0{hhhhhhhhhh}", "_X0_Ehhhhhhhhhh_F"});
 
     auto array_type = llvm::ArrayType::get(struct_type, 100);
 
     kTestEntryList.push_back(
-        {array_type, "[=0{hhhhhhhhhh}x100]", "_C=0_Ehhhhhhhhhh_Fx100_D"});
+        {array_type, "[=0{hhhhhhhhhh}x100]", "_C_X0_Ehhhhhhhhhh_Fx100_D"});
 
     std::vector<llvm::Type *> struct_part_list2 = {array_type, struct_type};
     auto struct_type2 = llvm::StructType::create(struct_part_list2, "", false);
 
     kTestEntryList.push_back({struct_type2, "=0{[=1{hhhhhhhhhh}x100]%1}",
-                              "=0_E_C=1_Ehhhhhhhhhh_Fx100_D_M1_F"});
+                              "_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F"});
 
     auto function_type =
         llvm::FunctionType::get(array_type, {struct_type2}, false);
 
     kTestEntryList.push_back(
         {function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
-         "_A=0_E_C=1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
+         "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
     auto variadic_function_type =
         llvm::FunctionType::get(array_type, {struct_type2}, false);
 
     kTestEntryList.push_back(
         {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
-         "_A=0_E_C=1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
+         "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
     for (const auto &test_entry : kTestEntryList) {
       auto without_alphanum = ITypeSpecification::TypeToString(
