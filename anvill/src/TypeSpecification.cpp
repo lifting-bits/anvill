@@ -24,8 +24,8 @@
 
 // clang-format on
 
-#include <remill/BC/Util.h>
 #include <glog/logging.h>
+#include <remill/BC/Util.h>
 
 #include <sstream>
 #include <unordered_map>
@@ -144,7 +144,8 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
         // Start by emitting a new structure ID for this structure and memoizing
         // it to prevent infinite recursion (e.g. on linked lists).
         ids[struct_ptr] = ids.size();
-        ss << (alphanum ? "_X" : "=") << ids[struct_ptr] << (alphanum ? "_E" : "{");
+        ss << (alphanum ? "_X" : "=") << ids[struct_ptr]
+           << (alphanum ? "_E" : "{");
 
         auto layout = dl.getStructLayout(struct_ptr);
         uint64_t expected_offset = 0u;
@@ -442,7 +443,7 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         //        char data[0x0];
         //     };
         //
-        //Don't throw error if the number of elements is zero.
+        // Don't throw error if the number of elements is zero.
 
         LOG_IF(INFO, !num_elems)
             << "Zero-sized array in type specification " << spec.str();
