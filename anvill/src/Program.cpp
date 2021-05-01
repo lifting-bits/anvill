@@ -542,10 +542,6 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
   decl_ptr->owner = this;
   decl_ptr->type = func_type;
 
-  LOG_IF(FATAL, !decl_ptr->type)
-      << "Function decl at address " << std::hex << decl_ptr->address
-      << std::dec << " has invalid function type";
-
   if (funcs_are_sorted && !funcs.empty() &&
       funcs.back()->address > decl->address) {
     funcs_are_sorted = false;
