@@ -95,7 +95,6 @@ class BNProgram(Program):
         if isinstance(var_type, VoidType):
             var_type = ArrayType()
             var_type.set_num_elements(1)
-            return
 
         return BNVariable(bn_var, arch, address, var_type)
 
@@ -198,43 +197,17 @@ class BNProgram(Program):
                             )
                         )
 
-                    if (
-                        bn.TypeClass.IntegerTypeClass == var_type.type_class
-                        or bn.TypeClass.PointerTypeClass == var_type.type_class
-                    ):
-                        reg_name = calling_conv.next_int_arg_reg
-                    elif bn.TypeClass.FloatTypeClass == var_type.type_class:
-                        reg_name = calling_conv.next_float_arg_reg
-                    elif bn.TypeClass.NamedTypeReferenceClass == var_type.type_class:
-                        # The function paramater could be named alias of a float type.
-                        # TODO(akshayk) Should check the underlying types as well for aliases??
-                        if isinstance(arg_type, FloatingPointType):
-                            reg_name = calling_conv.next_float_arg_reg
-                        else:
-                            reg_name = calling_conv.next_int_arg_reg
-                    elif bn.TypeClass.VoidTypeClass == var_type.type_class:
-                        reg_name = None
+                    if isinstance(arg_type, VoidType):
                         raise InvalidParameterException(
                             "Void type parameter for function at {:x}: {}".format(
                                 bn_func.start, bn_func.name
                             )
                         )
-                    else:
-                        reg_name = None
-                        raise InvalidParameterException(
-                            "No variable type defined for function parameters at {:x}: {}".format(
-                                bn_func.start, bn_func.name
-                            )
-                        )
 
-                    # Binja may identify the function type wrongly not following
-                    # the calling convention. The reg_name in such cases will be
-                    # None. Discard such parameters.
-                    if reg_name is not None:
-                        loc = Location()
-                        loc.set_register(self._arch.register_name(reg_name))
-                        loc.set_type(arg_type)
-                        param_list.append(loc)
+                    loc = Location()
+                    loc.set_register(self._arch.register_name(storage_reg_name))
+                    loc.set_type(arg_type)
+                    param_list.append(loc)
 
                 elif source_type == bn.VariableSourceType.StackVariableSourceType:
                     loc = Location()
@@ -263,13 +236,13 @@ class BNProgram(Program):
 
         # A function symbol may be identified as variable by binja.
         if not bn_func:
-            bn_var = self._bv.get_data_var_at(address)
-            if bn_var is not None:
-                return self._get_function_from_bnvariable(address, bn_var)
-            else:
-                raise InvalidFunctionException(
-                    "No function defined at or containing address {:x}".format(address)
-                )
+            # bn_var = self._bv.get_data_var_at(address)
+            # if bn_var is not None:
+            #    return self._get_function_from_bnvariable(address, bn_var)
+            # else:
+            raise InvalidFunctionException(
+                "No function defined at or containing address {:x}".format(address)
+            )
 
         self._try_add_symbol(address)
 
