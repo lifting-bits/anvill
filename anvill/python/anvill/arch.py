@@ -13,33 +13,54 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
+from typing import List, Dict, Tuple
 
-class Arch(object):
+ArchName = str
+
+Register = str
+
+RegisterBounds = Tuple[Register, int, int]
+
+
+class Arch(ABC):
     """Generic architecture description."""
 
-    def name(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def name(self) -> ArchName:
+        ...
 
-    def program_counter_name(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def program_counter_name(self) -> Register:
+        ...
 
-    def stack_pointer_name(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def stack_pointer_name(self) -> Register:
+        ...
 
-    def return_address_proto(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def return_address_proto(self) -> Dict:
+        ...
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
-        raise NotImplementedError()
+    @abstractmethod
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
+        ...
 
-    def pointer_size(self):
-        raise NotImplementedError()
+    @abstractmethod
+    def pointer_size(self) -> int:
+        ...
 
-    def register_family(self, reg_name):
-        raise NotImplementedError()
+    @abstractmethod
+    def stack_offset(self) -> int:
+        ...
 
-    def register_name(self, reg_name):
-        return reg_name
+    @abstractmethod
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        ...
+
+    @abstractmethod
+    def register_name(self, reg_name) -> Register:
+        ...
 
 
 class AMD64Arch(Arch):
@@ -315,26 +336,35 @@ class AMD64Arch(Arch):
         "ST7": (("ST7", 0, 10), ("ST7", 0, 12), ("ST7", 0, 16)),
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "amd64"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "RIP"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "RSP"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"memory": {"register": "RSP", "offset": 0}, "type": "L"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "RSP", "offset": abs(num_bytes_popped) + 8, "type": "L"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 8
 
-    def register_family(self, reg_name):
-        return self._REG_FAMILY[reg_name]
+    def stack_offset(self) -> int:
+        return 8
+
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
+        if reg_name.startswith("%"):
+            return reg_name[1:].upper()
+        else:
+            return reg_name.upper()
 
 
 class X86Arch(Arch):
@@ -551,26 +581,35 @@ class X86Arch(Arch):
         "ST7": (("ST7", 0, 10), ("ST7", 0, 12), ("ST7", 0, 16)),
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "x86"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "EIP"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "ESP"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"memory": {"register": "ESP", "offset": 0}, "type": "I"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "ESP", "offset": abs(num_bytes_popped) + 4, "type": "I"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 4
 
-    def register_family(self, reg_name):
-        return self._REG_FAMILY[reg_name]
+    def stack_offset(self) -> int:
+        return 4
+
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
+        if reg_name.startswith("%"):
+            return reg_name[1:].upper()
+        else:
+            return reg_name.upper()
 
 
 class AArch64Arch(Arch):
@@ -924,55 +963,68 @@ class AArch64Arch(Arch):
         "TPIDRRO_EL0": (("TPIDRRO_EL0", 0, 8),),
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "aarch64"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "PC"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "SP"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"register": "LP", "type": "L"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "SP", "offset": abs(num_bytes_popped), "type": "L"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 8
+
+    def stack_offset(self) -> int:
+        return 0
+
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
+        if reg_name.startswith("%"):
+            return reg_name[1:].upper()
+        else:
+            return reg_name.upper()
+
 
 class AArch32Arch(Arch):
     """AArch32-specific architecture description (ARMv7, 32-bit)."""
 
     _REG_FAMILY_Rn = lambda l: (("R{}".format(l), 0, 8))
 
-    _REG_FAMILY_qX = lambda l: (
-        ("q{}".format(l), 0, 16),
-        ("d{}".format(l * 2), 0, 8),
-        ("d{}".format(l * 2 + 1), 8, 16),
-        ("s{}".format(l * 4), 0, 4),
-        ("s{}".format(l * 4 + 1), 4, 8),
-        ("s{}".format(l * 4 + 2), 8, 12),
-        ("s{}".format(l * 4 + 3), 12, 16),
+    _REG_FAMILY_QX = lambda l: (
+        ("Q{}".format(l), 0, 16),
+        ("D{}".format(l * 2), 0, 8),
+        ("D{}".format(l * 2 + 1), 8, 16),
+        ("S{}".format(l * 4), 0, 4),
+        ("S{}".format(l * 4 + 1), 4, 8),
+        ("S{}".format(l * 4 + 2), 8, 12),
+        ("S{}".format(l * 4 + 3), 12, 16),
     )
 
-    _REG_FAMILY_q0 = _REG_FAMILY_qX(0)
-    _REG_FAMILY_q1 = _REG_FAMILY_qX(1)
-    _REG_FAMILY_q2 = _REG_FAMILY_qX(2)
-    _REG_FAMILY_q3 = _REG_FAMILY_qX(3)
-    _REG_FAMILY_q4 = _REG_FAMILY_qX(4)
-    _REG_FAMILY_q5 = _REG_FAMILY_qX(5)
-    _REG_FAMILY_q6 = _REG_FAMILY_qX(6)
-    _REG_FAMILY_q7 = _REG_FAMILY_qX(7)
-    _REG_FAMILY_q8 = _REG_FAMILY_qX(8)
-    _REG_FAMILY_q9 = _REG_FAMILY_qX(9)
-    _REG_FAMILY_q10 = _REG_FAMILY_qX(10)
-    _REG_FAMILY_q11 = _REG_FAMILY_qX(11)
-    _REG_FAMILY_q12 = _REG_FAMILY_qX(12)
-    _REG_FAMILY_q13 = _REG_FAMILY_qX(13)
-    _REG_FAMILY_q14 = _REG_FAMILY_qX(14)
-    _REG_FAMILY_q15 = _REG_FAMILY_qX(15)
+    _REG_FAMILY_Q0 = _REG_FAMILY_QX(0)
+    _REG_FAMILY_Q1 = _REG_FAMILY_QX(1)
+    _REG_FAMILY_Q2 = _REG_FAMILY_QX(2)
+    _REG_FAMILY_Q3 = _REG_FAMILY_QX(3)
+    _REG_FAMILY_Q4 = _REG_FAMILY_QX(4)
+    _REG_FAMILY_Q5 = _REG_FAMILY_QX(5)
+    _REG_FAMILY_Q6 = _REG_FAMILY_QX(6)
+    _REG_FAMILY_Q7 = _REG_FAMILY_QX(7)
+    _REG_FAMILY_Q8 = _REG_FAMILY_QX(8)
+    _REG_FAMILY_Q9 = _REG_FAMILY_QX(9)
+    _REG_FAMILY_Q10 = _REG_FAMILY_QX(10)
+    _REG_FAMILY_Q11 = _REG_FAMILY_QX(11)
+    _REG_FAMILY_Q12 = _REG_FAMILY_QX(12)
+    _REG_FAMILY_Q13 = _REG_FAMILY_QX(13)
+    _REG_FAMILY_Q14 = _REG_FAMILY_QX(14)
+    _REG_FAMILY_Q15 = _REG_FAMILY_QX(15)
 
     _REG_FAMILY_R0 = _REG_FAMILY_Rn(0)
     _REG_FAMILY_R1 = _REG_FAMILY_Rn(1)
@@ -1005,127 +1057,122 @@ class AArch32Arch(Arch):
         "R13": (("SP", 0, 8)),
         "R14": (("LR", 0, 8)),
         "R15": (("PC", 0, 8)),
-
         "SP": (("SP", 0, 8)),
         "LR": (("LR", 0, 8)),
         "PC": (("PC", 0, 8)),
-
         # floating point extension registers only supported with
         # VFP and SIMD instructions
-        "q0": _REG_FAMILY_q0,
-        "q1": _REG_FAMILY_q1,
-        "q2": _REG_FAMILY_q2,
-        "q3": _REG_FAMILY_q3,
-        "q4": _REG_FAMILY_q4,
-        "q5": _REG_FAMILY_q5,
-        "q6": _REG_FAMILY_q6,
-        "q7": _REG_FAMILY_q7,
-        "q8": _REG_FAMILY_q8,
-        "q9": _REG_FAMILY_q9,
-        "q10": _REG_FAMILY_q10,
-        "q11": _REG_FAMILY_q11,
-        "q12": _REG_FAMILY_q12,
-        "q13": _REG_FAMILY_q13,
-        "q14": _REG_FAMILY_q14,
-        "q15": _REG_FAMILY_q15,
-
-        "d0": _REG_FAMILY_q0,
-        "d1": _REG_FAMILY_q0,
-        "d2": _REG_FAMILY_q1,
-        "d3": _REG_FAMILY_q1,
-        "d4": _REG_FAMILY_q2,
-        "d5": _REG_FAMILY_q2,
-        "d6": _REG_FAMILY_q3,
-        "d7": _REG_FAMILY_q3,
-        "d8": _REG_FAMILY_q4,
-        "d9": _REG_FAMILY_q4,
-        "d10": _REG_FAMILY_q5,
-        "d11": _REG_FAMILY_q5,
-        "d12": _REG_FAMILY_q6,
-        "d13": _REG_FAMILY_q6,
-        "d14": _REG_FAMILY_q7,
-        "d15": _REG_FAMILY_q7,
-
-        "d16": _REG_FAMILY_q8,
-        "d17": _REG_FAMILY_q8,
-        "d18": _REG_FAMILY_q9,
-        "d19": _REG_FAMILY_q9,
-        "d20": _REG_FAMILY_q10,
-        "d21": _REG_FAMILY_q10,
-        "d22": _REG_FAMILY_q11,
-        "d23": _REG_FAMILY_q11,
-        "d24": _REG_FAMILY_q12,
-        "d25": _REG_FAMILY_q12,
-        "d26": _REG_FAMILY_q13,
-        "d27": _REG_FAMILY_q13,
-        "d28": _REG_FAMILY_q14,
-        "d29": _REG_FAMILY_q14,
-        "d30": _REG_FAMILY_q15,
-        "d31": _REG_FAMILY_q15,
-
-        "s0": _REG_FAMILY_q0,
-        "s1": _REG_FAMILY_q0,
-        "s2": _REG_FAMILY_q0,
-        "s3": _REG_FAMILY_q0,
-        "s4": _REG_FAMILY_q1,
-        "s5": _REG_FAMILY_q1,
-        "s6": _REG_FAMILY_q1,
-        "s7": _REG_FAMILY_q1,
-        "s8": _REG_FAMILY_q2,
-        "s9": _REG_FAMILY_q2,
-        "s10": _REG_FAMILY_q2,
-        "s11": _REG_FAMILY_q2,
-        "s12": _REG_FAMILY_q3,
-        "s13": _REG_FAMILY_q3,
-        "s14": _REG_FAMILY_q3,
-        "s15": _REG_FAMILY_q3,
-        "s16": _REG_FAMILY_q4,
-        "s17": _REG_FAMILY_q4,
-        "s18": _REG_FAMILY_q4,
-        "s19": _REG_FAMILY_q4,
-        "s20": _REG_FAMILY_q5,
-        "s21": _REG_FAMILY_q5,
-        "s22": _REG_FAMILY_q5,
-        "s23": _REG_FAMILY_q5,
-        "s24": _REG_FAMILY_q6,
-        "s25": _REG_FAMILY_q6,
-        "s26": _REG_FAMILY_q6,
-        "s27": _REG_FAMILY_q6,
-        "s28": _REG_FAMILY_q7,
-        "s29": _REG_FAMILY_q7,
-        "s30": _REG_FAMILY_q7,
-        "s31": _REG_FAMILY_q7
+        "Q0": _REG_FAMILY_Q0,
+        "Q1": _REG_FAMILY_Q1,
+        "Q2": _REG_FAMILY_Q2,
+        "Q3": _REG_FAMILY_Q3,
+        "Q4": _REG_FAMILY_Q4,
+        "Q5": _REG_FAMILY_Q5,
+        "Q6": _REG_FAMILY_Q6,
+        "Q7": _REG_FAMILY_Q7,
+        "Q8": _REG_FAMILY_Q8,
+        "Q9": _REG_FAMILY_Q9,
+        "Q10": _REG_FAMILY_Q10,
+        "Q11": _REG_FAMILY_Q11,
+        "Q12": _REG_FAMILY_Q12,
+        "Q13": _REG_FAMILY_Q13,
+        "Q14": _REG_FAMILY_Q14,
+        "Q15": _REG_FAMILY_Q15,
+        "D0": _REG_FAMILY_Q0,
+        "D1": _REG_FAMILY_Q0,
+        "D2": _REG_FAMILY_Q1,
+        "D3": _REG_FAMILY_Q1,
+        "D4": _REG_FAMILY_Q2,
+        "D5": _REG_FAMILY_Q2,
+        "D6": _REG_FAMILY_Q3,
+        "D7": _REG_FAMILY_Q3,
+        "D8": _REG_FAMILY_Q4,
+        "D9": _REG_FAMILY_Q4,
+        "D10": _REG_FAMILY_Q5,
+        "D11": _REG_FAMILY_Q5,
+        "D12": _REG_FAMILY_Q6,
+        "D13": _REG_FAMILY_Q6,
+        "D14": _REG_FAMILY_Q7,
+        "D15": _REG_FAMILY_Q7,
+        "D16": _REG_FAMILY_Q8,
+        "D17": _REG_FAMILY_Q8,
+        "D18": _REG_FAMILY_Q9,
+        "D19": _REG_FAMILY_Q9,
+        "D20": _REG_FAMILY_Q10,
+        "D21": _REG_FAMILY_Q10,
+        "D22": _REG_FAMILY_Q11,
+        "D23": _REG_FAMILY_Q11,
+        "D24": _REG_FAMILY_Q12,
+        "D25": _REG_FAMILY_Q12,
+        "D26": _REG_FAMILY_Q13,
+        "D27": _REG_FAMILY_Q13,
+        "D28": _REG_FAMILY_Q14,
+        "D29": _REG_FAMILY_Q14,
+        "D30": _REG_FAMILY_Q15,
+        "D31": _REG_FAMILY_Q15,
+        "S0": _REG_FAMILY_Q0,
+        "S1": _REG_FAMILY_Q0,
+        "S2": _REG_FAMILY_Q0,
+        "S3": _REG_FAMILY_Q0,
+        "S4": _REG_FAMILY_Q1,
+        "S5": _REG_FAMILY_Q1,
+        "S6": _REG_FAMILY_Q1,
+        "S7": _REG_FAMILY_Q1,
+        "S8": _REG_FAMILY_Q2,
+        "S9": _REG_FAMILY_Q2,
+        "S10": _REG_FAMILY_Q2,
+        "S11": _REG_FAMILY_Q2,
+        "S12": _REG_FAMILY_Q3,
+        "S13": _REG_FAMILY_Q3,
+        "S14": _REG_FAMILY_Q3,
+        "S15": _REG_FAMILY_Q3,
+        "S16": _REG_FAMILY_Q4,
+        "S17": _REG_FAMILY_Q4,
+        "S18": _REG_FAMILY_Q4,
+        "S19": _REG_FAMILY_Q4,
+        "S20": _REG_FAMILY_Q5,
+        "S21": _REG_FAMILY_Q5,
+        "S22": _REG_FAMILY_Q5,
+        "S23": _REG_FAMILY_Q5,
+        "S24": _REG_FAMILY_Q6,
+        "S25": _REG_FAMILY_Q6,
+        "S26": _REG_FAMILY_Q6,
+        "S27": _REG_FAMILY_Q6,
+        "S28": _REG_FAMILY_Q7,
+        "S29": _REG_FAMILY_Q7,
+        "S30": _REG_FAMILY_Q7,
+        "S31": _REG_FAMILY_Q7,
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "aarch32"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "PC"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "SP"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"register": "LR", "type": "I"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "SP", "offset": abs(num_bytes_popped), "type": "I"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 4
 
-    def register_family(self, reg_name):
-        if reg_name.startswith("%"):
-            return self._REG_FAMILY[reg_name[1:].lower()]
-        else:
-            return self._REG_FAMILY[reg_name.lower()]
+    def stack_offset(self) -> int:
+        return 0
 
-    def register_name(self, reg_name):
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
         if reg_name.startswith("%"):
-            return reg_name[1:].lower()
+            return reg_name[1:].upper()
         else:
-            return reg_name.lower()
+            return reg_name.upper()
 
 
 class Sparc32Arch(Arch):
@@ -1254,31 +1301,31 @@ class Sparc32Arch(Arch):
         "f31": _REG_FAMILY_q28,
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "sparc32"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "pc"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "o6"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"register": "o7", "type": "I"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "o6", "offset": 0, "type": "I"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 4
 
-    def register_family(self, reg_name):
-        if reg_name.startswith("%"):
-            return self._REG_FAMILY[reg_name[1:].lower()]
-        else:
-            return self._REG_FAMILY[reg_name.lower()]
+    def stack_offset(self) -> int:
+        return 92
 
-    def register_name(self, reg_name):
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
         if reg_name.startswith("%"):
             return reg_name[1:].lower()
         else:
@@ -1452,31 +1499,31 @@ class Sparc64Arch(Arch):
         "f31": _REG_FAMILY_q28,
     }
 
-    def name(self):
+    def name(self) -> ArchName:
         return "sparc64"
 
-    def program_counter_name(self):
+    def program_counter_name(self) -> Register:
         return "pc"
 
-    def stack_pointer_name(self):
+    def stack_pointer_name(self) -> Register:
         return "o6"
 
-    def return_address_proto(self):
+    def return_address_proto(self) -> Dict:
         return {"register": "o7", "type": "L"}
 
-    def return_stack_pointer_proto(self, num_bytes_popped):
+    def return_stack_pointer_proto(self, num_bytes_popped) -> Dict:
         return {"register": "o6", "offset": 0, "type": "L"}
 
-    def pointer_size(self):
+    def pointer_size(self) -> int:
         return 8
 
-    def register_family(self, reg_name):
-        if reg_name.startswith("%"):
-            return self._REG_FAMILY[reg_name[1:].lower()]
-        else:
-            return self._REG_FAMILY[reg_name.lower()]
+    def stack_offset(self) -> int:
+        return 2227
 
-    def register_name(self, reg_name):
+    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+        return self._REG_FAMILY[self.register_name(reg_name)]
+
+    def register_name(self, reg_name) -> Register:
         if reg_name.startswith("%"):
             return reg_name[1:].lower()
         else:

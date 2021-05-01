@@ -32,9 +32,7 @@ class IDAVariable(Variable):
         seg_ref = [None]
         seg = find_segment_containing_ea(self.address(), seg_ref)
         if seg and is_imported_table_seg(seg):
-            print(
-                "Variable at {:x} is in an import table!".format(self.address())
-            )
+            DEBUG("Variable at {:x} is in an import table!".format(self.address()))
             is_definition = True
 
         if not is_definition:

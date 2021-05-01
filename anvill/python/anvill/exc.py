@@ -36,6 +36,10 @@ class InvalidFunctionException(AnvillException):
     pass
 
 
+class InvalidParameterException(AnvillException):
+    pass
+
+
 class InvalidVariableException(AnvillException):
     pass
 

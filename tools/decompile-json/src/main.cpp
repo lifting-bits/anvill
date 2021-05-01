@@ -19,9 +19,9 @@
 #include <glog/logging.h>
 
 #include <cstdint>
+#include <iomanip>
 #include <ios>
 #include <iostream>
-#include <iomanip>
 #include <magic_enum.hpp>
 #include <memory>
 #include <sstream>
@@ -38,6 +38,11 @@
 
 // clang-format on
 
+#include <anvill/ABI.h>
+#include <anvill/ITypeSpecification.h>
+#include <anvill/Lifters/EntityLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers/TypeProvider.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
@@ -45,12 +50,6 @@
 #include <remill/BC/Lifter.h>
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
-
-#include <anvill/ABI.h>
-#include <anvill/Lifters/EntityLifter.h>
-#include <anvill/Providers/MemoryProvider.h>
-#include <anvill/Providers/TypeProvider.h>
-#include <anvill/ITypeSpecification.h>
 
 #include "anvill/Decl.h"
 #include "anvill/Optimize.h"
@@ -281,7 +280,8 @@ static bool ParseReturnValue(const remill::Arch *arch,
 // are really function prototypes / declarations, and not any isntruction
 // data (that is separate, if present).
 static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
-                          anvill::Program &program, llvm::json::Object *obj) {
+                          anvill::Program &program, llvm::json::Object *obj,
+                          llvm::Module &module) {
 
   anvill::FunctionDecl decl;
 
@@ -291,22 +291,150 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  decl.arch = arch;
-  decl.address = static_cast<uint64_t>(*maybe_ea);
+  auto address = static_cast<uint64_t>(*maybe_ea);
 
-  if (auto params = obj->getArray("parameters")) {
-    for (llvm::json::Value &maybe_param : *params) {
-      if (auto param_obj = maybe_param.getAsObject()) {
-        auto &pv = decl.params.emplace_back();
-        if (!ParseParameter(arch, context, pv, param_obj)) {
+  // NOTE (akshayk): An external function can have function type in the spec. If
+  //                 the function type is available, it will have precedence over
+  //                 the parameter variables and return values. If the function
+  //                 type is not available it will fallback to processing params
+  //                 and return values
+
+  auto maybe_type = obj->getString("type");
+  if (maybe_type) {
+    auto type_spec_result =
+        anvill::ITypeSpecification::Create(context, *maybe_type);
+    if (!type_spec_result.Succeeded()) {
+      auto error = type_spec_result.TakeError();
+      LOG(ERROR) << error.message << " in spec " << error.spec;
+      return false;
+    }
+
+    auto type_spec = type_spec_result.TakeValue();
+    auto func_type = llvm::dyn_cast<llvm::FunctionType>(type_spec->Type());
+    if (!func_type) {
+      LOG(ERROR) << "Type associated with function at address " << std::hex
+                 << address << std::dec << " is incorrect! "
+                 << remill::LLVMThingToString(type_spec->Type());
+      return false;
+    }
+
+    std::stringstream ss;
+    ss << "dummy_" << std::hex << address;
+    auto dummy_function = llvm::Function::Create(
+        func_type, llvm::Function::ExternalLinkage, ss.str().c_str(), module);
+
+    // Create a FunctionDecl object from the dummy function. This will set
+    // the correct function types, bind the parameters & return values
+    // with the architectural registers, and set the calling convention
+
+    auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
+    dummy_function->eraseFromParent();
+
+    if (remill::IsError(maybe_decl)) {
+      LOG(ERROR) << "Failed to create FunctionDecl of type "
+                 << remill::LLVMThingToString(func_type)
+                 << " defined at address " << std::hex << address;
+      return false;
+    }
+
+    decl = std::move(remill::GetReference(maybe_decl));
+    decl.address = address;
+
+  } else {
+
+    // The function is not external and does not have associated type
+    // in the spec. Fallback to processing parameters and return values
+    decl.arch = arch;
+    decl.address = address;
+
+    if (auto params = obj->getArray("parameters")) {
+      for (llvm::json::Value &maybe_param : *params) {
+        if (auto param_obj = maybe_param.getAsObject()) {
+          auto &pv = decl.params.emplace_back();
+          if (!ParseParameter(arch, context, pv, param_obj)) {
+            return false;
+          }
+        } else {
+          LOG(ERROR) << "Non-object value in 'parameters' array of "
+                     << "function at address '" << std::hex << decl.address
+                     << std::dec << "'";
+          return false;
+        }
+      }
+    }
+
+    // Get the return address location.
+    if (auto ret_addr = obj->getObject("return_address")) {
+      if (!ParseValue(arch, decl.return_address, ret_addr, "return address")) {
+        return false;
+      }
+    } else {
+      LOG(ERROR) << "Non-present or non-object 'return_address' in function "
+                 << "specification at '" << std::hex << decl.address << std::dec
+                 << "'";
+      return false;
+    }
+
+    // Parse the value of the stack pointer on exit from the function, which is
+    // defined in terms of `reg + offset` for a value of a register `reg`
+    // on entry to the function.
+    if (auto ret_sp = obj->getObject("return_stack_pointer")) {
+      auto maybe_reg = ret_sp->getString("register");
+      if (maybe_reg) {
+        decl.return_stack_pointer = arch->RegisterByName(maybe_reg->str());
+        if (!decl.return_stack_pointer) {
+          LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
+                     << "' used computing the exit value of the "
+                     << "stack pointer in function specification at '"
+                     << std::hex << decl.address << std::dec << "'";
           return false;
         }
       } else {
-        LOG(ERROR) << "Non-object value in 'parameters' array of "
-                   << "function at address '" << std::hex << decl.address
-                   << std::dec << "'";
+        LOG(ERROR)
+            << "Non-present or non-string 'register' in 'return_stack_pointer' "
+            << "object of function specification at '" << std::hex
+            << decl.address << std::dec << "'";
         return false;
       }
+
+      auto maybe_offset = ret_sp->getInteger("offset");
+      if (maybe_offset) {
+        decl.return_stack_pointer_offset = *maybe_offset;
+      }
+    } else {
+      LOG(ERROR)
+          << "Non-present or non-object 'return_stack_pointer' in function "
+          << "specification at '" << std::hex << decl.address << std::dec
+          << "'";
+      return false;
+    }
+
+    if (auto returns = obj->getArray("return_values")) {
+      for (llvm::json::Value &maybe_ret : *returns) {
+        if (auto ret_obj = maybe_ret.getAsObject()) {
+          auto &rv = decl.returns.emplace_back();
+          if (!ParseReturnValue(arch, context, rv, ret_obj)) {
+            return false;
+          }
+        } else {
+          LOG(ERROR) << "Non-object value in 'return_values' array of "
+                     << "function at address '" << std::hex << decl.address
+                     << std::dec << "'";
+          return false;
+        }
+      }
+    }
+
+    if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
+      decl.is_noreturn = *maybe_is_noreturn;
+    }
+
+    if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
+      decl.is_variadic = *maybe_is_variadic;
+    }
+
+    if (auto maybe_cc = obj->getInteger("calling_convention")) {
+      decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
     }
   }
 
@@ -327,78 +455,6 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
     }
   }
 
-  // Get the return address location.
-  if (auto ret_addr = obj->getObject("return_address")) {
-    if (!ParseValue(arch, decl.return_address, ret_addr, "return address")) {
-      return false;
-    }
-  } else {
-    LOG(ERROR) << "Non-present or non-object 'return_address' in function "
-               << "specification at '" << std::hex << decl.address << std::dec
-               << "'";
-    return false;
-  }
-
-  // Parse the value of the stack pointer on exit from the function, which is
-  // defined in terms of `reg + offset` for a value of a register `reg`
-  // on entry to the function.
-  if (auto ret_sp = obj->getObject("return_stack_pointer")) {
-    auto maybe_reg = ret_sp->getString("register");
-    if (maybe_reg) {
-      decl.return_stack_pointer = arch->RegisterByName(maybe_reg->str());
-      if (!decl.return_stack_pointer) {
-        LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
-                   << "' used computing the exit value of the "
-                   << "stack pointer in function specification at '" << std::hex
-                   << decl.address << std::dec << "'";
-        return false;
-      }
-    } else {
-      LOG(ERROR)
-          << "Non-present or non-string 'register' in 'return_stack_pointer' "
-          << "object of function specification at '" << std::hex << decl.address
-          << std::dec << "'";
-      return false;
-    }
-
-    auto maybe_offset = ret_sp->getInteger("offset");
-    if (maybe_offset) {
-      decl.return_stack_pointer_offset = *maybe_offset;
-    }
-  } else {
-    LOG(ERROR)
-        << "Non-present or non-object 'return_stack_pointer' in function "
-        << "specification at '" << std::hex << decl.address << std::dec << "'";
-    return false;
-  }
-
-  if (auto returns = obj->getArray("return_values")) {
-    for (llvm::json::Value &maybe_ret : *returns) {
-      if (auto ret_obj = maybe_ret.getAsObject()) {
-        auto &rv = decl.returns.emplace_back();
-        if (!ParseReturnValue(arch, context, rv, ret_obj)) {
-          return false;
-        }
-      } else {
-        LOG(ERROR) << "Non-object value in 'return_values' array of "
-                   << "function at address '" << std::hex << decl.address
-                   << std::dec << "'";
-        return false;
-      }
-    }
-  }
-
-  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
-    decl.is_noreturn = *maybe_is_noreturn;
-  }
-
-  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
-    decl.is_variadic = *maybe_is_variadic;
-  }
-
-  if (auto maybe_cc = obj->getInteger("calling_convention")) {
-    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
-  }
 
   auto err = program.DeclareFunction(decl);
   if (remill::IsError(err)) {
@@ -447,13 +503,13 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
       return false;
     }
 
-    if ( auto func_decl = program.FindFunction(address); !func_decl) {
+    if (auto func_decl = program.FindFunction(address); !func_decl) {
       std::stringstream buffer;
       buffer << "function_variable_" << std::hex << address;
 
-      auto dummy_function =
-          llvm::Function::Create(type_as_func_ty, llvm::Function::ExternalLinkage,
-                                 buffer.str().c_str(), module);
+      auto dummy_function = llvm::Function::Create(
+          type_as_func_ty, llvm::Function::ExternalLinkage,
+          buffer.str().c_str(), module);
 
       auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
       dummy_function->eraseFromParent();
@@ -773,7 +829,7 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   if (auto funcs = spec->getArray("functions")) {
     for (llvm::json::Value &func : *funcs) {
       if (auto func_obj = func.getAsObject()) {
-        if (!ParseFunction(arch, context, program, func_obj)) {
+        if (!ParseFunction(arch, context, program, func_obj, module)) {
           return false;
         } else {
           ++num_funcs;
@@ -1016,12 +1072,12 @@ int main(int argc, char *argv[]) {
   // Verify the module
   if (!remill::VerifyModule(&module)) {
     std::string json_outs;
-#if LLVM_VERSION_MAJOR >= 12
+#  if LLVM_VERSION_MAJOR >= 12
     llvm::json::Path::Root path("");
     auto ret = llvm::json::fromJSON(json, json_outs, path);
-#else
+#  else
     auto ret = llvm::json::fromJSON(json, json_outs);
-#endif
+#  endif
     if (ret) {
       std::cerr << "Couldn't verify module produced from spec:\n"
                 << json_outs << '\n';
@@ -1038,7 +1094,7 @@ int main(int argc, char *argv[]) {
 
   std::unordered_set<llvm::Constant *> has_name;
 
-  auto is_called = +[] (llvm::Function &func) -> bool {
+  auto is_called = +[](llvm::Function &func) -> bool {
     for (auto user : func.users()) {
       if (llvm::isa<llvm::CallBase>(user)) {
         return true;
@@ -1049,17 +1105,17 @@ int main(int argc, char *argv[]) {
 
   for (auto &func : module) {
     if (auto maybe_addr = lifter.AddressOfEntity(&func);
-        maybe_addr && !func.isDeclaration()) {
+        maybe_addr && func.isDeclaration()) {
       program.ForEachNameOfAddress(
-          *maybe_addr, [&] (const std::string &name,
-                            const anvill::FunctionDecl *,
-                            const anvill::GlobalVarDecl *) {
-        if (!has_name.count(&func)) {
-          has_name.insert(&func);
-          func.setName(name);
-        }
-        return true;
-      });
+          *maybe_addr,
+          [&](const std::string &name, const anvill::FunctionDecl *,
+              const anvill::GlobalVarDecl *) {
+            if (!has_name.count(&func)) {
+              has_name.insert(&func);
+              func.setName(name);
+            }
+            return true;
+          });
     }
   }
 
@@ -1067,15 +1123,15 @@ int main(int argc, char *argv[]) {
     if (auto maybe_addr = lifter.AddressOfEntity(&func);
         maybe_addr && is_called(func) && !has_name.count(&func)) {
       program.ForEachNameOfAddress(
-          *maybe_addr, [&] (const std::string &name,
-                            const anvill::FunctionDecl *,
-                            const anvill::GlobalVarDecl *) {
-        if (!has_name.count(&func)) {
-          has_name.insert(&func);
-          func.setName(name);
-        }
-        return true;
-      });
+          *maybe_addr,
+          [&](const std::string &name, const anvill::FunctionDecl *,
+              const anvill::GlobalVarDecl *) {
+            if (!has_name.count(&func)) {
+              has_name.insert(&func);
+              func.setName(name);
+            }
+            return true;
+          });
     }
   }
 
@@ -1083,53 +1139,53 @@ int main(int argc, char *argv[]) {
     if (auto maybe_addr = lifter.AddressOfEntity(&func);
         maybe_addr && !has_name.count(&func)) {
       program.ForEachNameOfAddress(
-          *maybe_addr, [&] (const std::string &name,
-                            const anvill::FunctionDecl *,
-                            const anvill::GlobalVarDecl *) {
-        if (!has_name.count(&func)) {
-          has_name.insert(&func);
-          func.setName(name);
-        }
-        return true;
-      });
+          *maybe_addr,
+          [&](const std::string &name, const anvill::FunctionDecl *,
+              const anvill::GlobalVarDecl *) {
+            if (!has_name.count(&func)) {
+              has_name.insert(&func);
+              func.setName(name);
+            }
+            return true;
+          });
     }
   }
 
-//  // Apply symbol names to functions if we have the names.
-//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-//                                  const anvill::FunctionDecl *fdecl,
-//                                  const anvill::GlobalVarDecl *vdecl) {
-//    if (vdecl) {
-//      if (auto var = lifter.DeclareEntity(*vdecl)) {
-//        var->setName(name);
-//      }
-//    } else if (fdecl) {
-//      if (auto func = lifter.DeclareEntity(*fdecl)) {
-//        if (func->isDeclaration()) {
-//          func->setName(name);
-//        } else {
-//          std::stringstream ss;
-//          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_" << name;
-//          func->setName(ss.str());
-//        }
-//      }
-//    }
-//    return true;
-//  });
-//
-//  // Traverse through the function decl and fix the symbol name
-//  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-//                                  const anvill::FunctionDecl *fdecl,
-//                                  const anvill::GlobalVarDecl *vdecl) {
-//    if (fdecl) {
-//      if (auto func = lifter.DeclareEntity(*fdecl)) {
-//        if (auto func_with_name = module.getFunction(name);!func_with_name) {
-//          func->setName(name);
-//        }
-//      }
-//    }
-//    return true;
-//  });
+  //  // Apply symbol names to functions if we have the names.
+  //  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+  //                                  const anvill::FunctionDecl *fdecl,
+  //                                  const anvill::GlobalVarDecl *vdecl) {
+  //    if (vdecl) {
+  //      if (auto var = lifter.DeclareEntity(*vdecl)) {
+  //        var->setName(name);
+  //      }
+  //    } else if (fdecl) {
+  //      if (auto func = lifter.DeclareEntity(*fdecl)) {
+  //        if (func->isDeclaration()) {
+  //          func->setName(name);
+  //        } else {
+  //          std::stringstream ss;
+  //          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_" << name;
+  //          func->setName(ss.str());
+  //        }
+  //      }
+  //    }
+  //    return true;
+  //  });
+  //
+  //  // Traverse through the function decl and fix the symbol name
+  //  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
+  //                                  const anvill::FunctionDecl *fdecl,
+  //                                  const anvill::GlobalVarDecl *vdecl) {
+  //    if (fdecl) {
+  //      if (auto func = lifter.DeclareEntity(*fdecl)) {
+  //        if (auto func_with_name = module.getFunction(name);!func_with_name) {
+  //          func->setName(name);
+  //        }
+  //      }
+  //    }
+  //    return true;
+  //  });
 
 
   // Clean up by initializing variables.

@@ -30,12 +30,30 @@ from anvill.type import *
 
 
 class BNFunction(Function):
-    def __init__(self, bn_func, arch, address, param_list, ret_list, func_type):
+    def __init__(
+        self,
+        bn_func_or_var,
+        arch,
+        address,
+        param_list,
+        ret_list,
+        func_type,
+        is_external=False,
+    ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
-        self._bn_func = bn_func
+        self._bn_func = None
+        self._is_external = is_external
+
+        # initialize bn_func if the binja object is of type `Function`
+        self._bn_func_or_var = bn_func_or_var
+        if isinstance(bn_func_or_var, bn.Function):
+            self._bn_func = bn_func_or_var
 
     def name(self):
-        return self._bn_func.name
+        return self._bn_func_or_var.name
+
+    def is_external(self):
+        return self._is_external
 
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:
@@ -45,7 +63,7 @@ class BNFunction(Function):
         # is of arch type `thumb2` then don't visit them and fill the memory
         # bytes. These functions will be declared but not defined in the lifted
         # code
-        if self._bn_func.arch.name == "thumb2":
+        if self._bn_func is None or self._bn_func.arch.name == "thumb2":
             return
 
         mem = program.memory
@@ -161,11 +179,11 @@ class BNFunction(Function):
                         (item_or_list.name, val_type, possible_pointer.value)
                     )
 
-            if initial_inst.mlil is not None:
-                mlil_results = self._extract_types_mlil(
-                    program, initial_inst.mlil, initial_inst.mlil
-                )
-                results.extend(mlil_results)
+                if initial_inst.mlil is not None:
+                    mlil_results = self._extract_types_mlil(
+                        program, initial_inst.mlil, initial_inst.mlil
+                    )
+                    results.extend(mlil_results)
         return results
 
     def _fill_bytes(self, program, memory, start, end, ref_eas):
@@ -194,7 +212,10 @@ def _convert_bn_llil_type(
 
 def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     """Recursively collect xrefs in a IL instructions"""
-    if not isinstance(inst, bn.LowLevelILInstruction):
+    if not (
+        isinstance(inst, bn.LowLevelILInstruction)
+        or isinstance(inst, bn.MediumLevelILInstruction)
+    ):
         return
 
     if is_unimplemented(bv, inst) or is_undef(bv, inst):
@@ -227,39 +248,86 @@ def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     for opnd in inst.operands:
         _collect_xrefs_from_inst(bv, opnd, ref_eas, reftype)
 
+    if isinstance(inst, bn.LowLevelILInstruction):
+        mlil_inst = inst.mlil
+        if mlil_inst is not None:
+            _collect_xrefs_from_inst(bv, mlil_inst, ref_eas)
+
 
 def is_constant(bv, inst):
-    return inst.operation in (
-        bn.LowLevelILOperation.LLIL_CONST,
-        bn.LowLevelILOperation.LLIL_CONST_PTR,
-    )
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation in (
+            bn.LowLevelILOperation.LLIL_CONST,
+            bn.LowLevelILOperation.LLIL_CONST_PTR,
+        )
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation in (
+            bn.MediumLevelILOperation.MLIL_CONST,
+            bn.MediumLevelILOperation.MLIL_CONST_PTR,
+        )
+
+    return False
 
 
 def is_constant_pointer(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_CONST_PTR
+
+    return False
 
 
 def is_function_call(bv, inst):
-    return inst.operation in (
-        bn.LowLevelILOperation.LLIL_CALL,
-        bn.LowLevelILOperation.LLIL_TAILCALL,
-        bn.LowLevelILOperation.LLIL_CALL_STACK_ADJUST,
-    )
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation in (
+            bn.LowLevelILOperation.LLIL_CALL,
+            bn.LowLevelILOperation.LLIL_TAILCALL,
+            bn.LowLevelILOperation.LLIL_CALL_STACK_ADJUST,
+        )
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation in (bn.MediumLevelILOperation.MLIL_CALL,)
+
+    return False
 
 
 def is_jump(bv, inst):
-    return inst.operation in (
-        bn.LowLevelILOperation.LLIL_JUMP,
-        bn.LowLevelILOperation.LLIL_JUMP_TO,
-    )
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation in (
+            bn.LowLevelILOperation.LLIL_JUMP,
+            bn.LowLevelILOperation.LLIL_JUMP_TO,
+        )
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation in (
+            bn.MediumLevelILOperation.MLIL_JUMP,
+            bn.MediumLevelILOperation.MLIL_JUMP_TO,
+        )
+
+    return False
 
 
 def is_load_inst(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_LOAD
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_LOAD
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_LOAD
+
+    return False
 
 
 def is_store_inst(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_STORE
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_STORE
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_STORE
+
+    return False
 
 
 def is_memory_inst(bv, inst):
@@ -267,15 +335,33 @@ def is_memory_inst(bv, inst):
 
 
 def is_unimplemented(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_UNIMPL
+
+    return False
 
 
 def is_unimplemented_mem(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_UNIMPL_MEM
+
+    return False
 
 
 def is_undef(bv, inst):
-    return inst.operation == bn.LowLevelILOperation.LLIL_UNDEF
+    if isinstance(inst, bn.LowLevelILInstruction):
+        return inst.operation == bn.LowLevelILOperation.LLIL_UNDEF
+
+    elif isinstance(inst, bn.MediumLevelILInstruction):
+        return inst.operation == bn.MediumLevelILOperation.MLIL_UNDEF
+
+    return False
 
 
 def is_code(bv, addr):

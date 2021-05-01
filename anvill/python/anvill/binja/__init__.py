@@ -28,7 +28,9 @@ from anvill.program import *
 
 
 def get_program(
-    binary_path_or_bv: Union[str, bn.BinaryView], maybe_base_address: Optional[int] = None, cache: bool = False
+    binary_path_or_bv: Union[str, bn.BinaryView],
+    maybe_base_address: Optional[int] = None,
+    cache: bool = False,
 ) -> Optional[Program]:
     if cache:
         DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
