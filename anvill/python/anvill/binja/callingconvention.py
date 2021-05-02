@@ -52,7 +52,7 @@ class CallingConvention:
             try:
                 self._float_arg_regs = _FLOAT_ARGS_REGS[self._cc.arch.name]
             except KeyError:
-                DEBUG("Unsupported architecture: {}".format(self._cc.arch))
+                WARN("Unsupported architecture: {}".format(self._cc.arch))
 
     def is_sysv(self):
         return self._cc.name == "sysv"

@@ -49,9 +49,7 @@ class BNProgram(Program):
         try:
             self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG(
-                "Failed to initialize the control flow information for functin thunks"
-            )
+            WARN("Failed to initialize the control flow information for functin thunks")
 
     @property
     def bv(self):
@@ -349,7 +347,7 @@ class BNProgram(Program):
                 if function_thunk.name == "__libc_start_main":
                     continue
 
-                print(
+                WARN(
                     "anvill: Thunk {:x} ({}) could not be redirected".format(
                         function_thunk.start, function_thunk.name
                     )

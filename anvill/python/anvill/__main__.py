@@ -23,7 +23,7 @@ import platform
 
 import binaryninja as bn
 
-from .util import INIT_DEBUG_FILE
+from .util import config_logger
 from .binja import get_program
 
 
@@ -51,9 +51,16 @@ def main():
 
     arg_parser.add_argument(
         "--log_file",
-        type=argparse.FileType("w"),
-        default=os.devnull,
+        type=str,
+        default=None,
         help="Log to a specific file.",
+    )
+
+    arg_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Enable debug log for the module",
     )
 
     arg_parser.add_argument(
@@ -64,21 +71,21 @@ def main():
 
     args = arg_parser.parse_args()
 
-    if args.log_file != os.devnull:
-        INIT_DEBUG_FILE(args.log_file)
+    # Configure logger
+    config_logger(args.log_file, args.verbose)
 
     maybe_base_address: Optional[int] = None
     if args.base_address is not None:
         try:
             maybe_base_address = int(args.base_address, 16)
-            print(
+            DEBUG(
                 "Binary Ninja will attempt to load the image at virtual address 0x{:x}".format(
                     maybe_base_address
                 )
             )
 
         except:
-            print("The specified address it not valid: '{}'".format(args.base_address))
+            ERROR("The specified address it not valid: '{}'".format(args.base_address))
             return 1
 
     p = get_program(args.bin_in, maybe_base_address)

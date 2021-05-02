@@ -14,26 +14,67 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-_DEBUG_FILE = None
-_DEBUG_PREFIX = ""
+import os
+import sys
+import logging
 
 
-def INIT_DEBUG_FILE(file):
-    global _DEBUG_FILE
-    _DEBUG_FILE = file
+# Create a logger
+logger = logging.getLogger(__name__)
+
+# default log level is set to warning; It can be set
+# to debug by enabling verbose mode
+logger.setLevel(logging.WARNING)
+
+log_format = logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s")
+
+try:
+    # Setup console stream handler
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(log_format)
+    logger.addHandler(stream_handler)
+
+except Exception as e:
+    stream_handler = None
+    print("Failed to setup logger stream handler {}".format(e))
 
 
-def DEBUG_PUSH():
-    global _DEBUG_PREFIX
-    _DEBUG_PREFIX += "  "
+def config_logger(logfile, verbose=False):
+    """Set the logger file handler and set the log
+    level to verbose if required
+    """
+
+    if logfile is not None:
+        if not logfile.endswith(".log"):
+            logfile += ".log"
+
+        try:
+            file_handler = logging.FileHandler(logfile, mode="w")
+            file_handler.setFormatter(log_format)
+            logger.addHandler(file_handler)
+
+            # remove stream handler if file handler is set successfully
+            if stream_handler is not None:
+                logger.removeHandler(stream_handler)
+        except Exception as e:
+            logger.warning("Failed to set up log file: {}".format(e))
+
+    # enable verbose mode if it is set
+    if verbose:
+        logger.setLevel(logging.DEBUG)
 
 
-def DEBUG_POP():
-    global _DEBUG_PREFIX
-    _DEBUG_PREFIX = _DEBUG_PREFIX[:-2]
+# debug log interface
+DEBUG = logger.debug
 
+# info log
+INFO = logger.info
 
-def DEBUG(s):
-    global _DEBUG_FILE
-    if _DEBUG_FILE:
-        _DEBUG_FILE.write("{}{}\n".format(_DEBUG_PREFIX, str(s)))
+# warning log
+WARN = logger.warning
+
+# error log
+ERROR = logger.error
+
+# fatal log
+FATAL = logger.critical
