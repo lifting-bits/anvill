@@ -176,7 +176,7 @@ define i32 @main(i32 %0, i8** %1, i8** %2) #0 {
   br label %50
 
 50:                                               ; preds = %86, %3
-  %51 = phi i64 [ 4195674, %3 ], [ %106, %86 ]
+  %51 = phi i64 [ 4195674, %3 ], [ %105, %86 ]
   %52 = load i32, i32* %49, align 4
   %53 = load i32, i32* %43, align 8
   %54 = sub i32 %52, %53
@@ -217,42 +217,41 @@ define i32 @main(i32 %0, i8** %1, i8** %2) #0 {
   %83 = icmp eq i8 %82, 0
   %84 = select i1 %83, i64 11, i64 16
   %85 = add i64 %80, %84
-  br i1 %83, label %107, label %86
+  br i1 %83, label %106, label %86
 
 86:                                               ; preds = %79
-  %87 = bitcast i8* %35 to i64*
-  %88 = load i64, i64* %87, align 8
-  %89 = sext i32 %52 to i64
-  %90 = shl nsw i64 %89, 3
-  %91 = add i64 %90, %88
-  %92 = inttoptr i64 %91 to i8**
-  %93 = load i8*, i8** %92, align 8
-  %94 = add i64 %85, 17
-  %95 = bitcast %sub_400520__Ai_S_Sb_S_Sbi_B_0.frame_type_part0* %4 to i64*
-  store i64 %94, i64* %95, align 8
-  %96 = call i64 @atoi(i8* %93)
-  %97 = load i32, i32* %49, align 4
-  %98 = add i32 %97, -1
-  %99 = sext i32 %98 to i64
-  %100 = ptrtoint i8* %33 to i64
-  %101 = add i64 %99, %100
-  %102 = trunc i64 %96 to i8
-  %103 = inttoptr i64 %101 to i8*
-  store i8 %102, i8* %103, align 1
-  %104 = load i32, i32* %49, align 4
-  %105 = add i32 %104, 1
-  store i32 %105, i32* %49, align 4
-  %106 = add i64 %85, -45
+  %87 = load i64, i64* %44, align 8
+  %88 = sext i32 %52 to i64
+  %89 = shl nsw i64 %88, 3
+  %90 = add i64 %89, %87
+  %91 = inttoptr i64 %90 to i8**
+  %92 = load i8*, i8** %91, align 8
+  %93 = add i64 %85, 17
+  %94 = bitcast %sub_400520__Ai_S_Sb_S_Sbi_B_0.frame_type_part0* %4 to i64*
+  store i64 %93, i64* %94, align 8
+  %95 = call i64 @atoi(i8* %92)
+  %96 = load i32, i32* %49, align 4
+  %97 = add i32 %96, -1
+  %98 = sext i32 %97 to i64
+  %99 = ptrtoint i8* %33 to i64
+  %100 = add i64 %98, %99
+  %101 = trunc i64 %95 to i8
+  %102 = inttoptr i64 %100 to i8*
+  store i8 %101, i8* %102, align 1
+  %103 = load i32, i32* %49, align 4
+  %104 = add i32 %103, 1
+  store i32 %104, i32* %49, align 4
+  %105 = add i64 %85, -45
   br label %50
 
-107:                                              ; preds = %79
-  %108 = add i64 %85, 58
-  %109 = bitcast %sub_400520__Ai_S_Sb_S_Sbi_B_0.frame_type_part0* %4 to i64*
-  store i64 %108, i64* %109, align 8
-  %110 = call i8* @xor_swap(i8* nonnull %33)
-  %111 = load i8, i8* %33, align 1
-  %112 = zext i8 %111 to i32
-  ret i32 %112
+106:                                              ; preds = %79
+  %107 = add i64 %85, 58
+  %108 = bitcast %sub_400520__Ai_S_Sb_S_Sbi_B_0.frame_type_part0* %4 to i64*
+  store i64 %107, i64* %108, align 8
+  %109 = call i8* @xor_swap(i8* nonnull %33)
+  %110 = load i8, i8* %33, align 1
+  %111 = zext i8 %110 to i32
+  ret i32 %111
 }
 
 ; Function Attrs: noduplicate noinline nounwind optnone readnone
@@ -287,24 +286,10 @@ declare i8* @__anvill_type_hint_Sb(i64) local_unnamed_addr #2
 
 ; Function Attrs: noinline
 define i64 @atoi(i8* %0) #0 {
-  %2 = ptrtoint i8* %0 to i64
-  %3 = shl i64 %2, 32
-  %sext = ashr exact i64 %3, 32
-  %4 = and i64 %sext, -16777216
-  %5 = getelementptr i8, i8* inttoptr (i64 16777212 to i8*), i64 %4
-  %6 = getelementptr i8, i8* %5, i64 -16711681
-  %7 = and i64 %2, 16711680
-  %8 = getelementptr i8, i8* %6, i64 %7
-  %9 = getelementptr i8, i8* %8, i64 -65281
-  %10 = and i64 %2, 65280
-  %11 = getelementptr i8, i8* %9, i64 %10
-  %12 = getelementptr i8, i8* %11, i64 -256
-  %13 = and i64 %2, 255
-  %14 = getelementptr i8, i8* %12, i64 %13
-  %15 = load i8, i8* %14, align 1
-  %16 = add i8 %15, -48
-  %17 = zext i8 %16 to i64
-  ret i64 %17
+  %2 = load i8, i8* %0, align 1
+  %3 = add i8 %2, -48
+  %4 = zext i8 %3 to i64
+  ret i64 %4
 }
 
 ; Function Attrs: readnone
@@ -313,27 +298,19 @@ declare i16* @__anvill_type_hint_Sh(i64) local_unnamed_addr #2
 ; Function Attrs: noinline
 define i8* @xor_swap(i8* %0) #0 {
   %2 = ptrtoint i8* %0 to i64
-  %3 = shl i64 %2, 32
-  %sext = ashr exact i64 %3, 32
-  %4 = and i64 %sext, -16777216
-  %5 = getelementptr i8, i8* inttoptr (i64 16777212 to i8*), i64 %4
-  %6 = getelementptr i8, i8* %5, i64 -16711681
-  %7 = and i64 %2, 16711680
-  %8 = getelementptr i8, i8* %6, i64 %7
-  %9 = getelementptr i8, i8* %8, i64 -65281
-  %10 = and i64 %2, 65280
-  %11 = getelementptr i8, i8* %9, i64 %10
-  %12 = getelementptr i8, i8* %11, i64 -256
-  %13 = and i64 %2, 255
-  %14 = getelementptr i8, i8* %12, i64 %13
-  %15 = load i8, i8* %14, align 1
-  %16 = getelementptr i8, i8* %14, i64 1
-  %17 = load i8, i8* %16, align 1
-  %18 = xor i8 %17, %15
-  store i8 %18, i8* %14, align 1
-  store i8 %15, i8* %16, align 1
-  store i8 %17, i8* %14, align 1
-  ret i8* %14
+  %3 = load i8, i8* %0, align 1
+  %4 = add i64 %2, 1
+  %5 = inttoptr i64 %4 to i8*
+  %6 = load i8, i8* %5, align 1
+  %7 = xor i8 %6, %3
+  store i8 %7, i8* %0, align 1
+  %8 = load i8, i8* %5, align 1
+  %9 = xor i8 %8, %7
+  store i8 %9, i8* %5, align 1
+  %10 = load i8, i8* %0, align 1
+  %11 = xor i8 %9, %10
+  store i8 %11, i8* %0, align 1
+  ret i8* %0
 }
 
 ; Function Attrs: noduplicate noinline nounwind optnone
