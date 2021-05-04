@@ -555,7 +555,6 @@ pointer
 */
 std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
-  return {&inst, false};
   llvm::Type *inferred_type = inst.getType();
   if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     auto [new_val, worked] = visitInferInst(ptr_inst, inferred_type);
