@@ -66,7 +66,9 @@ llvm::Value *PointerLifter::getPointerToValue(llvm::IRBuilder<> &ir,
                                               llvm::Type *dest_type) {
 
   // is the value another instruction? Visit it
-  return ir.CreateBitOrPointerCast(val, dest_type);
+  
+  llvm::Value* ptr_cast= ir.CreateBitOrPointerCast(val, dest_type);
+  return ptr_cast;
 }
 
 std::pair<llvm::Value *, bool>
@@ -74,6 +76,8 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
                               llvm::Type *inferred_type) {
   auto &inferred_val_type = inferred_types[inst];
   auto &next_inferred_val_type = next_inferred_types[inst];
+
+
 
   // We're the first ones making an inference.
   if (!inferred_val_type) {
@@ -128,7 +132,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
 
   // TODO (Carson) the addr_space is  actually for thread stuff
   // auto i8_ptr_ty = llvm::PointerType::get(i8_ty, addr_space);
-  std::cout << "Getting indexed pointer!" << std::endl;
   if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(offset)) {
     const auto rhs_index = static_cast<int32_t>(rhs_const->getSExtValue());
 
@@ -195,21 +198,14 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
       if (address->getType() == dest_type) {
         return ptr;
       } else {
-        std::cout << "Create bitcast 1" << std::endl;
         llvm::Value* b1 =  ir.CreateBitCast(ptr, dest_type);
-        std::cout << remill::LLVMThingToString(b1) << "\n";
       }
     }
   }
-  std::cout << "Create bitcast 2" << std::endl;
   auto base = ir.CreateBitCast(address, i8_ptr_ty);
-  std::cout << remill::LLVMThingToString(base) << "\n";
-
   llvm::Value *indices[1] = {ir.CreateTrunc(offset, i32_ty)};
   auto gep = ir.CreateGEP(i8_ty, base, indices);
-  std::cout << "Create bitcast 3" << std::endl;
   llvm::Value* b3= ir.CreateBitCast(gep, dest_type);
-  std::cout << remill::LLVMThingToString(b3) << "\n";
   return b3;
 
 }
@@ -282,22 +278,17 @@ std::pair<llvm::Value *, bool>
 PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
   llvm::Type *inferred_type = inferred_types[&inst];
   if (inferred_type) {
-
     // If there is a bitcast that we could not eliminate for some reason (fell
     // through the default case with ERROR). There might be a bitcast downstream
     // which knows more than us, and wants us to update our bitcast. So we just
     // create a new bitcast, replace the current one, and return
     llvm::IRBuilder ir(&inst);
-      std::cout << "Create bitcast 4" << std::endl;
-    std::cout << remill::LLVMThingToString(&inst) << std::endl;
     llvm::Value *new_bitcast =
         ir.CreateBitCast(inst.getOperand(0), inferred_type);
-    std::cout << remill::LLVMThingToString(new_bitcast) << "\n";
 
-    ReplaceAllUses(&inst, new_bitcast);
+    // ReplaceAllUses(&inst, new_bitcast);
     return {new_bitcast, true};
   }
-
   llvm::Value *possible_pointer = inst.getOperand(0);
   if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(possible_pointer)) {
 
@@ -305,10 +296,11 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
       return {&inst, false};
     }
     // If we are bitcasting to a pointer, propagate that info!
-    auto [new_var_type, opt_success] =
-        visitInferInst(pointer_inst, inst.getDestTy());
+    auto [new_var_type, opt_success] = visitInferInst(pointer_inst, inst.getDestTy());
     if (opt_success) {
-      ReplaceAllUses(&inst, new_var_type);
+      if (new_var_type->getType() == inst.getType()) {
+        ReplaceAllUses(&inst, new_var_type);
+      }
       return {new_var_type, true};
     }
 //    DLOG(WARNING) << "Bitcast: Failed to propagate info with pointer_inst: "
@@ -466,11 +458,7 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
 
     // TODO (Carson) check
     llvm::IRBuilder<> ir(gep);
-      std::cout << "Create bitcast 5" << std::endl;
-
     casted_src = ir.CreateBitCast(new_src, inferred_type);
-    std::cout << remill::LLVMThingToString(casted_src) << "\n";
-
   }
   // Now that we have `src` casted to the corrected type, we can index into
   // it, using an index that is scaled to the size of the
@@ -502,6 +490,7 @@ PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   if (!inferred_type) {
     return {&inst, false};
   }
+
   // TODO (Carson) remove these when we can handle them.
   if (inst.getSourceElementType()->isStructTy() || 
       inst.getSourceElementType()->isVectorTy() || 
@@ -510,6 +499,7 @@ PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   }
   auto [flat_gep, worked] = BrightenGEP_PeelLastIndex(&inst, inferred_type);
   if (worked) {
+    ReplaceAllUses(&inst, flat_gep);
     return {flat_gep, worked};
   }
   return {&inst, false};
@@ -524,12 +514,15 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst& inst) {
   // If we have an inferred type, it means the result of the ptrtoint
   // was once again casted to be a pointer, maybe of a different type.
   // Try and propagate if possible 
+  /*
   if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(&inst)) {
     auto [new_ptr, worked] = visitInferInst(ptr_inst, inferred_type);
     if (worked) {
+      ReplaceAllUses(&inst, new_ptr);
       return {new_ptr, worked};
     }
   }
+  */
   // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
   llvm::IRBuilder<> ir(&inst);
   auto ptr_val = inst.getOperand(0);
@@ -554,7 +547,6 @@ pointer
 */
 std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
-  std::cout << remill::LLVMThingToString(&inst) << std::endl;
   llvm::Type* inferred_type = inst.getType();
   if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     auto [new_val, worked] = visitInferInst(ptr_inst, inferred_type);
@@ -586,13 +578,16 @@ PointerLifter::visitPHINode(llvm::PHINode &inst) {
     auto incoming_block = inst.getIncomingBlock(i);
     llvm::IRBuilder<> sub_ir(incoming_block->getTerminator()->getPrevNode());
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(incoming_val)) {
-
       // Visit possible reference
       auto [new_inst, worked] = visitInferInst(val_inst, inferred_type); 
 
       // If failed, force a success 
       if (!worked) {
-        new_inst = sub_ir.CreateBitOrPointerCast(new_inst, inferred_type);
+        // Returning false here, forcing a success created new inttoptr's which created new loops
+        // Returning false, yes we would have maybe made some new instructions visiting previous phi arguments
+        // but when we return false, it means that the new phi is not used, meaning that it and its WIP args will be removed 
+        // by dead instruction removal.  
+        return {&inst, false};
       }
       new_phi->addIncoming(new_inst, incoming_block);
 
@@ -625,7 +620,6 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
   if (!inferred_type) {
     return {&inst, false};
   }
-  std::cout << remill::LLVMThingToString(&inst) << std::endl;
   // Assert that the CURRENT type of the load (in the example i64) and the new promoted type (i32*)
   // Are of the same size in bytes.
   // This prevents us from accidentally truncating/extending when we don't want to
@@ -647,7 +641,6 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type
     llvm::IRBuilder ir(&inst);
     llvm::Value *promoted_load = ir.CreateLoad(inferred_type, maybe_new_addr);
-    ReplaceAllUses(&inst, promoted_load);
     return {promoted_load, true};
   }
 //  // Load operand can be a constant expression
@@ -731,7 +724,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   if (!inferred_type) {
     return {&inst, false};
   }
-  std::cout << remill::LLVMThingToString(&inst) << std::endl;
   auto lhs_op = inst.getOperand(0);
   auto rhs_op = inst.getOperand(1);
   auto lhs_ptr = lhs_op->getType()->isPointerTy();
@@ -773,11 +765,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
         // Default behavior is just to cast, this is not ideal, because
         // we want to try and propagate as much as we can.
         llvm::IRBuilder ir(inst.getNextNode());
-          std::cout << "Create bitcast 6" << std::endl;
-
         llvm::Value *default_cast = ir.CreateBitCast(&inst, inferred_type);
-        std::cout << remill::LLVMThingToString(default_cast) << "\n";
-
         // ReplaceAllUses(&inst, default_cast);
         return {default_cast, true};
       }
@@ -801,7 +789,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       }
 
       // Mark as updated
-      ReplaceAllUses(&inst, indexed_pointer);
       return {indexed_pointer, true};
 
     // Same but for RHS
@@ -827,7 +814,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       }
 
       // Mark as updated
-      ReplaceAllUses(&inst, indexed_pointer);
       return {indexed_pointer, true};
     // We know there is some pointer info, but they are both consts?
     } else {
@@ -842,8 +828,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   // Default behavior is just to cast, this is not ideal, because
   // we want to try and propagate as much as we can.
   llvm::IRBuilder ir(inst.getNextNode());
-    std::cout << "Create bitcast 7" << std::endl;
-
   llvm::Value *default_cast = ir.CreateBitCast(&inst, inferred_type);
 
   // ReplaceAllUses(&inst, default_cast);
@@ -892,7 +876,6 @@ PointerLifter::visitAllocaInst(llvm::AllocaInst& inst) {
   // If we've inferred a new type for alloca, lets just make a new alloca
   llvm::IRBuilder<> ir(&inst);
   llvm::Value* new_alloca = ir.CreateAlloca(inferred_type);
-  ReplaceAllUses(&inst, new_alloca);
   return {new_alloca, true};
 }
 
@@ -1004,6 +987,11 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
           rep_inst && rep_inst->getType() == inst->getType()) {
         inst->replaceAllUsesWith(rep_inst);
       }
+      else {
+        DLOG(ERROR) << "Can't replace these two:\n";
+        DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
+        DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
+      }
     }
     for (auto inst : to_remove) {
       if (inst->use_empty()) {
@@ -1013,6 +1001,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
         next_inferred_types.erase(inst);
       }
     }
+    rep_map.clear();
+    inferred_types.clear();
+    next_inferred_types.clear();
     to_remove.clear();
 
     fpm.doInitialization();
