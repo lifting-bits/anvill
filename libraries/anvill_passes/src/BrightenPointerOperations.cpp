@@ -322,6 +322,7 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
 llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
 
   // FIXME (Carson), delete once we can fix the TODO with getting indexed types
+  // Ticket #195
   if (gep->getPointerOperandType()->getPointerElementType()->isStructTy() ||
       gep->getPointerOperandType()->getPointerElementType()->isVectorTy()) {
     return gep;
@@ -378,6 +379,7 @@ llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
 std::pair<llvm::Value *, bool>
 PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
                                          llvm::Type *inferred_type) {
+  return {gep, false};
 
   // TODO (Carson) refactor this to use canRewriteGEP
 
@@ -553,6 +555,7 @@ pointer
 */
 std::pair<llvm::Value *, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
+  return {&inst, false};
   llvm::Type *inferred_type = inst.getType();
   if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     auto [new_val, worked] = visitInferInst(ptr_inst, inferred_type);
@@ -567,6 +570,7 @@ PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
 
 std::pair<llvm::Value *, bool>
 PointerLifter::visitPHINode(llvm::PHINode &inst) {
+
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
 
