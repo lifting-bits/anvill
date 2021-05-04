@@ -40,9 +40,10 @@ PointerLifterPass::PointerLifterPass(unsigned max_gas_)
       max_gas(max_gas_) {}
 
 bool PointerLifterPass::runOnFunction(llvm::Function &f) {
+  // f.print(llvm::errs(), nullptr);
   PointerLifter lifter(&f, max_gas);
   lifter.LiftFunction(f);
-
+  // f.print(llvm::errs(), nullptr);
   // TODO (Carson) have an analysis function which determines modifications
   // Then use lift function to run those modifications
   // Can return true/false depending on what was modified
@@ -76,8 +77,6 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
                               llvm::Type *inferred_type) {
   auto &inferred_val_type = inferred_types[inst];
   auto &next_inferred_val_type = next_inferred_types[inst];
-
-
   // We're the first ones making an inference.
   if (!inferred_val_type) {
     inferred_val_type = inferred_type;
@@ -521,21 +520,19 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
   // If we have an inferred type, it means the result of the ptrtoint
   // was once again casted to be a pointer, maybe of a different type.
   // Try and propagate if possible
-  /*
+  
   if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(&inst)) {
     auto [new_ptr, worked] = visitInferInst(ptr_inst, inferred_type);
     if (worked) {
-      ReplaceAllUses(&inst, new_ptr);
       return {new_ptr, worked};
     }
   }
-  */
 
   // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
-  llvm::IRBuilder<> ir(&inst);
-  auto ptr_val = inst.getOperand(0);
-  llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
-  return {cast, true};
+  // llvm::IRBuilder<> ir(&inst);
+  // auto ptr_val = inst.getOperand(0);
+  // llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
+  return {&inst, false};
 }
 
 
@@ -738,6 +735,10 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   // Adds by themselves do not infer pointer info
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
+    return {&inst, false};
+  }
+  auto op_code = inst.getOpcode();
+  if (!(op_code == llvm::Instruction::Add || op_code == llvm::Instruction::Sub)) {
     return {&inst, false};
   }
   auto lhs_op = inst.getOperand(0);
@@ -1008,6 +1009,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     for (auto inst : to_remove) {
       if (auto rep_inst = rep_map[inst];
           rep_inst && rep_inst->getType() == inst->getType()) {
+        //DLOG(ERROR) << "Replacing:\n"; 
+        //DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
+        //DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
         inst->replaceAllUsesWith(rep_inst);
       } else {
         DLOG(ERROR) << "Can't replace these two:\n";
