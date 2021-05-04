@@ -54,7 +54,7 @@
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
-DEFINE_bool(enable_pointer_brighten_pass, false,
+DEFINE_bool(disable_pointer_brighten_pass, false,
             "Should the memory intrinsics be replaced or not?");
 
 namespace anvill {
@@ -127,7 +127,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // some of the binaries. Changing gas value also does not help.
   // Disable it and come back later.
 
-  if (FLAGS_enable_pointer_brighten_pass) {
+  if (!FLAGS_disable_pointer_brighten_pass) {
     fpm.add(CreateBrightenPointerOperations(8u));
   }
 
