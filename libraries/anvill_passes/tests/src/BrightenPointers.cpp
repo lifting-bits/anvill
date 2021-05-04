@@ -128,9 +128,9 @@ TEST_SUITE("BrightenPointers") {
   }
 
 
-  TEST_CASE("buggy challenge") {
+  TEST_CASE("challenge 2") {
     llvm::LLVMContext context;
-    auto mod = LoadTestData(context, "bug.ll");
+    auto mod = LoadTestData(context, "chall2.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
