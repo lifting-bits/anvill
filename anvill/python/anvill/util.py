@@ -18,63 +18,86 @@ import os
 import sys
 import logging
 
-
-# Create a logger
-logger = logging.getLogger(__name__)
-
-# default log level is set to warning; It can be set
-# to debug by enabling verbose mode
-logger.setLevel(logging.WARNING)
-
-log_format = logging.Formatter("%(asctime)s [%(levelname)s]: %(message)s")
+import logging.config
 
 try:
-    # Setup console stream handler
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(log_format)
-    logger.addHandler(stream_handler)
+    """If the config file is available, configure logger"""
+    config_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "logging.ini"
+    )
+    logging.config.fileConfig(config_file)
 
-except Exception as e:
-    stream_handler = None
-    print("Failed to setup logger stream handler {}".format(e))
+except Exception as e1:
+    """If logging.ini is missing from the package. Setup the
+    basic configuration for root logger
+    """
+    try:
+        stream_handler = logging.StreamHandler(sys.stderr)
+        logging.basicConfig(
+            level=logging.ERROR,
+            format="%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d]: %(message)s",
+            handlers=[stream_handler],
+        )
+
+    except Exception as e2:
+        print(f"Fail to configure root logger {e2}")
+
+# debug log
+DEBUG = logging.getLogger().debug
+
+# info log
+INFO = logging.getLogger().info
+
+# warning log
+WARN = logging.getLogger().warning
+
+# error log
+ERROR = logging.getLogger().error
+
+# fatal log
+FATAL = logging.getLogger().critical
 
 
 def config_logger(logfile, verbose=False):
-    """Set the logger file handler and set the log
-    level to verbose if required
+    """Set the logger file handler and set the log level
+    to verbose if required
     """
+    # Get root logger
+    logger = logging.getLogger()
 
     if logfile is not None:
-        if not logfile.endswith(".log"):
-            logfile += ".log"
-
         try:
+            log_format = logging.Formatter(
+                "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d]: %(message)s"
+            )
             file_handler = logging.FileHandler(logfile, mode="w")
             file_handler.setFormatter(log_format)
             logger.addHandler(file_handler)
 
-            # remove stream handler if file handler is set successfully
-            if stream_handler is not None:
-                logger.removeHandler(stream_handler)
-        except Exception as e:
-            logger.warning("Failed to set up log file: {}".format(e))
+            # if the file handler is set; change log level of
+            # all stream handlers to ERROR
+            for h in logger.handlers:
+                if not isinstance(h, logging.FileHandler) and isinstance(
+                    h, logging.StreamHandler
+                ):
+                    h.setLevel(logging.ERROR)
 
-    # enable verbose mode if it is set
+        except Exception as e:
+            logger.warning(f"Failed to set up log file: {e}")
+
+    # enable verbose mode
     if verbose:
         logger.setLevel(logging.DEBUG)
 
 
-# debug log interface
-DEBUG = logger.debug
-
-# info log
-INFO = logger.info
-
-# warning log
-WARN = logger.warning
-
-# error log
-ERROR = logger.error
-
-# fatal log
-FATAL = logger.critical
+def create_logger(name):
+    """Create module level logger which can be configured using
+    logging.ini files
+    """
+    return (
+        logging.getLogger(name).info,
+        logging.getLogger(name).debug,
+        logging.getLogger(name).warning,
+        logging.getLogger(name).error,
+        logging.getLogger(name).critical,
+    )

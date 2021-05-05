@@ -85,7 +85,7 @@ def main():
             )
 
         except:
-            ERROR("The specified address it not valid: '{}'".format(args.base_address))
+            ERROR(f"The specified address it not valid: '{hex(args.base_address)}'")
             return 1
 
     p = get_program(args.bin_in, maybe_base_address)
