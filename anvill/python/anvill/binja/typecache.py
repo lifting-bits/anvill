@@ -197,7 +197,7 @@ class TypeCache:
             return self._convert_enum(ref_type)
 
         else:
-            WARN("WARNING: Unknown named type {} not handled".format(named_tinfo))
+            WARN(f"WARNING: Unknown named type {named_tinfo} not handled")
             return (
                 IntegerType(self._bv.address_size, False)
                 if tinfo.width == 0
@@ -243,9 +243,7 @@ class TypeCache:
 
         elif tinfo.type_class in TypeCache._err_type_class.keys():
             WARN(
-                "WARNING: Unhandled type class {}".format(
-                    TypeCache._err_type_class[tinfo.type_class]
-                )
+                f"WARNING: Unhandled type class {TypeCache._err_type_class[tinfo.type_class]}"
             )
             return VoidType()
 

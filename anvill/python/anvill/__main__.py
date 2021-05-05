@@ -79,9 +79,7 @@ def main():
         try:
             maybe_base_address = int(args.base_address, 16)
             DEBUG(
-                "Binary Ninja will attempt to load the image at virtual address 0x{:x}".format(
-                    maybe_base_address
-                )
+                f"Binary Ninja will attempt to load the image at virtual address {hex(maybe_base_address)}"
             )
 
         except:

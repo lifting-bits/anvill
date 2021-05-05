@@ -18,8 +18,6 @@ import os
 import sys
 import logging
 
-import logging.config
-
 try:
     """If the config file is available, configure logger"""
     config_file = os.path.join(
