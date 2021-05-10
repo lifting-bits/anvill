@@ -49,9 +49,7 @@ class BNProgram(Program):
         try:
             self._init_func_thunk_ctrl_flow()
         except:
-            DEBUG(
-                "Failed to initialize the control flow information for functin thunks"
-            )
+            WARN("Failed to initialize the control flow information for functin thunks")
 
     @property
     def bv(self):
@@ -304,9 +302,7 @@ class BNProgram(Program):
             func_location = self._bv.get_data_var_at(function_thunk.start)
             if not func_location:
                 DEBUG(
-                    "anvill: No variable defined for {:x}/{}".format(
-                        function_thunk.start, function_thunk.name
-                    )
+                    f"anvill: No variable defined for {hex(function_thunk.start)}/{function_thunk.name}"
                 )
                 continue
 
@@ -349,10 +345,8 @@ class BNProgram(Program):
                 if function_thunk.name == "__libc_start_main":
                     continue
 
-                print(
-                    "anvill: Thunk {:x} ({}) could not be redirected".format(
-                        function_thunk.start, function_thunk.name
-                    )
+                WARN(
+                    f"anvill: Thunk {hex(function_thunk.start)} ({function_thunk.name}) could not be redirected"
                 )
 
 
