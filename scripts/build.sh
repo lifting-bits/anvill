@@ -266,11 +266,11 @@ function Configure
   (
     set -x
     cmake \
-        -DANVILL_INSTALL_PYTHON3_LIBS=Yes \
         -DANVILL_ENABLE_INSTALL_TARGET=true \
         -G Ninja \
         -Dremill_DIR:PATH=${INSTALL_DIR}/remill/usr/local/lib/cmake/remill \
         -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
+        -DCMAKE_PREFIX_PATH="${INSTALL_DIR}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
         -DVCPKG_ROOT="${DOWNLOAD_DIR}/${LIBRARY_VERSION}" \
         ${BUILD_FLAGS} \
@@ -296,7 +296,7 @@ function Install
 {
   (
     set -x
-    export DESTDIR=${INSTALL_DIR}/anvill
+    export DESTDIR=""
     cmake --build . \
       --target install
 
