@@ -6,5 +6,5 @@
 	url = https://github.com/Neargye/magic_enum.git
 [submodule "libraries/lifting-tools-ci"]
 	path = libraries/lifting-tools-ci
-	url = git@github.com:lifting-bits/lifting-tools-ci.git
+	url = https://github.com/lifting-bits/lifting-tools-ci.git
 	branch = master
