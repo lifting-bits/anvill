@@ -1,64 +1,60 @@
-ARG LLVM_VERSION=1000
+ARG LLVM_VERSION=11
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
-ARG LIBRARIES=/opt/trailofbits/libraries
+ARG LIBRARIES=/opt/trailofbits
 
-# Will copy remill installation from here
-FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
-
-# Additional runtime dependencies go here
-FROM ${BUILD_BASE} as base
+# Run-time dependencies go here
+FROM ${BUILD_BASE} AS base
 ARG UBUNTU_VERSION
+ARG LIBRARIES
 RUN apt-get update && \
-    cat /etc/lsb-release && \
-    if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
-        apt-get install -qqy --no-install-recommends libtinfo6 ; \
-    else \
-        apt-get install -qqy --no-install-recommends libtinfo5 ; \
-    fi && \
+    apt-get install -qqy --no-install-recommends python3 python3-pip python3-setuptools python3 xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
 # Build-time dependencies go here
-FROM trailofbits/cxx-common:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as deps
-
-ENV DEBIAN_FRONTEND=noninteractive
-
+FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
+ARG UBUNTU_VERSION
+ARG ARCH
+ARG LLVM_VERSION
+ARG LIBRARIES
 RUN apt-get update && \
-    apt-get install -qqy ninja-build python3.8 python3-pip python3.8-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
+    apt-get install -qqy python3 python3.8 python3-pip libc6-dev wget liblzma-dev zlib1g-dev curl git build-essential ninja-build libselinux1-dev libbsd-dev ccache pixz xz-utils make rpm && \
+    if [ "$(uname -m)" = "x86_64" ]; then dpkg --add-architecture i386 && apt-get update && apt-get install -qqy gcc-multilib g++-multilib zip zlib1g-dev:i386; fi && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=remill /opt/trailofbits /opt/trailofbits
+# Build dependencies
+WORKDIR /dependencies
+RUN git clone --depth=1 --branch master https://github.com/lifting-bits/remill.git && \
+    cd remill && \
+    ./scripts/build.sh --llvm-version ${LLVM_VERSION} --prefix ${LIBRARIES} --download-dir /tmp
+
+# Make this a separate RUN because the build script above downloads a lot
+RUN cd remill && \
+    cmake --build remill-build --target install -- -j "$(nproc)"
+
 
 # Source code build
-FROM deps as build
+FROM deps AS build
+WORKDIR /anvill
+ARG UBUNTU_VERSION
+ARG ARCH
+ARG LLVM_VERSION
 ARG LIBRARIES
 
-WORKDIR /anvill
 COPY . ./
 
-ENV CC="/usr/bin/clang"
-ENV CXX="/usr/bin/clang++"
-ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
-ENV VIRTUAL_ENV=/opt/trailofbits/venv
-ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
+RUN cmake -G Ninja -B build -S . -DANVILL_ENABLE_INSTALL_TARGET=true -Dremill_DIR:PATH=${LIBRARIES}/lib/cmake/remill -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" -DCMAKE_VERBOSE_MAKEFILE=True -DVCPKG_ROOT=/tmp/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 && \
+    cmake --build build --target install
 
-# create a virtualenv in /opt/trailofbits/venv
-RUN python3.8 -m venv ${VIRTUAL_ENV}
-
-RUN mkdir -p build && cd build && \
-    cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
-    cmake --build . --target install
-
-FROM base as dist
+FROM base AS dist
 ARG LLVM_VERSION
-ENV VIRTUAL_ENV=/opt/trailofbits/venv \
-    PATH="/opt/trailofbits/venv/bin:/opt/trailofbits/anvill/bin:${PATH}" \
+ENV PATH="/opt/trailofbits/bin:${PATH}" \
     LLVM_VERSION=llvm${LLVM_VERSION}
 
 RUN apt-get update && \
-    apt-get install -qqy unzip python3.8 python3-pip python3.8-venv && \
+    apt-get install -qqy unzip python3.8 python3-pip && \
     rm -rf /var/lib/apt/lists/* && \
     python3.8 -m pip install pip python-magic
 
@@ -73,8 +69,6 @@ RUN apt-get update && \
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
-COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh
-COPY --from=remill /opt/trailofbits/remill /opt/trailofbits/remill
-COPY --from=build /opt/trailofbits/anvill /opt/trailofbits/anvill
-COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
-ENTRYPOINT ["/opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh"]
+COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
+COPY --from=build ${LIBRARIES} ${LIBRARIES}
+ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
