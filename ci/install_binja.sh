@@ -1,4 +1,5 @@
 #!/bin/bash
+DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 set -euo pipefail
 
@@ -26,14 +27,14 @@ EXTRACT_DIR=${VIRTUAL_ENV:-"/opt/vector35/binaryninja"}
 mkdir -p "${EXTRACT_DIR}"
 
 echo "Decrypting Binja..."
-decrypt BinaryNinja-headless.zip
+decrypt ${DIR}/BinaryNinja-headless.zip
 echo "Decrypting license..."
-decrypt license.txt
+decrypt ${DIR}/license.txt
 
 #Run this from the bmef root directory and it will install Binja for you
-unzip BinaryNinja-headless.zip -d "${EXTRACT_DIR}"
+unzip ${DIR}/BinaryNinja-headless.zip -d "${EXTRACT_DIR}"
 mkdir -p ~/.binaryninja/
-cp license.txt ~/.binaryninja/license.dat
+cp ${DIR}/license.txt ~/.binaryninja/license.dat
 chmod +x "${EXTRACT_DIR}/binaryninja/scripts/linux-setup.sh"
 "${EXTRACT_DIR}/binaryninja/scripts/linux-setup.sh" -s -d -m -l &> /dev/null
 # virtual env, use -v; if not don't use it
