@@ -21,6 +21,8 @@ jobs:
         ubuntu: ["18.04", "20.04"]
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       run: |
         docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
