@@ -69,23 +69,8 @@ FROM base AS dist
 ARG LLVM_VERSION
 ARG LIBRARIES
 ENV PATH="/opt/trailofbits/bin:${PATH}" \
-    LLVM_VERSION=llvm${LLVM_VERSION} \
-    VIRTUAL_ENV=/opt/trailofbits/venv
+    LLVM_VERSION=llvm${LLVM_VERSION}
 
-RUN apt-get update && \
-    apt-get install -qqy unzip python3.8 python3.8-venv python3-pip && \
-    rm -rf /var/lib/apt/lists/*
-
-SHELL ["/bin/bash", "-c"]
-
-# The below is commented out since neither binja
-# nor IDA would be available in the dist container
-# so it makes no sense to also add Python -- can't test the Python API
-# without either of those.
-# If the situation changes, this can be uncommented to also install Python in the dist image
-#RUN apt-get update && \
-#    apt-get install -qqy python3.8 python3-pip python3.8-venv && \
-#    rm -rf /var/lib/apt/lists/*
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
@@ -97,8 +82,18 @@ ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
 FROM dist as binja
 ARG BINJA_DECODE_KEY
 
+ENV VIRTUAL_ENV=/opt/trailofbits/venv
+
+SHELL ["/bin/bash", "-c"]
+RUN apt-get update && \
+    apt-get install -qqy unzip gpg python3.8 python3.8-venv python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ci /dependencies/binja_install
+
 RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     source ${VIRTUAL_ENV}/bin/activate && \
+    cd /dependencies/binja_install && \
     ./install_binja.sh
 COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
 ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
