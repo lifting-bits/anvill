@@ -66,6 +66,7 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
 
 FROM base AS dist
 ARG LLVM_VERSION
+ARG LIBRARIES
 ENV PATH="/opt/trailofbits/bin:${PATH}" \
     LLVM_VERSION=llvm${LLVM_VERSION} \
     VIRTUAL_ENV=/opt/trailofbits/venv
