@@ -20,9 +20,9 @@ ARG UBUNTU_VERSION
 ARG ARCH
 ARG LLVM_VERSION
 ARG LIBRARIES
+
 RUN apt-get update && \
-    apt-get install -qqy python3 python3.8 python3.8-venv python3-pip libc6-dev wget liblzma-dev zlib1g-dev curl git build-essential ninja-build libselinux1-dev libbsd-dev ccache pixz xz-utils make rpm && \
-    if [ "$(uname -m)" = "x86_64" ]; then dpkg --add-architecture i386 && apt-get update && apt-get install -qqy gcc-multilib g++-multilib zip zlib1g-dev:i386; fi && \
+    apt-get install -qqy xz-utils python3.8-venv make rpm && \
     rm -rf /var/lib/apt/lists/*
 
 # Build dependencies
@@ -33,8 +33,7 @@ RUN git clone --depth=1 --branch master https://github.com/lifting-bits/remill.g
 
 # Make this a separate RUN because the build script above downloads a lot
 RUN cd remill && \
-    cmake --build remill-build --target install -- -j "$(nproc)"
-
+    dpkg -i remill-build/*.deb
 
 # Source code build
 FROM deps AS build
@@ -49,6 +48,7 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
 RUN python3.8 -m venv ${VIRTUAL_ENV}
+
 # Needed for sourcing venv
 SHELL ["/bin/bash", "-c"]
 
@@ -64,6 +64,13 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
         -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
         && \
     cmake --build build --target install
+
+# set up a symlink to invoke without a version
+RUN update-alternatives --install \
+    /opt/trailofbits/bin/anvill-decompile-json \
+    anvill-decompile-json \
+    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION}.0 \
+    100
 
 FROM base AS dist
 ARG LLVM_VERSION
@@ -86,7 +93,7 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv
 
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && \
-    apt-get install -qqy unzip gpg python3.8 python3.8-venv python3-pip && \
+    apt-get install -qqy gpg unzip && \
     rm -rf /var/lib/apt/lists/*
 
 COPY ci /dependencies/binja_install
