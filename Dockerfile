@@ -67,7 +67,8 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
 FROM base AS dist
 ARG LLVM_VERSION
 ENV PATH="/opt/trailofbits/bin:${PATH}" \
-    LLVM_VERSION=llvm${LLVM_VERSION}
+    LLVM_VERSION=llvm${LLVM_VERSION} \
+    VIRTUAL_ENV=/opt/trailofbits/venv
 
 RUN apt-get update && \
     apt-get install -qqy unzip python3.8 python3.8-venv python3-pip && \
