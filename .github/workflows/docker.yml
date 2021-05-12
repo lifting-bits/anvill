@@ -32,7 +32,8 @@ jobs:
         docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret0.json -bc_out /tmp/jmp_ret0.bc -ir_out /tmp/jmp_ret0.ir
         docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret1.json -bc_out /tmp/jmp_ret1.bc -ir_out /tmp/jmp_ret1.ir
 
-    - name: Integration: Decompile and Specify Decompiled Bitcode
+    - name: Integration Decompile and Specify Decompiled Bitcode
+      run: |
         docker run --rm -v $(pwd):/workspace -w /workspace --entrypoint "/bin/bash" docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -c "anvill-decompile-json -spec /workspace/tools/decompile-json/tests/specs/ret0.json -bc_out /tmp/ret0.bc && anvill-specify-bitcode --bc_file /tmp/ret0.bc"
 
     - name: Build with Binja
