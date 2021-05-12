@@ -28,7 +28,7 @@ RUN apt-get update && \
 WORKDIR /dependencies
 RUN git clone --depth=1 --branch master https://github.com/lifting-bits/remill.git && \
     cd remill && \
-    ./scripts/build.sh --llvm-version ${LLVM_VERSION} --prefix ${LIBRARIES} --download-dir /tmp
+    ./scripts/build.sh --llvm-version ${LLVM_VERSION} --prefix ${LIBRARIES} --download-dir /dependencies
 
 # Make this a separate RUN because the build script above downloads a lot
 RUN cd remill && \
@@ -60,7 +60,7 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
         -DANVILL_INSTALL_PYTHON3_LIBS=ON \
         -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
-        -DVCPKG_ROOT=/tmp/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+        -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
         && \
     cmake --build build --target install
 
