@@ -65,17 +65,11 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
         && \
     cmake --build build --target install
 
-# set up a symlink to invoke without a version
-RUN update-alternatives --install \
-    /opt/trailofbits/bin/anvill-decompile-json \
-    anvill-decompile-json \
-    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION}.0 \
-    100
-
 FROM base AS dist
 ARG LLVM_VERSION
 ARG LIBRARIES
 ENV PATH="/opt/trailofbits/bin:${PATH}" \
+    LLVM_VERSION_NUM=${LLVM_VERSION} \
     LLVM_VERSION=llvm${LLVM_VERSION}
 
 # Allow for mounting of local folder
@@ -83,6 +77,20 @@ WORKDIR /anvill/local
 
 COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
 COPY --from=build ${LIBRARIES} ${LIBRARIES}
+
+# set up a symlink to invoke without a version
+RUN update-alternatives --install \
+    /opt/trailofbits/bin/anvill-decompile-json \
+    anvill-decompile-json \
+    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM}.0 \
+    100 \
+    && \
+    update-alternatives --install \
+    /opt/trailofbits/bin/anvill-specify-bitcode \
+    anvill-specify-bitcode \
+    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM}.0 \
+    100
+
 ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
 
 
