@@ -10,7 +10,7 @@ export CC=clang-11 CXX=clang++-11
 
 dpkg --add-architecture i386
 apt-get update
-apt-get install -yqq curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-11 g++-multilib
+apt-get install -yqq curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-11 g++-multilib unzip
 apt-get install -yqq libc6-dev:i386 libstdc++-*-dev:i386
 python3 -m pip install requests
 

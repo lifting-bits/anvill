@@ -247,12 +247,12 @@ function BuildRemill
     cd ${REMILL_BUILD_DIR}
 
     cmake \
+        -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
         -DCMAKE_VERBOSE_MAKEFILE=true \
         -DVCPKG_ROOT="${DOWNLOAD_DIR}/${LIBRARY_VERSION}" \
         -G Ninja \
         ${SRC_DIR}/remill
 
-    export DESTDIR=${INSTALL_DIR}/remill
     cmake --build . --target install
 
   ) || exit $?
@@ -268,7 +268,7 @@ function Configure
     cmake \
         -DANVILL_ENABLE_INSTALL_TARGET=true \
         -G Ninja \
-        -Dremill_DIR:PATH=${INSTALL_DIR}/remill/usr/local/lib/cmake/remill \
+        -Dremill_DIR:PATH=${INSTALL_DIR}/lib/cmake/remill \
         -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
         -DCMAKE_PREFIX_PATH="${INSTALL_DIR}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
@@ -296,7 +296,6 @@ function Install
 {
   (
     set -x
-    export DESTDIR=""
     cmake --build . \
       --target install
 

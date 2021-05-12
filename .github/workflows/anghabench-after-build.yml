@@ -6,14 +6,14 @@ on:
    - cron: "0 3 * * *"
 
   # Only run when normal CI steps complete
-  # Otherwise we'd just fail to build this rellic branch
+  # Otherwise we'd just fail to build this anvill branch
   workflow_run:
-    workflows: ["VCPKG Continuous Integration"]
+    workflows: ["Build"]
     types: [completed]
 
 jobs:
   AnghaSmallRun:
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name = 'schedule' }}
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     strategy:
       matrix:
