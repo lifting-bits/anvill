@@ -323,6 +323,14 @@ jobs:
           echo ::set-output name=RPM_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)
           echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
 
+      - name: Install the DEB package
+        run: |
+          dpkg -i ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
+
+      - name: Test the DEB package
+        run: |
+          python3 -m anvill --help
+
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
         with:
