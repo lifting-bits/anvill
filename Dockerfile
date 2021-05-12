@@ -4,6 +4,7 @@ ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
+ARG BINJA_DECODE_KEY
 
 # Run-time dependencies go here
 FROM ${BUILD_BASE} AS base
@@ -91,3 +92,17 @@ WORKDIR /anvill/local
 COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
 COPY --from=build ${LIBRARIES} ${LIBRARIES}
 ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
+
+
+FROM dist as binja
+ARG BINJA_DECODE_KEY
+
+RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
+    source ${VIRTUAL_ENV}/bin/activate && \
+    ./install_binja.sh
+COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
+ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
+
+
+# This appears last so that it's default
+FROM dist
