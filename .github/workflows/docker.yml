@@ -1,0 +1,31 @@
+name: Docker Image Build
+
+on:
+  push:
+    branches:
+      - 'master'
+
+    tags:
+      - '*'
+
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+  Docker_Linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        llvm: ["11"]
+        ubuntu: ["18.04", "20.04"]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
+      run: |
+        docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
+    - name: Test Docker image
+      run: |
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/ret0.json -bc_out ./ret0.bc -ir_out ret0.ir
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret0.json -bc_out ./jmp_ret0.bc -ir_out jmp_ret0.ir
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret1.json -bc_out ./jmp_ret1.bc -ir_out jmp_ret1.ir
