@@ -253,7 +253,6 @@ function BuildRemill
         -G Ninja \
         ${SRC_DIR}/remill
 
-    export DESTDIR="${INSTALL_DIR}"
     cmake --build . --target install
 
   ) || exit $?
@@ -297,7 +296,6 @@ function Install
 {
   (
     set -x
-    export DESTDIR="${INSTALL_DIR}"
     cmake --build . \
       --target install
 
