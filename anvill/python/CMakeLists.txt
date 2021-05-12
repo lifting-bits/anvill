@@ -21,16 +21,20 @@ if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
     )
   else()
     # This code path is followed for installation to a specific path for packaging
+    set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/lib/python3/dist-packages")
+
     install(CODE
-      "execute_process(COMMAND ${setup_file_path} install --single-version-externally-managed --prefix=${CMAKE_INSTALL_PREFIX} --root=\$ENV{DESTDIR})"
+      "execute_process(COMMAND ${setup_file_path} install --single-version-externally-managed --prefix=${CMAKE_INSTALL_PREFIX} --root=\$ENV{DESTDIR} \"--install-purelib=${pure_lib_dest}\")"
     )
   endif()
 endif()
 
 if(ANVILL_INSTALL_PYTHON3_LIBS)
   message(WARNING "The ANVILL_INSTALL_PYTHON3_LIBS setting is used to auto-install "
-                  "anvill to the local machine. To create redistributable packages "
-                  "you only need to enable ANVILL_ENABLE_INSTALL_TARGET")
+                  "anvill to the local machine")
+
+  message(WARNING "This is a development setting! Do **NOT** use this to create "
+                  "packages, ANVILL_ENABLE_INSTALL_TARGET already covers this!")
 
   set(frontend_source_list
     "${setup_file_path}"

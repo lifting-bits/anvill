@@ -20,3 +20,7 @@ option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries to the **local ma
 option(ANVILL_ENABLE_SANITIZERS "Set to ON to enable sanitizers. May not work with VCPKG")
 
 set(VCPKG_ROOT "" CACHE FILEPATH "Root directory to use for vcpkg-managed dependencies")
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix (forced)" FORCE)
+endif()
