@@ -14,9 +14,17 @@ if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
     DESTINATION "share/anvill/ida"
   )
 
-  install(CODE
-    "execute_process(COMMAND ${setup_file_path} install --single-version-externally-managed --prefix=${CMAKE_INSTALL_PREFIX} --root=\$ENV{DESTDIR})"
-  )
+  if(NOT DEFINED ENV{DESTDIR} OR ENV{DESTDIR} STREQUAL "")
+    # No destdir specified, just install it
+    install(CODE
+      "execute_process(COMMAND ${setup_file_path} install)"
+    )
+  else()
+    # This code path is followed for installation to a specific path for packaging
+    install(CODE
+      "execute_process(COMMAND ${setup_file_path} install --single-version-externally-managed --prefix=${CMAKE_INSTALL_PREFIX} --root=\$ENV{DESTDIR})"
+    )
+  endif()
 endif()
 
 if(ANVILL_INSTALL_PYTHON3_LIBS)
