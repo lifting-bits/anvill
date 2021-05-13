@@ -54,11 +54,11 @@ SHELL ["/bin/bash", "-c"]
 
 COPY . ./
 
+# Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
         -DANVILL_ENABLE_INSTALL_TARGET=true \
         -Dremill_DIR:PATH=${LIBRARIES}/lib/cmake/remill \
-        -DANVILL_INSTALL_PYTHON3_LIBS=ON \
         -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
         -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \

@@ -8,14 +8,20 @@
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-if(DEFINED ENV{DESTDIR})
-  set(root_parameter "--root=$ENV{DESTDIR}")
-endif()
-
 set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/lib/python3/dist-packages")
 
+# Only redirect installation if DESTDIR is specified, otherwise just do a normal "setup.py install"
+if(DEFINED ENV{DESTDIR})
+  set(package_parameters 
+    "--single-version-externally-managed"
+    "--prefix=${CMAKE_INSTALL_PREFIX}"
+    "--root=$ENV{DESTDIR}"
+    "--install-purelib=${pure_lib_dest}"
+    )
+endif()
+
 execute_process(
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/../../setup.py" install --single-version-externally-managed "--prefix=${CMAKE_INSTALL_PREFIX}" ${root_parameter} "--install-purelib=${pure_lib_dest}"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/../../setup.py" install ${package_parameters}
   RESULT_VARIABLE setup_py_result
   OUTPUT_VARIABLE setup_py_stdout
   ERROR_VARIABLE setup_py_stderr
