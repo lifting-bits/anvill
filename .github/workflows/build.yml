@@ -676,11 +676,15 @@ jobs:
           asset_content_type: application/gzip
 
   Docker_Linux:
+    needs: cleanup_stale_workflows
+
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         llvm: ["11"]
         ubuntu: ["18.04", "20.04"]
+
     steps:
     - uses: actions/checkout@v2
       with:
