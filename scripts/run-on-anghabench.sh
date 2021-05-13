@@ -28,6 +28,9 @@ scripts/build.sh \
     --llvm-version ${LLVM_VERSION} \
     --extra-cmake-args "-DCMAKE_BUILD_TYPE=Release"
 
+# Should be installed by build.sh --isntall, but sometimes the script accidentally breaks venv installs
+python3 setup.py install
+
 # install binja
 ci/install_binja.sh
 popd
