@@ -10,9 +10,20 @@ ARG BINJA_DECODE_KEY
 FROM ${BUILD_BASE} AS base
 ARG UBUNTU_VERSION
 ARG LIBRARIES
+ARG LLVM_VERSION
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
+    apt-get install -qqy --no-install-recommends curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
     rm -rf /var/lib/apt/lists/*
+
+WORKDIR /dependencies
+
+#### NOTE ####
+# Remill needs to appear in the base _and_ deps stages, because they have
+# different base images
+ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
+RUN unzip remill_packages.zip && rm remill_packages.zip && \
+    dpkg -i "$(find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb")" && \
+    rm -rf *
 
 # Build-time dependencies go here
 FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
@@ -27,13 +38,16 @@ RUN apt-get update && \
 
 # Build dependencies
 WORKDIR /dependencies
-RUN git clone --depth=1 --branch master https://github.com/lifting-bits/remill.git && \
-    cd remill && \
-    ./scripts/build.sh --llvm-version ${LLVM_VERSION} --prefix ${LIBRARIES} --download-dir /dependencies
 
-# Make this a separate RUN because the build script above downloads a lot
-RUN cd remill && \
-    dpkg -i remill-build/*.deb
+# cxx-common
+RUN curl -LO https://github.com/trailofbits/cxx-common/releases/latest/download/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+
+# Remill again (see above in the base image where this is repeated)
+ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
+RUN unzip remill_packages.zip && rm remill_packages.zip && \
+    dpkg -i "$(find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb")"
 
 # Source code build
 FROM deps AS build
@@ -58,7 +72,7 @@ COPY . ./
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
         -DANVILL_ENABLE_INSTALL_TARGET=true \
-        -Dremill_DIR:PATH=${LIBRARIES}/lib/cmake/remill \
+        -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
         -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
         -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
