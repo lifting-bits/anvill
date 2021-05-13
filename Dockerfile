@@ -6,6 +6,24 @@ ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
 ARG BINJA_DECODE_KEY
 
+# Used for downloading remill and then copied to required stages
+FROM ${BUILD_BASE} as store
+ARG UBUNTU_VERSION
+ARG LLVM_VERSION
+
+WORKDIR /dependencies/tmp
+ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
+# Saves a bit of space in the base image.
+# Also better for not repeating ourselves when installing remill
+RUN apt-get update && \
+    apt-get install -qqy --no-install-recommends unzip && \
+    rm -rf /var/lib/apt/lists/* && \
+    \
+    unzip remill_packages.zip && rm remill_packages.zip && \
+    find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb" -exec mv {} ../remill.deb \; && \
+    cd .. && rm -rf tmp
+
+
 # Run-time dependencies go here
 FROM ${BUILD_BASE} AS base
 ARG UBUNTU_VERSION
@@ -18,12 +36,10 @@ RUN apt-get update && \
 WORKDIR /dependencies
 
 #### NOTE ####
-# Remill needs to appear in the base _and_ deps stages, because they have
+# Remill needs to be installed in the base _and_ deps stages, because they have
 # different base images
-ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
-RUN unzip remill_packages.zip && rm remill_packages.zip && \
-    dpkg -i "$(find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb")" && \
-    rm -rf *
+COPY --from=store /dependencies/remill.deb .
+RUN dpkg -i remill.deb
 
 # Build-time dependencies go here
 FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
@@ -45,9 +61,8 @@ RUN curl -LO https://github.com/trailofbits/cxx-common/releases/latest/download/
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
 # Remill again (see above in the base image where this is repeated)
-ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
-RUN unzip remill_packages.zip && rm remill_packages.zip && \
-    dpkg -i "$(find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb")"
+COPY --from=store /dependencies/remill.deb .
+RUN dpkg -i remill.deb
 
 # Source code build
 FROM deps AS build
