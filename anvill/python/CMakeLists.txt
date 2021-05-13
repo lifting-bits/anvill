@@ -6,31 +6,23 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-set(setup_file_path "${PROJECT_SOURCE_DIR}/setup.py")
-
 if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
   install(
     FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
   )
 
-  if(NOT DEFINED ENV{DESTDIR} OR ENV{DESTDIR} STREQUAL "")
-    # No destdir specified, just install it
-    install(CODE
-      "execute_process(COMMAND ${setup_file_path} install)"
-    )
-  else()
-    # This code path is followed for installation to a specific path for packaging
-    install(CODE
-      "execute_process(COMMAND ${setup_file_path} install --single-version-externally-managed --prefix=${CMAKE_INSTALL_PREFIX} --root=\$ENV{DESTDIR})"
-    )
-  endif()
+  install(SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/install.cmake")
 endif()
 
 if(ANVILL_INSTALL_PYTHON3_LIBS)
+  set(setup_file_path "${PROJECT_SOURCE_DIR}/setup.py")
+
   message(WARNING "The ANVILL_INSTALL_PYTHON3_LIBS setting is used to auto-install "
-                  "anvill to the local machine. To create redistributable packages "
-                  "you only need to enable ANVILL_ENABLE_INSTALL_TARGET")
+                  "anvill to the local machine")
+
+  message(WARNING "This is a development setting! Do **NOT** use this to create "
+                  "packages, ANVILL_ENABLE_INSTALL_TARGET already covers this!")
 
   set(frontend_source_list
     "${setup_file_path}"

@@ -60,7 +60,7 @@ tool_run_scripts/anvill.py \
     --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
     --input-dir $(pwd)/binaries \
     --output-dir $(pwd)/output \
-    --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION}.0
+    --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION}.0 \
     --slack-notify
 
 # exit hook called here
