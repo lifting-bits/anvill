@@ -18,9 +18,9 @@ ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubunt
 RUN apt-get update && \
     apt-get install -qqy --no-install-recommends unzip && \
     rm -rf /var/lib/apt/lists/* && \
-    \
-    unzip remill_packages.zip && rm remill_packages.zip && \
-    find ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package -name "remill-*.deb" -exec mv {} ../remill.deb \; && \
+    unzip remill_packages.zip && \
+    rm remill_packages.zip && \
+    mv ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package/remill-*.deb ../remill.deb && \
     cd .. && rm -rf tmp
 
 
