@@ -125,10 +125,10 @@ With the IDA plugin:
 
 ### Docker image
 
-To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 9 on Ubuntu 20.04 on AMD64 do:
+To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 11 on Ubuntu 20.04 on AMD64 do:
 
 ```shell
-ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=1100; \
+ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=11; \
    docker build . \
    -t anvill-llvm${LLVM}-ubuntu${UBUNTU_VERSION}-${ARCH} \
    -f Dockerfile \

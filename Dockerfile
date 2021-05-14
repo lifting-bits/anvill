@@ -1,80 +1,147 @@
-ARG LLVM_VERSION=1000
+ARG LLVM_VERSION=11
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
-ARG LIBRARIES=/opt/trailofbits/libraries
+ARG LIBRARIES=/opt/trailofbits
+ARG BINJA_DECODE_KEY
 
-# Will copy remill installation from here
-FROM trailofbits/remill:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as remill
-
-# Additional runtime dependencies go here
-FROM ${BUILD_BASE} as base
+# Used for downloading remill and then copied to required stages
+FROM ${BUILD_BASE} as store
 ARG UBUNTU_VERSION
+ARG LLVM_VERSION
+
+WORKDIR /dependencies/tmp
+ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
+# Saves a bit of space in the base image.
+# Also better for not repeating ourselves when installing remill
 RUN apt-get update && \
-    cat /etc/lsb-release && \
-    if [ "${UBUNTU_VERSION}" = "20.04" ] ; then \
-        apt-get install -qqy --no-install-recommends libtinfo6 ; \
-    else \
-        apt-get install -qqy --no-install-recommends libtinfo5 ; \
-    fi && \
+    apt-get install -qqy --no-install-recommends unzip && \
+    rm -rf /var/lib/apt/lists/* && \
+    unzip remill_packages.zip && \
+    rm remill_packages.zip && \
+    mv ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package/remill-*.deb ../remill.deb && \
+    cd .. && rm -rf tmp
+
+
+# Run-time dependencies go here
+FROM ${BUILD_BASE} AS base
+ARG UBUNTU_VERSION
+ARG LIBRARIES
+ARG LLVM_VERSION
+RUN apt-get update && \
+    apt-get install -qqy --no-install-recommends curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
     rm -rf /var/lib/apt/lists/*
+
+WORKDIR /dependencies
+
+#### NOTE ####
+# Remill needs to be installed in the base _and_ deps stages, because they have
+# different base images
+COPY --from=store /dependencies/remill.deb .
+RUN dpkg -i remill.deb
 
 # Build-time dependencies go here
-FROM trailofbits/cxx-common:llvm${LLVM_VERSION}-${DISTRO_BASE}-${ARCH} as deps
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && \
-    apt-get install -qqy ninja-build python3.8 python3-pip python3.8-venv liblzma-dev zlib1g-dev libtinfo-dev curl git wget build-essential ninja-build ccache clang && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY --from=remill /opt/trailofbits /opt/trailofbits
-
-# Source code build
-FROM deps as build
+FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
+ARG UBUNTU_VERSION
+ARG ARCH
+ARG LLVM_VERSION
 ARG LIBRARIES
 
-WORKDIR /anvill
-COPY . ./
+RUN apt-get update && \
+    apt-get install -qqy xz-utils python3.8-venv make rpm && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV CC="/usr/bin/clang"
-ENV CXX="/usr/bin/clang++"
-ENV TRAILOFBITS_LIBRARIES="${LIBRARIES}"
+# Build dependencies
+WORKDIR /dependencies
+
+# cxx-common
+ADD https://github.com/trailofbits/cxx-common/releases/latest/download/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+
+# Remill again (see above in the base image where this is repeated)
+COPY --from=store /dependencies/remill.deb .
+RUN dpkg -i remill.deb
+
+# Source code build
+FROM deps AS build
+WORKDIR /anvill
+ARG UBUNTU_VERSION
+ARG ARCH
+ARG LLVM_VERSION
+ARG LIBRARIES
+
 ENV VIRTUAL_ENV=/opt/trailofbits/venv
-ENV PATH="${VIRTUAL_ENV}/bin:${LIBRARIES}/llvm/bin:${LIBRARIES}/cmake/bin:${LIBRARIES}/protobuf/bin:${PATH}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
 RUN python3.8 -m venv ${VIRTUAL_ENV}
 
-RUN mkdir -p build && cd build && \
-    cmake -G Ninja -DCMAKE_PREFIX_PATH=/opt/trailofbits/remill -DCMAKE_VERBOSE_MAKEFILE=True -DCMAKE_INSTALL_PREFIX=/opt/trailofbits/anvill .. && \
-    cmake --build . --target install
+# Needed for sourcing venv
+SHELL ["/bin/bash", "-c"]
 
-FROM base as dist
+COPY . ./
+
+# Source venv, build Anvill, Install binaries & system packages
+RUN source ${VIRTUAL_ENV}/bin/activate && \
+    cmake -G Ninja -B build -S . \
+        -DANVILL_ENABLE_INSTALL_TARGET=true \
+        -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
+        -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
+        -DCMAKE_VERBOSE_MAKEFILE=True \
+        -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+        && \
+    cmake --build build --target install
+
+FROM base AS dist
 ARG LLVM_VERSION
-ENV VIRTUAL_ENV=/opt/trailofbits/venv \
-    PATH="/opt/trailofbits/venv/bin:/opt/trailofbits/anvill/bin:${PATH}" \
+ARG LIBRARIES
+ENV PATH="/opt/trailofbits/bin:${PATH}" \
+    LLVM_VERSION_NUM=${LLVM_VERSION} \
     LLVM_VERSION=llvm${LLVM_VERSION}
 
-RUN apt-get update && \
-    apt-get install -qqy unzip python3.8 python3-pip python3.8-venv && \
-    rm -rf /var/lib/apt/lists/* && \
-    python3.8 -m pip install pip python-magic
-
-# The below is commented out since neither binja
-# nor IDA would be available in the dist container
-# so it makes no sense to also add Python -- can't test the Python API
-# without either of those.
-# If the situation changes, this can be uncommented to also install Python in the dist image
-#RUN apt-get update && \
-#    apt-get install -qqy python3.8 python3-pip python3.8-venv && \
-#    rm -rf /var/lib/apt/lists/*
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
-COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh
-COPY --from=remill /opt/trailofbits/remill /opt/trailofbits/remill
-COPY --from=build /opt/trailofbits/anvill /opt/trailofbits/anvill
-COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
-ENTRYPOINT ["/opt/trailofbits/anvill/docker-decompile-json-entrypoint.sh"]
+COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
+COPY --from=build ${LIBRARIES} ${LIBRARIES}
+
+# set up a symlink to invoke without a version
+RUN update-alternatives --install \
+    /opt/trailofbits/bin/anvill-decompile-json \
+    anvill-decompile-json \
+    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM}.0 \
+    100 \
+    && \
+    update-alternatives --install \
+    /opt/trailofbits/bin/anvill-specify-bitcode \
+    anvill-specify-bitcode \
+    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM}.0 \
+    100
+
+ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
+
+
+FROM dist as binja
+ARG BINJA_DECODE_KEY
+
+ENV VIRTUAL_ENV=/opt/trailofbits/venv
+
+SHELL ["/bin/bash", "-c"]
+RUN apt-get update && \
+    apt-get install -qqy gpg unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ci /dependencies/binja_install
+
+RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
+    source ${VIRTUAL_ENV}/bin/activate && \
+    cd /dependencies/binja_install && \
+    if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh; fi
+COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
+ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
+
+
+# This appears last so that it's default
+FROM dist
