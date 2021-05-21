@@ -6,7 +6,7 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
+if(ANVILL_ENABLE_INSTALL_TARGET AND ANVILL_INSTALL_PYTHON3_LIBS)
   install(
     FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
