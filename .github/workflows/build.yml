@@ -331,6 +331,12 @@ jobs:
         run: |
           python3 -m anvill --help
 
+      - name: Run Integration Tests (AnghaBench 1K)
+        run: |
+          scripts/test-angha-1k.sh \
+            --python-cmd "python3 -m anvill" \
+            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}.0"
+
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
         with:
