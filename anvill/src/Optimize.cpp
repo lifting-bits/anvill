@@ -54,7 +54,7 @@
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
-DEFINE_unsinged(pointer_brighten_gas, 64u,
+DEFINE_unsigned(pointer_brighten_gas, 64u,
                 "Amount of internal iterations permitted for the pointer brightening pass.");
 
 namespace anvill {
