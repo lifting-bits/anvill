@@ -54,8 +54,8 @@
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
-DEFINE_bool(disable_pointer_brighten_pass, false,
-            "Should the memory intrinsics be replaced or not?");
+DEFINE_uint32(pointer_brighten_gas, 64u,
+              "Amount of internal iterations permitted for the pointer brightening pass.");
 
 namespace anvill {
 
@@ -123,12 +123,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
 
-  // Pointer brightening operation is causing lifter to hang for
-  // some of the binaries. Changing gas value also does not help.
-  // Disable it and come back later.
-
-  if (!FLAGS_disable_pointer_brighten_pass) {
-    fpm.add(CreateBrightenPointerOperations(8u));
+  if (FLAGS_pointer_brighten_gas) {
+    fpm.add(CreateBrightenPointerOperations(FLAGS_pointer_brighten_gas));
   }
 
   fpm.doInitialization();
