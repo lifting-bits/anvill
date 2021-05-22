@@ -332,6 +332,8 @@ jobs:
           python3 -m anvill --help
 
       - name: Run Integration Tests (AnghaBench 1K)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
         run: |
           scripts/test-angha-1k.sh \
             --python-cmd "python3 -m anvill" \
