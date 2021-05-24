@@ -4,7 +4,7 @@ on:
   # Only run when normal CI steps complete
   # Otherwise we'd just fail to build this anvill branch
   workflow_run:
-    workflows: ["Build"]
+    workflows: ["Build On PR"]
     types: [completed]
 
 jobs:

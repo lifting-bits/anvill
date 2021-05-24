@@ -94,6 +94,7 @@ do
         --input-dir "$(pwd)/binaries/${arch}" \
         --output-dir "$(pwd)/results/${arch}" \
         --run-name "anvill-live-ci-${arch}" \
+        --test-options "${SRC_DIR}/ci/angha_1k_test_settings.json" \
         --dump-stats
 
     if [[ ! -f $(pwd)/results/${arch}/stats.json ]]
@@ -103,7 +104,7 @@ do
         continue
     fi
 
-    # count number of failures. This is both printed and saved as a return code.
+    # count number of failures
     fail_msg=$(\
 		PYTHONPATH=${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts \
 		python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); print(s.get_fail_count())" \

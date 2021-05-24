@@ -1,0 +1,9 @@
+{
+    "tests.ignore": [
+        "amd64/sumatrapdf/ext/libwebp/src/enc/extr_picture_psnr_enc.c_AccumulateLSIM",
+        "amd64/sumatrapdf/mupdf/source/fitz/extr_printf.c_fmtfloat",
+        "x86/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
+        "amd64/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
+        "armv7/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT"
+    ]
+}
