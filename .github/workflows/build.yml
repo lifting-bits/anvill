@@ -331,6 +331,15 @@ jobs:
         run: |
           python3 -m anvill --help
 
+      - name: Run Integration Tests (AnghaBench 1K)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+        run: |
+          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+          scripts/test-angha-1k.sh \
+            --python-cmd "python3 -m anvill" \
+            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}.0"
+
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
         with:
