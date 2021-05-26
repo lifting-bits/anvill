@@ -110,7 +110,9 @@ target_public_headers(anvill
   include/anvill/Util.h
 )
 
-add_subdirectory("python")
+if (ANVILL_ENABLE_PYTHON3_LIBS)
+  add_subdirectory("python")
+endif()
 
 if(ANVILL_ENABLE_TESTS)
   add_subdirectory("tests")
