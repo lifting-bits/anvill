@@ -3,7 +3,7 @@
 Anvill implements simple machine code lifting primitives using Remill.
 The goal of these components is to produce high quality bitcode,
 which can then be further decompiled to C (via Clang ASTs) using
-[Rellic](https://github.com/trailofbits/rellic.git).
+[Rellic](https://github.com/lifting-bits/rellic.git).
 
 We define "high quality bitcode" as being similar in form to what the
 Clang compiler would produce if it were executed on a semantically
@@ -25,7 +25,7 @@ Anvill is supported on Linux platforms and has been tested on Ubuntu 20.04.
 
 ## Dependencies
 
-Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/trailofbits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of the libraries for select operating systems, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
+Most of Anvill's dependencies can be provided by the [cxx-common](https://github.com/lifting-bits/cxx-common) repository. Trail of Bits hosts downloadable, pre-built versions of the libraries for select operating systems, which makes it substantially easier to get up and running with Anvill. Nonetheless, the following table represents most of Anvill's dependencies.
 
 | Name | Version |
 | ---- | ------- |
