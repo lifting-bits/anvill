@@ -69,7 +69,7 @@ function GetUbuntuOSVersion
     ;;
     *)
       echo "[x] Ubuntu ${DISTRIB_CODENAME} is not supported. Only focal (20.04) and bionic (18.04) are pre-compiled."
-      echo "[x] Please see https://github.com/trailofbits/cxx-common to build dependencies from source."
+      echo "[x] Please see https://github.com/lifting-bits/cxx-common to build dependencies from source."
       return 1
     ;;
   esac
@@ -104,7 +104,7 @@ function GetArchVersion
 function DownloadVcpkgLibraries
 {
   local GITHUB_LIBS="${LIBRARY_VERSION}.tar.xz"
-  local URL="https://github.com/trailofbits/cxx-common/releases/latest/download/${GITHUB_LIBS}"
+  local URL="https://github.com/lifting-bits/cxx-common/releases/latest/download/${GITHUB_LIBS}"
 
   mkdir -p "${DOWNLOAD_DIR}"
   pushd "${DOWNLOAD_DIR}" || return 1
