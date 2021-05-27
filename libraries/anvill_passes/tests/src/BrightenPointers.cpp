@@ -93,7 +93,7 @@ bool RunFunctionPass(llvm::Module &module, llvm::FunctionPass *function_pass) {
 }
 
 TEST_SUITE("BrightenPointers") {
-  /*
+
   TEST_CASE("Run the whole pass on a well-formed function") {
 
     llvm::LLVMContext context;
@@ -124,6 +124,9 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "rx_message.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+
+    // mod->print(llvm::errs(), nullptr);
+
     CHECK(checkMod(*mod));
   }
 
@@ -133,9 +136,12 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "chall2.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+
+    // mod->print(llvm::errs(), nullptr);
+
     CHECK(checkMod(*mod));
   }
-  */
+
   TEST_CASE("ret0") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "ret0.ll");
@@ -162,6 +168,7 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "test_binja_var_none_type_rt.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    mod->print(llvm::errs(), nullptr);
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_bitops") {
@@ -248,7 +255,13 @@ TEST_SUITE("BrightenPointers") {
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
   }
-
+  TEST_CASE("test_rx.ll") {
+    llvm::LLVMContext context;
+    auto mod = LoadTestData(context, "test_rx.ll");
+    REQUIRE(mod != nullptr);
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(checkMod(*mod));
+  }
 }
 
 };  // namespace anvill

@@ -524,18 +524,24 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
   // was once again casted to be a pointer, maybe of a different type.
   // Try and propagate if possible
 
-  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(&inst)) {
+  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     auto [new_ptr, worked] = visitInferInst(ptr_inst, inferred_type);
     if (worked) {
       return {new_ptr, worked};
     }
   }
+  // If its a constant expr/argument/whatever, if its types match return it.
+  else if (auto operand = inst.getOperand(0)) {
+    if (operand->getType() == inferred_type) {
+      return {operand, true};
+    }
+  }
 
-  // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
-  // llvm::IRBuilder<> ir(&inst);
-  // auto ptr_val = inst.getOperand(0);
-  // llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
-  return {&inst, false};
+  // If it's not the same type, cast.
+  llvm::IRBuilder<> ir(&inst);
+  auto ptr_val = inst.getOperand(0);
+  llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
+  return {cast, true};
 }
 
 
@@ -735,11 +741,6 @@ Old instructions are erased
 std::pair<llvm::Value *, bool>
 PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
-  // Adds by themselves do not infer pointer info
-  llvm::Type *inferred_type = inferred_types[&inst];
-  if (!inferred_type) {
-    return {&inst, false};
-  }
   auto op_code = inst.getOpcode();
   if (!(op_code == llvm::Instruction::Add ||
         op_code == llvm::Instruction::Sub)) {
@@ -747,6 +748,50 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   }
   auto lhs_op = inst.getOperand(0);
   auto rhs_op = inst.getOperand(1);
+
+  llvm::Type *inferred_type = inferred_types[&inst];
+  if (!inferred_type) {
+
+    // This looks naive but it's not
+    // This is a greedy approach to handling the case where parent operands are ptrtoint instructions
+    // It lets us do smaller brightening operations like turning ptrtoint... add.. into -> gep.. ptrtoint
+    // Rather than recursively searching up the tree for ptrtoint, if every instruction makes the local decision
+    // to brighten, then over iterations we will eventually have optimal brightening.
+    auto lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
+    auto rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
+
+    // Check lhs/rhs for ptr/constant info to make a gep.
+    // In this scenario we have no downstream to return to like inttoptr,
+    // so we want to emit an instruction casting the gep to an int, and returning it.
+    // we also want to replace uses of the add with our int cast.
+    if (lhs_ptr) {
+      if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op)) {
+        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::Value *indexed_pointer =
+            GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const,
+                              lhs_ptr->getOperand(0)->getType());
+        llvm::Value *int_cast =
+            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
+        ReplaceAllUses(&inst, int_cast);
+        return {int_cast, true};
+      }
+    }
+    if (rhs_ptr) {
+      if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
+        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::Value *indexed_pointer =
+            GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
+                              lhs_ptr->getOperand(0)->getType());
+        llvm::Value *int_cast =
+            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
+        ReplaceAllUses(&inst, int_cast);
+        return {int_cast, true};
+      }
+    }
+
+    return {&inst, false};
+  }
+
   auto lhs_ptr = lhs_op->getType()->isPointerTy();
   auto rhs_ptr = rhs_op->getType()->isPointerTy();
 
