@@ -741,33 +741,41 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
-    // This looks naive but it's not 
+
+    // This looks naive but it's not
     // This is a greedy approach to handling the case where parent operands are ptrtoint instructions
     // It lets us do smaller brightening operations like turning ptrtoint... add.. into -> gep.. ptrtoint
     // Rather than recursively searching up the tree for ptrtoint, if every instruction makes the local decision
-    // to brighten, then over iterations we will eventually have optimal brightening. 
+    // to brighten, then over iterations we will eventually have optimal brightening.
     auto lhs_op = inst.getOperand(0);
     auto rhs_op = inst.getOperand(1);
     auto lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
     auto rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
-    // Check lhs/rhs for ptr/constant info to make a gep.  
-    // In this scenario we have no downstream to return to like inttoptr, 
+
+    // Check lhs/rhs for ptr/constant info to make a gep.
+    // In this scenario we have no downstream to return to like inttoptr,
     // so we want to emit an instruction casting the gep to an int, and returning it.
-    // we also want to replace uses of the add with our int cast. 
+    // we also want to replace uses of the add with our int cast.
     if (lhs_ptr) {
       if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op)) {
-        llvm::IRBuilder<> ir((llvm::Instruction*)&inst);
-        llvm::Value* indexed_pointer = GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const, lhs_ptr->getOperand(0)->getType());
-        llvm::Value* int_cast = ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
+        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::Value *indexed_pointer =
+            GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const,
+                              lhs_ptr->getOperand(0)->getType());
+        llvm::Value *int_cast =
+            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
         ReplaceAllUses(&inst, int_cast);
         return {int_cast, true};
       }
     }
     if (rhs_ptr) {
       if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
-        llvm::IRBuilder<> ir((llvm::Instruction*)&inst);
-        llvm::Value* indexed_pointer = GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const, lhs_ptr->getOperand(0)->getType());
-        llvm::Value* int_cast = ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
+        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::Value *indexed_pointer =
+            GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
+                              lhs_ptr->getOperand(0)->getType());
+        llvm::Value *int_cast =
+            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
         ReplaceAllUses(&inst, int_cast);
         return {int_cast, true};
       }
