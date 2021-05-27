@@ -124,6 +124,8 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "rx_message.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    // mod->print(llvm::errs(), nullptr);
+
     CHECK(checkMod(*mod));
   }
 
@@ -133,6 +135,8 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "chall2.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    // mod->print(llvm::errs(), nullptr);
+
     CHECK(checkMod(*mod));
   }
 
@@ -244,6 +248,13 @@ TEST_SUITE("BrightenPointers") {
   TEST_CASE("test_zext_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_zext_rt.ll");
+    REQUIRE(mod != nullptr);
+    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(checkMod(*mod));
+  }
+  TEST_CASE("test_rx.ll") {
+    llvm::LLVMContext context;
+    auto mod = LoadTestData(context, "test_rx.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
     CHECK(checkMod(*mod));
