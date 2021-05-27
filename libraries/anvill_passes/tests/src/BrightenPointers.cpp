@@ -168,6 +168,7 @@ TEST_SUITE("BrightenPointers") {
     auto mod = LoadTestData(context, "test_binja_var_none_type_rt.ll");
     REQUIRE(mod != nullptr);
     CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    mod->print(llvm::errs(), nullptr);
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_bitops") {
