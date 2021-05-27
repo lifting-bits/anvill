@@ -530,12 +530,14 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
       return {new_ptr, worked};
     }
   }
-  if (auto constant_ptr =
-          llvm::dyn_cast<llvm::ConstantExpr>(inst.getOperand(0))) {
-    return {constant_ptr, true};
+  // If its a constant expr/argument/whatever, if its types match return it.
+  else if (auto operand = inst.getOperand(0)) {
+    if (operand->getType() == inferred_type) {
+      return {operand, true};
+    }
   }
 
-  // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
+  // If it's not the same type, cast.
   llvm::IRBuilder<> ir(&inst);
   auto ptr_val = inst.getOperand(0);
   llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
@@ -739,6 +741,14 @@ Old instructions are erased
 std::pair<llvm::Value *, bool>
 PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
+  auto op_code = inst.getOpcode();
+  if (!(op_code == llvm::Instruction::Add ||
+        op_code == llvm::Instruction::Sub)) {
+    return {&inst, false};
+  }
+  auto lhs_op = inst.getOperand(0);
+  auto rhs_op = inst.getOperand(1);
+
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
 
@@ -747,8 +757,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     // It lets us do smaller brightening operations like turning ptrtoint... add.. into -> gep.. ptrtoint
     // Rather than recursively searching up the tree for ptrtoint, if every instruction makes the local decision
     // to brighten, then over iterations we will eventually have optimal brightening.
-    auto lhs_op = inst.getOperand(0);
-    auto rhs_op = inst.getOperand(1);
     auto lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
     auto rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
 
@@ -783,13 +791,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
     return {&inst, false};
   }
-  auto op_code = inst.getOpcode();
-  if (!(op_code == llvm::Instruction::Add ||
-        op_code == llvm::Instruction::Sub)) {
-    return {&inst, false};
-  }
-  auto lhs_op = inst.getOperand(0);
-  auto rhs_op = inst.getOperand(1);
+
   auto lhs_ptr = lhs_op->getType()->isPointerTy();
   auto rhs_ptr = rhs_op->getType()->isPointerTy();
 
