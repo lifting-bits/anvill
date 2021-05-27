@@ -524,18 +524,22 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
   // was once again casted to be a pointer, maybe of a different type.
   // Try and propagate if possible
 
-  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(&inst)) {
+  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
     auto [new_ptr, worked] = visitInferInst(ptr_inst, inferred_type);
     if (worked) {
       return {new_ptr, worked};
     }
   }
+  if (auto constant_ptr =
+          llvm::dyn_cast<llvm::ConstantExpr>(inst.getOperand(0))) {
+    return {constant_ptr, true};
+  }
 
   // If it's not an instruction, or if we failed to propagate, force a success with a bitcast.
-  // llvm::IRBuilder<> ir(&inst);
-  // auto ptr_val = inst.getOperand(0);
-  // llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
-  return {&inst, false};
+  llvm::IRBuilder<> ir(&inst);
+  auto ptr_val = inst.getOperand(0);
+  llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
+  return {cast, true};
 }
 
 
