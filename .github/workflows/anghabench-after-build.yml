@@ -9,7 +9,7 @@ on:
 
 jobs:
   AnghaSmallRun:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-latest
     strategy:
       matrix:
