@@ -31,6 +31,13 @@ class Value;
 }  // namespace llvm
 namespace anvill {
 
+// Returns `true` if it seems like a basic block is sane.
+bool BasicBlockIsSane(llvm::BasicBlock *block);
+
+inline static bool BasicBlockIsSane(llvm::Instruction *inst) {
+  return BasicBlockIsSane(inst->getParent());
+}
+
 // Find all function calls in `func` such that `pred(call)` returns `true`.
 std::vector<llvm::CallBase *>
 FindFunctionCalls(llvm::Function &func,
