@@ -610,10 +610,22 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
     return false;
   }
 
+  llvm::Value *new_true_value = nullptr;
+  llvm::Value *new_false_value = nullptr;
   llvm::IRBuilder<> builder(gep_instr);
 
-  auto new_true_value = builder.CreateGEP(true_value, index_list);
-  auto new_false_value = builder.CreateGEP(false_value, index_list);
+  for (auto &index : index_list) {
+    if (index == select_instr) {
+      index = true_value;
+      new_true_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      index = false_value;
+      new_false_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+    }
+  }
+
+  if (!new_true_value) {
+    return false;
+  }
 
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
