@@ -1314,14 +1314,8 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
     }
 
     if (ssbase_reg) {
-      const auto ssbase_val =
-          llvm::ConstantExpr::getPtrToInt(
-              llvm::ConstantExpr::getAddrSpaceCast(
-                  llvm::ConstantExpr::getNullValue(
-                      llvm::PointerType::get(i8_type, 258)),
-                  llvm::PointerType::get(i8_type, 0)),
-              pc_reg_type);
-      ir.CreateStore(ssbase_val, ssbase_reg->AddressOf(state_ptr, ir));
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     ssbase_reg->AddressOf(state_ptr, ir));
     }
   }
 }
