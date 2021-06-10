@@ -119,6 +119,8 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
   const auto &dl = module->getDataLayout();
   auto &context = module->getContext();
 
+  std::unordered_set<llvm::Instruction *> to_erase;
+
   for (auto xref_use : uses) {
     const auto val = xref_use.use->get();
     const auto val_type = val->getType();
@@ -210,13 +212,17 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
 
       if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(val);
           val_inst && val_inst->use_empty()) {
-        val_inst->eraseFromParent();
+        to_erase.insert(val_inst);
       }
 
     } else {
 
       // TODO(pag): Report warning/informational?
     }
+  }
+
+  for (auto val_inst : to_erase) {
+    val_inst->eraseFromParent();
   }
 
   return std::monostate();
