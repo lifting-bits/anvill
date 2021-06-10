@@ -163,4 +163,21 @@ std::string GetModuleIR(llvm::Module &module) {
   return output;
 }
 
+bool BasicBlockIsSane(llvm::BasicBlock *block) {
+  bool in_phis = true;
+  for (auto &inst : *block) {
+    if (llvm::isa<llvm::PHINode>(&inst)) {
+      if (!in_phis) {
+        DLOG(ERROR)
+            << "Found " << remill::LLVMThingToString(&inst)
+            << " after " << remill::LLVMThingToString(inst.getPrevNode());
+        return false;
+      }
+    } else {
+      in_phis = false;
+    }
+  }
+  return true;
+}
+
 }  // namespace anvill

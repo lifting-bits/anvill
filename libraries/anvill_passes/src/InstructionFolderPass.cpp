@@ -17,6 +17,8 @@
 
 #include "InstructionFolderPass.h"
 
+#include <glog/logging.h>
+
 #include <iostream>
 #include <magic_enum.hpp>
 #include <unordered_map>
@@ -516,6 +518,8 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
                               new_incoming_value.basic_block);
   }
 
+  DCHECK(BasicBlockIsSane(phi_node));
+
   output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
   return true;
 }
@@ -594,6 +598,8 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
     new_phi_node->addIncoming(new_incoming_value.value,
                               new_incoming_value.basic_block);
   }
+
+  DCHECK(BasicBlockIsSane(phi_node));
 
   output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
   return true;
