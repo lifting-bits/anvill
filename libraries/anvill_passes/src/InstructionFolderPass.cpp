@@ -620,6 +620,7 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
       new_true_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
       index = false_value;
       new_false_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      break;
     }
   }
 
