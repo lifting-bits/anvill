@@ -529,9 +529,10 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
     if (worked) {
       return {new_ptr, worked};
     }
-  }
+
+
   // If its a constant expr/argument/whatever, if its types match return it.
-  else if (auto operand = inst.getOperand(0)) {
+  } else if (auto operand = inst.getOperand(0)) {
     if (operand->getType() == inferred_type) {
       return {operand, true};
     }
@@ -739,17 +740,24 @@ Old instructions are erased
 
 */
 std::pair<llvm::Value *, bool>
-PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
-
-  auto op_code = inst.getOpcode();
-  if (!(op_code == llvm::Instruction::Add ||
-        op_code == llvm::Instruction::Sub)) {
-    return {&inst, false};
+PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
+  const auto inst = llvm::dyn_cast<llvm::Instruction>(&binop);
+  if (!inst) {
+    return {&binop, false};
   }
-  auto lhs_op = inst.getOperand(0);
-  auto rhs_op = inst.getOperand(1);
 
-  llvm::Type *inferred_type = inferred_types[&inst];
+  switch (inst->getOpcode()) {
+    case llvm::Instruction::Add:
+    case llvm::Instruction::Sub:
+      break;
+    default:
+      return {&binop, false};
+  }
+
+  llvm::Value *lhs_op = inst->getOperand(0);
+  llvm::Value *rhs_op = inst->getOperand(1);
+
+  llvm::Type *inferred_type = inferred_types[inst];
   if (!inferred_type) {
 
     // This looks naive but it's not
@@ -757,8 +765,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     // It lets us do smaller brightening operations like turning ptrtoint... add.. into -> gep.. ptrtoint
     // Rather than recursively searching up the tree for ptrtoint, if every instruction makes the local decision
     // to brighten, then over iterations we will eventually have optimal brightening.
-    auto lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
-    auto rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
+    llvm::PtrToIntInst *lhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(lhs_op);
+    llvm::PtrToIntInst *rhs_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(rhs_op);
 
     // Check lhs/rhs for ptr/constant info to make a gep.
     // In this scenario we have no downstream to return to like inttoptr,
@@ -766,30 +774,30 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     // we also want to replace uses of the add with our int cast.
     if (lhs_ptr) {
       if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op)) {
-        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::IRBuilder<> ir(inst);
         llvm::Value *indexed_pointer =
             GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const,
                               lhs_ptr->getOperand(0)->getType());
         llvm::Value *int_cast =
-            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
-        ReplaceAllUses(&inst, int_cast);
+            ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
+        ReplaceAllUses(inst, int_cast);
         return {int_cast, true};
       }
     }
     if (rhs_ptr) {
       if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
-        llvm::IRBuilder<> ir((llvm::Instruction *) &inst);
+        llvm::IRBuilder<> ir(inst);
         llvm::Value *indexed_pointer =
             GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
                               lhs_ptr->getOperand(0)->getType());
         llvm::Value *int_cast =
-            ir.CreateBitOrPointerCast(indexed_pointer, inst.getType());
-        ReplaceAllUses(&inst, int_cast);
+            ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
+        ReplaceAllUses(inst, int_cast);
         return {int_cast, true};
       }
     }
 
-    return {&inst, false};
+    return {inst, false};
   }
 
   auto lhs_ptr = lhs_op->getType()->isPointerTy();
@@ -799,17 +807,17 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
   // When both addresses are pointers, because its weird, and I'm not sure
   // why that would be
   if (lhs_ptr && rhs_ptr) {
-    llvm::IRBuilder ir(inst.getNextNode());
+    llvm::IRBuilder ir(inst->getNextNode());
     const auto bb = ir.GetInsertBlock();
 
     DLOG(ERROR) << "Two pointers " << remill::LLVMThingToString(lhs_op)
                 << " and " << remill::LLVMThingToString(rhs_op)
-                << " are added together " << remill::LLVMThingToString(&inst)
+                << " are added together " << remill::LLVMThingToString(inst)
                 << " in block " << bb->getName().str() << " in function "
                 << bb->getParent()->getName().str();
 
-    llvm::Value *new_pointer = ir.CreateIntToPtr(&inst, inferred_type);
-    ReplaceAllUses(&inst, new_pointer);
+    llvm::Value *new_pointer = ir.CreateIntToPtr(inst, inferred_type);
+    ReplaceAllUses(inst, new_pointer);
     return {new_pointer, true};
 
   // If neither of them are known pointers, then we have some inference to
@@ -822,7 +830,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       // visit it! propagate type information.
       auto [ptr_val, changed] = visitInferInst(lhs_inst, inferred_type);
       if (!changed) {
-        return {&inst, false};
+        return {inst, false};
       }
       if (!ptr_val->getType()->isPointerTy()) {
         DLOG(ERROR) << "Error! return type is not a pointer: "
@@ -830,8 +838,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
 
         // Default behavior is just to cast, this is not ideal, because
         // we want to try and propagate as much as we can.
-        llvm::IRBuilder ir(inst.getNextNode());
-        llvm::Value *default_cast = ir.CreateBitCast(&inst, inferred_type);
+        llvm::IRBuilder ir(inst->getNextNode());
+        llvm::Value *default_cast = ir.CreateBitCast(inst, inferred_type);
 
         // ReplaceAllUses(&inst, default_cast);
         return {default_cast, true};
@@ -844,9 +852,9 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
       auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op);
       if (!rhs_const && !rhs_inst) {
         DLOG(ERROR) << "Error! RHS is not const or inst\n";
-        return {&inst, false};
+        return {inst, false};
       }
-      llvm::IRBuilder ir((llvm::Instruction *) &inst);
+      llvm::IRBuilder ir(inst);
       llvm::Value *indexed_pointer;
       if (rhs_const) {
         indexed_pointer =
@@ -863,16 +871,16 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     } else if (rhs_inst) {
       auto [ptr_val, changed] = visitInferInst(rhs_inst, inferred_type);
       if (!changed) {
-        return {&inst, false};
+        return {inst, false};
       }
 
       // TODO (Carson) Confirm pointer type.
       auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op);
       if (!lhs_const && !lhs_inst) {
         DLOG(ERROR) << "Error! LHS is not const or inst\n";
-        return {&inst, false};
+        return {inst, false};
       }
-      llvm::IRBuilder ir((llvm::Instruction *) &inst);
+      llvm::IRBuilder ir(inst);
       llvm::Value *indexed_pointer;
       if (lhs_const) {
         indexed_pointer =
@@ -889,16 +897,16 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &inst) {
     } else {
 
       // We don't have a L/RHS instruction, just create a pointer
-      llvm::IRBuilder ir(inst.getNextNode());
-      llvm::Value *add_ptr = ir.CreateIntToPtr(&inst, inferred_type);
+      llvm::IRBuilder ir(inst->getNextNode());
+      llvm::Value *add_ptr = ir.CreateIntToPtr(inst, inferred_type);
       return {add_ptr, true};
     }
   }
 
   // Default behavior is just to cast, this is not ideal, because
   // we want to try and propagate as much as we can.
-  llvm::IRBuilder ir(inst.getNextNode());
-  llvm::Value *default_cast = ir.CreateBitCast(&inst, inferred_type);
+  llvm::IRBuilder ir(inst->getNextNode());
+  llvm::Value *default_cast = ir.CreateBitCast(inst, inferred_type);
 
   // ReplaceAllUses(&inst, default_cast);
   return {default_cast, true};

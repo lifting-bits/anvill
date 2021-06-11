@@ -93,6 +93,9 @@ class FunctionLifter {
   // double checking on function return addresses;
   const bool is_sparc;
 
+  // Are we lifting x86(-64) code?
+  const bool is_x86_or_amd64;
+
   // Convenient to keep around.
   llvm::Type *const i8_type;
   llvm::Constant *const i8_zero;
@@ -401,6 +404,10 @@ class FunctionLifter {
 
   // Allocate and initialize the state structure.
   void AllocateAndInitializeStateStructure(llvm::BasicBlock *block);
+
+  // Perform architecture-specific initialization of the state structure
+  // in `block`.
+  void ArchSpecificStateStructureInitialization(llvm::BasicBlock *block);
 
   // Initialize the state structure with default values, loaded from global
   // variables. The purpose of these global variables is to show that there are

@@ -159,6 +159,7 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
       intrinsics(semantics_module.get()),
       inst_lifter(options.arch, intrinsics),
       is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
+      is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),
       i8_zero(llvm::Constant::getNullValue(i8_type)),
       i32_type(llvm::Type::getInt32Ty(llvm_context)),
@@ -1273,6 +1274,49 @@ void FunctionLifter::AllocateAndInitializeStateStructure(
       ir.CreateStore(llvm::UndefValue::get(state_type), state_ptr);
       InitializeStateStructureFromGlobalRegisterVariables(block);
       break;
+  }
+
+  ArchSpecificStateStructureInitialization(block);
+}
+
+// Perform architecture-specific initialization of the state structure
+// in `block`.
+void FunctionLifter::ArchSpecificStateStructureInitialization(
+    llvm::BasicBlock *block) {
+
+  if (is_x86_or_amd64) {
+    llvm::IRBuilder<> ir(block);
+
+    const auto ssbase_reg = options.arch->RegisterByName("SSBASE");
+    const auto fsbase_reg = options.arch->RegisterByName("FSBASE");
+    const auto gsbase_reg = options.arch->RegisterByName("GSBASE");
+
+    if (gsbase_reg) {
+      const auto gsbase_val =
+          llvm::ConstantExpr::getPtrToInt(
+              llvm::ConstantExpr::getAddrSpaceCast(
+                  llvm::ConstantExpr::getNullValue(
+                      llvm::PointerType::get(i8_type, 256)),
+                  llvm::PointerType::get(i8_type, 0)),
+              pc_reg_type);
+      ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(state_ptr, ir));
+    }
+
+    if (fsbase_reg) {
+      const auto fsbase_val =
+          llvm::ConstantExpr::getPtrToInt(
+              llvm::ConstantExpr::getAddrSpaceCast(
+                  llvm::ConstantExpr::getNullValue(
+                      llvm::PointerType::get(i8_type, 257)),
+                  llvm::PointerType::get(i8_type, 0)),
+              pc_reg_type);
+      ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(state_ptr, ir));
+    }
+
+    if (ssbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     ssbase_reg->AddressOf(state_ptr, ir));
+    }
   }
 }
 

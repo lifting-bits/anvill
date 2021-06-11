@@ -17,7 +17,6 @@
 
 #pragma once
 
-
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/ITransformationErrorManager.h>
