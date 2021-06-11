@@ -1,4 +1,12 @@
 {
     "tests.ignore": [
+        "challenge-3_amd64_program_go_patched.elf/output.json",
+        "challenge-3_amd64_program_go.elf/output.json",
+        "challenge-3_x86_program_cpp_smallchange.elf/output.json",
+        "challenge-3_x86_program_cpp_smallchange_patched.elf/output.json",
+        "challenge-2_armv7_nucleo32-vuln.elf/output.json",
+        "challenge-2_armv7_nucleo32-patched.elf/output.json",
+        "challenge-3_x86_program_cpp_bigchange.elf/output.json",
+        "challenge-3_x86_program_cpp_bigchange_patched.elf/output.json"
     ]
 }
