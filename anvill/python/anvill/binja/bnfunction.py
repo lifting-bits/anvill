@@ -21,9 +21,9 @@ import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
 from binaryninja import LowLevelILInstruction as llinst
 
-
+from .bninstruction import *
+from .table import *
 from .xreftype import *
-
 
 from anvill.function import *
 from anvill.type import *
@@ -195,7 +195,7 @@ class BNFunction(Function):
                 memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
                 inst = self._bn_func.get_low_level_il_at(ea)
                 if inst and not is_unimplemented(program.bv, inst):
-                    _collect_xrefs_from_inst(program.bv, inst, ref_eas)
+                    _collect_xrefs_from_inst(program.bv, program, inst, ref_eas)
 
 
 def _convert_bn_llil_type(
@@ -210,8 +210,17 @@ def _convert_bn_llil_type(
         return ret
 
 
-def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
+def _collect_xrefs_from_inst(
+    bv, program, item_or_list, ref_eas, reftype=XrefType.XREF_NONE
+):
     """Recursively collect xrefs in a IL instructions"""
+
+    if isinstance(item_or_list, list):
+        for item in item_or_list:
+            _collect_xrefs_from_inst(bv, program, item, ref_eas, reftype)
+
+    # If the item is not IL instructions don't process it further
+    inst = item_or_list
     if not (
         isinstance(inst, bn.LowLevelILInstruction)
         or isinstance(inst, bn.MediumLevelILInstruction)
@@ -221,8 +230,15 @@ def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
     if is_unimplemented(bv, inst) or is_undef(bv, inst):
         return
 
-    if is_function_call(bv, inst) or is_jump(bv, inst):
+    if is_function_call(bv, inst):
         reftype = XrefType.XREF_CONTROL_FLOW
+
+    elif is_jump(bv, inst) or is_jump_to(bv, inst):
+        reftype = XrefType.XREF_CONTROL_FLOW
+        jump_targets = get_jump_targets(bv, inst.address)
+        for jump_ea, targets in jump_targets.items():
+            if len(targets) != 0:
+                program.set_control_flow_targets(jump_ea, targets, True)
 
     elif is_memory_inst(bv, inst) or is_unimplemented_mem(bv, inst):
         mem_il = inst.dest if is_store_inst(bv, inst) else inst.src
@@ -232,10 +248,10 @@ def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
         else:
             reftype = XrefType.XREF_DISPLACEMENT
 
-        _collect_xrefs_from_inst(bv, mem_il, ref_eas, reftype)
+        _collect_xrefs_from_inst(bv, program, mem_il, ref_eas, reftype)
 
         for opnd in inst.operands:
-            _collect_xrefs_from_inst(bv, opnd, ref_eas)
+            _collect_xrefs_from_inst(bv, program, opnd, ref_eas)
 
     elif is_constant_pointer(bv, inst):
         const_ea = inst.constant
@@ -246,122 +262,12 @@ def _collect_xrefs_from_inst(bv, inst, ref_eas, reftype=XrefType.XREF_NONE):
 
     # Recursively look for the xrefs in operands
     for opnd in inst.operands:
-        _collect_xrefs_from_inst(bv, opnd, ref_eas, reftype)
+        _collect_xrefs_from_inst(bv, program, opnd, ref_eas, reftype)
 
     if isinstance(inst, bn.LowLevelILInstruction):
         mlil_inst = inst.mlil
         if mlil_inst is not None:
-            _collect_xrefs_from_inst(bv, mlil_inst, ref_eas)
-
-
-def is_constant(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation in (
-            bn.LowLevelILOperation.LLIL_CONST,
-            bn.LowLevelILOperation.LLIL_CONST_PTR,
-        )
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation in (
-            bn.MediumLevelILOperation.MLIL_CONST,
-            bn.MediumLevelILOperation.MLIL_CONST_PTR,
-        )
-
-    return False
-
-
-def is_constant_pointer(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_CONST_PTR
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_CONST_PTR
-
-    return False
-
-
-def is_function_call(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation in (
-            bn.LowLevelILOperation.LLIL_CALL,
-            bn.LowLevelILOperation.LLIL_TAILCALL,
-            bn.LowLevelILOperation.LLIL_CALL_STACK_ADJUST,
-        )
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation in (bn.MediumLevelILOperation.MLIL_CALL,)
-
-    return False
-
-
-def is_jump(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation in (
-            bn.LowLevelILOperation.LLIL_JUMP,
-            bn.LowLevelILOperation.LLIL_JUMP_TO,
-        )
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation in (
-            bn.MediumLevelILOperation.MLIL_JUMP,
-            bn.MediumLevelILOperation.MLIL_JUMP_TO,
-        )
-
-    return False
-
-
-def is_load_inst(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_LOAD
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_LOAD
-
-    return False
-
-
-def is_store_inst(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_STORE
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_STORE
-
-    return False
-
-
-def is_memory_inst(bv, inst):
-    return is_load_inst(bv, inst) or is_store_inst(bv, inst)
-
-
-def is_unimplemented(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_UNIMPL
-
-    return False
-
-
-def is_unimplemented_mem(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_UNIMPL_MEM
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_UNIMPL_MEM
-
-    return False
-
-
-def is_undef(bv, inst):
-    if isinstance(inst, bn.LowLevelILInstruction):
-        return inst.operation == bn.LowLevelILOperation.LLIL_UNDEF
-
-    elif isinstance(inst, bn.MediumLevelILInstruction):
-        return inst.operation == bn.MediumLevelILOperation.MLIL_UNDEF
-
-    return False
+            _collect_xrefs_from_inst(bv, program, mlil_inst, ref_eas)
 
 
 def is_code(bv, addr):

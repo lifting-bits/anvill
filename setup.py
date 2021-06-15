@@ -32,10 +32,10 @@ setuptools.setup(
     data_files=[('anvill', ['anvill/logging.ini'])],
     py_modules=[
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja.__init__",
-        "anvill.binja.bnfunction", "anvill.binja.bnprogram", "anvill.binja.bnvariable",
-        "anvill.binja.callingconvention", "anvill.binja.typecache", "anvill.binja.xreftype",
-        "anvill.exc", "anvill.function", "anvill.ida.__init__", "anvill.ida.idafunction",
-        "anvill.ida.idaprogram", "anvill.ida.idavariable", "anvill.ida.utils",
-        "anvill.imageparser.__init__", "anvill.imageparser.elfparser", "anvill.loc",
-        "anvill.mem", "anvill.os", "anvill.program", "anvill.type",
-        "anvill.var", "anvill.util"])
+        "anvill.binja.bnfunction", "anvill.binja.bninstruction", "anvill.binja.bnprogram",
+        "anvill.binja.bnvariable", "anvill.binja.callingconvention", "anvill.binja.typecache",
+        "anvill.binja.xreftype", "anvill.binja.table", "anvill.exc", "anvill.function",
+        "anvill.ida.__init__", "anvill.ida.idafunction", "anvill.ida.idaprogram",
+        "anvill.ida.idavariable", "anvill.ida.utils", "anvill.imageparser.__init__",
+        "anvill.imageparser.elfparser", "anvill.loc", "anvill.mem", "anvill.os", "anvill.program",
+        "anvill.type", "anvill.var", "anvill.util"])
