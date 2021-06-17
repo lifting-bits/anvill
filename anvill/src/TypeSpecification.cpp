@@ -722,7 +722,15 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         i += 1;
         return llvm::Type::getDoubleTy(llvm_context);
       case 'D':  // long double.
+        // The type spec for floating point with size 10 and 12 bytes can be
+        // created as fp80 and double type. If the type is mapped to the
+        // registers create a double type else create fp80 type. This is to
+        // required to avoid type mismatch with remill registers.
         i += 1;
+        if (i == 1) {
+          // long double is getting mapped to register; create double type
+          return llvm::Type::getDoubleTy(llvm_context);
+        }
         return llvm::Type::getX86_FP80Ty(llvm_context);
       case 'M':  // MMX type.
         i += 1;
