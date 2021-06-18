@@ -89,11 +89,9 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
         if (lhs_c && lhs_c->getType()->getBitWidth() == 1 &&
             lhs_c->isAllOnesValue() && rhs_cmp) {
           xors.emplace_back(binop);
-        }
-
-        // right side is a constant int 1 (true), left side is a cmp
-        if (rhs_c && rhs_c->getType()->getBitWidth() == 1 &&
+        } else if (rhs_c && rhs_c->getType()->getBitWidth() == 1 &&
             rhs_c->isAllOnesValue() && lhs_cmp) {
+          // right side is a constant int 1 (true), left side is a cmp
           xors.emplace_back(binop);
         }
       }
