@@ -19,6 +19,8 @@ add_executable(test_anvill_passes
   src/InstructionFolderPass.cpp
   src/BrightenPointers.cpp
   src/TransformRemillJump.cpp
+
+  src/XorConversionPass.cpp
 )
 
 target_link_libraries(test_anvill_passes PRIVATE
