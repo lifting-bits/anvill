@@ -24,6 +24,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 
+#include <tuple>
 #include <vector>
 
 namespace anvill {
@@ -41,20 +42,30 @@ class ConvertXorToCmp final : public llvm::FunctionPass {
 
 char ConvertXorToCmp::ID = '\0';
 
-// Get which operand for a binary operator is an ICmpInst
-// nullptr if neither
-static llvm::ICmpInst *getComparisonOperand(llvm::BinaryOperator *op) {
-  auto rhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(op->getOperand(1));
-  if (rhs_cmp) {
-    return rhs_cmp;
-  }
+// If the operator (op) is between an ICmpInst and a ConstantInt,
+// return a tuple representing the ICmpInst and ConstantInt
+// with tuple[0] holding the ICmpInst.
+// otherwise return nullopt
+static std::optional<std::tuple<llvm::ICmpInst *, llvm::ConstantInt *>>
+getComparisonOperands(llvm::BinaryOperator *op) {
 
+  auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
   auto lhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(op->getOperand(0));
-  if (lhs_cmp) {
-    return lhs_cmp;
+
+  auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
+  auto rhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(op->getOperand(1));
+
+  // right side: predicate, left side; constant int;
+  if (rhs_cmp && lhs_c) {
+    return {{rhs_cmp, lhs_c}};
   }
 
-  return nullptr;
+  // right side: constant int, left side: cmp
+  if (rhs_c && lhs_cmp) {
+    return {{lhs_cmp, rhs_c}};
+  }
+
+  return std::nullopt;
 }
 
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
@@ -77,22 +88,18 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
       // binary op is a xor
       if (binop->getOpcode() == llvm::Instruction::Xor) {
 
-        // xor has a constant as either lhs or rhs, and its a one-bit constant of size 1
-        auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(binop->getOperand(0));
-        auto lhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(binop->getOperand(0));
+        // get comparison operands of the xor
+        // the caller ensures that one is a compare and the other is a constant int
+        auto cmp_ops = getComparisonOperands(binop);
+        if (cmp_ops.has_value()) {
+          auto [_, cnst_int] = cmp_ops.value();
 
-        auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(binop->getOperand(1));
-        auto rhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(binop->getOperand(1));
-
-
-        // left side is a constant int 1 (true), right side is a cmpinst
-        if (lhs_c && lhs_c->getType()->getBitWidth() == 1 &&
-            lhs_c->isAllOnesValue() && rhs_cmp) {
-          xors.emplace_back(binop);
-        } else if (rhs_c && rhs_c->getType()->getBitWidth() == 1 &&
-            rhs_c->isAllOnesValue() && lhs_cmp) {
-          // right side is a constant int 1 (true), left side is a cmp
-          xors.emplace_back(binop);
+          // ensure that the constant int is 'true', or an i1 with the value 1
+          // this (currently) the only supported value
+          if (cnst_int->getType()->getBitWidth() == 1 &&
+              cnst_int->isAllOnesValue()) {
+            xors.emplace_back(binop);
+          }
         }
       }
     }
@@ -101,44 +108,81 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
   auto changed = false;
   int replaced_items = 0;
 
+  std::vector<llvm::BranchInst *> brs_to_invert;
+  std::vector<llvm::SelectInst *> selects_to_invert;
+
   for (auto xori : xors) {
 
     // find predicate from xor's operands
-    auto cmp = getComparisonOperand(xori);
-    if (!cmp) {
-      DLOG(ERROR)
-          << "Error: Xor should have a comparison operand, but we can't find it again";
+    auto cmp_ops = getComparisonOperands(xori);
+    if (!cmp_ops.has_value()) {
       continue;
     }
+    auto [cmp, _] = cmp_ops.value();
 
-    std::vector<llvm::BranchInst *> brs_to_invert;
-    std::vector<llvm::SelectInst *> selects_to_invert;
     bool invertible_xor = true;
 
+    // so far, we have matched the following pattern:
     //
+    //   %c = icmp PREDICATE v1, v2
+    //   %x = xor i1 %c, true
+    //
+    // We want to to fold this cmp/xor pair into a cmp with an inverse predicate, like so:
+    //
+    //   %c = icmp !PREDICATE v1, v2
+    //   %x = %c
+    //
+    // BUT! Depending on how %c is used we may or may not be able to do that.
+    //
+    // We need to know if the result of the comparison (%c) is used elsewhere, and how.
+    //
+    // We *can* still invert the cmp/xor pair if:
+    // * All uses of this `cmp` are either a SelectInst or a BranchInst
+    //    then we will invert every select and branch condition.
+    //    this gets rid of the xor, and preserves program logic
+    //
+    // Examples:
+    //  %si = select i1 %c, true_val, false_val
+    //  br i1 %c, label %left, label %right
+    //
+    // We *cannot* invert the cmp/xor pair if:
+    // * One or more uses of this `cmp` is *NOT* a SelectInst or a BranchInst
+    //    The original value could be stored or used in some arithmetic op
+    //    and we cannot freely invert the comparison, because it would change
+    //    the logic of the program.
+    //
+    //    Most common example? A zext, like the following:
+    //     %z = zext i1 %c to i64
+
     for (auto &U : cmp->uses()) {
       llvm::Instruction *inst = llvm::dyn_cast<llvm::Instruction>(U.getUser());
 
       // use is not the existing xor
-      if (inst == xori) {
+      if (!inst || inst == xori) {
         continue;
       }
 
+      brs_to_invert.clear();
+      selects_to_invert.clear();
+
       llvm::BranchInst *br = llvm::dyn_cast<llvm::BranchInst>(inst);
+
+      // A user of this compare is a BranchInstruction
       if (br) {
         brs_to_invert.emplace_back(br);
         continue;
       }
 
       llvm::SelectInst *si = llvm::dyn_cast<llvm::SelectInst>(inst);
-      if (si) {
+
+      // A user of this compare is a SelectInst, and the compare is the condition and not an operand
+      if (si && llvm::dyn_cast<llvm::ICmpInst>(si->getCondition()) == cmp) {
         selects_to_invert.emplace_back(si);
         continue;
       }
 
       invertible_xor = false;
       LOG(INFO) << "ConvertXorToCmp: found a non-invertible xor!\n";
-      inst->dump();
 
       break;
     }
