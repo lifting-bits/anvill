@@ -55,6 +55,11 @@ class BNFunction(Function):
     def is_external(self):
         return self._is_external
 
+    def is_noreturn(self):
+        if self._bn_func != None:
+            return self._bn_func.can_return.value == False
+        return False
+
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:
             return
