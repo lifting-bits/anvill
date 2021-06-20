@@ -44,6 +44,8 @@ add_library(anvill_passes STATIC
   src/TransformationErrorManager.h
   src/TransformationErrorManager.cpp
   src/TransformRemillJumpIntrinsics.cpp
+
+  src/ConvertXorToCmp.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC

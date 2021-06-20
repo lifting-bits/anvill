@@ -54,8 +54,9 @@
 #include "anvill/Program.h"
 #include "anvill/Util.h"
 
-DEFINE_uint32(pointer_brighten_gas, 64u,
-              "Amount of internal iterations permitted for the pointer brightening pass.");
+DEFINE_uint32(
+    pointer_brighten_gas, 64u,
+    "Amount of internal iterations permitted for the pointer brightening pass.");
 
 namespace anvill {
 
@@ -122,6 +123,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(llvm::createSROAPass());
   fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
   fpm.add(llvm::createSROAPass());
+
+  // Sometimes we have a values in the form of (expr ^ 1) used as branch
+  // conditions or other targets. Try to fix these to be CMPs, since it
+  // makes code easier to read and analyze. This is a fairly narrow optimization
+  // but it comes up often enough for lifted code.
+  fpm.add(CreateConvertXorToCmp());
 
   if (FLAGS_pointer_brighten_gas) {
     fpm.add(CreateBrightenPointerOperations(FLAGS_pointer_brighten_gas));
