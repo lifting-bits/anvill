@@ -108,6 +108,7 @@ target_public_headers(anvill
   include/anvill/Type.h
   include/anvill/ITypeSpecification.h
   include/anvill/Util.h
+  include/anvill/ABI.h
 )
 
 if (ANVILL_ENABLE_PYTHON3_LIBS)
@@ -156,4 +157,9 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
   install(EXPORT anvillTargets
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
   )
+
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/anvill/include/anvill/"
+    DESTINATION "include/anvill" FILES_MATCHING PATTERN "*.h"
+   )
+
 endif()
