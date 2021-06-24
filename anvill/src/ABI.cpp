@@ -70,10 +70,20 @@ const std::string kGlobalVariableNamePrefix("var_");
 // global variables
 const std::string kGlobalAliasNamePrefix("data_");
 
+// Prefix used to identify symbolic values for stack frame values
 const std::string kSymbolicStackFrameValuePrefix(kAnvillNamePrefix + "stack_");
 
-const std::string kAnvillSwitchCompleteFunc(kAnvillNamePrefix + "complete_switch");
+// The anvill function used to handle complete switch cases
+const std::string kAnvillSwitchCompleteFunc(
+    kAnvillNamePrefix + "complete_switch");
 
-const std::string kAnvillSwitchIncompleteFunc(kAnvillNamePrefix + "incomplete_switch");
+// The anvill function used to handle incomplete switch cases
+const std::string kAnvillSwitchIncompleteFunc(
+    kAnvillNamePrefix + "incomplete_switch");
+
+// The name of the uninterpreted function that implements data provenance
+// tracking.
+extern const std::string kAnvillDataProvenanceFunc(
+    kAnvillNamePrefix + "data_provenance");
 
 }  // namespace anvill

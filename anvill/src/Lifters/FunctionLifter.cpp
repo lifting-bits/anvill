@@ -48,15 +48,9 @@
 #include <remill/OS/OS.h>
 
 #include <sstream>
+#include <unordered_set>
 
 #include "EntityLifter.h"
-
-// TODO(pag): Externalize this into some kind of `LifterOptions` struct.
-DEFINE_bool(print_registers_before_instuctions, false,
-            "Inject calls to printf (into the lifted bitcode) to log integer "
-            "register state to stdout.");
-
-DEFINE_bool(add_breakpoints, false, "Add breakpoint functions");
 
 namespace anvill {
 namespace {
@@ -144,6 +138,26 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
   return func;
 }
 
+// Annotate and instruction with the `id` annotation if that instruction
+// is unannotated.
+static void AnnotateInstruction(llvm::Instruction *inst, unsigned id,
+                                llvm::MDNode *annot) {
+  if (annot && !inst->getMetadata(id)) {
+    inst->setMetadata(id, annot);
+  }
+}
+
+// Annotate and instruction with the `id` annotation if that instruction
+// is unannotated.
+static void AnnotateInstructions(llvm::BasicBlock *block, unsigned id,
+                                 llvm::MDNode *annot) {
+  if (annot) {
+    for (auto &inst : *block) {
+      AnnotateInstruction(&inst, id, annot);
+    }
+  }
+}
+
 }  // namespace
 
 FunctionLifter::~FunctionLifter(void) {}
@@ -158,6 +172,10 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
       inst_lifter(options.arch, intrinsics),
+      pc_reg(options.arch->RegisterByName(
+          options.arch->ProgramCounterRegisterName())),
+      sp_reg(options.arch->RegisterByName(
+          options.arch->StackPointerRegisterName())),
       is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
       is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),
@@ -171,10 +189,12 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
               options.arch->StatePointerType(), llvm_context))),
       address_type(
           llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
-      pc_reg_type(
-          options.arch
-              ->RegisterByName(options.arch->ProgramCounterRegisterName())
-              ->type) {}
+      pc_reg_type(pc_reg->type) {
+
+  if (options.pc_metadata_name) {
+    pc_annotation_id = llvm_context.getMDKindID(options.pc_metadata_name);
+  }
+}
 
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
@@ -771,6 +791,9 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
   if (delayed_inst && options.arch->NextInstructionIsDelayed(
                           inst, *delayed_inst, on_taken_path)) {
     inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
+
+    const auto inst_annotation = GetPCAnnotation(delayed_inst->pc);
+    AnnotateInstructions(block, pc_annotation_id, inst_annotation);
   }
 }
 
@@ -822,8 +845,9 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
   return func;
 }
 
-// Instrument an instruction. This inject a `printf` call just before a
-// lifted instruction to aid in debugging.
+// Instrument an instruction. This inject a `printf`-like function call just
+// before a lifted instruction to aid in tracking the provenance of register
+// values, and relating them back to original instructions.
 //
 // TODO(pag): In future, this mechanism should be used to provide a feedback
 //            loop, or to provide information to the `TypeProvider` for future
@@ -834,47 +858,31 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
 //            lifting configuration decisions out of here so that we can pass
 //            in a kind of `LiftingOptions` type that changes the lifter's
 //            behavior.
-void FunctionLifter::InstrumentInstruction(llvm::BasicBlock *block) {
-  if (!log_printf) {
-    llvm::Type *args[] = {llvm::Type::getInt8PtrTy(llvm_context, 0)};
-    auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_context),
-                                       args, true);
+void FunctionLifter::InstrumentDataflowProvenance(llvm::BasicBlock *block) {
+  if (!data_provenance_function) {
+    data_provenance_function =
+        semantics_module->getFunction(kAnvillDataProvenanceFunc);
 
-    log_printf = llvm::dyn_cast<llvm::Function>(
-        semantics_module->getOrInsertFunction("printf", fty).getCallee());
-
-    std::stringstream ss;
-
-    options.arch->ForEachRegister([&](const remill::Register *reg) {
-      if (reg->EnclosingRegister() == reg &&
-          reg->type->isIntegerTy(options.arch->address_size)) {
-        ss << reg->name << "=%llx ";
-      }
-    });
-    ss << '\n';
-    const auto format_str =
-        llvm::ConstantDataArray::getString(llvm_context, ss.str(), true);
-    const auto format_var = new llvm::GlobalVariable(
-        *semantics_module, format_str->getType(), true,
-        llvm::GlobalValue::InternalLinkage, format_str);
-
-    llvm::Constant *indices[] = {llvm::ConstantInt::getNullValue(i32_type),
-                                 llvm::ConstantInt::getNullValue(i32_type)};
-    log_format_str = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        format_str->getType(), format_var, indices);
+    if (!data_provenance_function) {
+      llvm::Type *args[] = {mem_ptr_type, pc_reg_type};
+      auto fty = llvm::FunctionType::get(mem_ptr_type, args, true);
+      data_provenance_function = llvm::Function::Create(
+          fty, llvm::GlobalValue::ExternalLinkage,
+          kAnvillDataProvenanceFunc, *semantics_module);
+    }
   }
 
   std::vector<llvm::Value *> args;
-  args.push_back(log_format_str);
+  llvm::IRBuilder<> ir(block);
+  args.push_back(ir.CreateLoad(mem_ptr_type, mem_ptr_ref));
+  args.push_back(llvm::ConstantInt::get(pc_reg_type, curr_inst->pc));
   options.arch->ForEachRegister([&](const remill::Register *reg) {
-    if (reg->EnclosingRegister() == reg &&
-        reg->type->isIntegerTy(options.arch->address_size)) {
+    if (reg != pc_reg && reg != sp_reg && reg->EnclosingRegister() == reg) {
       args.push_back(inst_lifter.LoadRegValue(block, state_ptr, reg->name));
     }
   });
 
-  llvm::IRBuilder<> ir(block);
-  ir.CreateCall(log_printf, args);
+  ir.CreateStore(ir.CreateCall(data_provenance_function, args), mem_ptr_ref);
 }
 
 // Adds a 'breakpoint' instrumentation, which calls functions that are named
@@ -911,7 +919,8 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
   }
 
   llvm::Value *args[] = {
-      remill::LoadMemoryPointer(block),
+      new llvm::LoadInst(mem_ptr_type, mem_ptr_ref,
+                         llvm::Twine::createNull(), block),
       inst_lifter.LoadRegValue(block, state_ptr, remill::kPCVariableName),
       inst_lifter.LoadRegValue(block, state_ptr, remill::kNextPCVariableName)};
   llvm::IRBuilder<> ir(block);
@@ -939,7 +948,7 @@ void FunctionLifter::VisitTypedHintedRegister(
   // If we have a concrete value that is being provided for this value, then
   // save it into the `State` structure. This improves our ability to optimize.
   if (options.store_inferred_register_values && maybe_value) {
-    reg_value = irb.CreateLoad(reg_pointer);
+    reg_value = irb.CreateLoad(reg->type, reg_pointer);
     reg_value = llvm::ConstantInt::get(reg->type, *maybe_value);
     irb.CreateStore(reg_value, reg_pointer);
   }
@@ -949,7 +958,7 @@ void FunctionLifter::VisitTypedHintedRegister(
   }
 
   if (!reg_value) {
-    reg_value = irb.CreateLoad(reg_pointer);
+    reg_value = irb.CreateLoad(reg->type, reg_pointer);
   }
 
   // Creates a function that returns a higher-level type, as provided by a
@@ -972,16 +981,6 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
                                       llvm::BasicBlock *block) {
   curr_inst = &inst;
 
-  // TODO(pag): Externalize the dependency on this flag to a `LifterOptions`
-  //            structure.
-  if (FLAGS_print_registers_before_instuctions) {
-    InstrumentInstruction(block);
-  }
-
-  if (FLAGS_add_breakpoints) {
-    InstrumentCallBreakpointFunction(block);
-  }
-
   // TODO(pag): Consider emitting calls to the `llvm.pcmarker` intrinsic. Figure
   //            out if the `i32` parameter is different on 64-bit targets, or
   //            if it's actually a metadata ID.
@@ -994,6 +993,25 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
                        alignof(remill::Instruction)>::type delayed_inst_storage;
 
   remill::Instruction *delayed_inst = nullptr;
+
+  // Try to find any register type hints that we can use later to improve
+  // pointer lifting.
+  if (options.symbolic_register_types) {
+    type_provider.QueryRegisterStateAtInstruction(
+        func_address, inst.pc,
+        [=](const std::string &reg_name, llvm::Type *type,
+            std::optional<uint64_t> maybe_value) {
+          VisitTypedHintedRegister(block, reg_name, type, maybe_value);
+        });
+  }
+
+  if (options.track_provenance) {
+    InstrumentDataflowProvenance(block);
+  }
+
+  if (options.add_breakpoints) {
+    InstrumentCallBreakpointFunction(block);
+  }
 
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
@@ -1013,16 +1031,11 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
     }
   }
 
-  // Try to find any register type hints that we can use later to improve
-  // pointer lifting.
-  if (options.symbolic_register_types) {
-    type_provider.QueryRegisterStateAtInstruction(
-        func_address, inst.pc,
-        [=](const std::string &reg_name, llvm::Type *type,
-            std::optional<uint64_t> maybe_value) {
-          VisitTypedHintedRegister(block, reg_name, type, maybe_value);
-        });
-  }
+  // Do an initial annotation of instructions injected by `LiftIntoBlock`,
+  // and prior to any lifting of a delayed instruction that might happen
+  // in any of the below `Visit*` calls.
+  const auto inst_annotation = GetPCAnnotation(inst.pc);
+  AnnotateInstructions(block, pc_annotation_id, inst_annotation);
 
   switch (inst.category) {
 
@@ -1076,6 +1089,10 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
       break;
   }
 
+  // Do a second pass of annotations to apply to the control-flow branching
+  // instructions added in by the above `Visit*` calls.
+  AnnotateInstructions(block, pc_annotation_id, inst_annotation);
+
   if (delayed_inst) {
     delayed_inst->~Instruction();
   }
@@ -1108,10 +1125,9 @@ llvm::Value *FunctionLifter::TryCallNativeFunction(uint64_t native_addr,
     decl = std::move(remill::GetReference(maybe_decl));
   }
 
-  auto mem_ptr_ref = remill::LoadMemoryPointerRef(block);
   llvm::IRBuilder<> irb(block);
 
-  llvm::Value *mem_ptr = irb.CreateLoad(mem_ptr_ref);
+  llvm::Value *mem_ptr = irb.CreateLoad(mem_ptr_type, mem_ptr_ref);
   mem_ptr = decl.CallFromLiftedBlock(native_func->getName().str(), intrinsics,
                                      block, state_ptr, mem_ptr, true);
   irb.SetInsertPoint(block);
@@ -1195,6 +1211,22 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     } else {
       VisitInstruction(inst, block);
     }
+  }
+}
+
+// Get the annotation for the program counter `pc`, or `nullptr` if we're
+// not doing annotations.
+llvm::MDNode *FunctionLifter::GetPCAnnotation(uint64_t pc) const {
+  if (options.pc_metadata_name) {
+    auto pc_val = llvm::ConstantInt::get(address_type, pc);
+#if LLVM_VERSION_NUMBER >= LLVM_VERSION(3, 6)
+    auto pc_md = llvm::ValueAsMetadata::get(pc_val);
+    return llvm::MDNode::get(llvm_context, pc_md);
+#else
+    return llvm::MDNode::get(llvm_context, pc_val);
+#endif
+  } else {
+    return nullptr;
   }
 }
 
@@ -1569,6 +1601,16 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
   mem_ptr = call_to_lifted_func;
 
+  // Annotate all instructions leading up to and including the call of the
+  // lifted function using the function's address.
+  //
+  // NOTE(pag): We don't annotate any of the subsequently created instructions
+  //            for marshalling return values back out because there may be
+  //            multiple return/tail-call sites in the function we've just
+  //            lifted.
+  AnnotateInstructions(block, pc_annotation_id,
+                       GetPCAnnotation(func_address));
+
   llvm::Value *ret_val = nullptr;
 
   if (decl.returns.size() == 1) {
@@ -1605,24 +1647,60 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
 // that all semantics and helpers are completely inlined.
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   std::vector<llvm::CallInst *> calls_to_inline;
+
+  // Set of instructions that we should not annotate because we can't tie them
+  // to a particular instruction address.
+  std::unordered_set<llvm::Instruction *> insts_without_provenance;
+  if (options.pc_metadata_name) {
+    for (auto &inst : llvm::instructions(*native_func)) {
+      if (!inst.getMetadata(pc_annotation_id)) {
+        insts_without_provenance.insert(&inst);
+      }
+    }
+  }
+
   for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
     calls_to_inline.clear();
 
-    for (auto &block : *native_func) {
-      for (auto &inst : block) {
-        if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
-          if (auto called_func = call_inst->getCalledFunction();
-              called_func && !called_func->isDeclaration() &&
-              !called_func->hasFnAttribute(llvm::Attribute::NoInline)) {
-            calls_to_inline.push_back(call_inst);
-          }
+    for (auto &inst : llvm::instructions(*native_func)) {
+      if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
+        if (auto called_func = call_inst->getCalledFunction();
+            called_func && !called_func->isDeclaration() &&
+            !called_func->hasFnAttribute(llvm::Attribute::NoInline)) {
+          calls_to_inline.push_back(call_inst);
         }
       }
     }
 
-    for (auto call_inst : calls_to_inline) {
+    for (llvm::CallInst *call_inst : calls_to_inline) {
+      llvm::MDNode *call_pc = nullptr;
+      if (options.pc_metadata_name) {
+        call_pc = call_inst->getMetadata(pc_annotation_id);
+      }
+
       llvm::InlineFunctionInfo info;
       InlineFunction(call_inst, info);
+
+      // Propagate PC metadata from call sites into inlined call bodies.
+      if (options.pc_metadata_name) {
+        for (auto &inst : llvm::instructions(*native_func)) {
+          if (!inst.getMetadata(pc_annotation_id)) {
+            if (insts_without_provenance.count(&inst)) {
+              continue;
+
+            // This call site had no associated PC metadata, and so we want
+            // to exclude any inlined code from accidentally being associated
+            // with other PCs on future passes.
+            } else if (!call_pc) {
+              insts_without_provenance.insert(&inst);
+
+            // We can propagate the annotation.
+            } else {
+              inst.setMetadata(pc_annotation_id, call_pc);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1675,6 +1753,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   inst_lifter.ClearCache();
   curr_inst = nullptr;
   state_ptr = nullptr;
+  mem_ptr_ref = nullptr;
   func_address = decl.address;
   native_func = DeclareFunction(decl);
 
@@ -1726,6 +1805,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   const auto next_pc_ptr = inst_lifter.LoadRegAddress(
       entry_block, state_ptr, remill::kNextPCVariableName);
 
+  mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
+
   // Force initialize both the `PC` and `NEXT_PC` from the `pc` argument.
   // On some architectures, `NEXT_PC` is a "pseudo-register", i.e. an `alloca`
   // inside of `__remill_basic_block`, of which `lifted_func` is a clone, and
@@ -1744,6 +1825,9 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
   ir.CreateBr(GetOrCreateBlock(func_address));
+
+  AnnotateInstructions(entry_block, pc_annotation_id,
+                       GetPCAnnotation(func_address));
 
   // Go lift all instructions!
   VisitInstructions(func_address);
@@ -1900,26 +1984,11 @@ static void EraseFunctionBody(llvm::Function *func) {
 
   // Collect stuff for erasure.
   for (auto &block : *func) {
-    blocks_to_erase.emplace_back(&block);
-    for (auto &inst : block) {
-      insts_to_erase.emplace_back(&inst);
-    }
+    block.dropAllReferences();
   }
 
-  // Erase instructions first, as they use basic blocks. Before erasing, replace
-  // all their uses with something reasonable.
-  for (auto inst : insts_to_erase) {
-    if (!inst->getType()->isVoidTy()) {
-      inst->replaceAllUsesWith(llvm::UndefValue::get(inst->getType()));
-    }
-    inst->eraseFromParent();
-  }
-
-  // Now, erase blocks.
-  for (auto block : blocks_to_erase) {
-    block->getType();
-    CHECK(block->empty());
-    block->eraseFromParent();
+  while (!func->isDeclaration()) {
+    func->back().eraseFromParent();
   }
 }
 
