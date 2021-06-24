@@ -1658,10 +1658,6 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       }
     }
   }
-  // TODO:
-  //  - mark all starting instructions with pc annotation
-  //  - exclude all return instructions from annotation, e.g. with a set
-
 
   for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
     calls_to_inline.clear();
