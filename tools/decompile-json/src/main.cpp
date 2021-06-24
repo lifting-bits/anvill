@@ -34,7 +34,9 @@
 #include <remill/BC/Compat/CTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Pass.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Transforms/IPO.h>
 
 // clang-format on
 
@@ -64,6 +66,12 @@ DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
 DEFINE_string(bc_out, "",
               "Path to file where the LLVM bitcode should be "
               "saved.");
+
+DEFINE_bool(add_breakpoints, false, "Add breakpoint_XXXXXXXX functions to the "
+            "lifted bitcode.");
+
+DEFINE_bool(enable_provenance, false,
+            "Enable tracking of provenance in LLVM debug metadata.");
 
 static void SetVersion(void) {
   std::stringstream ss;
@@ -1045,6 +1053,15 @@ int main(int argc, char *argv[]) {
   anvill::LifterOptions options(arch.get(), module,
                                 ctrl_flow_provider_res.TakeValue());
 
+  if (FLAGS_add_breakpoints) {
+    options.add_breakpoints = true;
+  }
+
+  if (FLAGS_enable_provenance) {
+    options.pc_metadata_name = "pc";
+    options.track_provenance = true;
+  }
+
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
@@ -1151,42 +1168,14 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  //  // Apply symbol names to functions if we have the names.
-  //  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-  //                                  const anvill::FunctionDecl *fdecl,
-  //                                  const anvill::GlobalVarDecl *vdecl) {
-  //    if (vdecl) {
-  //      if (auto var = lifter.DeclareEntity(*vdecl)) {
-  //        var->setName(name);
-  //      }
-  //    } else if (fdecl) {
-  //      if (auto func = lifter.DeclareEntity(*fdecl)) {
-  //        if (func->isDeclaration()) {
-  //          func->setName(name);
-  //        } else {
-  //          std::stringstream ss;
-  //          ss << std::setw(8) << std::setfill('0') << std::hex << addr << "_" << name;
-  //          func->setName(ss.str());
-  //        }
-  //      }
-  //    }
-  //    return true;
-  //  });
-  //
-  //  // Traverse through the function decl and fix the symbol name
-  //  program.ForEachNamedAddress([&](uint64_t addr, const std::string &name,
-  //                                  const anvill::FunctionDecl *fdecl,
-  //                                  const anvill::GlobalVarDecl *vdecl) {
-  //    if (fdecl) {
-  //      if (auto func = lifter.DeclareEntity(*fdecl)) {
-  //        if (auto func_with_name = module.getFunction(name);!func_with_name) {
-  //          func->setName(name);
-  //        }
-  //      }
-  //    }
-  //    return true;
-  //  });
-
+  // Clean out any unneeded things from the module prior to output.
+  {
+    std::unique_ptr<llvm::ModulePass> pass(
+        llvm::createStripDeadPrototypesPass());
+    pass->doInitialization(module);
+    pass->runOnModule(module);
+    pass->doFinalization(module);
+  }
 
   // Clean up by initializing variables.
   for (auto &var : module.globals()) {
