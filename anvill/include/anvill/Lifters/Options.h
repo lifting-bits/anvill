@@ -100,7 +100,9 @@ class LifterOptions {
         symbolic_stack_pointer(true),
         symbolic_return_address(true),
         symbolic_register_types(true),
-        store_inferred_register_values(true) {
+        store_inferred_register_values(true),
+        add_breakpoints(false),
+        track_provenance(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -121,6 +123,10 @@ class LifterOptions {
   // How the RecoverStackFrameInformation function pass should initialize
   // recovered stack frames
   StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
+
+  // Name of metadata to attach to LLVM instructions, so that they can be
+  // related to original program counters in the binary.
+  const char *pc_metadata_name{nullptr};
 
   //
   // Stack frame padding is useful to support red zones for ABIs that support
@@ -195,6 +201,18 @@ class LifterOptions {
   // perspective, `state->reg` is now a constant value, allowing store-to-load
   // forwarding.
   bool store_inferred_register_values : 1;
+
+  // Add so-called breakpoint calls. These can be useful for visually
+  // identifying the general provenance of lifted bitcode with respect to
+  // machine code instruction addresses. If the bitcode is compiled, then
+  // the introduced `breakpoint_NNN` calls act as convenient locations on
+  // which to place debugger breakpoints, so as to stop execution roughly
+  // prior to that instruction's execution.
+  bool add_breakpoints : 1;
+
+  // Enable data provenance gathering via uninterpreted function calls, in a
+  // way that will survive LLVM optimizations.
+  bool track_provenance : 1;
 
  private:
   LifterOptions(void) = delete;

@@ -17,9 +17,14 @@
 import binaryninja as bn
 from typing import Optional
 
+import struct
+
 from .typecache import *
 from .bnfunction import *
+from .bninstruction import *
 from .bnvariable import *
+
+from .table import *
 
 from anvill.program import *
 from anvill.arch import *
@@ -274,6 +279,12 @@ class BNProgram(Program):
         for s in self._bv.get_symbols():
             yield (s.address, s.name)
 
+    def _is_callsite(self, func, addr):
+        inst_il = func.get_low_level_il_at(addr)
+        if is_function_call(self._bv, inst_il):
+            return True
+        return False
+
     def _init_func_thunk_ctrl_flow(self):
         """Initializes the control flow redirections and targets
         using function thunks"""
@@ -313,7 +324,19 @@ class BNProgram(Program):
                 for caller_function in self._bv.get_functions_containing(
                     caller.address
                 ):
-                    if function_thunk.name in caller_function.name:
+
+                    # check if the caller function name is same as the function thunk name and add
+                    # redirection if it matches.
+                    # TODO: It is possible that the caller function name does not exactly matches the
+                    # thunk name. find such cases and add them here
+                    #
+                    # It is not preferred to have a loose check here. That will lead to adding redirection
+                    # for the wrong functions.
+                    #
+                    if (
+                        function_thunk.name == caller_function.name
+                        or function_thunk.name == caller_function.name[1:]
+                    ):
                         print(
                             "anvill: Redirecting the user {:x} of thunk {} at {:x} to {:x}".format(
                                 caller_function.start,
@@ -327,17 +350,44 @@ class BNProgram(Program):
                             caller_function.start, redirection_dest
                         )
 
-                    print(
-                        "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
-                            caller.address, redirection_dest, function_thunk.name
+                        redirected_thunk_list.append(function_thunk.name)
+
+                    # The imported address symbol can be references from both the thunks
+                    # and other functions if it does not uses PLT. Check if the caller
+                    # address is one of the call or jump instruction
+                    #    e.g:    call [atoi@GOT]
+                    #            jmp  [atoi@GOT]
+                    #
+
+                    # if the caller address is a call site, set a control flow
+                    # target for the address
+                    if self._is_callsite(caller_function, caller.address):
+                        self.set_control_flow_targets(
+                            caller.address, [redirection_dest], True
                         )
-                    )
 
-                    self.set_control_flow_targets(
-                        caller.address, [redirection_dest], True
-                    )
+                        print(
+                            "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                                caller.address, redirection_dest, function_thunk.name
+                            )
+                        )
 
-                    redirected_thunk_list.append(function_thunk.name)
+                        continue
+
+                    jump_table = get_jump_targets(
+                        self._bv, caller.address, function_thunk.start
+                    )
+                    for jump_addr, targets in jump_table.items():
+                        if function_thunk.start in targets:
+                            self.set_control_flow_targets(
+                                jump_addr, [redirection_dest], True
+                            )
+
+                            print(
+                                "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                                    jump_addr, redirection_dest, function_thunk.name
+                                )
+                            )
 
         # Now check whether we successfully redirected all thunks
         for function_thunk in function_thunk_list:

@@ -593,7 +593,6 @@ PointerLifter::visitPHINode(llvm::PHINode &inst) {
   for (auto i = 0u; i < num_vals; i++) {
     auto incoming_val = inst.getIncomingValue(i);
     auto incoming_block = inst.getIncomingBlock(i);
-    llvm::IRBuilder<> sub_ir(incoming_block->getTerminator()->getPrevNode());
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(incoming_val)) {
 
       // Visit possible reference
@@ -789,7 +788,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::IRBuilder<> ir(inst);
         llvm::Value *indexed_pointer =
             GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
-                              lhs_ptr->getOperand(0)->getType());
+                              rhs_ptr->getOperand(0)->getType());
         llvm::Value *int_cast =
             ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
         ReplaceAllUses(inst, int_cast);

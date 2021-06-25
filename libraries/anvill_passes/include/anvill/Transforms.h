@@ -106,8 +106,7 @@ llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void);
 llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 
 // Type information from prior lifting efforts, or from front-end tools
-// (e.g. Binary Ninja) is plumbed through the system by way of calls to
-// intrinsic functions such as `__anvill_type<blah>`. These function calls
+// (e.g. Binary Ninja) is plumbed through the system by way of calls to // intrinsic functions such as `__anvill_type<blah>`. These function calls
 // don't interfere (too much) with optimizations, and they also survive
 // optimizations. In general, the key role that they serve is to enable us to
 // propagate through pointer type information at an instruction/register
@@ -239,5 +238,21 @@ llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
 // `RemoveRemillFunctionReturns` transform
 llvm::FunctionPass *
 CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter);
+
+// Finds values in the form of:
+// %cmp = icmp eq val1, val2
+// %n = xor %cmp, 1
+// (optional):
+// %br %cmp, d1, d2
+// and converts it to :
+// %cmp = icmp ne val1, val2
+// %n = %cmp
+// %br %cmp, d2, d1
+//
+// This happens often enough in lifted code due to bit shift ops, and the code
+// with xors is more difficult to analyze and for a human to read
+// This pass should only work on boolean values, and handle when those are used
+// in Branches and Selects
+llvm::FunctionPass *CreateConvertXorToCmp(void);
 
 }  // namespace anvill

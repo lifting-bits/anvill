@@ -33,7 +33,9 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/binja/bnprogram.py
     anvill/binja/bnvariable.py
     anvill/binja/bnfunction.py
+    anvill/binja/bninstruction.py
     anvill/binja/callingconvention.py
+    anvill/binja/table.py
     anvill/binja/typecache.py
     anvill/binja/xreftype.py
     anvill/exc.py
