@@ -154,7 +154,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
     }
 
     // The offset from the stack pointer.
-    const auto stack_offset = reference.Displacement(data_layout);
+    const auto stack_offset = reference.Displacement();
 
     // Update the boundaries, based on the offset we have found
     std::uint64_t type_size = data_layout.getTypeAllocSize(
