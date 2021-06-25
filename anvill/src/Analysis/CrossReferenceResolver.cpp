@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <glog/logging.h>
+
 #include <anvill/ABI.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
@@ -111,9 +113,9 @@ class CrossReferenceResolverImpl {
     } \
   }
 
-  MAKE_BINOP_FOLDER(Add, +, Merge, NO_WRAP, true)
-  MAKE_BINOP_FOLDER(Sub, -, Merge, NO_WRAP, true)
-  MAKE_BINOP_FOLDER(Mul, *, Merge, NO_WRAP, true)
+  MAKE_BINOP_FOLDER(Add, +, Merge, SIGNED_WRAP, true)
+  MAKE_BINOP_FOLDER(Sub, -, Merge, SIGNED_WRAP, true)
+  MAKE_BINOP_FOLDER(Mul, *, Merge, SIGNED_WRAP, true)
   MAKE_BINOP_FOLDER(And, &, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(Or, |, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(Xor, ^, Merge, NO_WRAP, true)
@@ -250,17 +252,28 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 
-  const uint64_t size =
-      inst_val->getOperand(0)->getType()->getPrimitiveSizeInBits();
+  auto opnd_type = inst_val->getOperand(0)->getType();
+  uint64_t size = opnd_type->getPrimitiveSizeInBits();
+  // update size if the operand is of pointer type
+  if (opnd_type->isPointerTy()) {
+    size = dl.getPointerSizeInBits(0);
+  }
+
   const uint64_t mask = size < 64 ? (1ull << size) - 1ull : ~0ull;
-  const uint64_t out_size = inst_val->getType()->getPrimitiveSizeInBits();
+  uint64_t out_size = inst_val->getType()->getPrimitiveSizeInBits();
+  if (inst_val->getType()->isPointerTy()) {
+    out_size = dl.getPointerSizeInBits(0);
+  }
   const uint64_t out_mask = out_size < 64 ? (1ull << out_size) - 1ull : ~0ull;
 
   switch (inst_val->getOpcode()) {
 #define FOLD_CASE(name) \
-  case llvm::Instruction::name: \
-    return Fold##name(ResolveValue(inst_val->getOperand(0)), \
-                      ResolveValue(inst_val->getOperand(1)), mask, size);
+  case llvm::Instruction::name: { \
+    auto xr = Fold##name(ResolveValue(inst_val->getOperand(0)), \
+                         ResolveValue(inst_val->getOperand(1)), mask, size); \
+    xr.size = static_cast<unsigned>(out_size); \
+    return xr; \
+  }
 
     FOLD_CASE(Add)
     FOLD_CASE(Sub)
@@ -281,6 +294,7 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     case llvm::Instruction::ZExt: {
       auto xr = ResolveValue(inst_val->getOperand(0));
       xr.u.address &= mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
@@ -288,17 +302,20 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       auto xr = ResolveValue(inst_val->getOperand(0));
       xr.u.displacement = Signed(xr.u.address, size);
       xr.u.address &= out_mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::Trunc: {
       auto xr = ResolveValue(inst_val->getOperand(0));
       xr.u.address &= out_mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::IntToPtr: {
       auto xr = ResolveValue(inst_val->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
           !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
@@ -306,11 +323,15 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       return xr;
     }
 
-    case llvm::Instruction::PtrToInt:
-      return ResolveValue(inst_val->getOperand(0));
+    case llvm::Instruction::PtrToInt:{
+       auto xr = ResolveValue(inst_val->getOperand(0));
+       xr.size = static_cast<unsigned>(out_size);
+       return xr;
+    }
 
     case llvm::Instruction::BitCast: {
       auto xr = ResolveValue(inst_val->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type =
               llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
           ptr_type && !xr.displacement_from_hinted_value_type) {
@@ -319,8 +340,11 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       return xr;
     }
 
-    case llvm::Instruction::Call:
-      return ResolveCall(llvm::dyn_cast<llvm::CallInst>(inst_val));
+    case llvm::Instruction::Call:{
+      auto xr = ResolveCall(llvm::dyn_cast<llvm::CallInst>(inst_val));
+      xr.size = static_cast<unsigned>(out_size);
+      return xr;
+    }
 
     default: return {};
   }
@@ -339,6 +363,7 @@ CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
 
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
     xr = ResolveGlobalValue(gv);
+    xr.size = dl.getPointerSizeInBits(0);
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(const_val)) {
     xr = ResolveConstantExpr(ce);
@@ -346,10 +371,12 @@ CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
   } else if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(const_val)) {
     xr.u.address = ci->getZExtValue();
     xr.is_valid = true;
+    xr.size = ci->getBitWidth();
 
   } else if (auto cpn = llvm::dyn_cast<llvm::ConstantPointerNull>(const_val)) {
     xr.hinted_value_type = cpn->getType()->getElementType();
     xr.is_valid = true;
+    xr.size =  dl.getPointerSizeInBits(0);
 
   } else {
     xr.is_valid = false;
@@ -409,6 +436,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
   if (auto maybe_addr = address_of_entity(ce); maybe_addr) {
     ResolvedCrossReference xr;
     xr.u.address = *maybe_addr;
+    xr.size = dl.getPointerSizeInBits(0);
     xr.references_entity = true;
     xr.is_valid = true;
     if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
@@ -418,18 +446,30 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
   }
 
   const auto ptr_size = dl.getPointerSizeInBits(0);
-  const uint64_t size = ce->getOperand(0)->getType()->getPrimitiveSizeInBits();
+  auto opnd_type = ce->getOperand(0)->getType();
+  uint64_t size = opnd_type->getPrimitiveSizeInBits();
+  // update size if operand is pointer type
+  if (opnd_type->isPointerTy()) {
+    size = ptr_size;
+  }
   const uint64_t mask = size < 64 ? (1ull << size) - 1ull : ~0ull;
-  const uint64_t out_size = ce->getType()->getPrimitiveSizeInBits();
+  uint64_t out_size = ce->getType()->getPrimitiveSizeInBits();
+  // update size if constant expr is pointer type
+  if (ce->getType()->isPointerTy()) {
+    out_size = ptr_size;
+  }
   const uint64_t out_mask = out_size < 64 ? (1ull << out_size) - 1ull : ~0ull;
 
   switch (ce->getOpcode()) {
     default: break;
 
 #define FOLD_CASE(name) \
-  case llvm::Instruction::name: \
-    return Fold##name(ResolveConstant(ce->getOperand(0)), \
-                      ResolveConstant(ce->getOperand(1)), mask, size);
+  case llvm::Instruction::name: { \
+    auto xr = Fold##name(ResolveConstant(ce->getOperand(0)), \
+                         ResolveConstant(ce->getOperand(1)), mask, size); \
+    xr.size = static_cast<unsigned>(out_size); \
+		return xr; \
+  }
 
       FOLD_CASE(Add)
       FOLD_CASE(Sub)
@@ -450,6 +490,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     case llvm::Instruction::ZExt: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.u.address &= mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
@@ -457,17 +498,20 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.u.displacement = Signed(xr.u.address, size);
       xr.u.address &= out_mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::Trunc: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.u.address &= out_mask;
+      xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::IntToPtr: {
       auto xr = ResolveConstant(ce->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
           !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
@@ -475,10 +519,15 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       return xr;
     }
 
-    case llvm::Instruction::PtrToInt: return ResolveConstant(ce->getOperand(0));
+    case llvm::Instruction::PtrToInt: {
+      auto xr = ResolveConstant(ce->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
+      return xr;
+    }
 
     case llvm::Instruction::BitCast: {
       auto xr = ResolveConstant(ce->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
           ptr_type && !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
@@ -487,9 +536,11 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     }
 
     case llvm::Instruction::ICmp: {
-      return FoldICmp(ResolveConstant(ce->getOperand(0)),
+      auto xr = FoldICmp(ResolveConstant(ce->getOperand(0)),
                       ResolveConstant(ce->getOperand(1)), mask, size,
                       ce->getPredicate());
+      xr.size = static_cast<unsigned>(out_size);
+      return xr;
     }
 
     case llvm::Instruction::GetElementPtr: {
@@ -515,6 +566,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
       const auto disp = Signed(ap.getZExtValue(), ptr_size);
       base.u.address += static_cast<uint64_t>(disp);
+      base.size = static_cast<unsigned>(out_size);
       base.displacement_from_hinted_value_type += disp;
       return base;
     }
@@ -530,6 +582,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       } else {
         selected_val = ResolveConstant(ce->getOperand(2));
       }
+      selected_val.size = static_cast<unsigned>(out_size);
       selected_val.is_valid &= cond.is_valid;
       return selected_val;
     }
@@ -545,16 +598,19 @@ CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
     case llvm::Intrinsic::ctlz: {
       auto xr = ResolveValue(call->getArgOperand(0));
       xr.u.address = __builtin_clzl(xr.u.address);
+      xr.size = call->getType()->getPrimitiveSizeInBits();
       return xr;
     }
     case llvm::Intrinsic::cttz: {
       auto xr = ResolveValue(call->getArgOperand(0));
       xr.u.address = __builtin_ctzl(xr.u.address);
+      xr.size = call->getType()->getPrimitiveSizeInBits();
       return xr;
     }
     case llvm::Intrinsic::ctpop: {
       auto xr = ResolveValue(call->getArgOperand(0));
       xr.u.address = __builtin_popcountl(xr.u.address);
+      xr.size = call->getType()->getPrimitiveSizeInBits();
       return xr;
     }
 
@@ -571,6 +627,7 @@ CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
     auto xr = ResolveValue(call->getArgOperand(0));
     xr.hinted_value_type = func->getReturnType()->getPointerElementType();
     xr.displacement_from_hinted_value_type = 0;
+    xr.size = dl.getPointerSizeInBits(0);
     return xr;
 
   // Not a call through a type hint, ignore it.
@@ -642,10 +699,13 @@ uint64_t CrossReferenceResolver::MagicReturnAddressValue(void) const {
 }
 
 std::int64_t
-ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
+ResolvedCrossReference::Displacement(void) const {
   std::int64_t displacement{};
 
-  switch (dl.getPointerSizeInBits(0)) {
+  CHECK_NE(size, 0) << "Reference size should not be zero!";
+
+  switch (size) {
+    case 8:  displacement = static_cast<std::int8_t> (u.displacement); break;
     case 16: displacement = static_cast<std::int16_t>(u.displacement); break;
     case 32: displacement = static_cast<std::int32_t>(u.displacement); break;
     case 64: displacement = u.displacement; break;

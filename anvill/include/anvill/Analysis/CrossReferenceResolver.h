@@ -58,6 +58,9 @@ struct ResolvedCrossReference {
   // operands being hinted, we drop the type hints.
   llvm::Type *hinted_value_type{nullptr};
 
+  // size of the operand that is used to adjust the displacement of references
+  unsigned size{0};
+
   // If we have a `hinted_type`, then how "far away" are we from that hinted
   // type? I.e. we might be doing a `getelementptr` on a pointer that is type
   // hinted, and so this represents the displacement induced by the GEP indices.
@@ -95,8 +98,8 @@ struct ResolvedCrossReference {
     return is_valid;
   }
 
-  // Returns the displacement value, adjusted according to pointer size
-  std::int64_t Displacement(const llvm::DataLayout &dl) const;
+  // Returns the displacement value, adjusted according to operand size
+  std::int64_t Displacement(void) const;
 };
 
 // Attempts to fold cross-references down into their intended addresses. This
