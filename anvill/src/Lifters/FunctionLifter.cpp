@@ -113,7 +113,8 @@ static void MuteStateEscape(llvm::CallInst *call) {
 // This returns a special anvill built-in used to describe jumps tables
 // inside lifted code
 static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
-                                           bool complete) {
+                                           bool complete,
+                                           llvm::Type* address_type) {
 
   const auto &func_name =
       complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
@@ -123,10 +124,8 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
     return func;
   }
 
-  auto &context = module.getContext();
-  auto return_type = llvm::Type::getInt64Ty(context);
-  const std::vector<llvm::Type *> func_parameters = {
-      llvm::Type::getInt64Ty(context)};
+  auto return_type = address_type;
+  const std::vector<llvm::Type *> func_parameters = { address_type };
 
   auto func_type = llvm::FunctionType::get(return_type, func_parameters, true);
 
@@ -390,7 +389,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       // Invoke the anvill switch
       auto &module = *block->getModule();
       auto anvill_switch_func =
-          GetAnvillSwitchFunc(module, target_list.complete);
+          GetAnvillSwitchFunc(module, target_list.complete, this->address_type);
 
       llvm::IRBuilder<> ir(block);
       auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
@@ -404,7 +403,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
         auto dest = target_list.destination_list.at(dest_id);
         auto dest_block = GetOrCreateTargetBlock(dest);
 
-        auto dest_id_as_value = ir.getInt64(dest_id);
+        auto dest_id_as_value = llvm::ConstantInt::get(this->address_type, dest_id);
         switch_inst->addCase(dest_id_as_value, dest_block);
       }
     }
