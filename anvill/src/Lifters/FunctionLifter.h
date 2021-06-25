@@ -33,6 +33,7 @@ namespace llvm {
 class Function;
 class FunctionType;
 class LLVMContext;
+class MDNode;
 class Module;
 class Value;
 }  // namespace llvm
@@ -89,6 +90,10 @@ class FunctionLifter {
   remill::IntrinsicTable intrinsics;
   remill::InstructionLifter inst_lifter;
 
+  // Program counter and stack pointer registers.
+  const remill::Register * const pc_reg;
+  const remill::Register * const sp_reg;
+
   // Are we lifting SPARC code? This affects whether or not we need to do
   // double checking on function return addresses;
   const bool is_sparc;
@@ -105,6 +110,10 @@ class FunctionLifter {
   llvm::IntegerType *const address_type;
   llvm::Type *const pc_reg_type{nullptr};
 
+  // Metadata node to attach to lifted instructions to related them to
+  // original instructions.
+  unsigned pc_annotation_id{0};
+
   // Address of the function currently being lifted.
   uint64_t func_address{0};
 
@@ -117,11 +126,18 @@ class FunctionLifter {
   // State pointer in `lifted_func`.
   llvm::Value *state_ptr{nullptr};
 
+  // Pointer to the `Memory *` in `lifted_func`.
+  llvm::Value *mem_ptr_ref{nullptr};
+
   // Current instruction being lifted.
   remill::Instruction *curr_inst{nullptr};
 
-  llvm::Function *log_printf{nullptr};
-  llvm::Value *log_format_str{nullptr};
+  // The function that we use to track data provenance. This is a variadic
+  // function that takes each register as an argument. The parameters are
+  // untyped, due to using a variadic argument list.
+  //
+  // TODO(pag): Think about eventually having one per architecture.
+  llvm::Function *data_provenance_function{nullptr};
 
   // Mapping of function names to addresses.
   std::unordered_map<std::string, uint64_t> func_name_to_address;
@@ -149,6 +165,10 @@ class FunctionLifter {
 
   // Maps addresses to function declarations, which describe ABIs and such.
   std::unordered_map<uint64_t, FunctionDecl> addr_to_decl;
+
+  // Get the annotation for the program counter `pc`, or `nullptr` if we're
+  // not doing annotations.
+  llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
 
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
@@ -342,7 +362,7 @@ class FunctionLifter {
   //            lifting configuration decisions out of here so that we can pass
   //            in a kind of `LiftingOptions` type that changes the lifter's
   //            behavior.
-  void InstrumentInstruction(llvm::BasicBlock *block);
+  void InstrumentDataflowProvenance(llvm::BasicBlock *block);
 
   // Adds a 'breakpoint' instrumentation, which calls functions that are named
   // with an instruction's address just before that instruction executes. These

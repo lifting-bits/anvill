@@ -62,7 +62,12 @@ class TypeCache:
         )
 
         ret = StructureType()
-        self._cache[self._cache_key(tinfo)] = ret
+
+        # If struct has no registered name, don't put it in the cache. It
+        # is anonymous struct and can cause cache collision
+        if tinfo.registered_name:
+            self._cache[self._cache_key(tinfo)] = ret
+
         for elem in tinfo.structure.members:
             ret.add_element_type(self._convert_bn_type(elem.type))
 
@@ -74,7 +79,11 @@ class TypeCache:
         assert tinfo.structure.type == bn.StructureType.UnionStructureType
 
         ret = UnionType()
-        self._cache[self._cache_key(tinfo)] = ret
+
+        # If union has no registered name, don't put it in the cache. It
+        # is anonymous union and can cause cache collision
+        if tinfo.registered_name:
+            self._cache[self._cache_key(tinfo)] = ret
         for elem in tinfo.structure.members:
             ret.add_element_type(self._convert_bn_type(elem.type))
 
@@ -86,7 +95,12 @@ class TypeCache:
         assert tinfo.type_class == bn.TypeClass.EnumerationTypeClass
 
         ret = EnumType()
-        self._cache[self._cache_key(tinfo)] = ret
+
+        # If enum has no registered name, don't put it in the cache. It
+        # is anonymous enum and can cause cache collision with other
+        # anonymous enum
+        if tinfo.registered_name:
+            self._cache[self._cache_key(tinfo)] = ret
         # The underlying type of enum will be an Interger of size info.width
         ret.set_underlying_type(IntegerType(tinfo.width, False))
         return ret

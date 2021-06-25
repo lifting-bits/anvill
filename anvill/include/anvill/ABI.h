@@ -82,4 +82,8 @@ extern const std::string kAnvillSwitchCompleteFunc;
 // The anvill function used to handle incomplete switch cases
 extern const std::string kAnvillSwitchIncompleteFunc;
 
+// The name of the uninterpreted function that implements data provenance
+// tracking.
+extern const std::string kAnvillDataProvenanceFunc;
+
 }  // namespace anvill
