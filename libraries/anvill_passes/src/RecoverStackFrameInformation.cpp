@@ -389,11 +389,7 @@ RecoverStackFrameInformation::UpdateFunction(
   // operand uses we have to update.
   for (auto &sp_use : stack_frame_analysis.instruction_uses) {
 
-    const auto instr = llvm::dyn_cast<llvm::Instruction>(sp_use.use->getUser());
     const auto obj = sp_use.use->get();
-
-    // Set the insert point just before the instruction we have to update
-    builder.SetInsertPoint(instr);
 
     // Convert the `__anvill_sp`-relative offset to a 0-based index
     // into our stack frame type
@@ -406,6 +402,10 @@ RecoverStackFrameInformation::UpdateFunction(
 
     // Create a GEP instruction that accesses the new stack frame we
     // created based on the relative offset
+    //
+    // GEP indices for the stack_frame_ptr are constants. It can safely
+    // inserted after the alloca instead of before the instruction using
+    // it.
     //
     // As a reminder, the stack frame type is a StructType that contains
     // an ArrayType with int8 elements
