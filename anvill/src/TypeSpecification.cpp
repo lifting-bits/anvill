@@ -367,7 +367,6 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
 
           if (auto elem_type = maybe_elem_type.Value()) {
             if (!elem_type->isSized(&size_checked)) {
-              elem_type->dump();
               return CreateError(
                   spec.str(),
                   TypeSpecificationError::ErrorCode::InvalidSpecFormat,
