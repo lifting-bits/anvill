@@ -67,6 +67,10 @@ def _extract_targets_from_tailcall(bv, inst):
         return
 
     target_eas = []
+
+    if not is_function_tailcall(bv, inst):
+        return target_eas
+
     target_eas.extend(_evaluate_destination_expression(bv, inst, inst.dest))
 
     # if instruction is not mlil; call the function with mlil
@@ -86,6 +90,10 @@ def _extract_targets_from_jump(bv, inst):
         return
 
     target_eas = []
+
+    if not is_jump(bv, inst):
+        return target_eas
+
     target_eas.extend(_evaluate_destination_expression(bv, inst, inst.dest))
 
     # if the instruction is not mlil, call the function with MLIL. It gets
