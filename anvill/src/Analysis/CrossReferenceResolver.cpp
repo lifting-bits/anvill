@@ -369,9 +369,19 @@ CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
     xr = ResolveConstantExpr(ce);
 
   } else if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(const_val)) {
-    xr.u.address = ci->getZExtValue();
-    xr.is_valid = true;
-    xr.size = ci->getBitWidth();
+    const llvm::APInt &val = ci->getValue();
+    xr.size = val.getBitWidth();
+    xr.is_valid = false;
+
+    if (val.isNegative()) {
+      if (val.getMinSignedBits() <= 64) {
+        xr.u.address = static_cast<uint64_t>(val.getSExtValue());
+        xr.is_valid = true;
+      }
+    } else if (val.getActiveBits() <= 64) {
+      xr.u.address = val.getZExtValue();
+      xr.is_valid = true;
+    }
 
   } else if (auto cpn = llvm::dyn_cast<llvm::ConstantPointerNull>(const_val)) {
     xr.hinted_value_type = cpn->getType()->getElementType();
