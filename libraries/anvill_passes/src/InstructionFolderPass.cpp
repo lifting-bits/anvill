@@ -651,6 +651,22 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     return false;
   }
 
+  const auto base_ptr = gep_instr->getOperand(0);
+
+  // If the GEP pointer is computed in the same block as the
+  // PHI then it implies that the PHI dominates the base pointer, and if
+  // so, we can't actually move where this GEP is.
+  if (auto base_ptr_instr = llvm::dyn_cast<llvm::Instruction>(base_ptr);
+      base_ptr_instr && base_ptr_instr->getParent() == phi_node->getParent()) {
+    return false;
+
+  // If the GEP instruction is in a different block than the PHI node then
+  // we can't replace the GEP with a PHI of a bunch of GEPs because then
+  // we can't prove that this new PHI dominates all uses of the GEP.
+  } else if (gep_instr->getParent() != phi_node->getParent()) {
+    return false;
+  }
+
   // Go through each incoming value and move the `GetElementPtrInst`
   // instruction on each incoming basic block
   IncomingValueList new_incoming_values;
@@ -661,10 +677,10 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
 
     IncomingValue new_incoming_value;
-    new_incoming_value.value =
-        builder.CreateGEP(incoming_value.value, index_list);
-
     new_incoming_value.basic_block = incoming_value.basic_block;
+    new_incoming_value.value =
+        builder.CreateGEP(base_ptr, index_list);
+
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
 
