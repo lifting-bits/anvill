@@ -99,7 +99,7 @@ struct ResolvedCrossReference {
   }
 
   // Returns the displacement value, adjusted according to operand size
-  std::int64_t Displacement(void) const;
+  std::int64_t Displacement(const llvm::DataLayout &dl) const;
 };
 
 // Attempts to fold cross-references down into their intended addresses. This

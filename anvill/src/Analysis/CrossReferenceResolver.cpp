@@ -709,12 +709,12 @@ uint64_t CrossReferenceResolver::MagicReturnAddressValue(void) const {
 }
 
 std::int64_t
-ResolvedCrossReference::Displacement(void) const {
+ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
   std::int64_t displacement{};
 
   CHECK_NE(size, 0) << "Reference size should not be zero!";
 
-  switch (size) {
+  switch (std::min(size, dl.getPointerSizeInBits(0))) {
     case 8:  displacement = static_cast<std::int8_t> (u.displacement); break;
     case 16: displacement = static_cast<std::int16_t>(u.displacement); break;
     case 32: displacement = static_cast<std::int32_t>(u.displacement); break;

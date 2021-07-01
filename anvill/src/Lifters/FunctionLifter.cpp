@@ -111,10 +111,10 @@ static void MuteStateEscape(llvm::CallInst *call) {
 }
 
 // This returns a special anvill built-in used to describe jumps tables
-// inside lifted code
-static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
-                                           bool complete,
-                                           llvm::Type* address_type) {
+// inside lifted code; It takes the address type to generate the function
+// parameters of correct type.
+static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module, llvm::Type *type,
+                                           bool complete) {
 
   const auto &func_name =
       complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
@@ -124,10 +124,10 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
     return func;
   }
 
-  auto return_type = address_type;
-  const std::vector<llvm::Type *> func_parameters = { address_type };
+  auto &context = module.getContext();
+  llvm::Type* func_parameters[] = {type};
 
-  auto func_type = llvm::FunctionType::get(return_type, func_parameters, true);
+  auto func_type = llvm::FunctionType::get(type, func_parameters, true);
 
   func = llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
                                 func_name, module);
@@ -389,7 +389,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       // Invoke the anvill switch
       auto &module = *block->getModule();
       auto anvill_switch_func =
-          GetAnvillSwitchFunc(module, target_list.complete, this->address_type);
+          GetAnvillSwitchFunc(module, address_type, target_list.complete);
 
       llvm::IRBuilder<> ir(block);
       auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
@@ -403,7 +403,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
         auto dest = target_list.destination_list.at(dest_id);
         auto dest_block = GetOrCreateTargetBlock(dest);
 
-        auto dest_id_as_value = llvm::ConstantInt::get(this->address_type, dest_id);
+        auto dest_id_as_value = llvm::ConstantInt::get(address_type, dest_id);
         switch_inst->addCase(dest_id_as_value, dest_block);
       }
     }
