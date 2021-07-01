@@ -29,12 +29,14 @@ function check_test
 		python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); print(s.get_fail_count())" \
         < ${input_json})
 
+    # Always output this, even if zero failures. Good to show ignored test results.
+    echo "[!] There were [${fail_msg}] failures on ${dir}:"
+    PYTHONPATH=${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts \
+        python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); s.print_fails()" \
+        < ${input_json}
+
     if [[ "${fail_msg}" != "0" ]]
     then
-        echo "[!] There were [${fail_msg}] failures on ${dir}:"
-		PYTHONPATH=${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts \
-        python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); s.print_fails()" \
-			< ${input_json}
         return 1
     fi
 
