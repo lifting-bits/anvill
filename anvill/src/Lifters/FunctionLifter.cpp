@@ -1848,8 +1848,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
 
-  native_func->print(llvm::outs());
-
   return native_func;
 }
 
