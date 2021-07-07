@@ -111,6 +111,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
   fpm.add(CreateRemoveUnusedFPClassificationCalls());
   fpm.add(CreateRemoveDelaySlotIntrinsics());
+  fpm.add(CreateRemoveErrorIntrinsics());
   fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
   fpm.add(CreateRemoveCompilerBarriers());
   fpm.add(CreateLowerTypeHintIntrinsics());

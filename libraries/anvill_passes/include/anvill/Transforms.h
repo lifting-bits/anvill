@@ -259,4 +259,7 @@ llvm::FunctionPass *CreateConvertXorToCmp(void);
 // their location in the bitcode.
 llvm::FunctionPass *CreateRemoveDelaySlotIntrinsics(void);
 
+// Removes calls to `__remill_error`.
+llvm::FunctionPass *CreateRemoveErrorIntrinsics(void);
+
 }  // namespace anvill
