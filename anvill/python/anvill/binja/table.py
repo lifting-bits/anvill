@@ -135,20 +135,18 @@ def _find_jumps_near(bv, addr):
 
         while jump_addr < block.end:
             info = bv.arch.get_instruction_info(bv.read(jump_addr, 16), jump_addr)
+
             # Add a check if info is None; go to the next address
             if info is None:
+                DEBUG(f"Could not get instruction at jump destination: {jump_addr:x}")
                 break
 
             # check if the instruction has branches
-            if info:
-                if len(info.branches) != 0:
-                    candidates.append(jump_addr)
-                    break
-
-                jump_addr += info.length
-            else:
-                DEBUG(f"Could not get instruction at jump destination: {jump_addr:x}")
+            if len(info.branches) != 0:
+                candidates.append(jump_addr)
                 break
+
+            jump_addr += info.length
 
         if jump_addr >= block.end:
             continue
