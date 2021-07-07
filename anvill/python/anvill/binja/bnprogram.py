@@ -232,10 +232,7 @@ class BNProgram(Program):
             if func_contains and len(func_contains):
                 bn_func = func_contains[0]
 
-        if bn_func is None:
-            return None
-        else:
-            return bn_func
+        return bn_func
 
     def get_function_impl(self, address):
         """Given an architecture and an address, return a `Function` instance or
