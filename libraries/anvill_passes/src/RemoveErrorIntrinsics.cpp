@@ -52,19 +52,26 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
   }
 
   auto calls = FindFunctionCalls(func, [=](llvm::CallBase *call) -> bool {
-    const auto func = call->getCalledFunction();
-    return func == error;
+    return call->getCalledFunction() == error;
   });
 
   std::unordered_set<llvm::Instruction *> removed;
+  std::unordered_set<llvm::BasicBlock *> affected_blocks;
+
+  llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>, 16> mds;
 
   for (llvm::CallBase *call : calls) {
     if (removed.count(call)) {
       continue;
     }
 
+    mds.clear();
+    call->getAllMetadata(mds);
+
     // Work backward through the block, up until we can remove the instruction.
-    auto block = call->getParent();
+    llvm::BasicBlock * const block = call->getParent();
+    affected_blocks.insert(block);
+
     auto pred_inst = call->getPrevNode();
     for (auto inst = block->getTerminator(); inst != pred_inst; ) {
       const auto next_inst = inst->getPrevNode();
@@ -72,16 +79,99 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
 
       if (auto itype = inst->getType(); itype && !itype->isVoidTy()) {
         inst->replaceAllUsesWith(llvm::UndefValue::get(itype));
-        inst->dropAllReferences();
-        inst->eraseFromParent();
-        removed.insert(inst);
       }
 
+      inst->dropAllReferences();
+      inst->eraseFromParent();
+      removed.insert(inst);
       inst = next_inst;
     }
 
     DCHECK(!block->getTerminator());
-    (void) new llvm::UnreachableInst(block->getContext(), block);
+    auto unreachable_inst = new llvm::UnreachableInst(
+        block->getContext(), block);
+
+    for (auto [md_id, md_node] : mds) {
+      unreachable_inst->setMetadata(md_id, md_node);
+    }
+  }
+
+  std::vector<llvm::PHINode *> broken_phis;
+  std::vector<llvm::Value *> new_incoming_vals;
+  std::vector<llvm::BasicBlock *> new_incoming_blocks;
+  std::unordered_set<llvm::BasicBlock *> unreachable_blocks;
+
+  for (auto changed = true; changed; ) {
+    changed = false;
+
+    // Find PHI nodes with predecessor blocks that now no longer actually
+    // flow to the PHI node.
+    broken_phis.clear();
+    for (llvm::BasicBlock &block : func) {
+      for (llvm::Instruction &inst : block) {
+        if (auto phi = llvm::dyn_cast<llvm::PHINode>(&inst)) {
+          auto num_incoming_vals = phi->getNumIncomingValues();
+          for (auto i = 0u; i < num_incoming_vals; ++i) {
+            auto incoming_block = phi->getIncomingBlock(i);
+            if (affected_blocks.count(incoming_block)) {
+              broken_phis.push_back(phi);
+              changed = true;
+              break;
+            }
+          }
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Rebuild the PHI nodes, or replace them with what should have been passed
+    // through.
+    for (llvm::PHINode *phi : broken_phis) {
+      new_incoming_vals.clear();
+      new_incoming_blocks.clear();
+
+      const auto num_incoming_vals = phi->getNumIncomingValues();
+      for (auto i = 0u; i < num_incoming_vals; ++i) {
+        auto incoming_block = phi->getIncomingBlock(i);
+        if (affected_blocks.count(incoming_block)) {
+          continue;
+        } else {
+          new_incoming_vals.push_back(phi->getIncomingValue(i));
+          new_incoming_blocks.push_back(incoming_block);
+        }
+      }
+
+      // This block is technically unreachable.
+      if (new_incoming_vals.empty()) {
+        llvm::BasicBlock *phi_block = phi->getParent();
+        unreachable_blocks.insert(phi_block);
+        affected_blocks.insert(phi_block);
+        phi->replaceAllUsesWith(llvm::UndefValue::get(phi->getType()));
+        phi->dropAllReferences();
+        phi->eraseFromParent();
+
+      } else if (new_incoming_vals.size() == 1u) {
+        phi->replaceAllUsesWith(new_incoming_vals[0]);
+        phi->dropAllReferences();
+        phi->eraseFromParent();
+
+      // Create a new PHI node.
+      } else {
+        auto new_phi = llvm::PHINode::Create(
+            phi->getType(), static_cast<unsigned>(new_incoming_vals.size()),
+            llvm::Twine::createNull(), phi);
+        new_phi->copyMetadata(*phi);
+
+        auto i = 0u;
+        for (auto val : new_incoming_vals) {
+          new_phi->addIncoming(val, new_incoming_blocks[i++]);
+        }
+
+        phi->replaceAllUsesWith(new_phi);
+        phi->eraseFromParent();
+      }
+    }
   }
 
   return !removed.empty();
