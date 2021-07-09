@@ -51,4 +51,17 @@ class BNVariable(Variable):
             if seg is None:
                 continue
 
-            mem.map_byte(ea, br.read8(), seg.writable, seg.executable)
+            #NOTE(artem): This is a workaround for binary ninja's fake
+            # .externs section, which is (correctly) mapped as
+            # not readable, not writable, and not executable.
+            # because it is a fictional creation of the disassembler.
+            #
+            # However, when we do control flow tragetting to thunks,
+            # we will sanity check that the target goes to an executable
+            # location. If we are lying about the target being readable,
+            # then we may as well lie about it being executable.
+            is_executable = seg.executable
+            if seg.writable == seg.readable == False:
+                is_executable = True
+
+            mem.map_byte(ea, br.read8(), seg.writable, is_executable)

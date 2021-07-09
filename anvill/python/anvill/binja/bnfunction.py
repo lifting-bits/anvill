@@ -197,7 +197,18 @@ class BNFunction(Function):
             for ea in range(bb.start, bb.end):
                 seg = program.bv.get_segment_at(ea)
                 br.seek(ea)
-                memory.map_byte(ea, br.read8(), seg.writable, seg.executable)
+
+                #NOTE(artem): This is a workaround for binary ninja's fake
+                # .externs section, which is (correctly) mapped as
+                # not readable, not writable, and not executable.
+                # because it is a fictional creation of the disassembler.
+                # When something is marked as not accessible at all,
+                # assume it is readable and executable
+                is_executable = seg.executable
+                if seg.writable == seg.readable == False:
+                    is_executable = True
+
+                memory.map_byte(ea, br.read8(), seg.writable, is_executable)
                 inst = self._bn_func.get_low_level_il_at(ea)
                 if inst and not is_unimplemented(program.bv, inst):
                     _collect_xrefs_from_inst(program.bv, program, inst, ref_eas)
