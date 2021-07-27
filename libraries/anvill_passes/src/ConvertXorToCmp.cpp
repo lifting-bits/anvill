@@ -24,6 +24,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 
+#include <optional>
 #include <tuple>
 #include <vector>
 
