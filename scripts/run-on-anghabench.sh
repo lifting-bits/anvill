@@ -10,7 +10,7 @@ export CC=clang-11 CXX=clang++-11
 
 dpkg --add-architecture i386
 apt-get update
-apt-get install -yqq curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-11 g++-multilib unzip
+apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-11 g++-multilib unzip
 apt-get install -yqq libc6-dev:i386 libstdc++-*-dev:i386
 python3 -m pip install requests
 
@@ -43,7 +43,7 @@ then
     python3 -m pip install -r requirements.txt
 fi
 
-mkdir -p $(pwd)/output
+mkdir -p $(pwd)/anvill_bitcode
 
 # default to 1k
 if [[ "${RUN_SIZE,,}" = "__run_size__" ]]
@@ -51,7 +51,7 @@ then
    RUN_SIZE=1k
 fi
 
-datasets/fetch_anghabench.sh --binaries --run-size ${RUN_SIZE}
+datasets/fetch_anghabench.sh --clang ${LLVM_VERSION} --binaries --run-size ${RUN_SIZE}
 
 for i in *.tar.xz
 do
@@ -62,9 +62,27 @@ done
 tool_run_scripts/anvill.py \
     --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
     --input-dir $(pwd)/binaries \
-    --output-dir $(pwd)/output \
+    --output-dir $(pwd)/anvill_bitcode \
     --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION}.0 \
     --slack-notify
+
+# AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY passed in from original invocation environment
+if [[ "${AWS_ACCESS_KEY_ID,,}" != "" ]]
+then
+    datenow=$(date +'%F-%H-%M')
+    url_base="https://tob-amp-ci-results.nyc3.digitaloceanspaces.com"
+    tar -Ipixz -cf anvill-ci-${datenow}.tar.xz anvill_bitcode
+
+    s3cmd -c /dev/null \
+        '--host-bucket=%(bucket)s.nyc3.digitaloceanspaces.com' \
+        --acl-public \
+        put \
+        anvill-ci-${datenow}.tar.xz \
+        s3://tob-amp-ci-results/anvill/
+
+    tool_run_scripts/slack.py \
+        --msg "Uploaded Anvill lifting results to ${url_base}/anvill/anvill-ci-${datenow}.tar.xz"
+fi
 
 # exit hook called here
 exit 0
