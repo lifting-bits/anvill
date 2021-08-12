@@ -224,6 +224,10 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
     to_remove.insert(old_inst);
     rep_map[old_inst] = new_val;
     made_progress = true;
+    // Transfer metadata from replaced instruction.
+    auto *new_inst = llvm::dyn_cast<llvm::Instruction>(new_val);
+    CHECK(new_inst);
+    new_inst->copyMetadata(*old_inst);
   } else {
     LOG(ERROR) << "Cannot replace " << remill::LLVMThingToString(old_val)
                << " with " << remill::LLVMThingToString(new_val) << " in "
@@ -373,6 +377,10 @@ llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
   } else {
     flat_gep = ir.CreateGEP(gep->getType(), base_gep, last_index);
   }
+  // Transfer metadata to flattened GEP.
+  auto *flat_gep_inst = llvm::dyn_cast<llvm::Instruction>(flat_gep);
+  CHECK(flat_gep_inst);
+  flat_gep_inst->copyMetadata(*gep);
   return flat_gep;
 }
 
