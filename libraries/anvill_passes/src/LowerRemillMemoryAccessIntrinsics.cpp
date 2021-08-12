@@ -50,8 +50,8 @@ static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPTrunc(val, call_inst->getType());
   }
-  auto* val_inst = llvm::dyn_cast<llvm::Instruction>(val);
-  call_inst->copyMetadata(*val_inst);
+  auto *val_inst = llvm::dyn_cast<llvm::Instruction>(val);
+  val_inst->copyMetadata(*call_inst);
   call_inst->replaceAllUsesWith(val);
   call_inst->eraseFromParent();
 }
@@ -69,8 +69,8 @@ static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   }
 
   val = ir.CreateStore(val, ptr);
-  auto* val_inst = llvm::dyn_cast<llvm::Instruction>(val);
-  call_inst->copyMetadata(*val_inst);
+  auto *val_inst = llvm::dyn_cast<llvm::Instruction>(val);
+  val_inst->copyMetadata(*call_inst);
   call_inst->replaceAllUsesWith(mem_ptr);
   call_inst->eraseFromParent();
 }
