@@ -225,9 +225,9 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
     rep_map[old_inst] = new_val;
     made_progress = true;
     // Transfer metadata from replaced instruction.
-    auto *new_inst = llvm::dyn_cast<llvm::Instruction>(new_val);
-    CHECK(new_inst);
-    new_inst->copyMetadata(*old_inst);
+    if (auto *new_inst = llvm::dyn_cast<llvm::Instruction>(new_val)) {
+      new_inst->copyMetadata(*old_inst);
+    }
   } else {
     LOG(ERROR) << "Cannot replace " << remill::LLVMThingToString(old_val)
                << " with " << remill::LLVMThingToString(new_val) << " in "
