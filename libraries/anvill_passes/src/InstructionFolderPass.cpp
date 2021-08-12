@@ -506,10 +506,6 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
     IncomingValue new_incoming_value;
     new_incoming_value.value =
         builder.CreateBinOp(opcode, incoming_value.value, operand);
-    auto *new_incoming_ins =
-        llvm::dyn_cast<llvm::Instruction>(new_incoming_value.value);
-    CHECK(new_incoming_ins);
-    new_incoming_ins->copyMetadata(*binary_op_instr);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
