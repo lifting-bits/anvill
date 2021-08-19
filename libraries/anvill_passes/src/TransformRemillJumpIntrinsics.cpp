@@ -25,12 +25,14 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Intrinsics.h>
-#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Pass.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Transforms/Scalar/DCE.h>
+#include <llvm/Transforms/Scalar/SROA.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/Utils/Local.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
@@ -61,13 +63,14 @@ enum ReturnAddressResult {
   kUnclassifiableProgramCounter
 };
 
-class TransformRemillJumpIntrinsics final : public llvm::FunctionPass {
+class TransformRemillJumpIntrinsics final
+    : public llvm::PassInfoMixin<TransformRemillJumpIntrinsics> {
  public:
   TransformRemillJumpIntrinsics(const EntityLifter &lifter_)
-      : llvm::FunctionPass(ID),
-        xref_resolver_(lifter_) {}
+      : xref_resolver_(lifter_) {}
 
-  bool runOnFunction(llvm::Function &func) final;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 
  private:
   ReturnAddressResult QueryReturnAddress(llvm::Module *module,
@@ -75,11 +78,8 @@ class TransformRemillJumpIntrinsics final : public llvm::FunctionPass {
 
   bool TransformJumpIntrinsic(llvm::CallBase *call);
 
-  static char ID;
   const CrossReferenceResolver xref_resolver_;
 };
-
-char TransformRemillJumpIntrinsics::ID = '\0';
 
 // Returns `true` if `val` is a possible return address
 ReturnAddressResult
@@ -176,7 +176,9 @@ bool TransformRemillJumpIntrinsics::TransformJumpIntrinsic(
 
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
-bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+TransformRemillJumpIntrinsics::run(llvm::Function &func,
+                                   llvm::FunctionAnalysisManager &fam) {
   const auto module = func.getParent();
   const auto &dl = module->getDataLayout();
   auto calls = FindFunctionCalls(func, [&](llvm::CallBase *call) -> bool {
@@ -202,17 +204,17 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
 
     // Run private function passes if the jump instrinsics
     // are replaced
-    llvm::legacy::FunctionPassManager fpm(module);
-    fpm.add(llvm::createDeadCodeEliminationPass());
-    fpm.add(llvm::createSROAPass());
-    fpm.add(llvm::createCFGSimplificationPass());
-    fpm.add(llvm::createInstructionCombiningPass());
-    fpm.doInitialization();
-    fpm.run(func);
-    fpm.doFinalization();
+    llvm::FunctionPassManager fpm;
+    fpm.addPass(llvm::DCEPass());
+    fpm.addPass(llvm::SROA());
+    fpm.addPass(llvm::SimplifyCFGPass());
+    // TODO(alex): It doesn't seem to like this and complains about the pass not being registered.
+    // Perhaps it's because we're nesting pass managers?
+    // fpm.addPass(llvm::InstCombinePass());
+    fpm.run(func, fam);
   }
 
-  return ret;
+  return ret ? llvm::PreservedAnalyses::none() : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -230,9 +232,9 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
 // indirect jump and fixes the intrinsics for them. The pass should be run before
 // `RemoveRemillFunctionReturns` and as late as possible in the list
 
-llvm::FunctionPass *
-CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter) {
-  return new TransformRemillJumpIntrinsics(lifter);
+void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
+                                      const EntityLifter &lifter) {
+  fpm.addPass(TransformRemillJumpIntrinsics(lifter));
 }
 
 }  // namespace anvill
