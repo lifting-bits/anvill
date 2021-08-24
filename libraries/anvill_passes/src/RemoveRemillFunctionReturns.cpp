@@ -15,8 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Analysis/CrossReferenceResolver.h>
+#include "Utils.h"
+
 #include <anvill/Analysis/Utils.h>
+#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
@@ -34,8 +36,6 @@
 
 #include <utility>
 #include <vector>
-
-#include "Utils.h"
 
 namespace anvill {
 namespace {

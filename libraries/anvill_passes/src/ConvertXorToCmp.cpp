@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Utils.h"
+
 #include <anvill/ABI.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constants.h>
@@ -27,8 +29,6 @@
 #include <optional>
 #include <tuple>
 #include <vector>
-
-#include "Utils.h"
 
 namespace anvill {
 namespace {
