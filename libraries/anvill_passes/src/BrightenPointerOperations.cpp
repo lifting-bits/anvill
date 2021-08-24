@@ -1071,7 +1071,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
         // DLOG(ERROR) << "Replacing:\n";
         // DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
         // DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
-        CopyMetadataTo(rep_inst, inst);
+        CopyMetadataTo(inst, rep_inst);
         inst->replaceAllUsesWith(rep_inst);
       } else {
         DLOG(ERROR) << "Can't replace these two:\n";
