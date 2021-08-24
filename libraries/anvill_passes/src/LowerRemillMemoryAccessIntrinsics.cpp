@@ -46,12 +46,13 @@ static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   auto addr = call_inst->getArgOperand(1);
   llvm::IRBuilder<> ir(call_inst);
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  CopyMetadataTo(call_inst, ptr);
   llvm::Value *val = ir.CreateLoad(ptr);
+  CopyMetadataTo(call_inst, val);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPTrunc(val, call_inst->getType());
+    CopyMetadataTo(call_inst, val);
   }
-  auto *val_inst = llvm::dyn_cast<llvm::Instruction>(val);
-  val_inst->copyMetadata(*call_inst);
   call_inst->replaceAllUsesWith(val);
   call_inst->eraseFromParent();
 }
@@ -64,13 +65,14 @@ static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
 
   llvm::IRBuilder<> ir(call_inst);
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  CopyMetadataTo(call_inst, ptr);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPExt(val, val_type);
+    CopyMetadataTo(call_inst, val);
   }
 
   val = ir.CreateStore(val, ptr);
-  auto *val_inst = llvm::dyn_cast<llvm::Instruction>(val);
-  val_inst->copyMetadata(*call_inst);
+  CopyMetadataTo(call_inst, val);
   call_inst->replaceAllUsesWith(mem_ptr);
   call_inst->eraseFromParent();
 }

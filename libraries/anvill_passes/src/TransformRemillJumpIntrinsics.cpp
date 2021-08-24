@@ -39,6 +39,8 @@
 #include <utility>
 #include <vector>
 
+#include "Utils.h"
+
 
 namespace anvill {
 namespace {
@@ -158,6 +160,7 @@ bool TransformRemillJumpIntrinsics::TransformJumpIntrinsic(
     // undef state pointer argument
     auto state_ptr_arg = call->getArgOperand(remill::kStatePointerArgNum);
     auto undef_val = llvm::UndefValue::get(state_ptr_arg->getType());
+    CopyMetadataTo(state_ptr_arg, undef_val);
     call->setArgOperand(remill::kStatePointerArgNum, undef_val);
 
     call->setCalledOperand(intrinsic);

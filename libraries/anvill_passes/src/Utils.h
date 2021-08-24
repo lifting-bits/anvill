@@ -54,4 +54,7 @@ std::string GetFunctionIR(llvm::Function &func);
 // Returns the module's IR
 std::string GetModuleIR(llvm::Module &module);
 
+// Copies metadata from the source to destination if both values are instructions.
+void CopyMetadataTo(llvm::Value *src, llvm::Value *dst);
+
 }  // namespace anvill

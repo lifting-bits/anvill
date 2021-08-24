@@ -15,8 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/Analysis/Utils.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
+#include <anvill/Analysis/Utils.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
@@ -34,6 +34,8 @@
 
 #include <utility>
 #include <vector>
+
+#include "Utils.h"
 
 namespace anvill {
 namespace {
@@ -138,6 +140,7 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
   auto ret_addr =
       llvm::dyn_cast<llvm::Instruction>(call->getArgOperand(remill::kPCArgNum));
   auto mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
+  CopyMetadataTo(call, mem_ptr);
   call->replaceAllUsesWith(mem_ptr);
   call->eraseFromParent();
 
@@ -226,12 +229,16 @@ static void OverwriteReturnAddress(
 
     // Store the return address.
     llvm::IRBuilder<> ir(call);
-    ir.CreateStore(ret_addr,
-                   ir.CreateBitCast(addr_of_ret_addr,
-                                    llvm::PointerType::get(ret_addr_type, 0)));
+    auto *bit_cast = ir.CreateBitCast(addr_of_ret_addr,
+                                      llvm::PointerType::get(ret_addr_type, 0));
+    CopyMetadataTo(call, bit_cast);
+    auto *store = ir.CreateStore(ret_addr, bit_cast);
+    CopyMetadataTo(call, store);
 
     // Get rid of the `__remill_function_return`.
-    call->replaceAllUsesWith(call->getArgOperand(remill::kMemoryPointerArgNum));
+    auto *mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
+    CopyMetadataTo(call, mem_ptr);
+    call->replaceAllUsesWith(mem_ptr);
     call->eraseFromParent();
   }
 }

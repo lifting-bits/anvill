@@ -17,12 +17,14 @@
 
 #include <anvill/ABI.h>
 #include <llvm/IR/Constants.h>
-#include <llvm/IR/Instructions.h>
 #include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 
 #include <vector>
+
+#include "Utils.h"
 
 namespace anvill {
 namespace {
@@ -54,7 +56,9 @@ bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
 
   auto changed = false;
   for (auto call : calls) {
-    call->replaceAllUsesWith(llvm::UndefValue::get(call->getType()));
+    auto *undef_val = llvm::UndefValue::get(call->getType());
+    CopyMetadataTo(call, undef_val);
+    call->replaceAllUsesWith(undef_val);
     call->eraseFromParent();
     changed = true;
   }

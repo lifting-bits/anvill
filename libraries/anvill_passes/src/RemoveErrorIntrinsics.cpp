@@ -78,7 +78,9 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
       CHECK_EQ(inst->getParent(), block);
 
       if (auto itype = inst->getType(); itype && !itype->isVoidTy()) {
-        inst->replaceAllUsesWith(llvm::UndefValue::get(itype));
+        auto *undef_val = llvm::UndefValue::get(itype);
+        CopyMetadataTo(inst, undef_val);
+        inst->replaceAllUsesWith(undef_val);
       }
 
       inst->dropAllReferences();
@@ -147,12 +149,16 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
         llvm::BasicBlock *phi_block = phi->getParent();
         unreachable_blocks.insert(phi_block);
         affected_blocks.insert(phi_block);
-        phi->replaceAllUsesWith(llvm::UndefValue::get(phi->getType()));
+        auto *undef_val = llvm::UndefValue::get(phi->getType());
+        CopyMetadataTo(phi, undef_val);
+        phi->replaceAllUsesWith(undef_val);
         phi->dropAllReferences();
         phi->eraseFromParent();
 
       } else if (new_incoming_vals.size() == 1u) {
-        phi->replaceAllUsesWith(new_incoming_vals[0]);
+        auto *new_val = new_incoming_vals[0];
+        CopyMetadataTo(phi, new_val);
+        phi->replaceAllUsesWith(new_val);
         phi->dropAllReferences();
         phi->eraseFromParent();
 

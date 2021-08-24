@@ -141,6 +141,7 @@ void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
     const FunctionAnalysis &analysis) {
 
   for (const auto &replacement : analysis.replacement_list) {
+    CopyMetadataTo(replacement.use_to_replace->get(), replacement.replace_with);
     replacement.use_to_replace->set(replacement.replace_with);
   }
 

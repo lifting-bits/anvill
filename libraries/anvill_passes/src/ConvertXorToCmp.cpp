@@ -28,6 +28,8 @@
 #include <tuple>
 #include <vector>
 
+#include "Utils.h"
+
 namespace anvill {
 namespace {
 
@@ -196,9 +198,7 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
     // negate predicate
     auto neg_cmp = negateCmpPredicate(cmp);
     if (neg_cmp) {
-      auto *neg_cmp_inst = llvm::dyn_cast<llvm::Instruction>(neg_cmp);
-      CHECK(neg_cmp_inst);
-      neg_cmp_inst->copyMetadata(*xori);
+      CopyMetadataTo(xori, neg_cmp);
       replaced_items += 1;
 
       // invert all branches
