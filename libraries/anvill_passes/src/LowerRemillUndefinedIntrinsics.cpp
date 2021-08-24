@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Utils.h"
+
 #include <anvill/ABI.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstIterator.h>
@@ -23,8 +25,6 @@
 #include <llvm/Pass.h>
 
 #include <vector>
-
-#include "Utils.h"
 
 namespace anvill {
 namespace {

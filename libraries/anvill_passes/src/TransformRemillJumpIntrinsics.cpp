@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Utils.h"
+
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
@@ -38,8 +40,6 @@
 
 #include <utility>
 #include <vector>
-
-#include "Utils.h"
 
 
 namespace anvill {
