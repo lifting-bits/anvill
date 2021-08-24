@@ -181,8 +181,8 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
 }
 
 void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
-  llvm::Instruction *src_inst = llvm::dyn_cast<llvm::Instruction>(src),
-                    *dst_inst = llvm::dyn_cast<llvm::Instruction>(dst);
+  llvm::Instruction *src_inst = llvm::dyn_cast_or_null<llvm::Instruction>(src),
+                    *dst_inst = llvm::dyn_cast_or_null<llvm::Instruction>(dst);
   if (src_inst && dst_inst) {
     dst_inst->copyMetadata(*src_inst);
   }
