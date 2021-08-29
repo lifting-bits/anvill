@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Utils.h"
+
 #include <anvill/ABI.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constants.h>
@@ -196,6 +198,7 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
     // negate predicate
     auto neg_cmp = negateCmpPredicate(cmp);
     if (neg_cmp) {
+      CopyMetadataTo(xori, neg_cmp);
       replaced_items += 1;
 
       // invert all branches

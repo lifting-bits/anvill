@@ -183,12 +183,14 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
         var_address = maybe_prev_var_decl->address;
         entity = entity_lifter.LiftEntity(*maybe_prev_var_decl);
       }
+      CopyMetadataTo(val, entity);
 
       // TODO(pag): Can we do better than an `i8 *`?
       if (entity && is_var && var_address < ra.u.address) {
         auto i8_ptr_ty = llvm::Type::getInt8PtrTy(context);
         entity = remill::BuildPointerToOffset(
             ir, entity, ra.u.address - var_address, i8_ptr_ty);
+        CopyMetadataTo(val, entity);
       }
     }
 
@@ -198,11 +200,14 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
             context, dl.getPointerSizeInBits(
                          entity->getType()->getPointerAddressSpace()));
         entity = ir.CreatePtrToInt(entity, intptr_ty);
+        CopyMetadataTo(val, entity);
         entity = ir.CreateZExtOrTrunc(entity, val->getType());
+        CopyMetadataTo(val, entity);
         xref_use.use->set(entity);
 
       } else if (val_type->isPointerTy()) {
         entity = ir.CreatePointerBitCastOrAddrSpaceCast(entity, val_type);
+        CopyMetadataTo(val, entity);
         xref_use.use->set(entity);
 
       } else {

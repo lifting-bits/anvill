@@ -15,10 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Utils.h"
+
 #include <anvill/ABI.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
 
@@ -56,8 +58,9 @@ bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
   for (auto call : calls) {
     auto val = call->getArgOperand(0)->stripPointerCasts();
     llvm::IRBuilder<> ir(call);
-    call->replaceAllUsesWith(
-        ir.CreateBitOrPointerCast(val, call->getType()));
+    auto *cast_val = ir.CreateBitOrPointerCast(val, call->getType());
+    CopyMetadataTo(call, cast_val);
+    call->replaceAllUsesWith(cast_val);
     changed = true;
   }
 

@@ -429,6 +429,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
         stack_frame_part.alloca_instr,
         {builder.getInt32(0), builder.getInt32(0), builder.getInt32(offset)});
 
+    CopyMetadataTo(gep_instr.instr, new_gep);
     gep_instr.instr->replaceAllUsesWith(new_gep);
   }
 
@@ -456,6 +457,7 @@ SplitStackFrameAtReturnAddress::SplitStackFrame(
   // usages with the first stack frame part
   if (!stack_analysis.stack_frame_alloca->use_empty()) {
     auto &first_stack_frame_part = allocated_part_list.front();
+    CopyMetadataTo(stack_analysis.stack_frame_alloca, first_stack_frame_part.alloca_instr);
 
     stack_analysis.stack_frame_alloca->replaceAllUsesWith(
         first_stack_frame_part.alloca_instr);

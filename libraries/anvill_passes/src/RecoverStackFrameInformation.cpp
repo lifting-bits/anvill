@@ -413,6 +413,7 @@ RecoverStackFrameInformation::UpdateFunction(
     auto stack_frame_ptr = builder.CreateGEP(
         stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
                              builder.getInt32(zero_based_offset)});
+    CopyMetadataTo(sp_use.use->get(), stack_frame_ptr);
 
     stack_frame_ptr = builder.CreateBitOrPointerCast(
         stack_frame_ptr, obj->getType());
@@ -420,6 +421,7 @@ RecoverStackFrameInformation::UpdateFunction(
     // We now have to replace the operand; it is not correct to use
     // `replaceAllUsesWith` on the operand, because the scope of a constant
     // could be bigger than just the function we are using.
+    CopyMetadataTo(sp_use.use->get(), stack_frame_ptr);
     sp_use.use->set(stack_frame_ptr);
   }
 

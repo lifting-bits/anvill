@@ -57,6 +57,7 @@ bool RemoveDelaySlotIntrinsics::runOnFunction(llvm::Function &func) {
 
   for (llvm::CallBase *call : calls) {
     auto mem_ptr = call->getArgOperand(0);
+    CopyMetadataTo(call, mem_ptr);
     call->replaceAllUsesWith(mem_ptr);
     call->eraseFromParent();
   }

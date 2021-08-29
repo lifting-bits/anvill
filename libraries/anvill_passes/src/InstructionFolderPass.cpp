@@ -263,7 +263,7 @@ bool InstructionFolderPass::FoldSelectInstruction(
 
     // Search for a function that knows how to handle this case
     auto instr_folder_it =
-        kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
+      kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
 
     if (instr_folder_it == kSelectInstructionFolderMap.end()) {
       continue;
@@ -290,6 +290,7 @@ bool InstructionFolderPass::FoldSelectInstruction(
 void InstructionFolderPass::PerformInstructionReplacements(
     const InstructionReplacementList &replacement_list) {
   for (const auto &repl : replacement_list) {
+    repl.replacement_instr->copyMetadata(*repl.original_instr);
     repl.original_instr->replaceAllUsesWith(repl.replacement_instr);
     repl.original_instr->eraseFromParent();
   }
@@ -462,10 +463,13 @@ bool InstructionFolderPass::FoldSelectWithBinaryOp(
       static_cast<llvm::Instruction::BinaryOps>(binary_op_instr->getOpcode());
 
   auto new_true_value = builder.CreateBinOp(opcode, true_value, operand);
+  CopyMetadataTo(binary_op_instr, new_true_value);
   auto new_false_value = builder.CreateBinOp(opcode, false_value, operand);
+  CopyMetadataTo(binary_op_instr, new_false_value);
 
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
+  CopyMetadataTo(select_instr, replacement);
 
   output = llvm::dyn_cast<llvm::Instruction>(replacement);
   return true;
@@ -505,6 +509,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
     IncomingValue new_incoming_value;
     new_incoming_value.value =
         builder.CreateBinOp(opcode, incoming_value.value, operand);
+    CopyMetadataTo(binary_op_instr, new_incoming_value.value);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
@@ -515,6 +520,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
 
   auto new_phi_node =
       builder.CreatePHI(phi_node->getType(), new_incoming_values.size());
+  new_phi_node->copyMetadata(*phi_node);
 
   for (auto &new_incoming_value : new_incoming_values) {
     new_phi_node->addIncoming(new_incoming_value.value,
@@ -546,12 +552,15 @@ bool InstructionFolderPass::FoldSelectWithCastInst(
 
   auto new_true_value =
       builder.CreateCast(cast_opcode, true_value, destination_type);
+  CopyMetadataTo(cast_instr, new_true_value);
 
   auto new_false_value =
       builder.CreateCast(cast_opcode, false_value, destination_type);
+  CopyMetadataTo(cast_instr, new_false_value);
 
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
+  CopyMetadataTo(select_instr, replacement);
 
   output = llvm::dyn_cast<llvm::Instruction>(replacement);
   return true;
@@ -584,6 +593,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
     IncomingValue new_incoming_value;
     new_incoming_value.value =
         builder.CreateCast(cast_opcode, incoming_value.value, destination_type);
+    CopyMetadataTo(cast_instr, new_incoming_value.value);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_values.push_back(std::move(new_incoming_value));
@@ -596,6 +606,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
 
   auto new_phi_node =
       builder.CreatePHI(destination_type, new_incoming_values.size());
+  new_phi_node->copyMetadata(*phi_node);
 
   for (auto &new_incoming_value : new_incoming_values) {
     new_phi_node->addIncoming(new_incoming_value.value,
@@ -627,8 +638,10 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
     if (index == select_instr) {
       index = true_value;
       new_true_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      CopyMetadataTo(gep_instr, new_true_value);
       index = false_value;
       new_false_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      CopyMetadataTo(gep_instr, new_false_value);
       break;
     }
   }
@@ -639,6 +652,7 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
 
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
+  CopyMetadataTo(select_instr, replacement);
 
   output = llvm::dyn_cast<llvm::Instruction>(replacement);
   return true;
@@ -763,6 +777,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     new_incoming_value.value =
         builder.CreateGEP(value_map[base_ptr][incoming_value.basic_block],
                           mapped_index_list);
+    CopyMetadataTo(gep_instr, new_incoming_value.value);
 
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
@@ -773,6 +788,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
 
   auto new_phi_node =
       builder.CreatePHI(gep_instr->getType(), new_incoming_values.size());
+  new_phi_node->copyMetadata(*phi_node);
 
   for (auto &new_incoming_value : new_incoming_values) {
     new_phi_node->addIncoming(new_incoming_value.value,
