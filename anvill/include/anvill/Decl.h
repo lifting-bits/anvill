@@ -173,6 +173,9 @@ struct FunctionDecl {
   // Is this a variadic function?
   bool is_variadic{false};
 
+  // Does this function have a return address?
+  bool has_return_address{false};
+
   // The calling convention of this function.
   llvm::CallingConv::ID calling_convention{llvm::CallingConv::C};
 

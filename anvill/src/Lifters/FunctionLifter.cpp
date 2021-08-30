@@ -1583,12 +1583,14 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   }
 
   // Put the function's return address wherever it needs to go.
-  if (options.symbolic_return_address) {
-    mem_ptr =
-        InitializeSymbolicReturnAddress(block, mem_ptr, decl.return_address);
-  } else {
-    mem_ptr =
-        InitializeConcreteReturnAddress(block, mem_ptr, decl.return_address);
+  if (decl.has_return_address) {
+    if (options.symbolic_return_address) {
+      mem_ptr =
+          InitializeSymbolicReturnAddress(block, mem_ptr, decl.return_address);
+    } else {
+      mem_ptr =
+          InitializeConcreteReturnAddress(block, mem_ptr, decl.return_address);
+    }
   }
 
   // Store the function parameters either into the state struct
