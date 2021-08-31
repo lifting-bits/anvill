@@ -314,7 +314,7 @@ llvm::Expected<FunctionDecl> FunctionDecl::Create(llvm::Function &func,
   decl.type = func.getFunctionType();
   decl.is_variadic = func.isVarArg();
   decl.is_noreturn = func.hasFnAttribute(llvm::Attribute::NoReturn);
-  // TODO(alex): How do we figure out whether an LLVM function is the program entrypoint?
+  decl.has_return_address = true;
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch
