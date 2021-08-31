@@ -105,8 +105,7 @@ class Function(object):
             proto["is_variadic"] = True
         if self.is_noreturn():
             proto["is_noreturn"] = True
-        if self.has_return_address():
-            proto["has_return_address"] = True
+        proto["has_return_address"] = self.has_return_address()
         if self._cc:
             proto["calling_convention"] = self._cc
         if self._register_info:
