@@ -336,16 +336,16 @@ conditionally throw an exception, and thus returns may not always be guaranteed.
 
 #### Return addresses
 
-If the function being specified has a return address (it is not the program
-entrypoint), then the following must be provided.
+If the function being specified does not have a return address (it is the
+program entrypoint), then the following must be provided.
 
 ```json
-            "has_return_address": true,
+            "has_return_address": false,
 ```
 
-The absence of `has_return_address`, as well as a `false` value to
-`has_return_address`, are treated identically meaning "the function has no
-return address".
+The absence of `has_return_address`, as well as a `true` value to
+`has_return_address`, are treated identically meaning "the function has a return
+address".
 
 #### Calling convention
 
