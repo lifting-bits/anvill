@@ -57,6 +57,29 @@ static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   call_inst->eraseFromParent();
 }
 
+// Lower a memory read intrinsic with 3 arguments into `load` and
+// `store` instructions.
+static void ReplaceFpMemReadOp(llvm::CallBase *call_inst,
+                               llvm::Type *val_type) {
+  auto mem_ptr = call_inst->getArgOperand(0);
+  auto addr = call_inst->getArgOperand(1);
+
+  llvm::IRBuilder<> ir(call_inst);
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  CopyMetadataTo(call_inst, ptr);
+  llvm::Value *val = ir.CreateLoad(ptr);
+  CopyMetadataTo(call_inst, val);
+
+  auto val_ptr = ir.CreateIntToPtr(call_inst->getArgOperand(2),
+                                   llvm::PointerType::get(val_type, 0));
+  CopyMetadataTo(call_inst, val_ptr);
+  (void) ir.CreateStore(val, val_ptr);
+  CopyMetadataTo(call_inst, val);
+  call_inst->replaceAllUsesWith(mem_ptr);
+  call_inst->eraseFromParent();
+}
+
+
 // Lower a memory write intrinsic into a `store` instruction.
 static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   auto mem_ptr = call_inst->getArgOperand(0);
@@ -97,23 +120,32 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
     }
   };
 
-  // `val = __remill_read_memory_NN(mem, addr)`.
+
   if (func_name.startswith("__remill_read_memory_")) {
-    const auto val_type = adjust_val_type(call->getType());
-    ReplaceMemReadOp(call, val_type);
-    return true;
+
+    // `val = __remill_read_memory_NN(mem, addr)`.
+    if (call->getNumArgOperands() == 2) {
+      const auto val_type = adjust_val_type(call->getType());
+      ReplaceMemReadOp(call, val_type);
+      return true;
+
+    // `mem = __remill_read_memory_NN(mem, addr, val&)`.
+    } else if (call->getNumArgOperands() == 3) {
+      const auto val_type = adjust_val_type(call->getArgOperand(2)->getType());
+      ReplaceFpMemReadOp(call, val_type);
+      return true;
+    }
 
   // `mem = __remill_write_memory_NN(mem, addr, val)`.
   } else if (func_name.startswith("__remill_write_memory_")) {
     const auto val_type = adjust_val_type(call->getArgOperand(2)->getType());
     ReplaceMemWriteOp(call, val_type);
     return true;
-
-  } else {
-    LOG(ERROR) << "Missing support for lowering memory operation "
-               << func_name.str();
-    return false;
   }
+
+  LOG(ERROR) << "Missing support for lowering memory operation "
+             << func_name.str();
+  return false;
 }
 
 // Try to lower remill memory access intrinsics.
