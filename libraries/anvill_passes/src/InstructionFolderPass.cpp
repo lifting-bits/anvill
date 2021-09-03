@@ -547,17 +547,6 @@ bool InstructionFolderPass::FoldSelectWithCastInst(
     destination_type = instr->getDestTy();
   }
 
-  llvm::IRBuilder<> builder(cast_instr);
-
-  auto new_true_value =
-      builder.CreateCast(cast_opcode, true_value, destination_type);
-  CopyMetadataTo(cast_instr, new_true_value);
-
-  auto new_false_value =
-      builder.CreateCast(cast_opcode, false_value, destination_type);
-  CopyMetadataTo(cast_instr, new_false_value);
-
-
   // For vector select check if the condition element type is correct
   // and the number of elements in the condition type matches if the
   // destination type.
@@ -583,6 +572,17 @@ bool InstructionFolderPass::FoldSelectWithCastInst(
   if (!should_fold(condition->getType(), destination_type)) {
     return false;
   }
+
+  llvm::IRBuilder<> builder(cast_instr);
+
+  auto new_true_value =
+      builder.CreateCast(cast_opcode, true_value, destination_type);
+  CopyMetadataTo(cast_instr, new_true_value);
+
+  auto new_false_value =
+      builder.CreateCast(cast_opcode, false_value, destination_type);
+  CopyMetadataTo(cast_instr, new_false_value);
+
 
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
