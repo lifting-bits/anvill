@@ -41,9 +41,8 @@ namespace {
 //  - PHINode: kPHINodeFolderMap
 //
 
-using InstructionFolder =
-    bool (InstructionFolderPass::*)(InstructionFolderPass::InstructionList &,
-                                    llvm::Instruction *);
+using InstructionFolder = bool (InstructionFolderPass::*)(
+    InstructionFolderPass::InstructionList &, llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap = {
@@ -103,9 +102,9 @@ const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstruct
 // clang-format on
 
 // Case handlers for `PHINode` instructions
-using PHINodeInstructionFolder =
-    bool (InstructionFolderPass::*)(llvm::Instruction *&output, llvm::Instruction *,
-             InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
+using PHINodeInstructionFolder = bool (InstructionFolderPass::*)(
+    llvm::Instruction *&output, llvm::Instruction *,
+    InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolderMap = {
@@ -263,7 +262,7 @@ bool InstructionFolderPass::FoldSelectInstruction(
 
     // Search for a function that knows how to handle this case
     auto instr_folder_it =
-      kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
+        kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
 
     if (instr_folder_it == kSelectInstructionFolderMap.end()) {
       continue;
@@ -558,6 +557,33 @@ bool InstructionFolderPass::FoldSelectWithCastInst(
       builder.CreateCast(cast_opcode, false_value, destination_type);
   CopyMetadataTo(cast_instr, new_false_value);
 
+
+  // For vector select check if the condition element type is correct
+  // and the number of elements in the condition type matches if the
+  // destination type.
+  auto should_fold = [](llvm::Type *condition_type,
+                        llvm::Type *destination_type) {
+    if (auto cond_vt = llvm::dyn_cast<llvm::VectorType>(condition_type)) {
+      if (cond_vt->getElementType() !=
+          llvm::Type::getInt1Ty(condition_type->getContext())) {
+        return false;
+      }
+
+      if (auto dest_vt = llvm::dyn_cast<llvm::VectorType>(destination_type)) {
+        if (dest_vt->getElementCount() == cond_vt->getElementCount()) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return true;
+  };
+
+  if (!should_fold(condition->getType(), destination_type)) {
+    return false;
+  }
+
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
   CopyMetadataTo(select_instr, replacement);
@@ -671,7 +697,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
   // If the GEP instruction is in a different block than the PHI node then
   // we can't replace the GEP with a PHI of a bunch of GEPs because then
   // we can't prove that this new PHI dominates all uses of the GEP.
-  llvm::BasicBlock * const curr_block = phi_node->getParent();
+  llvm::BasicBlock *const curr_block = phi_node->getParent();
   if (gep_instr->getParent() != curr_block) {
     return false;
   }
@@ -748,7 +774,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
   // Now check that we can hoist this GEP out. This requires that we have
   // something in the value map for all operands of the GEP.
   for (llvm::Use &op : gep_instr->operands()) {
-    llvm::Value * const v = op.get();
+    llvm::Value *const v = op.get();
     if (value_map.find(v) == value_map.end()) {
       return false;
     }
@@ -774,9 +800,8 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
 
     IncomingValue new_incoming_value;
     new_incoming_value.basic_block = incoming_value.basic_block;
-    new_incoming_value.value =
-        builder.CreateGEP(value_map[base_ptr][incoming_value.basic_block],
-                          mapped_index_list);
+    new_incoming_value.value = builder.CreateGEP(
+        value_map[base_ptr][incoming_value.basic_block], mapped_index_list);
     CopyMetadataTo(gep_instr, new_incoming_value.value);
 
     new_incoming_values.push_back(std::move(new_incoming_value));
