@@ -173,7 +173,11 @@ struct FunctionDecl {
   // Is this a variadic function?
   bool is_variadic{false};
 
-  // Does this function have a return address?
+  // Does this function have a return address? Most functions are provided a
+  // return address on the stack, however the program entrypoint (usually
+  // `_start`) won't have one. When we initialize the stack frame, we should
+  // take note of this flag and in the case of the program entrypoint, omit the
+  // symbolic return address from the stack frame.
   bool has_return_address{true};
 
   // The calling convention of this function.
