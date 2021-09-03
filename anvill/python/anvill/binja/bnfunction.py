@@ -38,7 +38,7 @@ class BNFunction(Function):
         param_list,
         ret_list,
         func_type,
-        has_return_address,
+        has_return_address=True,
         is_external=False,
     ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
