@@ -168,13 +168,16 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
         return false;
     }
 
-  // `mem = __remill_write_memory_NN(mem, addr, val)`.
   } else if (func_name.startswith("__remill_write_memory_")) {
     auto arg3_type = call->getArgOperand(2)->getType();
+
+    // `mem = __remill_write_memory_NN(mem, addr, val&)`.
     if (llvm::isa<llvm::PointerType>(arg3_type)) {
       const auto val_type = adjust_val_type(arg3_type);
       ReplaceMemWriteOpFromRef(call, val_type);
       return true;
+
+      // `mem = __remill_write_memory_NN(mem, addr, val)`.
     } else {
       const auto val_type = adjust_val_type(arg3_type);
       ReplaceMemWriteOp(call, val_type);
