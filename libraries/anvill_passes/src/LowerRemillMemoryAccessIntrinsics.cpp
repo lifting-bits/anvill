@@ -59,8 +59,8 @@ static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
 
 // Lower a memory read intrinsic with 3 arguments into `load` and
 // `store` instructions.
-static void ReplaceFpMemReadOp(llvm::CallBase *call_inst,
-                               llvm::Type *val_type) {
+static void ReplaceMemReadOpToRef(llvm::CallBase *call_inst,
+                                  llvm::Type *val_type) {
   auto mem_ptr = call_inst->getArgOperand(0);
   auto addr = call_inst->getArgOperand(1);
 
@@ -70,10 +70,10 @@ static void ReplaceFpMemReadOp(llvm::CallBase *call_inst,
   llvm::Value *val = ir.CreateLoad(ptr);
   CopyMetadataTo(call_inst, val);
 
-  auto val_ptr = ir.CreateIntToPtr(call_inst->getArgOperand(2),
-                                   llvm::PointerType::get(val_type, 0));
+  auto val_ptr = ir.CreateBitCast(call_inst->getArgOperand(2),
+                                  llvm::PointerType::get(val_type, 0));
   CopyMetadataTo(call_inst, val_ptr);
-  (void) ir.CreateStore(val, val_ptr);
+  val = ir.CreateStore(val, val_ptr);
   CopyMetadataTo(call_inst, val);
   call_inst->replaceAllUsesWith(mem_ptr);
   call_inst->eraseFromParent();
@@ -89,6 +89,30 @@ static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   llvm::IRBuilder<> ir(call_inst);
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
   CopyMetadataTo(call_inst, ptr);
+  if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
+    val = ir.CreateFPExt(val, val_type);
+    CopyMetadataTo(call_inst, val);
+  }
+
+  val = ir.CreateStore(val, ptr);
+  CopyMetadataTo(call_inst, val);
+  call_inst->replaceAllUsesWith(mem_ptr);
+  call_inst->eraseFromParent();
+}
+
+// Lower a memory write intrinsic passing value by reference with `store`
+// instruction
+static void ReplaceMemWriteOpFromRef(llvm::CallBase *call_inst,
+                                     llvm::Type *val_type) {
+  auto mem_ptr = call_inst->getArgOperand(0);
+  auto addr = call_inst->getArgOperand(1);
+  auto val_ptr = call_inst->getArgOperand(2);
+
+  llvm::IRBuilder<> ir(call_inst);
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  CopyMetadataTo(call_inst, ptr);
+
+  llvm::Value *val = ir.CreateLoad(val_ptr);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPExt(val, val_type);
     CopyMetadataTo(call_inst, val);
@@ -122,25 +146,40 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 
 
   if (func_name.startswith("__remill_read_memory_")) {
+    switch (call->getNumArgOperands()) {
 
-    // `val = __remill_read_memory_NN(mem, addr)`.
-    if (call->getNumArgOperands() == 2) {
-      const auto val_type = adjust_val_type(call->getType());
-      ReplaceMemReadOp(call, val_type);
-      return true;
+      // `val = __remill_read_memory_NN(mem, addr)`.
+      case 2: {
+        const auto val_type = adjust_val_type(call->getType());
+        ReplaceMemReadOp(call, val_type);
+        return true;
+      }
 
-    // `mem = __remill_read_memory_NN(mem, addr, val&)`.
-    } else if (call->getNumArgOperands() == 3) {
-      const auto val_type = adjust_val_type(call->getArgOperand(2)->getType());
-      ReplaceFpMemReadOp(call, val_type);
-      return true;
+      // `mem = __remill_read_memory_NN(mem, addr, val&)`.
+      case 3: {
+        const auto val_type =
+            adjust_val_type(call->getArgOperand(2)->getType());
+        ReplaceMemReadOpToRef(call, val_type);
+        return true;
+      }
+      default:
+        LOG(ERROR) << "Missing support for lowering memory read operation "
+                   << func_name.str();
+        return false;
     }
 
   // `mem = __remill_write_memory_NN(mem, addr, val)`.
   } else if (func_name.startswith("__remill_write_memory_")) {
-    const auto val_type = adjust_val_type(call->getArgOperand(2)->getType());
-    ReplaceMemWriteOp(call, val_type);
-    return true;
+    auto arg3_type = call->getArgOperand(2)->getType();
+    if (llvm::isa<llvm::PointerType>(arg3_type)) {
+      const auto val_type = adjust_val_type(arg3_type);
+      ReplaceMemWriteOpFromRef(call, val_type);
+      return true;
+    } else {
+      const auto val_type = adjust_val_type(arg3_type);
+      ReplaceMemWriteOp(call, val_type);
+      return true;
+    }
   }
 
   LOG(ERROR) << "Missing support for lowering memory operation "
