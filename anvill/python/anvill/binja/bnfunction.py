@@ -28,14 +28,14 @@ from .xreftype import *
 from anvill.function import *
 from anvill.type import *
 
+
 def should_ignore_register(bv, reg_name):
-    _IGNORE_REGS_LIST = {
-        "aarch64": ["XZR", "WZR"]
-    }
+    _IGNORE_REGS_LIST = {"aarch64": ["XZR", "WZR"]}
     try:
-        return (reg_name.upper() in _IGNORE_REGS_LIST[bv.arch.name])
+        return reg_name.upper() in _IGNORE_REGS_LIST[bv.arch.name]
     except KeyError:
         return False
+
 
 class BNFunction(Function):
     def __init__(
@@ -183,7 +183,7 @@ class BNFunction(Function):
                     # For every register, is it a pointer?
                     possible_pointer: bn.function.RegisterValue = (
                         initial_inst.get_reg_value(item_or_list.name)
-                        )
+                    )
                     if (
                         possible_pointer.type
                         == bn.function.RegisterValueType.ConstantPointerValue
@@ -215,7 +215,7 @@ class BNFunction(Function):
                 seg = program.bv.get_segment_at(ea)
                 br.seek(ea)
 
-                #NOTE(artem): This is a workaround for binary ninja's fake
+                # NOTE(artem): This is a workaround for binary ninja's fake
                 # .externs section, which is (correctly) mapped as
                 # not readable, not writable, and not executable.
                 # because it is a fictional creation of the disassembler.

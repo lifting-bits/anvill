@@ -148,7 +148,9 @@ class BNProgram(Program):
 
         variable = self._bv.get_data_var_at(function_start)
         func = BNFunction(variable, arch, function_start, [], [], func_type, True)
-        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments")
+        DEBUG(
+            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
+        )
         return func
 
     def _get_function_parameters(self, bn_func):
@@ -166,7 +168,9 @@ class BNProgram(Program):
             self._arch, bn_func, bn_func.calling_convention
         )
 
-        DEBUG(f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters.")
+        DEBUG(
+            f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters."
+        )
         try:
             for var in bn_func.parameter_vars:
                 source_type = var.source_type
@@ -267,7 +271,9 @@ class BNProgram(Program):
                 ret_list.append(loc)
 
         func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
-        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments")
+        DEBUG(
+            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments"
+        )
         return func
 
     def get_symbols_impl(self, address):
@@ -389,10 +395,10 @@ class BNProgram(Program):
                             )
 
                             DEBUG(
-                                    "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
-                                        jump_addr, redirection_dest, function_thunk.name
-                                        )
-                                    )
+                                "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                                    jump_addr, redirection_dest, function_thunk.name
+                                )
+                            )
 
         # Now check whether we successfully redirected all thunks
         for function_thunk in function_thunk_list:
