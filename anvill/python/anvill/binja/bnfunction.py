@@ -163,6 +163,9 @@ class BNFunction(Function):
         rdi, rsi as operands in the MLIL, we should check if they have pointer information)
         """
         results = []
+
+        # item_or_list could be empty string, return early in such cases. The unimplemented
+        # operand shows up as empty string.
         if not (item_or_list and str(item_or_list)):
             return results
 
