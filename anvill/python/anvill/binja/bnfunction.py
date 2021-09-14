@@ -28,6 +28,14 @@ from .xreftype import *
 from anvill.function import *
 from anvill.type import *
 
+def should_ignore_register(bv, reg_name):
+    _IGNORE_REGS_LIST = {
+        "aarch64": ["XZR", "WZR"]
+    }
+    try:
+        return (reg_name.upper() in _IGNORE_REGS_LIST[bv.arch.name])
+    except KeyError:
+        return False
 
 class BNFunction(Function):
     def __init__(
@@ -83,6 +91,9 @@ class BNFunction(Function):
             for inst in block:
                 register_information = self._extract_types(program, inst.operands, inst)
                 for reg_info in register_information:
+                    if should_ignore_register(program.bv, reg_info[0]):
+                        continue
+
                     loc = Location()
                     loc.set_register(reg_info[0].upper())
                     loc.set_type(reg_info[1])
@@ -152,6 +163,9 @@ class BNFunction(Function):
         rdi, rsi as operands in the MLIL, we should check if they have pointer information)
         """
         results = []
+        if not (item_or_list and str(item_or_list)):
+            return results
+
         if isinstance(item_or_list, list):
             for item in item_or_list:
                 results.extend(self._extract_types(program, item, initial_inst))
@@ -165,24 +179,27 @@ class BNFunction(Function):
             if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and (
                 item_or_list.name not in ["x87control", "x87status"]
             ):
-                # For every register, is it a pointer?
-                possible_pointer: bn.function.RegisterValue = (
-                    initial_inst.get_reg_value(item_or_list.name)
-                )
-                if (
-                    possible_pointer.type
-                    == bn.function.RegisterValueType.ConstantPointerValue
-                    or possible_pointer.type
-                    == bn.function.RegisterValueType.ExternalPointerValue
-                ):  # or
-                    # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
-                    # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
-                    val_type = _convert_bn_llil_type(
-                        possible_pointer, item_or_list.info.size
-                    )
-                    results.append(
-                        (item_or_list.name, val_type, possible_pointer.value)
-                    )
+                try:
+                    # For every register, is it a pointer?
+                    possible_pointer: bn.function.RegisterValue = (
+                        initial_inst.get_reg_value(item_or_list.name)
+                        )
+                    if (
+                        possible_pointer.type
+                        == bn.function.RegisterValueType.ConstantPointerValue
+                        or possible_pointer.type
+                        == bn.function.RegisterValueType.ExternalPointerValue
+                    ):  # or
+                        # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
+                        # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
+                        val_type = _convert_bn_llil_type(
+                            possible_pointer, item_or_list.info.size
+                        )
+                        results.append(
+                            (item_or_list.name, val_type, possible_pointer.value)
+                        )
+                except KeyError:
+                    DEBUG(f"Unsupported register {item_or_list.name}")
 
                 if initial_inst.mlil is not None:
                     mlil_results = self._extract_types_mlil(

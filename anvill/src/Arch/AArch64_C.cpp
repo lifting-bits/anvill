@@ -42,6 +42,14 @@ static const std::vector<RegisterConstraint> kParamRegConstraints = {
                         VariantConstraint("X6", kTypeIntegral, kMaxBit64)}),
     RegisterConstraint({VariantConstraint("W7", kTypeIntegral, kMaxBit32),
                         VariantConstraint("X7", kTypeIntegral, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("V0", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V1", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V2", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V3", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V4", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V5", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V6", kTypeIntegral, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("V7", kTypeIntegral, kMaxBit128)}),
 
     RegisterConstraint({VariantConstraint("H0", kTypeFloat, kMaxBit16),
                         VariantConstraint("S0", kTypeFloat, kMaxBit32),
@@ -67,6 +75,15 @@ static const std::vector<RegisterConstraint> kParamRegConstraints = {
     RegisterConstraint({VariantConstraint("H7", kTypeFloat, kMaxBit16),
                         VariantConstraint("S7", kTypeFloat, kMaxBit32),
                         VariantConstraint("D7", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("Q0", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q1", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q2", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q3", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q4", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q5", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q6", kTypeFloat, kMaxBit128)}),
+    RegisterConstraint({VariantConstraint("Q7", kTypeFloat, kMaxBit128)}),
+
 };
 
 // TODO(pag): Probably totally broken.
