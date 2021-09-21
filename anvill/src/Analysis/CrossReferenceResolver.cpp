@@ -60,6 +60,8 @@ static int64_t Signed(uint64_t val, uint64_t size) {
 
 }  // namespace
 
+using ResolvedCrossReferenceCache = std::unordered_map<llvm::Value *, ResolvedCrossReference>;
+
 class CrossReferenceResolverImpl {
  public:
   CrossReferenceResolverImpl(const llvm::DataLayout &dl_,
@@ -177,7 +179,7 @@ class CrossReferenceResolverImpl {
   const EntityResolverFuncType entity_at_address;
 
   // Cache of resolved values.
-  std::unordered_map<llvm::Value *, ResolvedCrossReference> xref_cache;
+  ResolvedCrossReferenceCache xref_cache;
 };
 
 
@@ -249,6 +251,12 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
 
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
+
+  auto it = xref_cache.find(inst_val);
+  if (it != xref_cache.end()) {
+    return it->second;
+  }
+
   auto &xr = xref_cache[inst_val];
 
   auto opnd_type = inst_val->getOperand(0)->getType();
@@ -353,6 +361,12 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 // Try to resolve a constant to a cross-reference.
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
+
+  auto it = xref_cache.find(const_val);
+  if (it != xref_cache.end()) {
+    return it->second;
+  }
+
   auto &xr = xref_cache[const_val];
 
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
@@ -646,11 +660,6 @@ CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
-  auto it = xref_cache.find(val);
-  if (it != xref_cache.end()) {
-    return it->second;
-  }
-
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
 
@@ -701,15 +710,16 @@ void CrossReferenceResolver::ClearCache(void) const {
 // Try to resolve `val` as a cross-reference. `uses_cache` flag is set to true
 // if the application is using the cache and does not want to invalidate it.
 ResolvedCrossReference
-CrossReferenceResolver::TryResolveReference(llvm::Value *val,
-                                            bool uses_cache) const {
+CrossReferenceResolver::TryResolveReferenceWithCaching(llvm::Value *val) const {
+  return impl->ResolveValue(val);
+}
 
+ResolvedCrossReference
+CrossReferenceResolver::TryResolveReferenceWithClearedCache(llvm::Value *val) const {
   // If the application is not using cache, invalidate it before resolving
   // the cross references. It is done to avoid stale `val` sitting in the
   // cache if it has been changed/deleted.
-  if (!uses_cache) {
-    impl->xref_cache.clear();
-  }
+  impl->xref_cache.clear();
   return impl->ResolveValue(val);
 }
 
