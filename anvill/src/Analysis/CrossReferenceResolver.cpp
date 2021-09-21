@@ -15,14 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <glog/logging.h>
-
 #include <anvill/ABI.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Lifters/Options.h>
-
+#include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -251,9 +249,11 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
 
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
+  auto &xr = xref_cache[inst_val];
 
   auto opnd_type = inst_val->getOperand(0)->getType();
   uint64_t size = opnd_type->getPrimitiveSizeInBits();
+
   // update size if the operand is of pointer type
   if (opnd_type->isPointerTy()) {
     size = dl.getPointerSizeInBits(0);
@@ -269,8 +269,8 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
   switch (inst_val->getOpcode()) {
 #define FOLD_CASE(name) \
   case llvm::Instruction::name: { \
-    auto xr = Fold##name(ResolveValue(inst_val->getOperand(0)), \
-                         ResolveValue(inst_val->getOperand(1)), mask, size); \
+    xr = Fold##name(ResolveValue(inst_val->getOperand(0)), \
+                    ResolveValue(inst_val->getOperand(1)), mask, size); \
     xr.size = static_cast<unsigned>(out_size); \
     return xr; \
   }
@@ -292,14 +292,14 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 #undef FOLD_CASE
 
     case llvm::Instruction::ZExt: {
-      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr = ResolveValue(inst_val->getOperand(0));
       xr.u.address &= mask;
       xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::SExt: {
-      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr = ResolveValue(inst_val->getOperand(0));
       xr.u.displacement = Signed(xr.u.address, size);
       xr.u.address &= out_mask;
       xr.size = static_cast<unsigned>(out_size);
@@ -307,14 +307,14 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     }
 
     case llvm::Instruction::Trunc: {
-      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr = ResolveValue(inst_val->getOperand(0));
       xr.u.address &= out_mask;
       xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
 
     case llvm::Instruction::IntToPtr: {
-      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
           !xr.displacement_from_hinted_value_type) {
@@ -323,14 +323,14 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       return xr;
     }
 
-    case llvm::Instruction::PtrToInt:{
-       auto xr = ResolveValue(inst_val->getOperand(0));
-       xr.size = static_cast<unsigned>(out_size);
-       return xr;
+    case llvm::Instruction::PtrToInt: {
+      xr = ResolveValue(inst_val->getOperand(0));
+      xr.size = static_cast<unsigned>(out_size);
+      return xr;
     }
 
     case llvm::Instruction::BitCast: {
-      auto xr = ResolveValue(inst_val->getOperand(0));
+      xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type =
               llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
@@ -340,8 +340,8 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       return xr;
     }
 
-    case llvm::Instruction::Call:{
-      auto xr = ResolveCall(llvm::dyn_cast<llvm::CallInst>(inst_val));
+    case llvm::Instruction::Call: {
+      xr = ResolveCall(llvm::dyn_cast<llvm::CallInst>(inst_val));
       xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
@@ -353,12 +353,6 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 // Try to resolve a constant to a cross-reference.
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
-
-  auto it = xref_cache.find(const_val);
-  if (it != xref_cache.end()) {
-    return it->second;
-  }
-
   auto &xr = xref_cache[const_val];
 
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
@@ -386,7 +380,7 @@ CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
   } else if (auto cpn = llvm::dyn_cast<llvm::ConstantPointerNull>(const_val)) {
     xr.hinted_value_type = cpn->getType()->getElementType();
     xr.is_valid = true;
-    xr.size =  dl.getPointerSizeInBits(0);
+    xr.size = dl.getPointerSizeInBits(0);
 
   } else {
     xr.is_valid = false;
@@ -459,12 +453,14 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
   const auto ptr_size = dl.getPointerSizeInBits(0);
   auto opnd_type = ce->getOperand(0)->getType();
   uint64_t size = opnd_type->getPrimitiveSizeInBits();
+
   // update size if operand is pointer type
   if (opnd_type->isPointerTy()) {
     size = ptr_size;
   }
   const uint64_t mask = size < 64 ? (1ull << size) - 1ull : ~0ull;
   uint64_t out_size = ce->getType()->getPrimitiveSizeInBits();
+
   // update size if constant expr is pointer type
   if (ce->getType()->isPointerTy()) {
     out_size = ptr_size;
@@ -479,7 +475,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     auto xr = Fold##name(ResolveConstant(ce->getOperand(0)), \
                          ResolveConstant(ce->getOperand(1)), mask, size); \
     xr.size = static_cast<unsigned>(out_size); \
-		return xr; \
+    return xr; \
   }
 
       FOLD_CASE(Add)
@@ -548,8 +544,8 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
     case llvm::Instruction::ICmp: {
       auto xr = FoldICmp(ResolveConstant(ce->getOperand(0)),
-                      ResolveConstant(ce->getOperand(1)), mask, size,
-                      ce->getPredicate());
+                         ResolveConstant(ce->getOperand(1)), mask, size,
+                         ce->getPredicate());
       xr.size = static_cast<unsigned>(out_size);
       return xr;
     }
@@ -650,12 +646,16 @@ CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
 CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
+  auto it = xref_cache.find(val);
+  if (it != xref_cache.end()) {
+    return it->second;
+  }
+
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
 
   } else if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
     return ResolveInstruction(inst_val);
-
   } else {
     return {};
   }
@@ -698,9 +698,18 @@ void CrossReferenceResolver::ClearCache(void) const {
   impl->xref_cache.clear();
 }
 
-// Try to resolve `val` as a cross-reference.
+// Try to resolve `val` as a cross-reference. `uses_cache` flag is set to true
+// if the application is using the cache and does not want to invalidate it.
 ResolvedCrossReference
-CrossReferenceResolver::TryResolveReference(llvm::Value *val) const {
+CrossReferenceResolver::TryResolveReference(llvm::Value *val,
+                                            bool uses_cache) const {
+
+  // If the application is not using cache, invalidate it before resolving
+  // the cross references. It is done to avoid stale `val` sitting in the
+  // cache if it has been changed/deleted.
+  if (!uses_cache) {
+    impl->xref_cache.clear();
+  }
   return impl->ResolveValue(val);
 }
 
@@ -716,7 +725,7 @@ ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
   CHECK_NE(size, 0) << "Reference size should not be zero!";
 
   switch (std::min(size, dl.getPointerSizeInBits(0))) {
-    case 8:  displacement = static_cast<std::int8_t> (u.displacement); break;
+    case 8: displacement = static_cast<std::int8_t>(u.displacement); break;
     case 16: displacement = static_cast<std::int16_t>(u.displacement); break;
     case 32: displacement = static_cast<std::int32_t>(u.displacement); break;
     case 64: displacement = u.displacement; break;

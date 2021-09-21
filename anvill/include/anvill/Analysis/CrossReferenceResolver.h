@@ -126,7 +126,8 @@ class CrossReferenceResolver {
   void ClearCache(void) const;
 
   // Try to resolve `val` as a cross-reference.
-  ResolvedCrossReference TryResolveReference(llvm::Value *val) const;
+  ResolvedCrossReference TryResolveReference(llvm::Value *val,
+                                             bool uses_cache = false) const;
 
   // Returns the "magic" value that represents the return address.
   uint64_t MagicReturnAddressValue(void) const;
