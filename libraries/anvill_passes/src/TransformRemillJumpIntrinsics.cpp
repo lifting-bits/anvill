@@ -15,8 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
-
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
@@ -40,6 +38,8 @@
 
 #include <utility>
 #include <vector>
+
+#include "Utils.h"
 
 
 namespace anvill {
@@ -100,7 +100,7 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(llvm::Module *module,
   // `__anvill_ra`, and then if we find this magic value on something that
   // references `__anvill_ra`, then we conclude that all those manipulations
   // in the constant expression are actually not important.
-  } else if (auto xr = xref_resolver_.TryResolveReference(val);
+  } else if (auto xr = xref_resolver_.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_resolver_.MagicReturnAddressValue()) {
     return kReturnAddressProgramCounter;

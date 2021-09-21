@@ -90,7 +90,7 @@ EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
           continue;
         }
 
-        if (auto ra = xref_resolver.TryResolveReference(val);
+        if (auto ra = xref_resolver.TryResolveReferenceWithClearedCache(val);
             ra.is_valid && !ra.references_return_address &&
             !ra.references_stack_pointer) {
 
