@@ -166,7 +166,9 @@ class BNProgram(Program):
             self._arch, bn_func, bn_func.calling_convention
         )
 
-        DEBUG(f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters.")
+        DEBUG(
+            f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters."
+        )
         try:
             for var in bn_func.parameter_vars:
                 source_type = var.source_type
@@ -390,10 +392,10 @@ class BNProgram(Program):
                             )
 
                             DEBUG(
-                                    "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
-                                        jump_addr, redirection_dest, function_thunk.name
-                                        )
-                                    )
+                                "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                                    jump_addr, redirection_dest, function_thunk.name
+                                )
+                            )
 
         # Now check whether we successfully redirected all thunks
         for function_thunk in function_thunk_list:

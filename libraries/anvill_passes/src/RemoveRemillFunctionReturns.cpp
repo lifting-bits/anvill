@@ -15,10 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
-
-#include <anvill/Analysis/Utils.h>
 #include <anvill/Analysis/CrossReferenceResolver.h>
+#include <anvill/Analysis/Utils.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
@@ -36,6 +34,8 @@
 
 #include <utility>
 #include <vector>
+
+#include "Utils.h"
 
 namespace anvill {
 namespace {
@@ -81,8 +81,9 @@ class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
 char RemoveRemillFunctionReturns::ID = '\0';
 
 // Returns `true` if `val` is a return address.
-ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
-    llvm::Module *module, llvm::Value *val) const {
+ReturnAddressResult
+RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
+                                                llvm::Value *val) const {
 
   if (IsReturnAddress(module, val)) {
     return kFoundReturnAddress;
@@ -123,7 +124,7 @@ ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
   // `__anvill_ra`, and then if we find this magic value on something that
   // references `__anvill_ra`, then we conclude that all those manipulations
   // in the constant expression are actually not important.
-  } else if (auto xr = xref_resolver.TryResolveReference(val);
+  } else if (auto xr = xref_resolver.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_resolver.MagicReturnAddressValue()) {
     return kFoundReturnAddress;
@@ -322,8 +323,8 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
-    const EntityLifter &lifter) {
+llvm::FunctionPass *
+CreateRemoveRemillFunctionReturns(const EntityLifter &lifter) {
   return new RemoveRemillFunctionReturns(lifter);
 }
 

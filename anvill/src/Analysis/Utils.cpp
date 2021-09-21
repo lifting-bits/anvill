@@ -25,6 +25,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Operator.h>
 
+#include <unordered_map>
+
 namespace anvill {
 namespace {
 
@@ -118,14 +120,70 @@ static bool IsCallRelatedToStackPointerItrinsic(llvm::CallBase *call) {
 
 }  // namespace
 
-// Returns `true` if it looks like `val` is derived from a symbolic stack
-// pointer representation.
-bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
-  const auto &dl = module->getDataLayout();
-  if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return IsRelatedToStackPointer(module, pti->getOperand(0));
+namespace {
 
+class SymbolicStackResolverImpl {
+ public:
+  SymbolicStackResolverImpl() = delete;
+
+  static bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
+    auto impl = new SymbolicStackResolverImpl(module);
+    return impl->ResolveFromValue(val);
+  }
+
+  bool ResolveFromValue(llvm::Value *val);
+  bool ResolveFromConstantExpr(llvm::ConstantExpr *ce);
+
+ private:
+  SymbolicStackResolverImpl(llvm::Module *m) : module(m) {}
+  ~SymbolicStackResolverImpl() {}
+
+  llvm::Module *module;
+  std::unordered_map<llvm::Value *, bool> cache;
+};
+
+bool SymbolicStackResolverImpl::ResolveFromValue(llvm::Value *val) {
+
+  // Lookup the cache and return the value if it exist
+  auto it = cache.find(val);
+  if (it != cache.end()) {
+    return it->second;
+  }
+
+  auto &result = cache[val];
+  if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+    result = ResolveFromValue(pti->getOperand(0));
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+    result = ResolveFromConstantExpr(ce);
+  } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
+    result = ResolveFromValue(op2->getOperand(0)) ||
+             ResolveFromValue(op2->getOperand(1));
+    ;
+  } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
+    result = ResolveFromValue(op1->getOperand(0));
+  } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
+    result = ResolveFromValue(sel->getTrueValue()) ||
+             ResolveFromValue(sel->getFalseValue());
+  } else if (auto val2 = val->stripPointerCastsAndAliases();
+             val2 && val2 != val) {
+    result = ResolveFromValue(val2);
+  } else {
+    const auto &dl = module->getDataLayout();
+    llvm::APInt ap(dl.getPointerSizeInBits(0), 0);
+    if (auto val3 = val->stripAndAccumulateConstantOffsets(dl, ap, true);
+        val3 && val3 != val) {
+      result = ResolveFromValue(val3);
+    } else {
+      result = IsStackPointer(module, val);
+    }
+  }
+
+  return result;
+}
+
+bool SymbolicStackResolverImpl::ResolveFromConstantExpr(
+    llvm::ConstantExpr *ce) {
+  if (ce->getOpcode()) {
     switch (ce->getOpcode()) {
       case llvm::Instruction::IntToPtr:
       case llvm::Instruction::PtrToInt:
@@ -138,8 +196,7 @@ bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
       case llvm::Instruction::SDiv:
       case llvm::Instruction::Trunc:
       case llvm::Instruction::SExt:
-      case llvm::Instruction::ZExt:
-        return IsRelatedToStackPointer(module, ce->getOperand(0));
+      case llvm::Instruction::ZExt: return ResolveFromValue(ce->getOperand(0));
       case llvm::Instruction::Add:
       case llvm::Instruction::Sub:
       case llvm::Instruction::Mul:
@@ -147,42 +204,25 @@ bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
       case llvm::Instruction::Or:
       case llvm::Instruction::Xor:
       case llvm::Instruction::ICmp:
-        return IsRelatedToStackPointer(module, ce->getOperand(0)) ||
-               IsRelatedToStackPointer(module, ce->getOperand(1));
+        return ResolveFromValue(ce->getOperand(0)) ||
+               ResolveFromValue(ce->getOperand(1));
       case llvm::Instruction::Select:
-        return IsRelatedToStackPointer(module, ce->getOperand(1)) ||
-               IsRelatedToStackPointer(module, ce->getOperand(2));
+        return ResolveFromValue(ce->getOperand(1)) ||
+               ResolveFromValue(ce->getOperand(2));
       case llvm::Instruction::FCmp:
-        return IsRelatedToStackPointer(module, ce->getOperand(0)) ||
-               IsRelatedToStackPointer(module, ce->getOperand(1)) ||
-               IsRelatedToStackPointer(module, ce->getOperand(2));
-      default: return false;
-    }
-
-  } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
-    return IsRelatedToStackPointer(module, op2->getOperand(0)) ||
-           IsRelatedToStackPointer(module, op2->getOperand(1));
-
-  } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
-    return IsRelatedToStackPointer(module, op1->getOperand(0));
-
-  } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
-    return IsRelatedToStackPointer(module, sel->getTrueValue()) ||
-           IsRelatedToStackPointer(module, sel->getFalseValue());
-
-  } else if (auto val2 = val->stripPointerCastsAndAliases();
-             val2 && val2 != val) {
-    return IsRelatedToStackPointer(module, val2);
-
-  } else {
-    llvm::APInt ap(dl.getPointerSizeInBits(0), 0);
-    if (auto val3 = val->stripAndAccumulateConstantOffsets(dl, ap, true);
-        val3 && val3 != val) {
-      return IsRelatedToStackPointer(module, val3);
-    } else {
-      return IsStackPointer(module, val);
+        return ResolveFromValue(ce->getOperand(0)) ||
+               ResolveFromValue(ce->getOperand(1)) ||
+               ResolveFromValue(ce->getOperand(2));
+      default: break;
     }
   }
+  return false;
+}
+
+}  // namespace
+
+bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
+  return SymbolicStackResolverImpl::IsRelatedToStackPointer(module, val);
 }
 
 // Returns `true` if it looks like `val` is the stack counter.
@@ -215,8 +255,8 @@ bool IsProgramCounter(llvm::Module *, llvm::Value *val) {
   }
 }
 
-static bool IsAcceptableReturnAddressDisplacement(
-    llvm::Module *module, llvm::Constant *v) {
+static bool IsAcceptableReturnAddressDisplacement(llvm::Module *module,
+                                                  llvm::Constant *v) {
   auto ci = llvm::dyn_cast<llvm::ConstantInt>(v);
   if (!ci) {
     return false;
@@ -230,8 +270,7 @@ static bool IsAcceptableReturnAddressDisplacement(
     case llvm::Triple::ArchType::sparcel:
     case llvm::Triple::ArchType::sparcv9:
       return disp == 0u || disp == 4u || disp == 8u;
-    default:
-      return disp == 0;
+    default: return disp == 0;
   }
 }
 
@@ -286,8 +325,7 @@ bool IsReturnAddress(llvm::Module *module, llvm::Value *val) {
       case llvm::Instruction::IntToPtr:
         return IsReturnAddress(module, ce->getOperand(0));
 
-      default:
-        return false;
+      default: return false;
     }
 
   } else {

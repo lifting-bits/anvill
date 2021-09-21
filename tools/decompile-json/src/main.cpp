@@ -67,7 +67,8 @@ DEFINE_string(bc_out, "",
               "Path to file where the LLVM bitcode should be "
               "saved.");
 
-DEFINE_bool(add_breakpoints, false, "Add breakpoint_XXXXXXXX functions to the "
+DEFINE_bool(add_breakpoints, false,
+            "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
 
 DEFINE_bool(enable_provenance, false,
