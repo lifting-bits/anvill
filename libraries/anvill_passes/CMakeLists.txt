@@ -9,6 +9,8 @@
 add_library(anvill_passes STATIC
   include/anvill/Transforms.h
 
+  src/SwitchLoweringPass.h
+  src/SwitchLoweringPass.cpp
   src/LowerRemillMemoryAccessIntrinsics.cpp
   src/LowerRemillMemoryAccessIntrinsics.h
   
