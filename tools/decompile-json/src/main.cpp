@@ -1064,7 +1064,8 @@ int main(int argc, char *argv[]) {
 
   if (FLAGS_enable_provenance) {
     options.pc_metadata_name = "pc";
-    options.track_provenance = true;
+    // TODO(pag): Implement better data provenance tracking.
+    // options.track_provenance = true;
   }
 
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
