@@ -15,11 +15,10 @@
 #include <memory>
 #include <numeric>
 #include <unordered_set>
+#include <unordered_map>
 
 /*
 
-Ok idea we fold in reverse up the definition of the pc in the intrinsic to attempt to get an expr of the form:
-[Add(load(T+[index-normalizer]*w),pc)] This is the first expr we need and it defines the actual jump 
 542:                                              ; preds = %529
   %543 = add i8 %22, -6
   %544 = icmp ult i8 %543, 29
@@ -48,10 +47,8 @@ Ok idea we fold in reverse up the definition of the pc in the intrinsic to attem
     i32 5, label %573
   ]
 
-
-where T
-
 */
+
 
 namespace anvill {
     namespace {
@@ -544,6 +541,30 @@ namespace anvill {
 
 
 
+    // Binds a pc to a label
+    class PcBinding {
+        private:
+            std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping;
+
+            PcBinding(std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping): mapping(std::move(mapping)) {
+
+            }
+
+
+        public: 
+            static PcBinding build(const llvm::CallInst* complete_switch, const llvm::SwitchInst* follower) {
+                assert(complete_switch->getNumArgOperands()-1==follower->getNumCases());
+
+                std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping;
+                for (auto caseHandler: follower->cases()) {
+                    auto pcArg = complete_switch->getArgOperand(caseHandler.getCaseValue()->getValue().getLimitedValue()+1);// is the switch has more than 2^64 cases we have bigger problems
+                    mapping.insert({llvm::cast<llvm::ConstantInt>(pcArg),caseHandler.getCaseSuccessor()});//  the argument to a complete switch should always be a constant int
+                }
+
+                return PcBinding(std::move(mapping));
+            }
+    };
+
 
     void SwitchLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
         AU.setPreservesCFG(); // is this true?
@@ -558,8 +579,9 @@ namespace anvill {
         JumpTableDiscovery jumpDisc(DT);
         for(const auto& targetCall: targetCalls) {
             if (jumpDisc.runPattern(targetCall)) {
-                std::cout << "Found switch to lower" << std::endl; 
-            
+                // so now that we've handled the recovering the switch structure need to go ahead and map the target switch 
+                auto follower = llvm::cast<llvm::SwitchInst>(targetCall->getNextNonDebugInstruction());
+                auto binding = PcBinding::build(targetCall, follower);
             }
         }
         
