@@ -264,4 +264,7 @@ void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 // Removes calls to `__remill_error`.
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
+
+llvm::FunctionPass* CreateSwitchLoweringPass();
+
 }  // namespace anvill
