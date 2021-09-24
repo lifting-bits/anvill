@@ -343,14 +343,57 @@ namespace anvill {
             
     };
 
-    class JumpTableDiscovery {
+
+
+    struct PcRel {
+        private:
+            llvm::ConstantInt* programCounter;
+
+
+        public:
+            PcRel( llvm::ConstantInt* programCounter): programCounter(programCounter) {
+
+            }
+
+
+            llvm::APInt apply(llvm::APInt loadedTableValue) {
+                return this->programCounter->getValue() + loadedTableValue;
+            }
+
+    };
+
+    struct IndexRel {
         private:
             llvm::ConstantInt* jumpTableAddr;
-            llvm::ConstantInt* programCounter;
-            llvm::Value* index;
+            llvm::APInt optWordSize;
             llvm::ConstantInt* normalizer;
-            const llvm::DominatorTree& DT;
+            llvm::Value* index;
+        public: 
+            IndexRel(llvm::ConstantInt* jumpTableAddr, llvm::Value* index, llvm::ConstantInt* normalizer, llvm::APInt optWordSize): jumpTableAddr(jumpTableAddr), optWordSize(optWordSize), normalizer(normalizer), index(index) {
+                assert(this->index != nullptr);
+            }
+
+            llvm::APInt apply(llvm::APInt index) {
+                return this->jumpTableAddr->getValue() + this->normalizer->getValue() + index * this->optWordSize; //hmm need the wordsize here if there is one.
+
+            }
+            
+            llvm::Value* getIndex() {
+                return this->index;
+            }
+    };
+
+
+    class JumpTableDiscovery {
+        private:
+            
+            
+            
+            std::optional<PcRel> pcRel;
+            std::optional<IndexRel> indexRel;
             std::optional<llvm::APInt> upperBound;
+            const llvm::DominatorTree& DT;
+           
 
         private:
 
@@ -381,8 +424,8 @@ namespace anvill {
             }
 
             bool runBoundsCheckPattern(const llvm::CallInst* intrinsicCall) {
-                assert(this->index != nullptr);
-                auto taintedBranches = getTaintedBranches<10>(this->index);
+                assert(this->indexRel);
+                auto taintedBranches = getTaintedBranches<10>(this->indexRel->getIndex());
                 auto dtNode = this->DT.getNode(intrinsicCall->getParent());
                 auto inode = dtNode->getIDom()->getBlock();
                 auto term = inode->getTerminator();
@@ -391,7 +434,7 @@ namespace anvill {
                     auto bcheck = *maybe_bcheck;
                     bcheck.branch->dump();
                     auto cond = bcheck.branch->getCondition();
-                    auto indexConstraints = ConstraintExtractor(this->index).expectInsn(cond);
+                    auto indexConstraints = ConstraintExtractor(this->indexRel->getIndex()).expectInsn(cond);
 
                     if(indexConstraints) {
                         auto cons = *indexConstraints;
@@ -409,14 +452,60 @@ namespace anvill {
                 return false;
             }
 
-            llvm::APInt indexRel(llvm::APInt index) {
-                return this->normalizer->getValue() + index; //hmm need the wordsize here if there is one.
 
+
+
+
+
+
+            std::optional<llvm::Value*> extractPcRel(const llvm::Value* pcArg) {
+
+                llvm::ConstantInt* potentialPc = nullptr;
+                llvm::Value* potentialIndexPlusBaseExpr = nullptr;
+
+
+                if (pats::match(pcArg,pats::m_Add(pats::m_Load(pats::m_Value(potentialIndexPlusBaseExpr)),pats::m_ConstantInt(potentialPc)))) {
+                    this->pcRel = {PcRel(potentialPc)};
+                    return {potentialIndexPlusBaseExpr};
+                }
+
+                return nullptr;
             }
 
 
-            llvm::APInt pcRel(llvm::APInt tableValue) {
-                return this->programCounter->getValue() + tableValue;
+
+            bool extractIndexRel(const llvm::Value* indexPlusTableBase) {
+                
+                llvm::ConstantInt* shlfactor;
+                llvm::ConstantInt* jumpTableAddr;
+                llvm::Value* indexExpr;
+
+
+                // TODO also try a pattern where Shl is a multiplication and SHL doesnt exist. Additionally, can replace this handcoding with interpretation.
+                auto pat = pats::m_IntToPtr(
+                            pats::m_Add(
+                            pats::m_Shl(pats::m_Value(indexExpr),pats::m_ConstantInt(shlfactor)),
+                                pats::m_ConstantInt(jumpTableAddr)));
+                if (pats::match(indexPlusTableBase,pat)) {
+     
+                    // TODO handle case where there is no normalizer
+                    llvm::Value* index = nullptr;
+                    llvm::ConstantInt* normalizer = nullptr;
+
+                    // ok tricky bit here is the index can be of any size up to word size really, turns out not so tricky 
+                    auto indexAdd = pats::m_Add(pats::m_Value(index), pats::m_ConstantInt(normalizer));
+
+                    
+                    if(pats::match(indexExpr,pats::m_ZExtOrSExtOrSelf(indexAdd))) {
+                        //normalizer has to be same bitwidth
+                        auto optWordSize = llvm::APInt(normalizer->getValue().getBitWidth(), 1).shl(shlfactor->getValue());
+                        this->indexRel = {IndexRel(jumpTableAddr,index,normalizer,optWordSize)};
+                        return true;
+                    }
+
+                }
+                return false;
+
             }
 
             bool runIndexPattern(const llvm::Value* pcArg) {
@@ -425,33 +514,18 @@ namespace anvill {
 
                 // to ensure this transformation is valid we now need to find the bounds check and ensure it lines up with the table.
 
-
-                llvm::Value* potentialIndexExpr = nullptr;
-                auto pat = pats::m_Add(
-                    pats::m_Load(
-                        pats::m_IntToPtr(
-                            pats::m_Add(
-                            pats::m_BinOp(pats::m_Value(potentialIndexExpr),pats::m_ConstantInt()),
-                                pats::m_ConstantInt(this->jumpTableAddr)))),
-                pats::m_ConstantInt(this->programCounter));
-                if (pats::match(pcArg,pat)) {
-     
-                    // TODO handle case where there is no index
-
-                    // ok tricky bit here is the index can be of any size up to word size really, turns out not so tricky 
-                    auto indexAdd = pats::m_Add(pats::m_Value(this->index), pats::m_ConstantInt(this->normalizer));
-                    return pats::match(potentialIndexExpr,pats::m_ZExtOrSExtOrSelf(indexAdd));
-                } else {
-                    return false;
+                auto loadExpr = this->extractPcRel(pcArg);
+                if (loadExpr) {
+                    return this->extractIndexRel(*loadExpr);
                 }
 
-                std::cout << "Index Pattern" << std::endl; 
+                return false;
             }
             
            
 
         public:
-            JumpTableDiscovery(const llvm::DominatorTree& DT): jumpTableAddr(nullptr), programCounter(nullptr),index(nullptr), normalizer(nullptr), DT(DT)  {
+            JumpTableDiscovery(const llvm::DominatorTree& DT): pcRel({}), indexRel({}), upperBound({}), DT(DT)  {
             }
 
 
