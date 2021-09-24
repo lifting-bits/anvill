@@ -13,7 +13,8 @@
 #include <llvm/IR/InstVisitor.h>
 #include <optional>
 #include <memory>
-
+#include <numeric>
+#include <unordered_set>
 
 /*
 
@@ -56,19 +57,22 @@ namespace anvill {
     namespace {
         template <unsigned N> llvm::SmallSet<const llvm::BranchInst*, N> getTaintedBranches(const llvm::Value* byVal) {
             std::vector<const llvm::Value*> worklist;
+            llvm::SmallSet<const llvm::Value*,20> closedList; 
             worklist.push_back(byVal);
             llvm::SmallSet<const llvm::BranchInst*,10> taintedGuards;
 
             while (!worklist.empty()) {
                 const llvm::Value* curr = worklist.back();
                 worklist.pop_back();
-
+                closedList.insert(curr);
                 if (const llvm::BranchInst * branch = llvm::dyn_cast<llvm::BranchInst>(curr)) {
                     taintedGuards.insert(branch);
                 }
 
                 for (const auto& useOfIndex : curr->uses()) {
-                    worklist.push_back(useOfIndex.get());
+                    if (closedList.find(useOfIndex) == closedList.end()) {
+                        worklist.push_back(useOfIndex.get());
+                    }
                 }
             }
 
@@ -124,15 +128,39 @@ namespace anvill {
             llvm::CmpInst::Predicate comp;
             
             llvm::APInt bound;
+
+            static llvm::CmpInst::Predicate normalizeComp(llvm::CmpInst::Predicate orig) {
+                if (llvm::CmpInst::isSigned(orig)) {
+                    orig = llvm::CmpInst::getUnsignedPredicate(orig);
+                }
+
+                if (llvm::CmpInst::isNonStrictPredicate(orig)) {
+                    orig = llvm::CmpInst::getStrictPredicate(orig);
+                }
+
+                return orig;
+            }
+
         public:
-            LinearConstraint(llvm::CmpInst::Predicate comp,llvm::APInt bound): comp(comp),bound(bound) {}
+            LinearConstraint(llvm::CmpInst::Predicate comp,llvm::APInt bound): comp(normalizeComp(comp)),bound(bound) {}
 
 
             void logicalNot() {
-                
+                this->comp = llvm::CmpInst::getInversePredicate(this->comp);
             }
 
 
+            // compute exclusive upper bound if this comparison asserts that the index is less than some constant
+            std::optional<llvm::APInt> computeUB() {
+                // comp is normalized to the strict unsigned predicate so:
+                assert(llvm::CmpInst::isStrictPredicate(this->comp) && llvm::CmpInst::isUnsigned(this->comp) && llvm::CmpInst::isIntPredicate(this->comp));
+                switch(this->comp) {
+                    case llvm::CmpInst::Predicate::ICMP_ULT :
+                        return {this->bound}; 
+                    default:
+                        return {};
+                };
+            }
 
     };
 
@@ -142,15 +170,49 @@ namespace anvill {
 
 
     /*
-    If this becomes an issue this could be come a tree of expressions
+    If this becomes an issue this could be come a tree of expressions, and actually apply solving
     */
-
-  
-   // TODO honestly this is overcomplicated can just a ConstraintList that can construct a singleton
     class ConstraintList {
         private: 
             std::vector<LinearConstraint> cons;
             std::optional<Connective> conn;
+
+        void flipConnective() {
+            if(this->conn) {
+                if (*this->conn == Connective::AND) {
+                    this->conn = {Connective::OR};
+                } else {
+                    this->conn = {Connective::AND};
+                }
+            }
+        }
+
+        std::optional<llvm::APInt> combiner(std::optional<llvm::APInt> total, LinearConstraint newCons) {
+            auto newUpperBound = newCons.computeUB();
+
+            if (this->conn == Connective::AND) {
+                // essentially intersection (meet)
+                if (total && !newUpperBound) {
+                    return total;
+                }
+
+                if (newUpperBound && ! total) {
+                    return newUpperBound;
+                }
+
+                return newUpperBound->ugt(*total) ? newUpperBound : total;
+            } else {
+                if (total && !newUpperBound) {
+                    return newUpperBound;
+                }
+
+                if (newUpperBound && ! total) {
+                    return total;
+                }
+
+                return newUpperBound->ugt(*total) ? total : newUpperBound;
+            }
+        }
 
         public:
             ConstraintList(LinearConstraint lcons): cons({lcons}), conn({}) {
@@ -170,9 +232,22 @@ namespace anvill {
 
                 return {};
             }
+
+
+            void logicalNot() {
+                this->flipConnective();
+                std::for_each(this->cons.begin(), this->cons.end(), [](LinearConstraint& lcons) {lcons.logicalNot();});
+            }
+
+            // exclusive upper bound on the index
+            std::optional<llvm::APInt> computeUB() {
+                // basically a fold with max/min as the combinator depending on or/and connective and then each lcons just returns either unbounded or bound
+                std::optional<llvm::APInt> start;
+                return std::accumulate(this->cons.begin(), this->cons.end(),start, [](std::optional<llvm::APInt> total, LinearConstraint newCons){ return total;});
+            }
     };
 
-
+    // core assumption currently constraints are treated as unsigned
     class ConstraintExtractor: public llvm::InstVisitor<ConstraintExtractor,std::optional<ConstraintList>> {
         private:
 
@@ -242,7 +317,6 @@ namespace anvill {
                 return {};
             }
 
-
             std::optional<ConstraintList>  visitBinaryOperator(llvm::BinaryOperator &B) {
                 auto conn = translateOpcodeToConnective(B.getOpcode());
 
@@ -270,7 +344,7 @@ namespace anvill {
             llvm::Value* index;
             llvm::ConstantInt* normalizer;
             const llvm::DominatorTree& DT;
-
+            std::optional<llvm::APInt> upperBound;
 
         private:
 
@@ -300,10 +374,6 @@ namespace anvill {
                 return {};
             }
 
-            bool collectIndexConstraints(const llvm::BranchInst* branch) {
-
-            }
-
             bool runBoundsCheckPattern(const llvm::CallInst* intrinsicCall) {
                 assert(this->index != nullptr);
                 auto taintedBranches = getTaintedBranches<10>(this->index);
@@ -323,7 +393,8 @@ namespace anvill {
                             cons.logicalNot();
                         }
 
-                        auto upperBound = cons.computeUB();
+                        this->upperBound = cons.computeUB();
+                        return this->upperBound.has_value();
                     }
 
                 }
@@ -347,7 +418,7 @@ namespace anvill {
                                 pats::m_ConstantInt(this->jumpTableAddr)))),
                 pats::m_ConstantInt(this->programCounter));
                 if (pats::match(pcArg,pat)) {
-                    potentialIndexExpr->dump();
+     
                     // TODO handle case where there is no index
 
                     // ok tricky bit here is the index can be of any size up to word size really, turns out not so tricky 
@@ -356,6 +427,8 @@ namespace anvill {
                 } else {
                     return false;
                 }
+
+                std::cout << "Index Pattern" << std::endl; 
             }
             
            
@@ -393,7 +466,7 @@ namespace anvill {
         JumpTableDiscovery jumpDisc(DT);
         for(const auto& targetCall: targetCalls) {
             if (jumpDisc.runPattern(targetCall)) {
-                
+                std::cout << "Found switch to lower" << std::endl; 
             
             }
         }
