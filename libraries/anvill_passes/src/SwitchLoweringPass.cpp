@@ -137,12 +137,15 @@ namespace anvill {
                 if (llvm::CmpInst::isNonStrictPredicate(orig)) {
                     orig = llvm::CmpInst::getStrictPredicate(orig);
                 }
+            
 
                 return orig;
             }
 
         public:
-            LinearConstraint(llvm::CmpInst::Predicate comp,llvm::APInt bound): comp(normalizeComp(comp)),bound(bound) {}
+            LinearConstraint(llvm::CmpInst::Predicate comp,llvm::APInt bound): comp(normalizeComp(comp)),bound(bound) {
+                
+            }
 
 
             void logicalNot() {
@@ -152,8 +155,10 @@ namespace anvill {
 
             // compute exclusive upper bound if this comparison asserts that the index is less than some constant
             std::optional<llvm::APInt> computeUB() {
+              
                 // comp is normalized to the strict unsigned predicate so:
-                assert(llvm::CmpInst::isStrictPredicate(this->comp) && llvm::CmpInst::isUnsigned(this->comp) && llvm::CmpInst::isIntPredicate(this->comp));
+                // TODO dont do anything with equality would probably need SMT to help with figuring out bounds in that case
+                assert(!llvm::CmpInst::isRelational(this->comp) || (llvm::CmpInst::isStrictPredicate(this->comp) && llvm::CmpInst::isUnsigned(this->comp) && llvm::CmpInst::isIntPredicate(this->comp)));
                 switch(this->comp) {
                     case llvm::CmpInst::Predicate::ICMP_ULT :
                         return {this->bound}; 
@@ -189,17 +194,21 @@ namespace anvill {
 
         std::optional<llvm::APInt> combiner(std::optional<llvm::APInt> total, LinearConstraint newCons) {
             auto newUpperBound = newCons.computeUB();
-
+            
+            if (!total && !newUpperBound) {
+                return total;
+            }
+            
             if (this->conn == Connective::AND) {
                 // essentially intersection (meet)
-                if (total && !newUpperBound) {
+                if (total && (!newUpperBound)) {
                     return total;
                 }
 
-                if (newUpperBound && ! total) {
+                if (newUpperBound && (! total)) {
                     return newUpperBound;
                 }
-
+            
                 return newUpperBound->ugt(*total) ? newUpperBound : total;
             } else {
                 if (total && !newUpperBound) {
@@ -225,7 +234,7 @@ namespace anvill {
                     this->conn = conn;
                 }
 
-                if (other.conn && *other.conn != *this->conn) {
+                if (!other.conn || *other.conn == *this->conn) {
                     this->cons.insert(this->cons.end(),other.cons.begin(),other.cons.end());
                     return {*this};
                 }
@@ -243,7 +252,7 @@ namespace anvill {
             std::optional<llvm::APInt> computeUB() {
                 // basically a fold with max/min as the combinator depending on or/and connective and then each lcons just returns either unbounded or bound
                 std::optional<llvm::APInt> start;
-                return std::accumulate(this->cons.begin(), this->cons.end(),start, [](std::optional<llvm::APInt> total, LinearConstraint newCons){ return total;});
+                return std::accumulate(this->cons.begin(), this->cons.end(),start, [this](std::optional<llvm::APInt> total, LinearConstraint newCons){ return this->combiner(total,newCons);});
             }
     };
 
@@ -290,7 +299,6 @@ namespace anvill {
 
             std::optional<ConstraintList> visitICmpInst(llvm::ICmpInst &I) {
                 // because instruction combiner places constants on the right hand side we can assume:
-
                 if (auto *rhsBound = llvm::dyn_cast<llvm::ConstantInt>(I.getOperand(1))) {
                     llvm::APInt apBound = rhsBound->getValue();
 
@@ -313,13 +321,11 @@ namespace anvill {
                     }
 
                 }
-
                 return {};
             }
 
             std::optional<ConstraintList>  visitBinaryOperator(llvm::BinaryOperator &B) {
                 auto conn = translateOpcodeToConnective(B.getOpcode());
-
 
 
                 if (auto repr0 = this->expectInsn(B.getOperand(0))) {
@@ -383,6 +389,7 @@ namespace anvill {
                 auto maybe_bcheck = this->translateTerminatorToBoundsCheck(term, intrinsicCall->getParent());
                 if (maybe_bcheck) {
                     auto bcheck = *maybe_bcheck;
+                    bcheck.branch->dump();
                     auto cond = bcheck.branch->getCondition();
                     auto indexConstraints = ConstraintExtractor(this->index).expectInsn(cond);
 
@@ -400,6 +407,16 @@ namespace anvill {
                 }
 
                 return false;
+            }
+
+            llvm::APInt indexRel(llvm::APInt index) {
+                return this->normalizer->getValue() + index; //hmm need the wordsize here if there is one.
+
+            }
+
+
+            llvm::APInt pcRel(llvm::APInt tableValue) {
+                return this->programCounter->getValue() + tableValue;
             }
 
             bool runIndexPattern(const llvm::Value* pcArg) {
@@ -444,6 +461,7 @@ namespace anvill {
 
 
         bool runPattern(const llvm::CallInst* pcCall) {
+
             return this->runIndexPattern(pcCall->getArgOperand(0)) && this->runBoundsCheckPattern(pcCall);
 
         }  
