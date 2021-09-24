@@ -544,21 +544,26 @@ namespace anvill {
     // Binds a pc to a label
     class PcBinding {
         private:
-            std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping;
+            std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping;
 
-            PcBinding(std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping): mapping(std::move(mapping)) {
+            PcBinding(std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping): mapping(std::move(mapping)) {
 
             }
 
 
         public: 
+            
+            const llvm::BasicBlock* lookup(llvm::APInt targetPc) {
+
+            }
+            
             static PcBinding build(const llvm::CallInst* complete_switch, const llvm::SwitchInst* follower) {
                 assert(complete_switch->getNumArgOperands()-1==follower->getNumCases());
 
-                std::unordered_map<const llvm::ConstantInt*, const llvm::BasicBlock*> mapping;
+                std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping;
                 for (auto caseHandler: follower->cases()) {
                     auto pcArg = complete_switch->getArgOperand(caseHandler.getCaseValue()->getValue().getLimitedValue()+1);// is the switch has more than 2^64 cases we have bigger problems
-                    mapping.insert({llvm::cast<llvm::ConstantInt>(pcArg),caseHandler.getCaseSuccessor()});//  the argument to a complete switch should always be a constant int
+                    mapping.insert({llvm::cast<llvm::ConstantInt>(pcArg)->getValue(),caseHandler.getCaseSuccessor()});//  the argument to a complete switch should always be a constant int
                 }
 
                 return PcBinding(std::move(mapping));
@@ -582,6 +587,7 @@ namespace anvill {
                 // so now that we've handled the recovering the switch structure need to go ahead and map the target switch 
                 auto follower = llvm::cast<llvm::SwitchInst>(targetCall->getNextNonDebugInstruction());
                 auto binding = PcBinding::build(targetCall, follower);
+
             }
         }
         
