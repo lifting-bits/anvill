@@ -17,39 +17,6 @@
 #include <unordered_set>
 #include <unordered_map>
 
-/*
-
-542:                                              ; preds = %529
-  %543 = add i8 %22, -6
-  %544 = icmp ult i8 %543, 29
-  %545 = icmp eq i8 %22, 35
-  %546 = or i1 %545, %544
-  %547 = select i1 %546, i32 12, i32 -2054803
-  %548 = add i32 %537, %547
-  %549 = add i32 %548, 9
-  br i1 %546, label %550, label %41
-
-550:                                              ; preds = %542
-  %551 = zext i8 %543 to i32
-  %552 = shl nuw nsw i32 %551, 2
-  %553 = add nuw nsw i32 %552, 136968824
-  %554 = inttoptr i32 %553 to i32*
-  %555 = load i32, i32* %554, align 4
-  %556 = add i32 %555, 137732096
-  %557 = call i32 (i32, ...) @__anvill_complete_switch(i32 %556, i32 134522973, i32 136578775, i32 136578784, i32 136578793, i32 136578809, i32 136578818)
-  %558 = add i32 %555, 137732105
-  switch i32 %557, label %559 [
-    i32 0, label %41
-    i32 1, label %560
-    i32 2, label %563
-    i32 3, label %566
-    i32 4, label %569
-    i32 5, label %573
-  ]
-
-*/
-
-
 namespace anvill {
     namespace {
         template <unsigned N> llvm::SmallSet<const llvm::BranchInst*, N> getTaintedBranches(const llvm::Value* byVal) {
