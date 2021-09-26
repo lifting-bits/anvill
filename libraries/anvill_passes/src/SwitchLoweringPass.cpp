@@ -396,7 +396,6 @@ namespace anvill {
                 auto maybe_bcheck = this->translateTerminatorToBoundsCheck(term, intrinsicCall->getParent());
                 if (maybe_bcheck) {
                     auto bcheck = *maybe_bcheck;
-                    bcheck.branch->dump();
                     auto cond = bcheck.branch->getCondition();
                     auto indexConstraints = ConstraintExtractor(this->indexRel->getIndex()).expectInsn(cond);
 
@@ -504,36 +503,37 @@ namespace anvill {
 
         }  
     };
-   
-
-
 
     // Binds a pc to a label
     class PcBinding {
         private:
-            std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping;
+            llvm::DenseMap<llvm::APInt, const llvm::BasicBlock*> mapping;
 
-            PcBinding(std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping): mapping(std::move(mapping)) {
+            PcBinding(llvm::DenseMap<llvm::APInt, const llvm::BasicBlock*> mapping): mapping(std::move(mapping)) {
 
             }
 
 
         public: 
             
-            const llvm::BasicBlock* lookup(llvm::APInt targetPc) {
+            std::optional<const llvm::BasicBlock*> lookup(llvm::APInt targetPc) {
+                if (this->mapping.find(targetPc) != this->mapping.end()) {
+                    return {this->mapping[targetPc]};
+                }
 
+                return {};
             }
             
             static PcBinding build(const llvm::CallInst* complete_switch, const llvm::SwitchInst* follower) {
                 assert(complete_switch->getNumArgOperands()-1==follower->getNumCases());
 
-                std::unordered_map<llvm::APInt, const llvm::BasicBlock*> mapping;
+                llvm::DenseMap<llvm::APInt, const llvm::BasicBlock*> mapping;
                 for (auto caseHandler: follower->cases()) {
                     auto pcArg = complete_switch->getArgOperand(caseHandler.getCaseValue()->getValue().getLimitedValue()+1);// is the switch has more than 2^64 cases we have bigger problems
                     mapping.insert({llvm::cast<llvm::ConstantInt>(pcArg)->getValue(),caseHandler.getCaseSuccessor()});//  the argument to a complete switch should always be a constant int
                 }
 
-                return PcBinding(std::move(mapping));
+               return PcBinding(std::move(mapping));
             }
     };
 
@@ -552,9 +552,10 @@ namespace anvill {
         for(const auto& targetCall: targetCalls) {
             if (jumpDisc.runPattern(targetCall)) {
                 // so now that we've handled the recovering the switch structure need to go ahead and map the target switch 
-                auto follower = llvm::cast<llvm::SwitchInst>(targetCall->getNextNonDebugInstruction());
-                auto binding = PcBinding::build(targetCall, follower);
-
+                auto followingSwitch = targetCall->getParent()->getTerminator();
+                auto follower = llvm::cast<llvm::SwitchInst>(followingSwitch);
+                auto binding = PcBinding::build(targetCall, follower); 
+                std::cout << "ready to build switch" << std::endl;
             }
         }
         
