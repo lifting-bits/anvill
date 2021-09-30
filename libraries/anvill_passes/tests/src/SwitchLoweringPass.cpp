@@ -99,6 +99,8 @@ namespace anvill {
         fpm.doInitialization();
         fpm.run(*targetFunction);
         fpm.doFinalization();
+
+        targetFunction->dump();
     }
     }
 
