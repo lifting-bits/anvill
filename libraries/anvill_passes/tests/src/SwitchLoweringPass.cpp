@@ -6,7 +6,7 @@
 #include <anvill/Transforms.h>
 #include <llvm/IR/Dominators.h>
 #include <anvill/Providers/MemoryProvider.h>
-
+#include <llvm/Transforms/InstCombine/InstCombine.h>
 
 namespace anvill {
 
@@ -75,6 +75,8 @@ namespace anvill {
         CHECK(targetFunction != nullptr);
         llvm::legacy::FunctionPassManager fpm(mod.get());
         fpm.add(new llvm::DominatorTreeWrapperPass());
+        fpm.add(llvm::createInstructionCombiningPass());
+        fpm.add(CreateJumpTableAnalysis());
         auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
         
         

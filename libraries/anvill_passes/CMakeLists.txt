@@ -56,7 +56,11 @@ add_library(anvill_passes STATIC
   src/InstructionFolderPass.h
   src/InstructionFolderPass.cpp
 
+  src/JumpTableAnalysis.cpp
+  src/JumpTableAnalysis.h
+
   src/BaseFunctionPass.h
+  src/IndirectJumpPass.h
 
   src/Utils.h
   src/Utils.cpp
