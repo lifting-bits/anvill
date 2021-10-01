@@ -286,12 +286,21 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
     // through the default case with ERROR). There might be a bitcast downstream
     // which knows more than us, and wants us to update our bitcast. So we just
     // create a new bitcast, replace the current one, and return
-    llvm::IRBuilder ir(&inst);
-    llvm::Value *new_bitcast =
-        ir.CreateBitCast(inst.getOperand(0), inferred_type);
 
-    // ReplaceAllUses(&inst, new_bitcast);
-    return {new_bitcast, true};
+    // TODO(kumarak) Hacky solution to avoid generating more bitcast
+    // instructions casting to pointer of pointers.
+    if (inferred_type->isPointerTy()) {
+      auto elem_type = inferred_type->getPointerElementType();
+      if (!elem_type->isPointerTy()) {
+        llvm::IRBuilder ir(&inst);
+        llvm::Value *new_bitcast =
+            ir.CreateBitCast(inst.getOperand(0), inferred_type);
+
+        // ReplaceAllUses(&inst, new_bitcast);
+        return {new_bitcast, true};
+      }
+    }
+    return {&inst, false};
   }
   llvm::Value *possible_pointer = inst.getOperand(0);
   if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(possible_pointer)) {
