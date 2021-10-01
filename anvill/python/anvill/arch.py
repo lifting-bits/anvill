@@ -66,6 +66,9 @@ class Arch(ABC):
 class AMD64Arch(Arch):
     """AMD64-specific architecture description (64-bit)."""
 
+    _has_avx = False
+    _has_avx512 = False
+
     _REG_FAMILY_rX = lambda l: (
         ("R{}X".format(l), 0, 8),
         ("E{}X".format(l), 0, 4),
@@ -337,7 +340,12 @@ class AMD64Arch(Arch):
     }
 
     def name(self) -> ArchName:
-        return "amd64"
+        if self._has_avx512:
+            return "amd64_avx512"
+        elif self._has_avx:
+            return "amd64_avx"
+        else:
+            return "amd64"
 
     def program_counter_name(self) -> Register:
         return "RIP"
@@ -361,6 +369,8 @@ class AMD64Arch(Arch):
         return self._REG_FAMILY[self.register_name(reg_name)]
 
     def register_name(self, reg_name) -> Register:
+        self._has_avx |= any(reg in reg_name for reg in ["xmm", "ymm", "XMM", "YMM"])
+        self._has_avx512 |= any(reg in reg_name for reg in ["zmm", "ZMM"])
         if reg_name.startswith("%"):
             return reg_name[1:].upper()
         else:
@@ -369,6 +379,9 @@ class AMD64Arch(Arch):
 
 class X86Arch(Arch):
     """X86-specific architecture description (32-bit)."""
+
+    _has_avx = False
+    _has_avx512 = False
 
     _REG_FAMILY_rX = lambda l: (
         ("E{}X".format(l), 0, 4),
@@ -582,7 +595,12 @@ class X86Arch(Arch):
     }
 
     def name(self) -> ArchName:
-        return "x86"
+        if self._has_avx512:
+            return "x86_avx512"
+        elif self._has_avx:
+            return "x86_avx"
+        else:
+            return "x86"
 
     def program_counter_name(self) -> Register:
         return "EIP"
@@ -606,6 +624,8 @@ class X86Arch(Arch):
         return self._REG_FAMILY[self.register_name(reg_name)]
 
     def register_name(self, reg_name) -> Register:
+        self._has_avx |= any(reg in reg_name for reg in ["xmm", "ymm", "XMM", "YMM"])
+        self._has_avx512 |= any(reg in reg_name for reg in ["zmm", "ZMM"])
         if reg_name.startswith("%"):
             return reg_name[1:].upper()
         else:
