@@ -378,10 +378,7 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
         return false;
       }
     } else {
-      LOG(ERROR) << "Non-present or non-object 'return_address' in function "
-                 << "specification at '" << std::hex << decl.address << std::dec
-                 << "'";
-      return false;
+      decl.return_address.type = llvm::Type::getVoidTy(context);
     }
 
     // Parse the value of the stack pointer on exit from the function, which is
@@ -440,10 +437,6 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
 
     if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
       decl.is_variadic = *maybe_is_variadic;
-    }
-
-    if (auto maybe_has_return_address = obj->getBoolean("has_return_address")) {
-      decl.has_return_address = *maybe_has_return_address;
     }
 
     if (auto maybe_cc = obj->getInteger("calling_convention")) {

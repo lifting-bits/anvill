@@ -268,8 +268,8 @@ class BNProgram(Program):
                 loc.set_type(ret_ty)
                 ret_list.append(loc)
 
-        has_return_address = self._bv.entry_function != bn_func
-        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type, has_return_address)
+        is_entrypoint = self._bv.entry_function == bn_func
+        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type, is_entrypoint)
         DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments")
         return func
 

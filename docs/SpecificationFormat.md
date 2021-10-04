@@ -217,6 +217,9 @@ In the above examples, we've represented return address types with integral type
 names; however, it is perfectly valid to represent them using pointer types, e.g.
 `*v` or `*b` or `*B`.
 
+If a function specification is describing the program entrypoint, then it won't
+have a return address.
+
 #### Return stack pointer
 
 A function specification models the value of the stack pointer *after* returning
@@ -333,19 +336,6 @@ The absence of `is_noreturn`, as well as a `false` value to `is_noreturn`, are
 treated identically as meaning "the function returns sometimes or always." We
 say sometimes because some functions may conditionally invoke `longjmp`, or
 conditionally throw an exception, and thus returns may not always be guaranteed.
-
-#### Return addresses
-
-If the function being specified does not have a return address (it is the
-program entrypoint), then the following must be provided.
-
-```json
-            "has_return_address": false,
-```
-
-The absence of `has_return_address`, as well as a `true` value to
-`has_return_address`, are treated identically meaning "the function has a return
-address".
 
 #### Calling convention
 

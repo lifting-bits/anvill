@@ -1583,8 +1583,13 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
     InitializeSymbolicStackPointer(block);
   }
 
-  // Put the function's return address wherever it needs to go.
-  if (decl.has_return_address) {
+  // Does this function have a return address? Most functions are provided a
+  // return address on the stack, however the program entrypoint (usually
+  // `_start`) won't have one. When we initialize the stack frame, we should
+  // take note of this flag and in the case of the program entrypoint, omit the
+  // symbolic return address from the stack frame.
+  if (!decl.return_address.type->isVoidTy()) {
+    // Put the function's return address wherever it needs to go.
     if (options.symbolic_return_address) {
       mem_ptr = InitializeSymbolicReturnAddress(block, mem_ptr,
                                                 native_decl.return_address);
