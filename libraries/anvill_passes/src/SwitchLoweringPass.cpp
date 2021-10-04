@@ -103,10 +103,10 @@ namespace anvill {
         }
 
         std::optional<llvm::SwitchInst*> createNativeSwitch( JumpTableResult jt, const PcBinding& binding, llvm::LLVMContext& context) {
-            auto minIndex = jt.getIndexMinimimum();
-            auto numberOfCases = jt.upperBound-minIndex;
+            auto minIndex = jt.lowerBound;
+            auto numberOfCases = (jt.upperBound-minIndex) + 1;
             llvm::SwitchInst* newSwitch = llvm::SwitchInst::Create(jt.indexRel.getIndex(),jt.defaultOut,numberOfCases.getLimitedValue());
-            for(llvm::APInt currIndValue = minIndex; currIndValue.ult(jt.upperBound); currIndValue+=1) {
+            for(llvm::APInt currIndValue = minIndex; currIndValue.ule(jt.upperBound); currIndValue+=1) {
                 auto readAddress = jt.indexRel.apply(currIndValue);
                 std::optional<llvm::APInt> jmpOff = this->readIntFrom(jt.pcRel.getExpectedType(),readAddress);
                 if (!jmpOff.has_value()) {

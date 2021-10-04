@@ -13,6 +13,8 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include "SlicerVisitor.h"
 #include <anvill/SliceManager.h>
+#include <z3++.h>
+
 
 namespace anvill {
         namespace {
@@ -39,15 +41,6 @@ namespace anvill {
 
             return taintedGuards;
         }
-
-
-        LinearConstraint generateNoWrapPred(llvm::APInt constant) {
-            if (constant.isNegative()) {
-                return LinearConstraint(llvm::ICmpInst::Predicate::ICMP_UGE, constant);
-            } else {
-                return LinearConstraint(llvm::ICmpInst::Predicate::ICMP_ULE, llvm::APInt::getMaxValue(constant.getBitWidth()) - constant);
-            }
-        }
     }
 
     namespace pats = llvm::PatternMatch;
@@ -58,307 +51,196 @@ namespace anvill {
         llvm::BasicBlock* failDirection;
     };
 
-    enum Connective {AND, OR};
-    enum LimitBoundType{BOTTOM,ULT,EQ, TOP};
-
-    struct Bound  {
-        LimitBoundType ty;
-        llvm::APInt val;
-
-
-        static Bound createTop() {
-            return {LimitBoundType::TOP, llvm::APInt()};
-        }
-
-        static Bound createBottom() {
-            return {LimitBoundType::BOTTOM, llvm::APInt()};
-        }
-
-        bool isBottom() {
-            return this->ty == LimitBoundType::BOTTOM;
-        }
-
-        bool isTop() {
-            return this->ty == LimitBoundType::TOP;
-        }
-
-        std::optional<llvm::APInt> getExclusiveMax() {
-            switch(this->ty) {
-                case LimitBoundType::TOP:
-                case LimitBoundType::BOTTOM:
-                    return std::nullopt;
-                case LimitBoundType::ULT:
-                    return {this->val};
-                case LimitBoundType::EQ:
-                    return {this->val + 1};
-            }
-        }
-
-        Bound meet(Bound other) {
-            if (this->isTop()) {
-                return other;
-            }
-
-            if (other.isTop()) {
-                return *this;
-            }
-
-            if (this->isBottom()) {
-                return *this;
-            }
-
-            if (other.isBottom()) {
-                return other;
-            }
-
-            if (this->ty == LimitBoundType::EQ && other.ty != LimitBoundType::EQ) {
-                return other.meet(*this);
-            }
-
-            // both eq
-            if (this->ty == LimitBoundType::EQ) {
-                if (this->val == other.val) {
-                    return {*this};
-                } else {
-                    return Bound::createBottom();
-                }
-            }
-
-            // ult and other is eq
-            if (other.ty == LimitBoundType::EQ) {
-                if(other.val.ult(this->val)) {
-                    return other;
-                }
-            }
-
-            // ult and ult
-            if (other.val.ult(this->val)) {
-                return other;
-            } else {
-                return *this;
-            }
-        }
-
-        static llvm::APInt apmin(llvm::APInt x, llvm::APInt y) {    
-            if (x.ult(y)) {
-                return x;
-            } else {
-                return y;
-            }
-        }
-
-
-        static llvm::APInt apmax(llvm::APInt x, llvm::APInt y) {
-            if (x.ugt(y)) {
-                return x;
-            } else {
-                return y;
-            }
-        }
-
-        Bound join(Bound other) {
-            if (this->isTop()) {
-                return *this;
-            }
-
-            if (other.isTop()) {
-                return other;
-            }
-
-            if (this->isBottom()) {
-                return other;
-            }
-
-            if (other.isBottom()) {
-                return *this;
-            }
-
-            if (this->ty == LimitBoundType::EQ && other.ty != LimitBoundType::EQ) {
-                return other.join(*this);
-            }
-
-            // both eq
-            if (this->ty == LimitBoundType::EQ) {
-                if (this->val == other.val) {
-                    return {*this};
-                } else {
-                    return {LimitBoundType::ULT, Bound::apmax(this->val,other.val)+1};
-                }
-            }
-
-            // ult and other is eq
-            if (other.ty == LimitBoundType::EQ) {
-                if(other.val.ult(this->val)) {
-                    return *this;
-                } else {
-                    return {LimitBoundType::ULT, other.val+1};
-                }
-            }
-
-            // ult and ult
-            if (other.val.ult(this->val)) {
-                return *this;
-            } else {
-                return other;
-            }
-        }
-
+    class Expr {
+        public:
+            virtual ~Expr();
+            virtual z3::expr build_expression(z3::context& c, z3::expr indexExpr) const = 0;
     };
 
-    class LinearConstraint {
+    class AtomIndexExpr final: public Expr {
+
+        public:
+
+            z3::expr build_expression(z3::context& c, z3::expr indexExpr) const override {
+                return indexExpr;
+            }
+
+            static std::unique_ptr<Expr> Create() {
+                return std::make_unique<AtomIndexExpr>();
+            }
+    };
+
+    class AtomIntExpr final: public Expr {
         private:
-            llvm::CmpInst::Predicate comp;
-            
-            llvm::APInt bound;
+            llvm::APInt atomValue;
 
-            static llvm::CmpInst::Predicate normalizeComp(llvm::CmpInst::Predicate orig) {
-                if (llvm::CmpInst::isSigned(orig)) {
-                    orig = llvm::CmpInst::getUnsignedPredicate(orig);
-                }
 
-                if (llvm::CmpInst::isNonStrictPredicate(orig)) {
-                    orig = llvm::CmpInst::getStrictPredicate(orig);
-                }
-            
+        static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
+            llvm::APInt togetBitsFrom = api;
+            if (llvm::sys::IsLittleEndianHost) {
+                // we are storing in little endian but z3 is big endian so
+                togetBitsFrom = api.byteSwap();
+            } 
 
-                return orig;
+            auto res = std::make_unique<bool[]>(togetBitsFrom.getBitWidth());
+            for (unsigned int i = 0; i < api.getBitWidth(); i++) {
+                res[i] = togetBitsFrom[i];
             }
 
+            return res;
+        }
+        
         public:
-            LinearConstraint(llvm::CmpInst::Predicate comp,llvm::APInt bound): comp(normalizeComp(comp)),bound(bound) {
-                
+            AtomIntExpr(llvm::APInt atomValue): atomValue(atomValue) {}
+
+            z3::expr build_expression(z3::context& c, z3::expr indexExpr) const override {
+                auto bv_width = this->atomValue.getBitWidth();
+                auto bv_bits = AtomIntExpr::getBigEndianBits(this->atomValue);
+                return c.bv_val(bv_width,bv_bits.get());
             }
 
-
-            void logicalNot() {
-                this->comp = llvm::CmpInst::getInversePredicate(this->comp);
+            static std::unique_ptr<Expr> Create(llvm::APInt value) {
+                return std::make_unique<AtomIntExpr>(value);
             }
+    };
+
+    // might be able to combine complex formula with binop tbh
+    // this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
+    enum Z3Binop {ADD, ULE,ULT, UGT, UGE, AND, OR, EQ};
+    class BinopExpr final: public Expr {
+        private:
+            Z3Binop opcode;
+            std::unique_ptr<Expr> lhs;
+            std::unique_ptr<Expr> rhs;
+        
+        public:
+        
+            BinopExpr(Z3Binop opcode, std::unique_ptr<Expr> lhs , std::unique_ptr<Expr> rhs) : opcode(opcode), lhs(std::move(lhs)), rhs(std::move(rhs)) {}
 
 
-            // compute exclusive upper bound if this comparison asserts that the index is less than some constant
-            Bound computeUB() {
-              
-                // comp is normalized to the strict unsigned predicate so:
-                // TODO dont do anything with equality would probably need SMT to help with figuring out bounds in that case
-                assert(!llvm::CmpInst::isRelational(this->comp) || (llvm::CmpInst::isStrictPredicate(this->comp) && llvm::CmpInst::isUnsigned(this->comp) && llvm::CmpInst::isIntPredicate(this->comp)));
-                switch(this->comp) {
-                    case llvm::CmpInst::Predicate::ICMP_ULT :
-                        return {LimitBoundType::ULT, this->bound}; 
-
-                    case llvm::CmpInst::Predicate::ICMP_EQ:
-                        return {LimitBoundType::EQ, this->bound};
+            static std::unique_ptr<Expr> Create(Z3Binop opcode, std::unique_ptr<Expr> lhs , std::unique_ptr<Expr> rhs) {
+                return std::make_unique<BinopExpr>(opcode, std::move(lhs), std::move(rhs));
+            }
+    
+            z3::expr build_expression(z3::context& c, z3::expr indexExpr) const override {
+                auto e1 = this->lhs->build_expression(c,indexExpr);
+                auto e2 = this->rhs->build_expression(c,indexExpr);
+                switch(this->opcode) {
+                    case ADD:
+                        return z3::operator+(e1, e2);
+                    case ULE:
+                        return z3::ule(e1, e2); 
+                    case ULT:
+                        return z3::ult(e1, e2);
+                    case UGT:
+                        return z3::ugt(e1, e2);
+                    case UGE:
+                        return z3::uge(e1, e2);
+                    case EQ:
+                        return z3::operator==(e1, e2);
                     default:
-                        // assume all other cases to be unbounded
-                        return Bound::createTop();
-                };
-            }
-
-    };
-
-
-
-
-
-
-    /*
-    If this becomes an issue this could be come a tree of expressions, and actually apply solving
-    */
-    class ConstraintList {
-        private: 
-            std::vector<LinearConstraint> cons;
-            std::optional<Connective> conn;
-
-        void flipConnective() {
-            if(this->conn) {
-                if (this->conn == Connective::AND) {
-                    this->conn = {Connective::OR};
-                } else {
-                    this->conn = {Connective::AND};
+                        throw std::invalid_argument("unknown opcode binop");
                 }
             }
-        }
+    };
 
-        Bound getStartingBound() {
-            if (*this->conn == Connective::AND) {
-                return Bound::createTop();
-            } else {
-                return Bound::createBottom();
-            }
-        }
-
-
-
-        Bound combiner(Bound total, Bound other) {
-            switch(*this->conn) {
-                case Connective::AND:
-                    break;
-                case Connective::OR:
-                    break;
-            }
-            if ((*this->conn) == Connective::AND) {
-                return total.meet(other);
-            } else {
-                return total.join(other);
-            }
-        } 
+    enum Z3Unop {LOGNOT};
+    class UnopExpr final: public Expr {
+        private:
+            Z3Unop opcode;
+            std::unique_ptr<Expr> lhs;
 
         public:
-            ConstraintList(LinearConstraint lcons): cons({lcons}), conn(std::nullopt) {
-
-            }
-
-
-            std::optional<ConstraintList> addConstraint(ConstraintList other,Connective conn) {
-                switch(conn) {
-                    case Connective::AND:
-                        break;
-                    case Connective::OR:
-                        break;
-                }
-                if (!this->conn) {
-                    this->conn = {conn};
-                }
-
-                if (!other.conn || *other.conn == *this->conn) {
-                    this->cons.insert(this->cons.end(),other.cons.begin(),other.cons.end());
-                    return {*this};
-                }
-
-                return std::nullopt;
-            }
-
-
-            void logicalNot() {
-                this->flipConnective();
-                std::for_each(this->cons.begin(), this->cons.end(), [](LinearConstraint& lcons) {lcons.logicalNot();});
-            }
-
-            // exclusive upper bound on the index, must be sound (ie. guarenteed at runtime to be less than this value on the true path)
-            Bound computeUB() {
-                // basically a fold with max/min as the combinator depending on or/and connective and then each lcons just returns either unbounded or bound
-                Bound start = this->getStartingBound();
-                return std::accumulate(this->cons.begin(), this->cons.end(),start, [this](Bound total, LinearConstraint newCons){ return this->combiner(total,newCons.computeUB());});
-            }
             
-            // inclusive lower bound
-            Bound computeLB() {
-                Bound start = this->getStartBound();
+            UnopExpr( Z3Unop opcode, std::unique_ptr<Expr> lhs): opcode(opcode), lhs(std::move(lhs)) {
+
             }
+
+            static std::unique_ptr<Expr> Create(Z3Unop opcode, std::unique_ptr<Expr> lhs) {
+                return std::make_unique<UnopExpr>(opcode, std::move(lhs));
+            }
+
+            z3::expr build_expression(z3::context& c, z3::expr indexExpr) const override {
+                auto e1 = this->lhs->build_expression(c,indexExpr);
+                switch(this->opcode) {
+                    case Z3Unop::LOGNOT:
+                        return z3::operator!(e1);
+                    default:
+                        throw std::invalid_argument("unknown opcode unop");
+                }
+            }   
     };
+
+
+    class ExprSolve {
+        private:
+        
+            std::optional<llvm::APInt> optomizeExpr(const std::unique_ptr<Expr>& exp,llvm::Value* index, std::function<z3::expr(z3::optimize, z3::expr)> getoptimal) {
+                    z3::context c;
+                    z3::expr index_bv = c.bv_const("index", index->getType()->getIntegerBitWidth());
+                    z3::expr constraints = exp->build_expression(c, index_bv);  
+                    z3::optimize s(c);
+                    s.add(constraints);
+
+                    if (z3::sat == s.check()) {
+                        z3::expr res = getoptimal(s,index_bv);
+                        return llvm::APInt(index->getType()->getIntegerBitWidth(), res.as_uint64());
+                    } else {
+                        return std::nullopt;
+                    }
+            }
+
+        public:
+            std::optional<llvm::APInt> solveForUB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
+                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
+                    z3::optimize::handle h = o.maximize(target_bv);
+                    return o.upper(h);
+                });
+            }
+
+            std::optional<llvm::APInt> solveForLB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
+                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
+                    z3::optimize::handle h = o.minimize(target_bv);
+                    return o.lower(h);
+                });
+            }      
+    };  
+    
 
     // core assumption currently constraints are treated as unsigned
-    class ConstraintExtractor: public llvm::InstVisitor<ConstraintExtractor,std::optional<ConstraintList>> {
+    class ConstraintExtractor: public llvm::InstVisitor<ConstraintExtractor,std::optional<std::unique_ptr<Expr>>> {
         private:
 
 
-            static std::optional<Connective> translateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
+            static std::optional<Z3Binop> translateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
                 switch (op)
                 {
-                case llvm::Instruction::And /* constant-expression */:
+                case llvm::Instruction::BinaryOps::And /* constant-expression */:
                     /* code */
-                    return {Connective::AND};
-                case llvm::Instruction::Or:
-                    return {Connective::OR};
+                    return {Z3Binop::AND};
+                case llvm::Instruction::BinaryOps::Or:
+                    return {Z3Binop::OR};
+                case llvm::Instruction::BinaryOps::Add:
+                    return {Z3Binop::ADD};
+                default:
+                    return std::nullopt;
+                }
+            }
+
+
+            static std::optional<Z3Binop> translateICMPOpToZ3(llvm::CmpInst::Predicate op) {
+                switch (op)
+                {
+                case llvm::CmpInst::Predicate::ICMP_EQ:
+                    return Z3Binop::EQ;
+                case llvm::CmpInst::Predicate::ICMP_UGE:
+                    return Z3Binop::UGE;
+                case llvm::CmpInst::Predicate::ICMP_UGT:
+                    return Z3Binop::UGT;
+                case llvm::CmpInst::Predicate::ICMP_ULE:
+                    return Z3Binop::ULE;
+                case llvm::CmpInst::Predicate::ICMP_ULT:
+                    return Z3Binop::ULT;
                 default:
                     return std::nullopt;
                 }
@@ -371,10 +253,20 @@ namespace anvill {
 
         public: 
 
-            std::optional<ConstraintList> expectInsn(llvm::Value* v) {
+            std::optional<std::unique_ptr<Expr>> expectInsnOrIndex(llvm::Value* v) {
+                if (v == this->index) {
+                    return AtomIndexExpr::Create();
+                }
+
+                if (auto* constint = llvm::dyn_cast<llvm::ConstantInt>(v)) {
+                    return AtomIntExpr::Create(constint->getValue());
+                }
+                
                 if (auto* insn = llvm::dyn_cast<llvm::Instruction>(v)) {
                     return this->visit(*insn);
                 }
+
+            
 
                 return std::nullopt;
             }
@@ -383,49 +275,33 @@ namespace anvill {
             ConstraintExtractor(const llvm::Value* index): index(index) {}
 
 
-            std::optional<ConstraintList> visitInstruction(llvm::Instruction &I ) {
+            std::optional<std::unique_ptr<Expr>> visitInstruction(llvm::Instruction &I ) {
                 return std::nullopt;
             }
 
-            std::optional<ConstraintList> visitICmpInst(llvm::ICmpInst &I) {
-                // because instruction combiner places constants on the right hand side we can assume:
-                if (auto *rhsBound = llvm::dyn_cast<llvm::ConstantInt>(I.getOperand(1))) {
-                    llvm::APInt apBound = rhsBound->getValue();
+            std::optional<std::unique_ptr<Expr>> visitICmpInst(llvm::ICmpInst &I) {
+                auto conn = translateICMPOpToZ3(I.getPredicate());
 
-                    // compared directly to index
-                    if (I.getOperand(0) == this->index) {
-                        auto lcons = LinearConstraint(I.getPredicate(),apBound);
-                        auto list = ConstraintList(lcons);
-                        return {list};
+
+                if (auto repr0 = this->expectInsnOrIndex(I.getOperand(0))) {
+                    if (auto repr1 = this->expectInsnOrIndex(I.getOperand(1))) {
+                        if (conn) {
+                            return {BinopExpr::Create(*conn,std::move(*repr0), std::move(*repr1))};
+                        }
                     }
-
-
-                    llvm::Value* candidateIndex;
-                    llvm::ConstantInt* added;
-                    if (pats::match(I.getOperand(0),pats::m_Add(pats::m_Value(candidateIndex),pats::m_ConstantInt(added))) && candidateIndex == this->index) {
-                        auto addedToIndex = added->getValue();
-                        auto newBound = apBound - addedToIndex; // subtract accross bound to normalize bound to index
-                       
-                        // ok this linear constraint isnt complete because doesnt account for wrapping
-                        // this isnt strictly correct but assert that computation doesnt wrap, otherwise we would have to potentially express disjoint regions, SMT would solve this.
-                        LinearConstraint lcons(I.getPredicate(),newBound);
-                        auto list = ConstraintList(lcons);
-                        list.addConstraint(generateNoWrapPred(addedToIndex), Connective::AND);
-                        return {list};
-                    }
-
                 }
+
                 return std::nullopt;
             }
 
-            std::optional<ConstraintList>  visitBinaryOperator(llvm::BinaryOperator &B) {
+            std::optional<std::unique_ptr<Expr>>  visitBinaryOperator(llvm::BinaryOperator &B) {
                 auto conn = translateOpcodeToConnective(B.getOpcode());
 
 
-                if (auto repr0 = this->expectInsn(B.getOperand(0))) {
-                    if (auto repr1 = this->expectInsn(B.getOperand(1))) {
+                if (auto repr0 = this->expectInsnOrIndex(B.getOperand(0))) {
+                    if (auto repr1 = this->expectInsnOrIndex(B.getOperand(1))) {
                         if (conn) {
-                            return repr0->addConstraint(*repr1, *conn);
+                            return {BinopExpr::Create(*conn,std::move(*repr0), std::move(*repr1))};
                         }
                     }
                 }
@@ -448,7 +324,8 @@ namespace anvill {
             std::optional<llvm::SmallVector<llvm::Instruction*>>  indexRelSlice;
             std::optional<llvm::Value*> index;
             std::optional<llvm::Value*> loadedExpression;
-            std::optional<llvm::APInt> upperBound;
+            std::optional<llvm::APInt> upperBound; //inclusive
+            std::optional<llvm::APInt> lowerBound; //inclusive
             std::optional<llvm::BasicBlock*> defaultOut;
             const llvm::DominatorTree& DT;
             SliceManager& slices;
@@ -493,17 +370,20 @@ namespace anvill {
                     auto bcheck = *maybe_bcheck;
                     this->defaultOut = {bcheck.failDirection};
                     auto cond = bcheck.branch->getCondition();
-                    auto indexConstraints = ConstraintExtractor(*this->index).expectInsn(cond);
+                    std::optional<std::unique_ptr<Expr>> indexConstraints = ConstraintExtractor(*this->index).expectInsnOrIndex(cond);
 
                     if(indexConstraints) {
-                        auto cons = *indexConstraints;
+                        std::unique_ptr<Expr> cons = std::move(*indexConstraints);
                         if (!bcheck.passesCheckOnTrue) {
                             // we want the conditions s.t. the check passes
-                            cons.logicalNot();
+                            cons = UnopExpr::Create(Z3Unop::LOGNOT,std::move(cons));
                         }
 
-                        this->upperBound = cons.computeUB().getExclusiveMax();
-                        return this->upperBound.has_value();
+                        ExprSolve s;
+
+                        this->upperBound = s.solveForUB(cons,*this->index);
+                        this->lowerBound = s.solveForLB(cons, *this->index);
+                        return this->upperBound.has_value() && this->lowerBound.has_value();
                     }
 
                 }
@@ -555,7 +435,7 @@ namespace anvill {
                 SliceManager::SliceID indexRelId = this->slices.addSlice(*this->indexRelSlice, *this->loadedExpression);
                 PcRel pc(pcRelId);
                 IndexRel indexRelation(indexRelId,*this->index);
-                return  {{pc,indexRelation, *this->upperBound, *this->defaultOut}};
+                return  {{pc,indexRelation, *this->upperBound, *this->lowerBound, *this->defaultOut}};
             }
 
             return std::nullopt;
