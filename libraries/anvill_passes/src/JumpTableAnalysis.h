@@ -37,17 +37,16 @@
 
 
             llvm::IntegerType* getExpectedType(SliceManager&);
-            
-        private:
             SliceID  slice;
+            
     };
 
 
-    class IndexRel {
-        private:
+    class IndexRel {    
+        public:
             SliceID  slice;
             llvm::Value* index;
-        public:
+            
             llvm::Value* getIndex();
             llvm::APInt apply(SliceInterpreter& interp,llvm::APInt indexValue);
 

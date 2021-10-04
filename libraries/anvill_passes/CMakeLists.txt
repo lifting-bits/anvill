@@ -9,8 +9,6 @@
 add_library(anvill_passes STATIC
   include/anvill/Transforms.h
 
-  src/SwitchLoweringPass.h
-  src/SwitchLoweringPass.cpp
   src/LowerRemillMemoryAccessIntrinsics.cpp
   src/LowerRemillMemoryAccessIntrinsics.h
   
@@ -56,11 +54,12 @@ add_library(anvill_passes STATIC
   src/InstructionFolderPass.h
   src/InstructionFolderPass.cpp
 
+  src/IndirectJumpPass.h
   src/JumpTableAnalysis.cpp
   src/JumpTableAnalysis.h
-
+  src/SwitchLoweringPass.h
+  src/SwitchLoweringPass.cpp
   src/BaseFunctionPass.h
-  src/IndirectJumpPass.h
 
   src/Utils.h
   src/Utils.cpp
@@ -68,7 +67,6 @@ add_library(anvill_passes STATIC
   src/SlicerVisitor.h
   src/SlicerVisitor.cpp
   src/SliceInterpreter.cpp
-  src/SliceInterpreter.h
 
   include/anvill/ITransformationErrorManager.h
   src/TransformationErrorManager.h

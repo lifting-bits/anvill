@@ -103,7 +103,7 @@ namespace anvill {
         fpm.run(*targetFunction);
         fpm.doFinalization();
 
-        targetFunction->dump();
+        //targetFunction->dump();
     }
     }
 

@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
+#include "IndirectJumpPass.h"
 #include "JumpTableAnalysis.h"
 
 namespace anvill {

@@ -15,13 +15,6 @@ This pass focuses on lowering switch statements where a jumptable does exist
 */
 
 namespace anvill {
-
-   
-
-    
-
-
-
     class SwitchLoweringPass: public IndirectJumpPass<SwitchLoweringPass> {
         
         private:
