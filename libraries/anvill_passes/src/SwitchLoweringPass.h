@@ -2,7 +2,7 @@
 
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
-#include "IndirectJumpPass.h"
+#include <anvill/IndirectJumpPass.h>
 #include <anvill/SliceManager.h>
 /*
 The goal here is to lower anvill_complete_switch to an llvm switch when we can recover the cases. This analysis must be sound but anvill_complete_switch maybe used for any complete set of indirect targets

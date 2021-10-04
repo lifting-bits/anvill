@@ -3,7 +3,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 #include <llvm/IR/ValueMap.h>
-#include "IndirectJumpPass.h"
+#include <anvill/IndirectJumpPass.h>
 #include <anvill/SliceManager.h>
 #include <anvill/SliceInterpreter.h>
 
