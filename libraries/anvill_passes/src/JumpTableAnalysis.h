@@ -5,6 +5,7 @@
 #include <llvm/IR/ValueMap.h>
 #include "IndirectJumpPass.h"
 #include <anvill/SliceManager.h>
+#include <anvill/SliceInterpreter.h>
 
  namespace anvill {
 
@@ -28,29 +29,29 @@
 
     class PcRel {
         public:
-            PcRel(SliceManager::SliceID slice): slice(slice) {
+            PcRel(SliceID slice): slice(slice) {
 
             }
 
-            llvm::APInt apply(llvm::APInt loadedVal);
+            llvm::APInt apply(SliceInterpreter& interp, llvm::APInt loadedVal);
 
 
-            llvm::IntegerType* getExpectedType();
+            llvm::IntegerType* getExpectedType(SliceManager&);
             
         private:
-            SliceManager::SliceID  slice;
+            SliceID  slice;
     };
 
 
     class IndexRel {
         private:
-            SliceManager::SliceID  slice;
+            SliceID  slice;
             llvm::Value* index;
         public:
             llvm::Value* getIndex();
-            llvm::APInt apply(llvm::APInt indexValue);
+            llvm::APInt apply(SliceInterpreter& interp,llvm::APInt indexValue);
 
-            IndexRel(SliceManager::SliceID slice, llvm::Value* index): slice(slice), index(index) {
+            IndexRel(SliceID slice, llvm::Value* index): slice(slice), index(index) {
 
             }
     };

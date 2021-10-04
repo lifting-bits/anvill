@@ -13,6 +13,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include "SlicerVisitor.h"
 #include <anvill/SliceManager.h>
+#include <llvm/ExecutionEngine/Interpreter.h>
 #include <z3++.h>
 
 
@@ -41,7 +42,24 @@ namespace anvill {
 
             return taintedGuards;
         }
+
+        llvm::APInt runSingleIntFunc(SliceInterpreter& interp, SliceID slice, llvm::APInt indexValue) {
+            std::vector<llvm::GenericValue> args(1);
+            llvm::GenericValue v;
+            v.IntVal = indexValue;
+            args[0] = v;
+            auto res = interp.executeSlice(slice, args);
+            return res.IntVal;
+        }
+        bool isValidRelType(llvm::FunctionType* ty) {
+            return ty->params().size() == 1 && ty->params()[0]->isIntegerTy() && ty->getReturnType()->isIntegerTy();
+        }
     }
+
+    llvm::Value* IndexRel::getIndex() {
+        return this->index;
+    }
+
 
     namespace pats = llvm::PatternMatch;
 
@@ -383,7 +401,6 @@ namespace anvill {
                         }
 
                         ExprSolve s;
-                        std::cout << "attempting solve" << std::endl;
                         this->upperBound = s.solveForUB(cons,*this->index);
                         this->lowerBound = s.solveForLB(cons, *this->index);
                         return this->upperBound.has_value() && this->lowerBound.has_value();
@@ -393,13 +410,6 @@ namespace anvill {
 
                 return false;
             }
-
-
-
-
-
-
-            
            
 
         public:
@@ -423,7 +433,6 @@ namespace anvill {
                     this->loadedExpression = loadFromJumpTable->getOperand(0);
                     this->index = indexRelSlicer.checkInstruction(loadFromJumpTable->getOperand(0));
                     this->indexRelSlice = indexRelSlicer.getSlice();
-                    std::cout << "Got index slices" << std::endl;
                     return true;
                 }
             }
@@ -435,8 +444,16 @@ namespace anvill {
         std::optional<JumpTableResult> runPattern(const llvm::CallInst* pcCall) {
 
             if( this->runIndexPattern(pcCall->getArgOperand(0)) && this->runBoundsCheckPattern(pcCall)) {
-                SliceManager::SliceID pcRelId = this->slices.addSlice(*this->pcRelSlice, pcCall->getArgOperand(0));
-                SliceManager::SliceID indexRelId = this->slices.addSlice(*this->indexRelSlice, *this->loadedExpression);
+                SliceID pcRelId = this->slices.addSlice(*this->pcRelSlice, pcCall->getArgOperand(0));
+                SliceID indexRelId = this->slices.addSlice(*this->indexRelSlice, *this->loadedExpression);
+
+                auto pcRelRepr = this->slices.getSlice(pcRelId).getRepr();
+                auto indexRelRepr = this->slices.getSlice(indexRelId).getRepr();
+
+                if (!isValidRelType(pcRelRepr->getFunctionType()) || !isValidRelType(indexRelRepr->getFunctionType())) {
+                        return std::nullopt;
+                }
+
                 PcRel pc(pcRelId);
                 IndexRel indexRelation(indexRelId,*this->index);
                 return  {{pc,indexRelation, *this->upperBound, *this->lowerBound, *this->defaultOut}};
@@ -448,7 +465,19 @@ namespace anvill {
     };
 
     
+    llvm::IntegerType* PcRel::getExpectedType(SliceManager& slm) {
+        auto slc = slm.getSlice(this->slice);
+        return llvm::cast<llvm::IntegerType>(slc.getRepr()->getFunctionType()->params()[0]);
+    }
 
+
+    llvm::APInt PcRel::apply(SliceInterpreter& interp,llvm::APInt indexValue) {
+        return runSingleIntFunc(interp, this->slice, indexValue);
+    }
+
+    llvm::APInt IndexRel::apply(SliceInterpreter& interp,llvm::APInt indexValue) {
+        return runSingleIntFunc(interp, this->slice, indexValue);
+    }
 
 
     std::optional<JumpTableResult> JumpTableAnalysis::getResultFor(llvm::CallInst* indirectJump) const {
@@ -464,7 +493,6 @@ namespace anvill {
         JumpTableDiscovery jtdisc(DT, this->slices);
         auto res = jtdisc.runPattern(callinst);
         if(res.has_value()) {
-            std::cout << "Got jump table result" << std::endl;
             this->results.insert({callinst,*res});
         }
         return false;

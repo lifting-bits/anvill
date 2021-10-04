@@ -65,6 +65,7 @@ namespace anvill {
     class SwitchBuilder {
     private:
         llvm::LLVMContext& context;
+        SliceManager& slm;
         const std::shared_ptr<MemoryProvider>& memProv;
         const llvm::DataLayout& dl;
 
@@ -98,23 +99,24 @@ namespace anvill {
             }
         }
     public:
-        SwitchBuilder(llvm::LLVMContext& context,  const std::shared_ptr<MemoryProvider>& memProv, const llvm::DataLayout& dl): context(context), memProv(memProv), dl(dl) {
+        SwitchBuilder(llvm::LLVMContext& context, SliceManager& slm,const std::shared_ptr<MemoryProvider>& memProv, const llvm::DataLayout& dl): context(context), slm(slm), memProv(memProv), dl(dl) {
 
         }
 
         std::optional<llvm::SwitchInst*> createNativeSwitch( JumpTableResult jt, const PcBinding& binding, llvm::LLVMContext& context) {
             auto minIndex = jt.lowerBound;
             auto numberOfCases = (jt.upperBound-minIndex) + 1;
+            auto interp = this->slm.getInterp();
             llvm::SwitchInst* newSwitch = llvm::SwitchInst::Create(jt.indexRel.getIndex(),jt.defaultOut,numberOfCases.getLimitedValue());
             for(llvm::APInt currIndValue = minIndex; currIndValue.ule(jt.upperBound); currIndValue+=1) {
-                auto readAddress = jt.indexRel.apply(currIndValue);
-                std::optional<llvm::APInt> jmpOff = this->readIntFrom(jt.pcRel.getExpectedType(),readAddress);
+                auto readAddress = jt.indexRel.apply(interp,currIndValue);
+                std::optional<llvm::APInt> jmpOff = this->readIntFrom(jt.pcRel.getExpectedType(slm),readAddress);
                 if (!jmpOff.has_value()) {
                     delete newSwitch;
                     return std::nullopt;
                 } 
 
-                auto newPc = jt.pcRel.apply(*jmpOff);
+                auto newPc = jt.pcRel.apply(interp,*jmpOff);
                 auto outBlock = binding.lookup(newPc);
                 if (!outBlock.has_value()) {
                     delete newSwitch;
@@ -148,7 +150,7 @@ namespace anvill {
         auto dl = F.getParent()->getDataLayout();
         llvm::LLVMContext& context = F.getParent()->getContext();
 
-        SwitchBuilder sbuilder(context, this->memProv, dl);
+        SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
         auto followingSwitch = targetCall->getParent()->getTerminator();
         auto follower = llvm::cast<llvm::SwitchInst>(followingSwitch);
         auto binding = PcBinding::build(targetCall, follower); 
@@ -163,8 +165,8 @@ namespace anvill {
      }
 
 
-    llvm::FunctionPass* CreateSwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv) {
-        return new SwitchLoweringPass(std::move(memProv));
+    llvm::FunctionPass* CreateSwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv, SliceManager& slm) {
+        return new SwitchLoweringPass(std::move(memProv), slm);
     }
 
     llvm::StringRef SwitchLoweringPass::getPassName() const {

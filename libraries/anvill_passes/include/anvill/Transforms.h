@@ -265,7 +265,11 @@ void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
 
+<<<<<<< HEAD
 llvm::FunctionPass *
 CreateSwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv);
+=======
+llvm::FunctionPass* CreateSwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv, SliceManager& slm);
+>>>>>>> 648fedf (debugging switch)
 
 }  // namespace anvill

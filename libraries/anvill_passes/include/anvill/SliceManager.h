@@ -7,6 +7,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/LLVMContext.h>
 #include <tuple>
+#include "SliceInterpreter.h"
 
 namespace anvill {
 
@@ -14,32 +15,32 @@ namespace anvill {
         llvm::ValueMap<llvm::Value*, llvm::Value*> mappingOldToNew;
         llvm::SmallVector<llvm::Instruction*> copied;
     };
+    
+    class SliceManager;
+    class SliceID {
+        friend class SliceManager;
+        private:
+            uint64_t ID;
 
+            SliceID(): ID(0) {}
+
+            SliceID operator++(int) {
+                auto temp = *this;
+                this->ID++;
+                return temp;
+            }
+    };
+    class SliceInterpreter;
     class SliceManager {
         
         public:
-          class SliceID {
-            friend class SliceManager;
-            private:
-                uint64_t ID;
-
-                SliceID(): ID(0) {}
-
-                SliceID operator++(int) {
-                    auto temp = *this;
-                    this->ID++;
-                    return temp;
-                }
-        };
-
-
         class Slice {
             private:   
                 llvm::Function* reprFunction;
-                SliceManager::SliceID ID;
+                SliceID ID;
             // we need origin info for arguments somehow to basically allow analyses to get more context for the slice if they fail.
             public:
-                Slice(llvm::Function* f, SliceManager::SliceID id): reprFunction(f), ID(id) {}
+                Slice(llvm::Function* f, SliceID id): reprFunction(f), ID(id) {}
 
                 llvm::Function* getRepr() {
                     return this->reprFunction;
@@ -47,12 +48,13 @@ namespace anvill {
         };
 
 
-
+        protected:
+            llvm::LLVMContext context; // unique context?
+            std::unique_ptr<llvm::Module> mod;
 
         private:
             // perhaps at some point we should split modules
-            llvm::LLVMContext context; // unique context?
-            std::unique_ptr<llvm::Module> mod;
+
             SliceID nextID;
             std::map<uint64_t, Slice> slices;
            
@@ -64,11 +66,13 @@ namespace anvill {
             llvm::Function* createFunctionForCurrentID(llvm::ArrayRef<llvm::Value*> arguments, llvm::Value* returnVal);
 
 
+
+
+        public:
             static llvm::Twine getFunctionName(SliceID id) {
                     return "sliceFunc." + std::to_string(id.ID);
             }
 
-        public:
             /**
              * @brief Adds a slice of instructions to the slice manager. Any values not defined in the slice are lifted to arguments.
              * 
@@ -87,6 +91,8 @@ namespace anvill {
             ~SliceManager() {
                 this->mod.reset();
             }
+
+            SliceInterpreter getInterp();
 
             
     };

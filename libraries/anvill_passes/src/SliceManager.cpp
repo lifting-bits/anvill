@@ -33,7 +33,7 @@ namespace anvill {
         auto bb = llvm::BasicBlock::Create(targetFunc->getParent()->getContext(),"slicebasicblock."+std::to_string(this->nextID.ID),targetFunc);
     
         std::for_each(slice.begin(), slice.end(),   [bb](llvm::Instruction* insn) { bb->getInstList().push_back(insn);});
-        auto _ret = llvm::ReturnInst::Create(targetFunc->getParent()->getContext(),newReturn,bb);
+        llvm::ReturnInst::Create(targetFunc->getParent()->getContext(),newReturn,bb);
         return;
     }
 
@@ -42,7 +42,7 @@ llvm::Twine SliceManager::getNextFunctionName() {
 }
 
 
-    SliceManager::SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction*> slice, llvm::Value* returnValue) {
+    SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction*> slice, llvm::Value* returnValue) {
         auto id = this->nextID;
         llvm::SmallDenseSet<llvm::Value*> definedValue;
         for (auto insn : slice) {
@@ -84,7 +84,6 @@ llvm::Twine SliceManager::getNextFunctionName() {
 
         this->insertClonedSliceIntoFunction(sliceRepr, newRet, cloned);
         this->slices.insert({this->nextID.ID, SliceManager::Slice(sliceRepr,this->nextID)});
-        sliceRepr->dump();
 
         this->nextID++;
         return id;
@@ -94,4 +93,9 @@ llvm::Twine SliceManager::getNextFunctionName() {
           SliceManager::Slice sl = this->slices.find(id.ID)->second;
           return sl;
       }
+
+
+    SliceInterpreter SliceManager::getInterp() {
+        return SliceInterpreter(*this->mod.get());
+     }
 }
