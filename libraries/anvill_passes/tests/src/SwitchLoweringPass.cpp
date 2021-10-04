@@ -98,12 +98,12 @@ namespace anvill {
         memProv->addJumpTableOffset(-1153287);
         memProv->addJumpTableOffset(-1153278);
 
-        fpm.add(CreateSwitchLoweringPass(memProv));
+       // fpm.add(CreateSwitchLoweringPass(memProv));
         fpm.doInitialization();
         fpm.run(*targetFunction);
         fpm.doFinalization();
 
-        targetFunction->dump();
+      //  targetFunction->dump();
     }
     }
 

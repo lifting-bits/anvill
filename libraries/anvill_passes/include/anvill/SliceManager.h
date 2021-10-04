@@ -51,10 +51,11 @@ namespace anvill {
 
         private:
             // perhaps at some point we should split modules
+            llvm::LLVMContext context; // unique context?
             std::unique_ptr<llvm::Module> mod;
             SliceID nextID;
             std::map<uint64_t, Slice> slices;
-            llvm::LLVMContext context; // unique context?
+           
             llvm::SmallVector<llvm::Instruction*> createMapperFromSlice(llvm::ArrayRef<llvm::Instruction*> slice, llvm::ValueToValueMapTy& mapper);
 
             void insertClonedSliceIntoFunction(llvm::Function* targetFunc, llvm::Value* newRet, llvm::ArrayRef<llvm::Instruction*> slice);
@@ -80,9 +81,11 @@ namespace anvill {
 
             Slice getSlice(SliceID id);
 
-            SliceManager(): context() {
-                this->mod = std::make_unique<llvm::Module>("slicemodule", this->context);
-                this->nextID = SliceID();
+            SliceManager(): context(), mod(std::make_unique<llvm::Module>("slicemodule", this->context)), nextID(SliceID()) {
+            }
+
+            ~SliceManager() {
+                this->mod.reset();
             }
 
             

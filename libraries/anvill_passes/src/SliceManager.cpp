@@ -4,6 +4,7 @@
 #include <llvm/Transforms/Utils/ValueMapper.h> 
 #include <llvm/IR/Instructions.h>
 #include <anvill/SliceManager.h>
+#include <iostream>
 
 namespace anvill {
 
@@ -50,7 +51,8 @@ llvm::Twine SliceManager::getNextFunctionName() {
         
         llvm::SmallDenseSet<llvm::Value*> liftedArgumentSet;
         for (auto insn : slice) {
-            for (const auto& use : insn->uses()) {
+            for (const auto& use : insn->operands()) {
+
                 if (definedValue.find(use.get()) == definedValue.end() && !llvm::isa<llvm::Constant>(use.get())) {
                     liftedArgumentSet.insert(use.get());
                 }
@@ -66,7 +68,7 @@ llvm::Twine SliceManager::getNextFunctionName() {
         llvm::Function* sliceRepr = this->createFunctionForCurrentID(orderedArguments, returnValue);
         llvm::ValueToValueMapTy mapper;
         auto cloned = this->createMapperFromSlice(slice, mapper);
-        
+
         auto i = 0;
         for (auto liftedArg : orderedArguments) {
             auto arg = sliceRepr->getArg(i);

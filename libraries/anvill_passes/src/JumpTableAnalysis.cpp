@@ -53,7 +53,7 @@ namespace anvill {
 
     class Expr {
         public:
-            virtual ~Expr();
+            virtual ~Expr() = default;
             virtual z3::expr build_expression(z3::context& c, z3::expr indexExpr) const = 0;
     };
 
@@ -77,7 +77,7 @@ namespace anvill {
 
         static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
             llvm::APInt togetBitsFrom = api;
-            if (llvm::sys::IsLittleEndianHost) {
+            if (llvm::sys::IsLittleEndianHost && togetBitsFrom.getBitWidth() >= 16) {
                 // we are storing in little endian but z3 is big endian so
                 togetBitsFrom = api.byteSwap();
             } 
@@ -138,6 +138,10 @@ namespace anvill {
                         return z3::uge(e1, e2);
                     case EQ:
                         return z3::operator==(e1, e2);
+                    case AND:
+                        return z3::operator&&(e1, e2);
+                    case OR:
+                        return z3::operator||(e1, e2);
                     default:
                         throw std::invalid_argument("unknown opcode binop");
                 }
@@ -181,7 +185,6 @@ namespace anvill {
                     z3::expr constraints = exp->build_expression(c, index_bv);  
                     z3::optimize s(c);
                     s.add(constraints);
-
                     if (z3::sat == s.check()) {
                         z3::expr res = getoptimal(s,index_bv);
                         return llvm::APInt(index->getType()->getIntegerBitWidth(), res.as_uint64());
@@ -193,15 +196,15 @@ namespace anvill {
         public:
             std::optional<llvm::APInt> solveForUB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
                 return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
-                    z3::optimize::handle h = o.maximize(target_bv);
-                    return o.upper(h);
+                    o.maximize(target_bv);
+                    return  o.get_model().eval(target_bv);
                 });
             }
 
             std::optional<llvm::APInt> solveForLB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
                 return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
-                    z3::optimize::handle h = o.minimize(target_bv);
-                    return o.lower(h);
+                    o.minimize(target_bv);
+                    return o.get_model().eval(target_bv);
                 });
             }      
     };  
@@ -380,7 +383,7 @@ namespace anvill {
                         }
 
                         ExprSolve s;
-
+                        std::cout << "attempting solve" << std::endl;
                         this->upperBound = s.solveForUB(cons,*this->index);
                         this->lowerBound = s.solveForLB(cons, *this->index);
                         return this->upperBound.has_value() && this->lowerBound.has_value();
@@ -420,6 +423,7 @@ namespace anvill {
                     this->loadedExpression = loadFromJumpTable->getOperand(0);
                     this->index = indexRelSlicer.checkInstruction(loadFromJumpTable->getOperand(0));
                     this->indexRelSlice = indexRelSlicer.getSlice();
+                    std::cout << "Got index slices" << std::endl;
                     return true;
                 }
             }
@@ -460,6 +464,7 @@ namespace anvill {
         JumpTableDiscovery jtdisc(DT, this->slices);
         auto res = jtdisc.runPattern(callinst);
         if(res.has_value()) {
+            std::cout << "Got jump table result" << std::endl;
             this->results.insert({callinst,*res});
         }
         return false;
