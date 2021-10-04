@@ -11,6 +11,8 @@
 #include <llvm/Analysis/CFG.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include "SlicerVisitor.h"
+#include <anvill/SliceManager.h>
 
 namespace anvill {
         namespace {
@@ -37,12 +39,18 @@ namespace anvill {
 
             return taintedGuards;
         }
+
+
+        LinearConstraint generateNoWrapPred(llvm::APInt constant) {
+            if (constant.isNegative()) {
+                return LinearConstraint(llvm::ICmpInst::Predicate::ICMP_UGE, constant);
+            } else {
+                return LinearConstraint(llvm::ICmpInst::Predicate::ICMP_ULE, llvm::APInt::getMaxValue(constant.getBitWidth()) - constant);
+            }
+        }
     }
 
-
-
-        namespace pats = llvm::PatternMatch;
-
+    namespace pats = llvm::PatternMatch;
 
     struct BoundsCheck {
         const llvm::BranchInst* branch;
@@ -331,6 +339,11 @@ namespace anvill {
                 Bound start = this->getStartingBound();
                 return std::accumulate(this->cons.begin(), this->cons.end(),start, [this](Bound total, LinearConstraint newCons){ return this->combiner(total,newCons.computeUB());});
             }
+            
+            // inclusive lower bound
+            Bound computeLB() {
+                Bound start = this->getStartBound();
+            }
     };
 
     // core assumption currently constraints are treated as unsigned
@@ -392,8 +405,12 @@ namespace anvill {
                     if (pats::match(I.getOperand(0),pats::m_Add(pats::m_Value(candidateIndex),pats::m_ConstantInt(added))) && candidateIndex == this->index) {
                         auto addedToIndex = added->getValue();
                         auto newBound = apBound - addedToIndex; // subtract accross bound to normalize bound to index
+                       
+                        // ok this linear constraint isnt complete because doesnt account for wrapping
+                        // this isnt strictly correct but assert that computation doesnt wrap, otherwise we would have to potentially express disjoint regions, SMT would solve this.
                         LinearConstraint lcons(I.getPredicate(),newBound);
                         auto list = ConstraintList(lcons);
+                        list.addConstraint(generateNoWrapPred(addedToIndex), Connective::AND);
                         return {list};
                     }
 
@@ -427,11 +444,14 @@ namespace anvill {
             
             
             
-            std::optional<PcRel> pcRel;
-            std::optional<IndexRel> indexRel;
+            std::optional<llvm::SmallVector<llvm::Instruction*>>  pcRelSlice;
+            std::optional<llvm::SmallVector<llvm::Instruction*>>  indexRelSlice;
+            std::optional<llvm::Value*> index;
+            std::optional<llvm::Value*> loadedExpression;
             std::optional<llvm::APInt> upperBound;
             std::optional<llvm::BasicBlock*> defaultOut;
             const llvm::DominatorTree& DT;
+            SliceManager& slices;
            
 
         private:
@@ -463,8 +483,8 @@ namespace anvill {
             }
 
             bool runBoundsCheckPattern(const llvm::CallInst* intrinsicCall) {
-                assert(this->indexRel);
-                auto taintedBranches = getTaintedBranches<10>(this->indexRel->getIndex());
+                assert(this->index);
+                auto taintedBranches = getTaintedBranches<10>(*this->index);
                 auto dtNode = this->DT.getNode(intrinsicCall->getParent());
                 auto inode = dtNode->getIDom()->getBlock();
                 auto term = inode->getTerminator();
@@ -473,7 +493,7 @@ namespace anvill {
                     auto bcheck = *maybe_bcheck;
                     this->defaultOut = {bcheck.failDirection};
                     auto cond = bcheck.branch->getCondition();
-                    auto indexConstraints = ConstraintExtractor(this->indexRel->getIndex()).expectInsn(cond);
+                    auto indexConstraints = ConstraintExtractor(*this->index).expectInsn(cond);
 
                     if(indexConstraints) {
                         auto cons = *indexConstraints;
@@ -496,92 +516,11 @@ namespace anvill {
 
 
 
-
-            std::optional<llvm::Value*> extractPcRel(const llvm::Value* pcArg) {
-
-                llvm::ConstantInt* potentialPc = nullptr;
-                llvm::Value* potentialIndexPlusBaseExpr = nullptr;
-                llvm::Value* load = nullptr;
-
-                if (pats::match(pcArg,pats::m_Add(pats::m_Load(pats::m_Value(potentialIndexPlusBaseExpr)),pats::m_ConstantInt(potentialPc)))) {
-                    assert(pats::match(pcArg,pats::m_Add(pats::m_Value(load),pats::m_Value())));
-                    assert(load != nullptr);
-
-                    if (auto *loadty = llvm::dyn_cast<llvm::IntegerType>(load->getType())) {
-                        this->pcRel = {PcRel(potentialPc,loadty)};
-                        return {potentialIndexPlusBaseExpr};
-                    }
-                }
-
-                return nullptr;
-            }
-
-
-
-            bool extractIndexRel(const llvm::Value* indexPlusTableBase) {
-                
-                llvm::ConstantInt* shlfactor;
-                llvm::ConstantInt* jumpTableAddr;
-                llvm::Value* indexExpr;
-
-
-                // TODO also try a pattern where Shl is a multiplication and SHL doesnt exist. Additionally, can replace this handcoding with interpretation.
-                auto pat = pats::m_IntToPtr(
-                            pats::m_Add(
-                            pats::m_Shl(pats::m_Value(indexExpr),pats::m_ConstantInt(shlfactor)),
-                                pats::m_ConstantInt(jumpTableAddr)));
-                if (pats::match(indexPlusTableBase,pat)) {
-     
-                    // TODO handle case where there is no normalizer
-                    llvm::Value* index = nullptr;
-                    llvm::ConstantInt* normalizer = nullptr;
-
-                    // ok tricky bit here is the index can be of any size up to word size really, turns out not so tricky 
-                    auto indexAdd = pats::m_Add(pats::m_Value(index), pats::m_ConstantInt(normalizer));
-
-                    
-                    if(pats::match(indexExpr,pats::m_ZExtOrSExtOrSelf(indexAdd))) {
-                        Cast cast = {CastType::NONE,indexExpr->getType()->getIntegerBitWidth()};
-                        if (auto* zextOp = llvm::dyn_cast<llvm::ZExtInst>(indexExpr)) {
-                            cast.toBits = zextOp->getDestTy()->getIntegerBitWidth();
-                            cast.caTy = CastType::ZEXT;
-                        }
-
-                        if (auto* sextOp = llvm::dyn_cast<llvm::SExtInst>(indexExpr)) {
-                            cast.toBits = sextOp->getDestTy()->getIntegerBitWidth();
-                            cast.caTy = CastType::SEXT;
-                        }
-
-
-                        //normalizer has to be same bitwidth
-                        auto optWordSize = llvm::APInt(cast.toBits, 1).shl(shlfactor->getValue());
-                        this->indexRel = {IndexRel(jumpTableAddr,index,normalizer,optWordSize, cast)};
-                        return true;
-                    }
-
-                }
-                return false;
-
-            }
-
-            bool runIndexPattern(const llvm::Value* pcArg) {
-                // this pattern could be screwed up by ordering of computation should have multiple cases at different stages
-                // TODO figure out commuting (InstructionCombiner should kinda take care of this anyways)
-
-                // to ensure this transformation is valid we now need to find the bounds check and ensure it lines up with the table.
-
-                auto loadExpr = this->extractPcRel(pcArg);
-                if (loadExpr) {
-                    return this->extractIndexRel(*loadExpr);
-                }
-
-                return false;
-            }
             
            
 
         public:
-            JumpTableDiscovery(const llvm::DominatorTree& DT): pcRel(std::nullopt), indexRel(std::nullopt), upperBound(std::nullopt), DT(DT)  {
+            JumpTableDiscovery(const llvm::DominatorTree& DT, SliceManager& slices): pcRelSlice(std::nullopt), indexRelSlice(std::nullopt), index(std::nullopt), upperBound(std::nullopt), DT(DT), slices(slices)  {
             }
 
 
@@ -590,10 +529,33 @@ namespace anvill {
         // Definition a jump table bounds compare is a compare that uses the index and is used by a break that jumps to a block that may reach the indirect jump block or *must* not. the comparing block should dominate the indirect jump
 
 
+        bool runIndexPattern(llvm::Value* pcarg) {
+            Slicer pcrelSlicer;
+            
+            if (auto* pcinst = llvm::dyn_cast<llvm::Instruction>(pcarg)) {
+                llvm::Value* stopPoint = pcrelSlicer.visit(pcinst);
+                this->pcRelSlice = pcrelSlicer.getSlice();
+                if (auto* loadFromJumpTable = llvm::dyn_cast<llvm::LoadInst>(stopPoint)) {
+                    Slicer indexRelSlicer; 
+                    this->loadedExpression = loadFromJumpTable->getOperand(0);
+                    this->index = indexRelSlicer.checkInstruction(loadFromJumpTable->getOperand(0));
+                    this->indexRelSlice = indexRelSlicer.getSlice();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+
         std::optional<JumpTableResult> runPattern(const llvm::CallInst* pcCall) {
 
             if( this->runIndexPattern(pcCall->getArgOperand(0)) && this->runBoundsCheckPattern(pcCall)) {
-                return  {{*this->pcRel,*this->indexRel, *this->upperBound, *this->defaultOut}};
+                SliceManager::SliceID pcRelId = this->slices.addSlice(*this->pcRelSlice, pcCall->getArgOperand(0));
+                SliceManager::SliceID indexRelId = this->slices.addSlice(*this->indexRelSlice, *this->loadedExpression);
+                PcRel pc(pcRelId);
+                IndexRel indexRelation(indexRelId,*this->index);
+                return  {{pc,indexRelation, *this->upperBound, *this->defaultOut}};
             }
 
             return std::nullopt;
@@ -601,9 +563,7 @@ namespace anvill {
         }  
     };
 
-    llvm::APInt JumpTableResult::getIndexMinimimum() {
-        return this->indexRel.getMinimumIndex();
-    }
+    
 
 
 
@@ -615,12 +575,18 @@ namespace anvill {
         return std::nullopt;
     }
 
-    bool JumpTableAnalysis::runOnIndirectJump(llvm::CallInst*) {
+    bool JumpTableAnalysis::runOnIndirectJump(llvm::CallInst* callinst) {
+        auto const& DT = this->getAnalysis<llvm::DominatorTreeWrapperPass>().getDomTree();
+        JumpTableDiscovery jtdisc(DT, this->slices);
+        auto res = jtdisc.runPattern(callinst);
+        if(res.has_value()) {
+            this->results.insert({callinst,*res});
+        }
         return false;
     }
 
-    llvm::FunctionPass* CreateJumpTableAnalysis(void) {
-        return new JumpTableAnalysis();
+    llvm::FunctionPass* CreateJumpTableAnalysis(SliceManager& slices) {
+        return new JumpTableAnalysis(slices);
     }
 
       void JumpTableAnalysis::getAnalysisUsage(llvm::AnalysisUsage &AU) const {

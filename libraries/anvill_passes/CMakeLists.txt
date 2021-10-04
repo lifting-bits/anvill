@@ -64,6 +64,10 @@ add_library(anvill_passes STATIC
 
   src/Utils.h
   src/Utils.cpp
+  src/SliceManager.h
+  src/SliceManager.cpp
+  src/SlicerVisitor.h
+  src/SlicerVisitor.cpp
 
   include/anvill/ITransformationErrorManager.h
   src/TransformationErrorManager.h

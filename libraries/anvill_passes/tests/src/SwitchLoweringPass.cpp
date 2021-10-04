@@ -70,13 +70,14 @@ namespace anvill {
     TEST_SUITE("SwitchLowerLargeFunction") {
     TEST_CASE("Run on large function") {
         llvm::LLVMContext context;
+        SliceManager slc;
         auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
         auto targetFunction = findFunction(mod.get());
         CHECK(targetFunction != nullptr);
         llvm::legacy::FunctionPassManager fpm(mod.get());
-        fpm.add(new llvm::DominatorTreeWrapperPass());
         fpm.add(llvm::createInstructionCombiningPass());
-        fpm.add(CreateJumpTableAnalysis());
+        fpm.add(new llvm::DominatorTreeWrapperPass());
+        fpm.add(CreateJumpTableAnalysis(slc));
         auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
         
         

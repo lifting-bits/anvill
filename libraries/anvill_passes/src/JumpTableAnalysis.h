@@ -4,31 +4,9 @@
 #include <llvm/Pass.h>
 #include <llvm/IR/ValueMap.h>
 #include "IndirectJumpPass.h"
-
+#include <anvill/SliceManager.h>
 
  namespace anvill {
-    struct PcRel {
-        private:
-            llvm::ConstantInt* programCounter;
-            llvm::IntegerType* expectedInputType;
-
-        public:
-            PcRel( llvm::ConstantInt* programCounter, llvm::IntegerType* expectedInputType): programCounter(programCounter), expectedInputType(expectedInputType) {
-
-            }
-
-
-            llvm::APInt apply(llvm::APInt loadedTableValue) {
-                return this->programCounter->getValue() + loadedTableValue;
-            }
-
-            llvm::IntegerType* getExpectedType() {
-                return this->expectedInputType;
-            }
-
-    };
-
-
 
     enum CastType {ZEXT, SEXT, NONE};
     struct Cast {
@@ -47,55 +25,53 @@
         }
     };
 
-    struct IndexRel {
-        private:
-            llvm::ConstantInt* jumpTableAddr;
-            llvm::APInt optWordSize;
-            llvm::ConstantInt* normalizer;
-            llvm::Value* index;
-            Cast cast;
 
+    class PcRel {
+        public:
+            PcRel(SliceManager::SliceID slice): slice(slice) {
 
-        public: 
-            IndexRel(llvm::ConstantInt* jumpTableAddr, llvm::Value* index, llvm::ConstantInt* normalizer, llvm::APInt optWordSize, Cast cast): jumpTableAddr(jumpTableAddr), optWordSize(optWordSize), normalizer(normalizer), index(index), cast(cast) {
-                assert(this->index != nullptr);
             }
 
-            llvm::APInt apply(llvm::APInt index) {
-                return this->jumpTableAddr->getValue() + (this->cast.apply(this->normalizer->getValue() + index) * this->optWordSize);
-            }
+            llvm::APInt apply(llvm::APInt loadedVal);
 
-            llvm::APInt getMinimumIndex() {
-                assert(this->normalizer->getValue().isNegative() );
-                return (-this->normalizer->getValue());
-            }
+
+            llvm::IntegerType* getExpectedType();
             
-            llvm::Value* getIndex() {
-                return this->index;
+        private:
+            SliceManager::SliceID  slice;
+    };
+
+
+    class IndexRel {
+        private:
+            SliceManager::SliceID  slice;
+            llvm::Value* index;
+        public:
+            llvm::Value* getIndex();
+            llvm::APInt apply(llvm::APInt indexValue);
+
+            IndexRel(SliceManager::SliceID slice, llvm::Value* index): slice(slice), index(index) {
+
             }
     };
 
 
-
-
-
     struct JumpTableResult {
-        PcRel pcRel;
+        PcRel  pcRel;
         IndexRel indexRel;
-        llvm::APInt upperBound;
+        llvm::APInt upperBound; // exclustive
+        llvm::APInt lowerBound; // inclusive
         llvm::BasicBlock* defaultOut;
 
-
-        llvm::APInt getIndexMinimimum();
-            
     };
 
     class JumpTableAnalysis: public IndirectJumpPass<JumpTableAnalysis> {
             
             private:
+                SliceManager& slices;
                 llvm::ValueMap<llvm::CallInst*, JumpTableResult> results;
             public:
-                JumpTableAnalysis(): IndirectJumpPass()  {
+                JumpTableAnalysis(SliceManager& slices): IndirectJumpPass(), slices(slices)  {
 
                 }
 
