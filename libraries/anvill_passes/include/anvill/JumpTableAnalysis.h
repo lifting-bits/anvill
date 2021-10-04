@@ -81,5 +81,9 @@
                 bool runOnIndirectJump(llvm::CallInst* indirectJump);
 
                 std::optional<JumpTableResult> getResultFor(llvm::CallInst* indirectJump) const;
+
+                const llvm::ValueMap<llvm::CallInst*, JumpTableResult>& getAllResults() const {
+                    return this->results;
+                }
         };
 }

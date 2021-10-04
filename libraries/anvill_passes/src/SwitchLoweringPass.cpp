@@ -166,8 +166,8 @@ namespace anvill {
      }
 
 
-    llvm::FunctionPass* CreateSwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv, SliceManager& slm) {
-        return new SwitchLoweringPass(std::move(memProv), slm);
+    llvm::FunctionPass* CreateSwitchLoweringPass(const std::shared_ptr<MemoryProvider>& memProv, SliceManager& slm) {
+        return new SwitchLoweringPass(memProv, slm);
     }
 
     llvm::StringRef SwitchLoweringPass::getPassName() const {

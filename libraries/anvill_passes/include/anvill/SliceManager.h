@@ -62,14 +62,14 @@ namespace anvill {
 
             void insertClonedSliceIntoFunction(llvm::Function* targetFunc, llvm::Value* newRet, llvm::ArrayRef<llvm::Instruction*> slice);
 
-            llvm::Twine getNextFunctionName(); 
+            std::string getNextFunctionName(); 
             llvm::Function* createFunctionForCurrentID(llvm::ArrayRef<llvm::Value*> arguments, llvm::Value* returnVal);
 
 
 
 
         public:
-            static llvm::Twine getFunctionName(SliceID id) {
+            static std::string getFunctionName(SliceID id) {
                     return "sliceFunc." + std::to_string(id.ID);
             }
 

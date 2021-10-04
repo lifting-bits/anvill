@@ -54,6 +54,7 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalOpt.h>
 
+#include <anvill/Providers/MemoryProvider.h>
 // clang-format on
 
 #include <anvill/Transforms.h>
@@ -81,6 +82,7 @@ namespace anvill {
 // When utilizing crossRegisterProxies cleanup triggers asan
 
 void OptimizeModule(const EntityLifter &lifter_context,
+                    const std::shared_ptr<MemoryProvider> &memprov,
                     const remill::Arch *arch, const Program &program,
                     llvm::Module &module, const LifterOptions &options) {
 
@@ -102,6 +104,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
     memory_escape->eraseFromParent();
   }
 
+<<<<<<< HEAD
 
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm(false);
@@ -138,10 +141,34 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.addPass(llvm::SinkingPass());
   fpm.addPass(llvm::SimplifyCFGPass());
   fpm.addPass(llvm::InstCombinePass());
+=======
+  llvm::legacy::PassManager mpm;
+  SliceManager slc;
+  mpm.add(llvm::createFunctionInliningPass(250));
+  mpm.add(llvm::createGlobalOptimizerPass());
+  mpm.add(llvm::createGlobalDCEPass());
+  mpm.add(llvm::createStripDeadDebugInfoPass());
+  mpm.run(module);
+
+  llvm::legacy::FunctionPassManager fpm(&module);
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createSinkingPass());
+  fpm.add(llvm::createNewGVNPass());
+  fpm.add(llvm::createSCCPPass());
+  fpm.add(llvm::createDeadStoreEliminationPass());
+  fpm.add(llvm::createSROAPass());
+  fpm.add(llvm::createEarlyCSEPass(true));
+  fpm.add(llvm::createBitTrackingDCEPass());
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createSinkingPass());
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createInstructionCombiningPass());
+>>>>>>> 76b9d6f (added pass to optimizer)
 
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
+<<<<<<< HEAD
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveUnusedFPClassificationCalls(fpm);
   AddRemoveDelaySlotIntrinsics(fpm);
@@ -161,12 +188,43 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.addPass(llvm::SROA());
   AddSplitStackFrameAtReturnAddress(fpm, err_man);
   fpm.addPass(llvm::SROA());
+=======
+  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
+  fpm.add(CreateRemoveUnusedFPClassificationCalls());
+  fpm.add(CreateRemoveDelaySlotIntrinsics());
+  fpm.add(CreateRemoveErrorIntrinsics());
+  fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
+  fpm.add(CreateRemoveCompilerBarriers());
+  fpm.add(CreateLowerTypeHintIntrinsics());
+  fpm.add(CreateInstructionFolderPass(err_man));
+  fpm.add(new llvm::TargetLibraryInfoWrapperPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createSROAPass());
+  fpm.add(CreateJumpTableAnalysis(slc));
+  fpm.add(CreateSwitchLoweringPass(memprov, slc));
+  fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
+  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
+  fpm.add(CreateRemoveTrivialPhisAndSelects());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(CreateRecoverStackFrameInformation(err_man, options));
+  fpm.add(llvm::createSROAPass());
+  fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
+  fpm.add(llvm::createSROAPass());
+>>>>>>> 76b9d6f (added pass to optimizer)
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
+<<<<<<< HEAD
   AddConvertXorToCmp(fpm);
+=======
+  fpm.add(CreateConvertXorToCmp());
+
+  if (FLAGS_pointer_brighten_gas) {
+    fpm.add(CreateBrightenPointerOperations(FLAGS_pointer_brighten_gas));
+  }
+>>>>>>> 76b9d6f (added pass to optimizer)
 
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);

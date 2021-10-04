@@ -18,6 +18,7 @@
 #pragma once
 
 #include <anvill/Lifters/Options.h>
+#include <anvill/Providers/MemoryProvider.h>
 
 namespace llvm {
 class Module;
@@ -33,7 +34,7 @@ class Program;
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const EntityLifter &lifter_context,
+void OptimizeModule(const EntityLifter &lifter_context, const std::shared_ptr<MemoryProvider> &,
                     const remill::Arch *arch, const Program &program,
                     llvm::Module &module, const LifterOptions &options);
 

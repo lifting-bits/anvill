@@ -197,14 +197,40 @@ namespace anvill {
     class ExprSolve {
         private:
         
-            std::optional<llvm::APInt> optomizeExpr(const std::unique_ptr<Expr>& exp,llvm::Value* index, std::function<z3::expr(z3::optimize, z3::expr)> getoptimal) {
+            std::optional<llvm::APInt> optomizeExpr(const std::unique_ptr<Expr>& exp,llvm::Value* index, std::function<z3::optimize::handle(z3::optimize, z3::expr)> gethandle) {
+                    /*z3::context c2;
+                    z3::optimize opt(c2);
+                    z3::params p(c2);
+                    p.set("priority",c2.str_symbol("pareto"));
+                    opt.set(p);
+                    z3::expr x = c2.bv_const("x",32);
+                    z3::expr y = c2.bv_const("y",32);
+                    opt.add(10 >= x && x >= 0);
+                    opt.add(10 >= y && y >= 0);
+                    opt.add(x + y <= 11);
+                    z3::optimize::handle h1 = opt.maximize(x);
+                    z3::optimize::handle h2 = opt.maximize(y);
+                    while (true) {
+                        if (z3::sat == opt.check()) {
+                            std::cout << x << ": " << opt.lower(h1) << " " << y << ": " << opt.lower(h2) << "\n";
+                        }
+                        else {
+                            break;
+                        }
+                    }*/
+                    
+                    
                     z3::context c;
                     z3::expr index_bv = c.bv_const("index", index->getType()->getIntegerBitWidth());
                     z3::expr constraints = exp->build_expression(c, index_bv);  
                     z3::optimize s(c);
+                    z3::params p(c);
+                    p.set("priority",c.str_symbol("pareto"));
+                    s.set(p);
                     s.add(constraints);
+                    z3::optimize::handle h =  gethandle(s,index_bv);
                     if (z3::sat == s.check()) {
-                        z3::expr res = getoptimal(s,index_bv);
+                        z3::expr res = s.lower(h);
                         return llvm::APInt(index->getType()->getIntegerBitWidth(), res.as_uint64());
                     } else {
                         return std::nullopt;
@@ -213,16 +239,16 @@ namespace anvill {
 
         public:
             std::optional<llvm::APInt> solveForUB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
-                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
-                    o.maximize(target_bv);
-                    return  o.get_model().eval(target_bv);
+                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::optimize::handle {
+                    auto h = o.maximize(target_bv);
+                    return h;
                 });
             }
 
             std::optional<llvm::APInt> solveForLB(const std::unique_ptr<Expr>& exp,llvm::Value* index) {
-                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) -> z3::expr {
-                    o.minimize(target_bv);
-                    return o.get_model().eval(target_bv);
+                return this->optomizeExpr(exp, index, [](z3::optimize o, z3::expr target_bv) ->z3::optimize::handle {
+                    auto h = o.minimize(target_bv);
+                    return h;
                 });
             }      
     };  
@@ -428,10 +454,12 @@ namespace anvill {
             if (auto* pcinst = llvm::dyn_cast<llvm::Instruction>(pcarg)) {
                 llvm::Value* stopPoint = pcrelSlicer.visit(pcinst);
                 this->pcRelSlice = pcrelSlicer.getSlice();
-                if (auto* loadFromJumpTable = llvm::dyn_cast<llvm::LoadInst>(stopPoint)) {
+
+                llvm::Value* integerLoadExpr = nullptr;
+                if (pats::match(stopPoint, pats::m_Load(pats::m_IntToPtr(pats::m_Value(integerLoadExpr))))) {
                     Slicer indexRelSlicer; 
-                    this->loadedExpression = loadFromJumpTable->getOperand(0);
-                    this->index = indexRelSlicer.checkInstruction(loadFromJumpTable->getOperand(0));
+                    this->loadedExpression = integerLoadExpr;
+                    this->index = indexRelSlicer.checkInstruction(integerLoadExpr);
                     this->indexRelSlice = indexRelSlicer.getSlice();
                     return true;
                 }
@@ -449,7 +477,6 @@ namespace anvill {
 
                 auto pcRelRepr = this->slices.getSlice(pcRelId).getRepr();
                 auto indexRelRepr = this->slices.getSlice(indexRelId).getRepr();
-
                 if (!isValidRelType(pcRelRepr->getFunctionType()) || !isValidRelType(indexRelRepr->getFunctionType())) {
                         return std::nullopt;
                 }

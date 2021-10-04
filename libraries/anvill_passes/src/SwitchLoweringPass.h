@@ -18,11 +18,11 @@ namespace anvill {
     class SwitchLoweringPass: public IndirectJumpPass<SwitchLoweringPass> {
         
         private:
-            const std::shared_ptr<MemoryProvider> memProv;
+            const std::shared_ptr<MemoryProvider>&  memProv;
             SliceManager& slm;
             
         public:
-            SwitchLoweringPass(std::shared_ptr<MemoryProvider> memProv,  SliceManager& slm) : memProv(std::move(memProv)), slm(slm) {
+            SwitchLoweringPass(const std::shared_ptr<MemoryProvider>&  memProv,  SliceManager& slm) : memProv(memProv), slm(slm) {
 
             }
 

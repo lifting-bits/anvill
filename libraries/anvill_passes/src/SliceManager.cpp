@@ -13,7 +13,8 @@ namespace anvill {
         llvm::SmallVector<llvm::Type*> argTypes;
         std::transform(arguments.begin(), arguments.end(), std::back_inserter(argTypes), [](llvm::Value* arg) -> llvm::Type* {return arg->getType();});
         llvm::FunctionType* ty = llvm::FunctionType::get(returnVal->getType(),argTypes, false);
-        return llvm::Function::Create(ty,llvm::GlobalValue::LinkageTypes::ExternalLinkage,this->getNextFunctionName(),*this->mod);
+        auto f = llvm::Function::Create(ty,llvm::GlobalValue::LinkageTypes::ExternalLinkage,this->getNextFunctionName(),*this->mod);
+        return f;
     }
 
 
@@ -33,11 +34,14 @@ namespace anvill {
         auto bb = llvm::BasicBlock::Create(targetFunc->getParent()->getContext(),"slicebasicblock."+std::to_string(this->nextID.ID),targetFunc);
     
         std::for_each(slice.begin(), slice.end(),   [bb](llvm::Instruction* insn) { bb->getInstList().push_back(insn);});
+
+        
         llvm::ReturnInst::Create(targetFunc->getParent()->getContext(),newReturn,bb);
+        
         return;
     }
 
-llvm::Twine SliceManager::getNextFunctionName() {
+std::string SliceManager::getNextFunctionName() {
     return SliceManager::getFunctionName(this->nextID);
 }
 

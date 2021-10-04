@@ -3,7 +3,8 @@
 
 namespace anvill {
     llvm::GenericValue SliceInterpreter::executeSlice(SliceID sliceId, llvm::ArrayRef< llvm::GenericValue > ArgValue) {
-        auto F = this->execEngine->FindFunctionNamed(SliceManager::getFunctionName(sliceId).str());
+        auto F = this->execEngine->FindFunctionNamed(SliceManager::getFunctionName(sliceId));
+        assert(F != nullptr);
         return this->execEngine->runFunction(F, ArgValue);
     }
 }

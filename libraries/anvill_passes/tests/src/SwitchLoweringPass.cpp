@@ -7,7 +7,7 @@
 #include <llvm/IR/Dominators.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
-
+#include <anvill/JumpTableAnalysis.h>
 namespace anvill {
 
     class MockMemProv: public MemoryProvider {
@@ -71,13 +71,14 @@ namespace anvill {
     TEST_CASE("Run on large function") {
         llvm::LLVMContext context;
         SliceManager slc;
+        JumpTableAnalysis* jta = new JumpTableAnalysis(slc);
         auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
         auto targetFunction = findFunction(mod.get());
         CHECK(targetFunction != nullptr);
         llvm::legacy::FunctionPassManager fpm(mod.get());
         fpm.add(llvm::createInstructionCombiningPass());
         fpm.add(new llvm::DominatorTreeWrapperPass());
-        fpm.add(CreateJumpTableAnalysis(slc));
+        fpm.add(jta);
         auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
         
         
@@ -103,7 +104,7 @@ namespace anvill {
         fpm.run(*targetFunction);
         fpm.doFinalization();
 
-        //targetFunction->dump();
+        targetFunction->dump();
     }
     }
 
