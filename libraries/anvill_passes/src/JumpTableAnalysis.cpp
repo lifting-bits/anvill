@@ -207,10 +207,12 @@ class ExprSolve {
     z3::expr tooptimize = index_bv;
     auto numbits = index_bv.get_sort().bv_size();
     auto signShift = llvm::APInt(numbits, 1).shl(numbits - 1);
+    auto shiftBits = AtomIntExpr::getBigEndianBits(signShift);
+    z3::expr signShifted =
+        (index_bv + c.bv_val(signShift.getBitWidth(), shiftBits.get()));
+
     if (isSigned) {
-      auto shiftBits = AtomIntExpr::getBigEndianBits(signShift);
-      tooptimize =
-          (index_bv + c.bv_val(signShift.getBitWidth(), shiftBits.get()));
+      tooptimize = signShifted;
     }
 
 

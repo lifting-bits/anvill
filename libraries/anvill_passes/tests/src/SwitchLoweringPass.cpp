@@ -161,7 +161,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     allowedIndices.insert(35);
 
     for (auto c : loweredSwitch->cases()) {
-      std::cout << c.getCaseValue()->getValue().getLimitedValue() << std::endl;
       CHECK(allowedIndices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
