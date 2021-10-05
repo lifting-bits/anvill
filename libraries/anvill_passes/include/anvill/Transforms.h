@@ -21,7 +21,10 @@
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
+#include <anvill/Providers/MemoryProvider.h>
 #include <llvm/IR/PassManager.h>
+
+#include "SliceManager.h"
 
 namespace llvm {
 class Function;
@@ -263,5 +266,13 @@ void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 
 // Removes calls to `__remill_error`.
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
+llvm::FunctionPass *CreateRemoveErrorIntrinsics(void);
+
+
+llvm::FunctionPass *CreateJumpTableAnalysis(SliceManager &slices);
+
+llvm::FunctionPass *
+CreateSwitchLoweringPass(const std::shared_ptr<MemoryProvider> &memProv,
+                         SliceManager &slm);
 
 }  // namespace anvill
