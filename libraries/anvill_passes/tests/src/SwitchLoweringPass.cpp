@@ -123,8 +123,16 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.upperBound.getLimitedValue() == 241);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 5)) == 136967792);
           break;
-        case 136578775: break;
-        case 136578559: break;
+        case 136578775:
+          CHECK(res.lowerBound.getLimitedValue() == 6);
+          CHECK(res.upperBound.getLimitedValue() == 35);
+          CHECK(res.indexRel.apply(interp, llvm::APInt(8, 35)) == 136968940);
+          break;
+        case 136578559:
+          CHECK(res.lowerBound.getLimitedValue() == 26);
+          CHECK(res.upperBound.getLimitedValue() == 46);
+          CHECK(res.indexRel.apply(interp, llvm::APInt(8, 32)) == 136968764);
+          break;
         default: CHECK(false);
       }
     }
