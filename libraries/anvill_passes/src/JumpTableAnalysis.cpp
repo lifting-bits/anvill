@@ -130,7 +130,7 @@ class AtomIntExpr final : public Expr {
 
 // might be able to combine complex formula with binop tbh
 // this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
-enum Z3Binop { ADD, ULE, ULT, UGT, UGE, AND, OR, EQ };
+enum Z3Binop { ADD, ULE, ULT, UGT, UGE, AND, OR, EQ, SGT, SGE, SLE, SLT };
 class BinopExpr final : public Expr {
  private:
   Z3Binop opcode;
@@ -159,6 +159,10 @@ class BinopExpr final : public Expr {
       case ULT: return z3::ult(e1, e2);
       case UGT: return z3::ugt(e1, e2);
       case UGE: return z3::uge(e1, e2);
+      case SGT: return z3::sgt(e1, e2);
+      case SGE: return z3::sge(e1, e2);
+      case SLT: return z3::slt(e1, e2);
+      case SLE: return z3::sle(e1, e2);
       case EQ: return z3::operator==(e1, e2);
       case AND: return z3::operator&&(e1, e2);
       case OR: return z3::operator||(e1, e2);
@@ -288,6 +292,10 @@ class ConstraintExtractor
       case llvm::CmpInst::Predicate::ICMP_UGT: return Z3Binop::UGT;
       case llvm::CmpInst::Predicate::ICMP_ULE: return Z3Binop::ULE;
       case llvm::CmpInst::Predicate::ICMP_ULT: return Z3Binop::ULT;
+      case llvm::CmpInst::Predicate::ICMP_SGE: return Z3Binop::SGE;
+      case llvm::CmpInst::Predicate::ICMP_SGT: return Z3Binop::SGT;
+      case llvm::CmpInst::Predicate::ICMP_SLE: return Z3Binop::SLE;
+      case llvm::CmpInst::Predicate::ICMP_SLT: return Z3Binop::SLT;
       default: return std::nullopt;
     }
   }
