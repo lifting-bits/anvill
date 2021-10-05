@@ -2,6 +2,7 @@
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
+#include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Verifier.h>
@@ -152,9 +153,16 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     CHECK(loweredSwitch->getNumCases() == 5);
     CHECK(loweredSwitch->getCondition() == recoveredSwitch->indexRel.index);
 
-    std::set<uint64_t> allowedIndices = {6, 7, 8, 34, 35};
+    llvm::SmallSet<uint64_t, 10> allowedIndices;
+    allowedIndices.insert(6);
+    allowedIndices.insert(7);
+    allowedIndices.insert(8);
+    allowedIndices.insert(34);
+    allowedIndices.insert(35);
+
     for (auto c : loweredSwitch->cases()) {
-      CHECK(c.getCaseValue()->getValue().getLimitedValue());
+      CHECK(allowedIndices.contains(
+          c.getCaseValue()->getValue().getLimitedValue()));
     }
   }
 
@@ -172,22 +180,15 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
-    // this jump table has 30 entries with these possible offsets
-    // -3209123, -1153321, -1153312, -1153303, -1153287, -1153278
-    // the offset for the default lable %41 is -3209123
-    // Since there are 30 entries in the table this test assumes the 5 offsets are in order bookending a bunch of default cases
-
-
-    // memProv->setCurrJumpTableBase(136968824);
-    // memProv->addJumpTableOffset(-1153321);
-    // memProv->addJumpTableOffset(-1153312);
-    // for (int i = 0; i < 25; i++) {
-    //   memProv->addJumpTableOffset(-3209123);
-    // }
-
-    // memProv->addJumpTableOffset(-1153303);
-    // memProv->addJumpTableOffset(-1153287);
-    // memProv->addJumpTableOffset(-1153278);
+    memProv->setCurrJumpTableBase(4294983520);
+    memProv->addJumpTableOffset(0x10);
+    memProv->addJumpTableOffset(0x3c);
+    memProv->addJumpTableOffset(0x3c);
+    memProv->addJumpTableOffset(0x1c);
+    memProv->addJumpTableOffset(0x28);
+    memProv->addJumpTableOffset(0x3c);
+    memProv->addJumpTableOffset(0x3c);
+    memProv->addJumpTableOffset(0x30);
 
     fpm.add(CreateSwitchLoweringPass(memProv, slc));
     fpm.doInitialization();
@@ -216,22 +217,29 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(32, -3, true))
                     .getLimitedValue() == 4294983524);
+          instrinsic = jumpres.first;
+          recoveredSwitch = {res};
           break;
         default: CHECK(false);
       }
     }
-    /*
+
     REQUIRE(instrinsic != nullptr);
     llvm::SwitchInst *loweredSwitch =
         llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
 
-    CHECK(loweredSwitch->getNumCases() == 5);
-    CHECK(loweredSwitch->getCondition() == recoveredSwitch->indexRel.index);
+    CHECK(loweredSwitch->getNumCases() == 4);
 
-    std::set<uint64_t> allowedIndices = {6, 7, 8, 34, 35};
+    llvm::SmallSet<uint64_t, 10> allowedIndices;
+    allowedIndices.insert(llvm::APInt(32, -4).getLimitedValue());
+    allowedIndices.insert(llvm::APInt(32, -1).getLimitedValue());
+    allowedIndices.insert(llvm::APInt(32, -0).getLimitedValue());
+    allowedIndices.insert(llvm::APInt(32, 3).getLimitedValue());
+
     for (auto c : loweredSwitch->cases()) {
-      CHECK(c.getCaseValue()->getValue().getLimitedValue());
-    }*/
+      CHECK(allowedIndices.contains(
+          c.getCaseValue()->getValue().getLimitedValue()));
+    }
   }
 }
 

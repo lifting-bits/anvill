@@ -141,6 +141,8 @@ class SwitchBuilder {
 
 
       if (*outBlock != jt.defaultOut) {
+        std::cout << "running recovery " << currIndValue.getLimitedValue()
+                  << std::endl;
         llvm::ConstantInt *indexVal =
             llvm::ConstantInt::get(this->context, currIndValue);
         newSwitch->addCase(indexVal, *outBlock);
