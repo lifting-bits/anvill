@@ -47,12 +47,24 @@ class IndexRel {
   IndexRel(SliceID slice, llvm::Value *index) : slice(slice), index(index) {}
 };
 
+struct Bound {
+  llvm::APInt lower;
+  llvm::APInt upper;
+  bool isSigned;
+
+  bool lessThanOrEqual(llvm::APInt lhs, llvm::APInt rhs) {
+    if (isSigned) {
+      return lhs.sle(rhs);
+    } else {
+      return lhs.ule(rhs);
+    }
+  }
+};
 
 struct JumpTableResult {
   PcRel pcRel;
   IndexRel indexRel;
-  llvm::APInt upperBound;  // exclustive
-  llvm::APInt lowerBound;  // inclusive
+  Bound bounds;
   llvm::BasicBlock *defaultOut;
 };
 

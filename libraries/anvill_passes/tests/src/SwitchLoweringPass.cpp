@@ -119,18 +119,21 @@ TEST_SUITE("SwitchLowerLargeFunction") {
       auto pc1 = llvm::cast<llvm::ConstantInt>(v);
       switch (pc1->getValue().getLimitedValue()) {
         case 136577416:
-          CHECK(res.lowerBound.getLimitedValue() == 3);
-          CHECK(res.upperBound.getLimitedValue() == 241);
+          CHECK(res.bounds.lower.getLimitedValue() == 3);
+          CHECK(res.bounds.upper.getLimitedValue() == 241);
+          CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 5)) == 136967792);
           break;
         case 136578775:
-          CHECK(res.lowerBound.getLimitedValue() == 6);
-          CHECK(res.upperBound.getLimitedValue() == 35);
+          CHECK(res.bounds.lower.getLimitedValue() == 6);
+          CHECK(res.bounds.upper.getLimitedValue() == 35);
+          CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 35)) == 136968940);
           break;
         case 136578559:
-          CHECK(res.lowerBound.getLimitedValue() == 26);
-          CHECK(res.upperBound.getLimitedValue() == 46);
+          CHECK(res.bounds.lower.getLimitedValue() == 26);
+          CHECK(res.bounds.upper.getLimitedValue() == 46);
+          CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 32)) == 136968764);
           break;
         default: CHECK(false);

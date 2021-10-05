@@ -98,7 +98,7 @@ class AtomIntExpr final : public Expr {
  private:
   llvm::APInt atomValue;
 
-
+ public:
   static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
     llvm::APInt togetBitsFrom = api;
     if (llvm::sys::IsLittleEndianHost && togetBitsFrom.getBitWidth() >= 16) {
@@ -114,7 +114,6 @@ class AtomIntExpr final : public Expr {
     return res;
   }
 
- public:
   AtomIntExpr(llvm::APInt atomValue) : atomValue(atomValue) {}
 
   z3::expr build_expression(z3::context &c, z3::expr indexExpr) const override {
@@ -199,69 +198,95 @@ class UnopExpr final : public Expr {
 
 class ExprSolve {
  private:
-  std::optional<llvm::APInt> optomizeExpr(
-      const std::unique_ptr<Expr> &exp, llvm::Value *index,
-      std::function<z3::optimize::handle(z3::optimize, z3::expr)> gethandle) {
-    /*z3::context c2;
-                    z3::optimize opt(c2);
-                    z3::params p(c2);
-                    p.set("priority",c2.str_symbol("pareto"));
-                    opt.set(p);
-                    z3::expr x = c2.bv_const("x",32);
-                    z3::expr y = c2.bv_const("y",32);
-                    opt.add(10 >= x && x >= 0);
-                    opt.add(10 >= y && y >= 0);
-                    opt.add(x + y <= 11);
-                    z3::optimize::handle h1 = opt.maximize(x);
-                    z3::optimize::handle h2 = opt.maximize(y);
-                    while (true) {
-                        if (z3::sat == opt.check()) {
-                            std::cout << x << ": " << opt.lower(h1) << " " << y << ": " << opt.lower(h2) << "\n";
-                        }
-                        else {
-                            break;
-                        }
-                    }*/
+  std::optional<llvm::APInt> getBound(
+      z3::context &c, z3::expr index_bv, z3::expr constraints,
+      std::function<z3::optimize::handle(z3::optimize, z3::expr)> gethandle,
+      bool isSigned) {
+    z3::optimize s(c);
+    z3::params p(c);
+    p.set("priority", c.str_symbol("pareto"));
+    s.set(p);
+    s.add(constraints);
+
+    z3::expr tooptimize = index_bv;
+    auto numbits = index_bv.get_sort().bv_size();
+    auto signShift = llvm::APInt(numbits, 1).shl(numbits - 1);
+    if (isSigned) {
+      auto shiftBits = AtomIntExpr::getBigEndianBits(signShift);
+      tooptimize =
+          (index_bv + c.bv_val(signShift.getBitWidth(), shiftBits.get()));
+    }
+
+
+    auto h = gethandle(s, tooptimize);
+    if (z3::sat == s.check()) {
+      z3::expr res = s.lower(h);
+      auto resint = llvm::APInt(index_bv.get_sort().bv_size(), res.as_uint64());
+      if (isSigned) {
+        // shift back into the signed domain
+        return resint - signShift;
+      } else {
+        return resint;
+      }
+    } else {
+      return std::nullopt;
+    }
+  }
+  std::optional<Bound> optomizeExpr(const std::unique_ptr<Expr> &exp,
+                                    llvm::Value *index, bool isSigned) {
 
 
     z3::context c;
     z3::expr index_bv =
         c.bv_const("index", index->getType()->getIntegerBitWidth());
     z3::expr constraints = exp->build_expression(c, index_bv);
-    z3::optimize s(c);
-    z3::params p(c);
-    p.set("priority", c.str_symbol("pareto"));
-    s.set(p);
-    s.add(constraints);
-    z3::optimize::handle h = gethandle(s, index_bv);
-    if (z3::sat == s.check()) {
-      z3::expr res = s.lower(h);
-      return llvm::APInt(index->getType()->getIntegerBitWidth(),
-                         res.as_uint64());
-    } else {
+    auto ub = this->getBound(
+        c, index_bv, constraints,
+        [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
+          return o.maximize(toopt);
+        },
+        isSigned);
+    auto lb = this->getBound(
+        c, index_bv, constraints,
+        [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
+          return o.minimize(toopt);
+        },
+        isSigned);
+
+    if (!ub.has_value() || !lb.has_value()) {
       return std::nullopt;
     }
+
+    auto ubbits = AtomIntExpr::getBigEndianBits(*ub);
+    auto lbbits = AtomIntExpr::getBigEndianBits(*lb);
+    z3::expr ub_val = c.bv_val(ub->getBitWidth(), ubbits.get());
+    z3::expr lb_val = c.bv_val(lb->getBitWidth(), lbbits.get());
+
+    z3::solver s(c);
+    s.add(constraints);
+    if (isSigned) {
+      s.add(z3::sgt(index_bv, ub_val) || z3::slt(index_bv, lb_val));
+    } else {
+      s.add(z3::ugt(index_bv, ub_val) || z3::ult(index_bv, lb_val));
+    }
+
+    if (s.check() == z3::unsat) {
+      // proven the bound
+      return {{*lb, *ub, isSigned}};
+    }
+
+    return std::nullopt;
   }
 
  public:
-  std::optional<llvm::APInt> solveForUB(const std::unique_ptr<Expr> &exp,
-                                        llvm::Value *index) {
-    return this->optomizeExpr(
-        exp, index,
-        [](z3::optimize o, z3::expr target_bv) -> z3::optimize::handle {
-          auto h = o.maximize(target_bv);
-          return h;
-        });
-  }
-
-  std::optional<llvm::APInt> solveForLB(const std::unique_ptr<Expr> &exp,
-                                        llvm::Value *index) {
-    return this->optomizeExpr(
-        exp, index,
-        [](z3::optimize o, z3::expr target_bv) -> z3::optimize::handle {
-          auto h = o.minimize(target_bv);
-          return h;
-        });
+  std::optional<Bound> solveForBounds(const std::unique_ptr<Expr> &exp,
+                                      llvm::Value *index) {
+    auto unsignedBounds = this->optomizeExpr(exp, index, false);
+    if (unsignedBounds.has_value()) {
+      return unsignedBounds;
+    }
+    // (ian) TODO we may want to attempt to prove both and select the more narrow bound but I dont think it's possible for that case to exist.
+    return this->optomizeExpr(exp, index, true);
   }
 };
 
@@ -371,8 +396,7 @@ class JumpTableDiscovery {
   std::optional<llvm::SmallVector<llvm::Instruction *>> indexRelSlice;
   std::optional<llvm::Value *> index;
   std::optional<llvm::Value *> loadedExpression;
-  std::optional<llvm::APInt> upperBound;  //inclusive
-  std::optional<llvm::APInt> lowerBound;  //inclusive
+  std::optional<Bound> bounds;
   std::optional<llvm::BasicBlock *> defaultOut;
   const llvm::DominatorTree &DT;
   SliceManager &slices;
@@ -435,9 +459,8 @@ class JumpTableDiscovery {
         }
 
         ExprSolve s;
-        this->upperBound = s.solveForUB(cons, *this->index);
-        this->lowerBound = s.solveForLB(cons, *this->index);
-        return this->upperBound.has_value() && this->lowerBound.has_value();
+        this->bounds = s.solveForBounds(cons, *this->index);
+        return this->bounds.has_value();
       }
     }
 
@@ -450,7 +473,7 @@ class JumpTableDiscovery {
       : pcRelSlice(std::nullopt),
         indexRelSlice(std::nullopt),
         index(std::nullopt),
-        upperBound(std::nullopt),
+        bounds(std::nullopt),
         DT(DT),
         slices(slices) {}
 
@@ -498,8 +521,7 @@ class JumpTableDiscovery {
 
       PcRel pc(pcRelId);
       IndexRel indexRelation(indexRelId, *this->index);
-      return {{pc, indexRelation, *this->upperBound, *this->lowerBound,
-               *this->defaultOut}};
+      return {{pc, indexRelation, *this->bounds, *this->defaultOut}};
     }
 
     return std::nullopt;

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <anvill/IndirectJumpPass.h>
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/SliceManager.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
-#include <anvill/IndirectJumpPass.h>
-#include <anvill/SliceManager.h>
+
 /*
 The goal here is to lower anvill_complete_switch to an llvm switch when we can recover the cases. This analysis must be sound but anvill_complete_switch maybe used for any complete set of indirect targets
 so cases may not even exist.
@@ -15,22 +17,22 @@ This pass focuses on lowering switch statements where a jumptable does exist
 */
 
 namespace anvill {
-    class SwitchLoweringPass: public IndirectJumpPass<SwitchLoweringPass> {
-        
-        private:
-            const std::shared_ptr<MemoryProvider>&  memProv;
-            SliceManager& slm;
-            
-        public:
-            SwitchLoweringPass(const std::shared_ptr<MemoryProvider>&  memProv,  SliceManager& slm) : memProv(memProv), slm(slm) {
+class SwitchLoweringPass : public IndirectJumpPass<SwitchLoweringPass> {
 
-            }
+ private:
+  const std::shared_ptr<MemoryProvider> &memProv;
+  SliceManager &slm;
 
-            llvm::StringRef getPassName() const override;
+ public:
+  SwitchLoweringPass(const std::shared_ptr<MemoryProvider> &memProv,
+                     SliceManager &slm)
+      : memProv(memProv),
+        slm(slm) {}
 
-            void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  llvm::StringRef getPassName() const override;
 
-            bool runOnIndirectJump(llvm::CallInst* indirectJump);
-            
-    };
-}
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+
+  bool runOnIndirectJump(llvm::CallInst *indirectJump);
+};
+}  // namespace anvill
