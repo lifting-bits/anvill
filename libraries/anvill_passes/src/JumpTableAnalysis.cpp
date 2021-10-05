@@ -307,8 +307,6 @@ class ExprSolve {
   }
 };
 
-
-// core assumption currently constraints are treated as unsigned
 class ConstraintExtractor
     : public llvm::InstVisitor<ConstraintExtractor,
                                std::optional<std::unique_ptr<Expr>>> {
