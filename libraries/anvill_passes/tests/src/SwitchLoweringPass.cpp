@@ -104,7 +104,30 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     fpm.run(*targetFunction);
     fpm.doFinalization();
 
-    targetFunction->dump();
+
+    const auto &analysis_results = jta->getAllResults();
+
+    REQUIRE(analysis_results.size() ==
+            3);  // check that we resolve all the switches
+
+    auto interp = slc.getInterp();
+    for (auto jumpres : analysis_results) {
+      // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
+      llvm::Value *v = jumpres.first->getArgOperand(2);
+      JumpTableResult res = jumpres.second;
+      REQUIRE(llvm::isa<llvm::ConstantInt>(v));
+      auto pc1 = llvm::cast<llvm::ConstantInt>(v);
+      switch (pc1->getValue().getLimitedValue()) {
+        case 136577416:
+          CHECK(res.lowerBound.getLimitedValue() == 3);
+          CHECK(res.upperBound.getLimitedValue() == 241);
+          CHECK(res.indexRel.apply(interp, llvm::APInt(8, 5)) == 136967792);
+          break;
+        case 136578775: break;
+        case 136578559: break;
+        default: CHECK(false);
+      }
+    }
   }
 }
 
