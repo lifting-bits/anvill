@@ -369,12 +369,17 @@ class AMD64Arch(Arch):
         return self._REG_FAMILY[self.register_name(reg_name)]
 
     def register_name(self, reg_name) -> Register:
-        self._has_avx |= any(reg in reg_name for reg in ["xmm", "ymm", "XMM", "YMM"])
-        self._has_avx512 |= any(reg in reg_name for reg in ["zmm", "ZMM"])
         if reg_name.startswith("%"):
-            return reg_name[1:].upper()
+            ret_name = reg_name[1:].upper()
         else:
-            return reg_name.upper()
+            ret_name = reg_name.upper()
+
+        if ret_name.startswith("ZMM"):
+            self._has_avx512 = True
+        elif ret_name.startswith("YMM"):
+            self._has_avx = True
+
+        return reg_name
 
 
 class X86Arch(Arch):
@@ -624,12 +629,17 @@ class X86Arch(Arch):
         return self._REG_FAMILY[self.register_name(reg_name)]
 
     def register_name(self, reg_name) -> Register:
-        self._has_avx |= any(reg in reg_name for reg in ["xmm", "ymm", "XMM", "YMM"])
-        self._has_avx512 |= any(reg in reg_name for reg in ["zmm", "ZMM"])
         if reg_name.startswith("%"):
-            return reg_name[1:].upper()
+            ret_name = reg_name[1:].upper()
         else:
-            return reg_name.upper()
+            ret_name = reg_name.upper()
+
+        if ret_name.startswith("ZMM"):
+            self._has_avx512 = True
+        elif ret_name.startswith("YMM"):
+            self._has_avx = True
+
+        return reg_name
 
 
 class AArch64Arch(Arch):
