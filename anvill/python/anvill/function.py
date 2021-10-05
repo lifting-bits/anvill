@@ -33,7 +33,9 @@ class Function(object):
         "_is_entrypoint",
     )
 
-    def __init__(self, arch, address, parameters, return_values, func_type, is_entrypoint, cc=0):
+    def __init__(
+        self, arch, address, parameters, return_values, func_type, is_entrypoint, cc=0
+    ):
         assert isinstance(func_type, FunctionType)
         self._arch = arch
         self._address = address

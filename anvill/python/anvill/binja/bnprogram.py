@@ -148,7 +148,9 @@ class BNProgram(Program):
 
         variable = self._bv.get_data_var_at(function_start)
         func = BNFunction(variable, arch, function_start, [], [], func_type, True, True)
-        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments")
+        DEBUG(
+            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
+        )
         return func
 
     def _get_function_parameters(self, bn_func):
@@ -269,8 +271,12 @@ class BNProgram(Program):
                 ret_list.append(loc)
 
         is_entrypoint = self._bv.entry_function == bn_func
-        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type, is_entrypoint)
-        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments")
+        func = BNFunction(
+            bn_func, arch, address, param_list, ret_list, func_type, is_entrypoint
+        )
+        DEBUG(
+            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments"
+        )
         return func
 
     def get_symbols_impl(self, address):
