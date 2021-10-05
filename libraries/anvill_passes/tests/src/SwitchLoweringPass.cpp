@@ -156,11 +156,12 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     llvm::SmallSet<uint64_t, 10> allowedIndices;
     allowedIndices.insert(6);
     allowedIndices.insert(7);
-    allowedIndices.insert(8);
+    allowedIndices.insert(33);
     allowedIndices.insert(34);
     allowedIndices.insert(35);
 
     for (auto c : loweredSwitch->cases()) {
+      std::cout << c.getCaseValue()->getValue().getLimitedValue() << std::endl;
       CHECK(allowedIndices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }

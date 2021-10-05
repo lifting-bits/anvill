@@ -297,7 +297,7 @@ class ExprSolve {
     auto sbSize = sb.upper - sb.lower;
 
     // diff should always be positive
-    if (ubSize.ult(sbSize)) {
+    if (ubSize.ule(sbSize)) {
       return unsignedBounds;
     } else {
       return signedBounds;
