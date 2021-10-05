@@ -101,11 +101,8 @@ class AtomIntExpr final : public Expr {
  public:
   static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
     llvm::APInt togetBitsFrom = api;
-    if (llvm::sys::IsLittleEndianHost && togetBitsFrom.getBitWidth() >= 16) {
-      // we are storing in little endian but z3 is big endian so
-      togetBitsFrom = api.byteSwap();
-    }
 
+    // TODO (ian) verify endianess
     auto res = std::make_unique<bool[]>(togetBitsFrom.getBitWidth());
     for (unsigned int i = 0; i < api.getBitWidth(); i++) {
       res[i] = togetBitsFrom[i];
@@ -195,7 +192,6 @@ class UnopExpr final : public Expr {
   }
 };
 
-
 class ExprSolve {
  private:
   std::optional<llvm::APInt> getBound(
@@ -219,6 +215,8 @@ class ExprSolve {
 
 
     auto h = gethandle(s, tooptimize);
+
+    std::cout << s << std::endl;
     if (z3::sat == s.check()) {
       z3::expr res = s.lower(h);
       auto resint = llvm::APInt(index_bv.get_sort().bv_size(), res.as_uint64());
@@ -262,6 +260,10 @@ class ExprSolve {
     z3::expr ub_val = c.bv_val(ub->getBitWidth(), ubbits.get());
     z3::expr lb_val = c.bv_val(lb->getBitWidth(), lbbits.get());
 
+
+    std::cout << "attempting to prove" << std::endl;
+    lb->dump();
+    ub->dump();
     z3::solver s(c);
     s.add(constraints);
     if (isSigned) {
@@ -272,6 +274,9 @@ class ExprSolve {
 
     if (s.check() == z3::unsat) {
       // proven the bound
+      std::cout << "proven " << std::to_string(isSigned) << std::endl;
+      lb->dump();
+      ub->dump();
       return {{*lb, *ub, isSigned}};
     }
 
@@ -282,11 +287,29 @@ class ExprSolve {
   std::optional<Bound> solveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
     auto unsignedBounds = this->optomizeExpr(exp, index, false);
-    if (unsignedBounds.has_value()) {
+    auto signedBounds = this->optomizeExpr(exp, index, true);
+
+
+    if (!signedBounds.has_value()) {
       return unsignedBounds;
     }
-    // (ian) TODO we may want to attempt to prove both and select the more narrow bound but I dont think it's possible for that case to exist.
-    return this->optomizeExpr(exp, index, true);
+
+    if (!unsignedBounds.has_value()) {
+      return signedBounds;
+    }
+
+    auto ub = *unsignedBounds;
+    auto sb = *signedBounds;
+
+    auto ubSize = ub.upper - ub.lower;
+    auto sbSize = sb.upper - sb.lower;
+
+    // diff should always be positive
+    if (ubSize.ult(sbSize)) {
+      return unsignedBounds;
+    } else {
+      return signedBounds;
+    }
   }
 };
 
@@ -327,9 +350,20 @@ class ConstraintExtractor
 
 
   const llvm::Value *index;
+  const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces;
 
+  std::optional<std::unique_ptr<Expr>>
+  dieOrSubstitute(llvm::Instruction *maybealt) {
+    if (this->alternativeIndeces.contains(maybealt)) {
+      this->substitudedIndex = {maybealt};
+      return {AtomIndexExpr::Create()};
+    }
+
+    return std::nullopt;
+  }
 
  public:
+  std::optional<llvm::Instruction *> substitudedIndex;
   std::optional<std::unique_ptr<Expr>> expectInsnOrIndex(llvm::Value *v) {
     if (v == this->index) {
       return AtomIndexExpr::Create();
@@ -348,11 +382,19 @@ class ConstraintExtractor
   }
 
 
-  ConstraintExtractor(const llvm::Value *index) : index(index) {}
+  ConstraintExtractor(
+      const llvm::Value *index,
+      const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces)
+      : index(index),
+        alternativeIndeces(alternativeIndeces) {}
 
 
   std::optional<std::unique_ptr<Expr>> visitInstruction(llvm::Instruction &I) {
     return std::nullopt;
+  }
+
+  std::optional<std::unique_ptr<Expr>> visitCastInst(llvm::CastInst &I) {
+    return this->dieOrSubstitute(&I);
   }
 
   std::optional<std::unique_ptr<Expr>> visitICmpInst(llvm::ICmpInst &I) {
@@ -436,9 +478,20 @@ class JumpTableDiscovery {
     return std::nullopt;
   }
 
+  void replaceIndexWith(llvm::Instruction *newIndex) {
+    this->index = newIndex;
+
+    auto target = std::find(this->indexRelSlice->begin(),
+                            this->indexRelSlice->end(), newIndex);
+
+    assert(target != this->indexRelSlice->end());
+    llvm::SmallVector<llvm::Instruction *> new_insn(std::next(target),
+                                                    this->indexRelSlice->end());
+    this->indexRelSlice = {new_insn};
+  }
+
   bool runBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
     assert(this->index);
-    auto taintedBranches = getTaintedBranches<10>(*this->index);
     auto dtNode = this->DT.getNode(intrinsicCall->getParent());
     auto inode = dtNode->getIDom()->getBlock();
     auto term = inode->getTerminator();
@@ -448,15 +501,24 @@ class JumpTableDiscovery {
       auto bcheck = *maybe_bcheck;
       this->defaultOut = {bcheck.failDirection};
       auto cond = bcheck.branch->getCondition();
+      llvm::SmallPtrSet<llvm::Instruction *, 10> indexSliceValues(
+          this->indexRelSlice->begin(), this->indexRelSlice->end());
+
+
+      ConstraintExtractor extractor(*this->index, indexSliceValues);
       std::optional<std::unique_ptr<Expr>> indexConstraints =
-          ConstraintExtractor(*this->index).expectInsnOrIndex(cond);
+          extractor.expectInsnOrIndex(cond);
 
       if (indexConstraints) {
+        if (extractor.substitudedIndex.has_value()) {
+          this->replaceIndexWith(*extractor.substitudedIndex);
+        }
         std::unique_ptr<Expr> cons = std::move(*indexConstraints);
         if (!bcheck.passesCheckOnTrue) {
           // we want the conditions s.t. the check passes
           cons = UnopExpr::Create(Z3Unop::LOGNOT, std::move(cons));
         }
+
 
         ExprSolve s;
         this->bounds = s.solveForBounds(cons, *this->index);
@@ -489,12 +551,14 @@ class JumpTableDiscovery {
       this->pcRelSlice = pcrelSlicer.getSlice();
 
       llvm::Value *integerLoadExpr = nullptr;
+      stopPoint->dump();
       if (pats::match(stopPoint, pats::m_Load(pats::m_IntToPtr(
                                      pats::m_Value(integerLoadExpr))))) {
         Slicer indexRelSlicer;
         this->loadedExpression = integerLoadExpr;
         this->index = indexRelSlicer.checkInstruction(integerLoadExpr);
         this->indexRelSlice = indexRelSlicer.getSlice();
+        (*this->index)->dump();
         return true;
       }
     }

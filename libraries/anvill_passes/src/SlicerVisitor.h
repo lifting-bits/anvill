@@ -20,7 +20,7 @@ class Slicer : public llvm::InstVisitor<Slicer, llvm::Value *> {
   // default case is stop condition
   llvm::Value *visitInstruction(llvm::Instruction &I);
 
-  // cast instructions should always be linear
+
   llvm::Value *visitCastInst(llvm::CastInst &I);
 
   // same with unary ops

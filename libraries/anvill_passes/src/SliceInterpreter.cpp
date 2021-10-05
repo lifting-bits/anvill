@@ -9,6 +9,7 @@ SliceInterpreter::executeSlice(SliceID sliceId,
       SliceManager::getFunctionName(sliceId));
 
   assert(F != nullptr);
+  F->dump();
   return this->execEngine->runFunction(F, ArgValue);
 }
 }  // namespace anvill
