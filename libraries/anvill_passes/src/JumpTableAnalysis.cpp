@@ -216,7 +216,6 @@ class ExprSolve {
 
     auto h = gethandle(s, tooptimize);
 
-    std::cout << s << std::endl;
     if (z3::sat == s.check()) {
       z3::expr res = s.lower(h);
       auto resint = llvm::APInt(index_bv.get_sort().bv_size(), res.as_uint64());
@@ -260,10 +259,6 @@ class ExprSolve {
     z3::expr ub_val = c.bv_val(ub->getBitWidth(), ubbits.get());
     z3::expr lb_val = c.bv_val(lb->getBitWidth(), lbbits.get());
 
-
-    std::cout << "attempting to prove" << std::endl;
-    lb->dump();
-    ub->dump();
     z3::solver s(c);
     s.add(constraints);
     if (isSigned) {
@@ -274,9 +269,6 @@ class ExprSolve {
 
     if (s.check() == z3::unsat) {
       // proven the bound
-      std::cout << "proven " << std::to_string(isSigned) << std::endl;
-      lb->dump();
-      ub->dump();
       return {{*lb, *ub, isSigned}};
     }
 
@@ -551,14 +543,12 @@ class JumpTableDiscovery {
       this->pcRelSlice = pcrelSlicer.getSlice();
 
       llvm::Value *integerLoadExpr = nullptr;
-      stopPoint->dump();
       if (pats::match(stopPoint, pats::m_Load(pats::m_IntToPtr(
                                      pats::m_Value(integerLoadExpr))))) {
         Slicer indexRelSlicer;
         this->loadedExpression = integerLoadExpr;
         this->index = indexRelSlicer.checkInstruction(integerLoadExpr);
         this->indexRelSlice = indexRelSlicer.getSlice();
-        (*this->index)->dump();
         return true;
       }
     }
