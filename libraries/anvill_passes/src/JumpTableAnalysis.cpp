@@ -17,6 +17,77 @@
 
 #include "SlicerVisitor.h"
 
+// The goal of this analysis pass is to recover the structure of jump tables for indirect control flow transfers under the following constraints:
+// 1. The program counter only depends on one non-constant value which is a load.
+// 2. The load address only depend on one non-constant value which is the index.
+// 3. The immediate dominator of the block containing the indirect jump contains a conditional that either does or does not visit the indirect jump without returning to the check.
+// 4. The check only depends on one non-constant value which is the index.
+// 5. The only non-constant in the check is the index, which can derive bounds for.
+
+// The pass returns a program counter slice, load address slice, index, and bounds on the index if the above conditions hold.
+
+// Consider the jump table below (instructions filtered for only the relevant ones).
+
+// 18:                                               ; preds = %2
+//   %19 = call i64 @_atoi()
+//   %20 = trunc i64 %19 to i32
+//   %21 = add i32 %20, 4
+//   %22 = zext i32 %21 to i64
+//   %23 = icmp ugt i32 %21, 7
+//   br i1 %23, label %33, label %25
+
+// 25:                                               ; preds = %18
+//   %26 = shl nuw nsw i64 %22, 2
+//   %27 = add nuw nsw i64 %26, 4294983520
+//   %28 = inttoptr i64 %27 to i32*
+//   %29 = load i32, i32* %28, align 4
+//   %30 = sext i32 %29 to i64
+//   %31 = add nsw i64 %30, 4294983436
+//   %32 = call i64 (i64, ...) @__anvill_complete_switch(i64 %31, i64 4294983452, i64 4294983464, i64 4294983476, i64 4294983484, i64 4294983496)
+//   switch i64 %32, label %34 [
+//     i64 0, label %35
+//     i64 1, label %36
+//     i64 2, label %37
+//     i64 3, label %38
+//     i64 4, label %33
+//   ]
+
+// The first step the pass takes is to slice the program counter in the target intrinsic. In this case %31. Slicing for both slices is performed in runIndexPattern.
+// Slicing depends on the SliceVisitor. The slice visitor visits instructions and stops when the instruction becomes non constant. The slicer returns both a vector of linear instructions
+// that were reached before the stop value and the value it stopped at.
+
+// For %31, the slice visitor will return a slice [%30,%31] and a stop value of %29. After retrieving this slice and stop value the index pattern checks for condition 1. If condition 1 holds, then the returned
+// stop value for slicing the pc should be a load instruction. In this case, %29 is a load so the check passes.
+// Now the index pattern runs for condition 2. The address of the load (%28) is run through the slicer retrieving a slice and stop value. The stop value is the first constant within the load address computation, so the stop value becomes the index.
+// The slice is the associated index slice. In this case the stop value for a slice on %28 is %19 with the slice [%20,%21,%22,%26,%27,%28].
+
+
+// The algorithm now proceeds to the bounds check pattern which firsts checks step 3, then 4, and then 5. It checks if the immediate dominator of the block containing the indirect jump terminates in a branch (In this case it does).
+// The branch is then examined to determine if one exit reaches the target jump while the other exit cannot reach the target jump without traversing the check again. The LLVM cfg function llvm::isPotentiallyReachable works well
+// for checking these properties.
+// The branch label that doesnt reach the jump is considered the default out label of the jump table. In this case the false case reaches the jump so the true case label: %33 is considered the defaultOut.
+// passesCheckOnTrue is set to false since it passes the jump table check when the condition is false.
+//
+// The algorithm now checks 4 utilizing the Constraint extractor. The constraint extractor extracts constant constraints on the index by visiting the instructions in the def use chain for the check.
+// For technical reasons, if a cast is reached in this slice and the cast is a member of the index slice (defines the index) then the index is updated to the cast. This update is done, because tight continous bounds do not exist on
+// casted values. In the example above the constraint extractor starts from %23 and collects a ugt constraint between %21 and %7. The extractor then visits %21. %21 becomes an add between %20 and 4. The extractor then reaches %20 which is a cast.
+// %20 is in the index slice ([%20,%21,%22,%26,%27,%28]) so the index is updated to %20 and the final index slice becomes ([%21,%22,%26,%27,%28]). The collected constraint on the index is of the form: (bvugt (bvadd index 4) 7).
+// Finally, if passesCheckOnTrue is false the constraints are negated, because we want the constraints that reach the target jump. In this case the target jump is reached in the false portion of the branch so the constraints are negated resulting in:
+// (not (bvugt (bvadd index 4) 7))
+
+// The algorithm is now ready for step 5 which derives the bounds on the index. The process is described precisely in solveForBounds, but the general approach is to derive a minimum and maximum index value that satisfies the collected constraint.
+// The minimum and maximum are then proven to be a conservative bound on the index by augmenting the constraint with additional constraints stating the index is outside of the recovered bounds. If z3 is able to prove the augmented constraints are unsat,
+// then the bounds are safe. Two bounds are recovered: unsigned bounds on index and signed bounds on index. Since both bounds are conservative, either bound is valid, so we select the narrower bound.
+// The unsigned bound on %20 in the above is: [0, 4294967295]. The signed bound is [-4, 3] so the signed bound is selected.
+
+// Plausible bound recovery alternatives include lightweight VSA to determine some strided interval etc on the index, avoiding the need for z3.
+
+// The final returned information is the index bounds, the defaultOut, the final index, the final index slice, and the program counter slice.
+// defaultOut: %33
+// index bounds: [-4,3]
+// index: %20
+// index slice: [%21,%22,%26,%27,%28]
+// pc slice: [%30,%31]
 
 namespace anvill {
 namespace {
