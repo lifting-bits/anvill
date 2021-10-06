@@ -92,11 +92,13 @@ class BNFunction(Function):
             for inst in block:
                 register_information = self._extract_types(program, inst.operands, inst)
                 for reg_info in register_information:
-                    if should_ignore_register(program.bv, reg_info[0]):
+                    if should_ignore_register(
+                        program.bv, self._arch.register_name(reg_info[0])
+                    ):
                         continue
 
                     loc = Location()
-                    loc.set_register(reg_info[0].upper())
+                    loc.set_register(self._arch.register_name(reg_info[0]))
                     loc.set_type(reg_info[1])
                     if reg_info[2] is not None:
                         # fill_bytes misses some references, catch what we can
