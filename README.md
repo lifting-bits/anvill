@@ -31,7 +31,7 @@ Most of Anvill's dependencies can be provided by the [cxx-common](https://github
 | ---- | ------- |
 | [Git](https://git-scm.com/) | Latest |
 | [CMake](https://cmake.org/) | 3.14+ |
-| [Clang](http://clang.llvm.org/) | 11.0+|
+| [Clang](http://clang.llvm.org/) | 12.0+|
 | [Remill](https://github.com/lifting-bits/remill) | Latest |
 | [Python](https://www.python.org/) | 3.9 |
 | [IDA Pro](https://www.hex-rays.com/products/ida) | 7.5+ |
@@ -125,10 +125,10 @@ With the IDA plugin:
 
 ### Docker image
 
-To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 11 on Ubuntu 20.04 on AMD64 do:
+To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 12 on Ubuntu 20.04 on AMD64 do:
 
 ```shell
-ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=11; \
+ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=12; \
    docker build . \
    -t anvill-llvm${LLVM}-ubuntu${UBUNTU_VERSION}-${ARCH} \
    -f Dockerfile \
