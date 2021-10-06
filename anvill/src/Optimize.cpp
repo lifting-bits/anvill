@@ -37,6 +37,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 
 // clang-format on
 
@@ -116,6 +117,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.add(CreateRemoveCompilerBarriers());
   fpm.add(CreateLowerTypeHintIntrinsics());
   fpm.add(CreateInstructionFolderPass(err_man));
+  fpm.add(new llvm::TargetLibraryInfoWrapperPass());
   fpm.add(llvm::createDeadCodeEliminationPass());
   fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
   fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
