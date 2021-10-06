@@ -279,6 +279,10 @@ class ExprSolve {
   }
 
  public:
+  // Solving for the bounds on the index proceeds as follows:
+  // The collected expressions are translated into z3 expressions.
+  // These expressions are then added to an optimizer once to compute the maximum bound on the index variable and the minimum bound on the index.
+  // If
   std::optional<Bound> solveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
     auto unsignedBounds = this->optomizeExpr(exp, index, false);
@@ -347,7 +351,9 @@ class ConstraintExtractor
 
   std::optional<std::unique_ptr<Expr>>
   dieOrSubstitute(llvm::Instruction *maybealt) {
-    if (this->alternativeIndeces.contains(maybealt)) {
+    if (this->alternativeIndeces.contains(maybealt) &&
+        (!this->substitudedIndex.has_value() ||
+         *this->substitudedIndex == maybealt)) {
       this->substitudedIndex = {maybealt};
       return {AtomIndexExpr::Create()};
     }
