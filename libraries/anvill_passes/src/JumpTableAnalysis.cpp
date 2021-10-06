@@ -21,7 +21,7 @@
 namespace anvill {
 namespace {
 template <unsigned N>
-llvm::SmallSet<const llvm::BranchInst *, N>
+static llvm::SmallSet<const llvm::BranchInst *, N>
 getTaintedBranches(const llvm::Value *byVal) {
   std::vector<const llvm::Value *> worklist;
   llvm::SmallSet<const llvm::Value *, 20> closedList;
@@ -47,8 +47,8 @@ getTaintedBranches(const llvm::Value *byVal) {
   return taintedGuards;
 }
 
-llvm::APInt runSingleIntFunc(SliceInterpreter &interp, SliceID slice,
-                             llvm::APInt indexValue) {
+static llvm::APInt runSingleIntFunc(SliceInterpreter &interp, SliceID slice,
+                                    llvm::APInt indexValue) {
   std::vector<llvm::GenericValue> args(1);
   llvm::GenericValue v;
   v.IntVal = indexValue;
@@ -56,7 +56,8 @@ llvm::APInt runSingleIntFunc(SliceInterpreter &interp, SliceID slice,
   auto res = interp.executeSlice(slice, args);
   return res.IntVal;
 }
-bool isValidRelType(llvm::FunctionType *ty) {
+
+static bool isValidRelType(llvm::FunctionType *ty) {
   return ty->params().size() == 1 && ty->params()[0]->isIntegerTy() &&
          ty->getReturnType()->isIntegerTy();
 }

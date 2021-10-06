@@ -58,7 +58,7 @@ class MockMemProv : public MemoryProvider {
 
 namespace {
 
-llvm::Function *findFunction(llvm::Module *module, std::string name) {
+static llvm::Function *findFunction(llvm::Module *module, std::string name) {
   for (auto &function : *module) {
     if (function.getName().equals(name)) {
       return &function;
