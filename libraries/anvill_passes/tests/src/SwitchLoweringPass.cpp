@@ -151,7 +151,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
         llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
 
     CHECK(loweredSwitch->getNumCases() == 5);
-    CHECK(loweredSwitch->getCondition() == recoveredSwitch->indexRel.index);
+    CHECK(loweredSwitch->getCondition() ==
+          recoveredSwitch->indexRel.getIndex());
 
     llvm::SmallSet<uint64_t, 10> allowedIndices;
     allowedIndices.insert(6);
@@ -229,6 +230,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
         llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
 
     CHECK(loweredSwitch->getNumCases() == 4);
+    CHECK(loweredSwitch->getCondition() ==
+          recoveredSwitch->indexRel.getIndex());
 
     llvm::SmallSet<uint64_t, 10> allowedIndices;
     allowedIndices.insert(llvm::APInt(32, -4).getLimitedValue());

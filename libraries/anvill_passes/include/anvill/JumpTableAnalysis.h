@@ -37,10 +37,11 @@ class PcRel {
 
 
 class IndexRel {
- public:
+ private:
   SliceID slice;
   llvm::Value *index;
 
+ public:
   llvm::Value *getIndex();
   llvm::APInt apply(SliceInterpreter &interp, llvm::APInt indexValue);
 

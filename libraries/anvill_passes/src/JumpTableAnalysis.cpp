@@ -282,7 +282,11 @@ class ExprSolve {
   // Solving for the bounds on the index proceeds as follows:
   // The collected expressions are translated into z3 expressions.
   // These expressions are then added to an optimizer once to compute the maximum bound on the index variable and the minimum bound on the index.
-  // If
+  // We then attempt to prove the bound [l,u] is conservative. We build a constraint that includes the original constraints + (index < l || index > u).
+  // If z3 can prove that these constraints are unsat, then we have proven a conservative bound on the index.
+  // This algorithm is performed once for the unsigned range of the index and once for the index shifted into the signed domain by adding 2^{n-1}.
+  // The signed domain can represent continous ranges on the index that wrap 0 tightly while the unsigned domain can represent values that wrap around 2^{n-1}.
+  // The more narrow bounds are selected. The Bound structure keeps track of wether the bounds should use signed or unsigned comparison.
   std::optional<Bound> solveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
     auto unsignedBounds = this->optomizeExpr(exp, index, false);
