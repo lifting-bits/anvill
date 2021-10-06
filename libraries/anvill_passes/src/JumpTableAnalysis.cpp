@@ -102,7 +102,7 @@ class AtomIntExpr final : public Expr {
   static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
     llvm::APInt togetBitsFrom = api;
 
-    // TODO (ian) verify endianess
+    // TODO(ian): verify endianess
     auto res = std::make_unique<bool[]>(togetBitsFrom.getBitWidth());
     for (unsigned int i = 0; i < api.getBitWidth(); i++) {
       res[i] = togetBitsFrom[i];
@@ -451,7 +451,7 @@ class JumpTableDiscovery {
       const llvm::SmallPtrSetImpl<llvm::BasicBlock *> *st = &checkSet;
 
       // newer versions of llvm let you go from blocks...
-      // TODO should pass loop info
+      // TODO(ian): should pass loop info
       bool canReachCTIWithoutCheckS0 = llvm::isPotentiallyReachable(
           branch->getSuccessor(0)->getFirstNonPHI(), firstCTIInsns, st,
           &this->DT);

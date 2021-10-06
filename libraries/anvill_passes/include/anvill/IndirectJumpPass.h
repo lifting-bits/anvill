@@ -1,12 +1,13 @@
 #pragma once
 
 #include <anvill/ABI.h>
+#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
 namespace anvill {
 namespace {
-bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
+static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
   if (const auto *callee = callinsn->getCalledFunction()) {
     return callee->getName().equals(kAnvillSwitchCompleteFunc);
   }
@@ -14,16 +15,14 @@ bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
   return false;
 }
 
-std::vector<llvm::CallInst *> getTargetCalls(llvm::Function &F) {
+static std::vector<llvm::CallInst *>
+getTargetCalls(llvm::Function &fromFunction) {
   std::vector<llvm::CallInst *> calls;
-  for (auto &blk : F.getBasicBlockList()) {
-    for (auto &insn : blk.getInstList()) {
-      llvm::Instruction *new_insn = &insn;
-      if (llvm::CallInst *call_insn =
-              llvm::dyn_cast<llvm::CallInst>(new_insn)) {
-        if (isTargetInstrinsic(call_insn)) {
-          calls.push_back(call_insn);
-        }
+  for (auto &insn : llvm::instructions(fromFunction)) {
+    llvm::Instruction *new_insn = &insn;
+    if (llvm::CallInst *call_insn = llvm::dyn_cast<llvm::CallInst>(new_insn)) {
+      if (isTargetInstrinsic(call_insn)) {
+        calls.push_back(call_insn);
       }
     }
   }
@@ -37,7 +36,7 @@ class IndirectJumpPass : public llvm::FunctionPass {
  public:
   static char ID;
 
-  IndirectJumpPass() : llvm::FunctionPass(ID) {}
+  IndirectJumpPass(void) : llvm::FunctionPass(ID) {}
 
   virtual bool runOnFunction(llvm::Function &F) override;
 };

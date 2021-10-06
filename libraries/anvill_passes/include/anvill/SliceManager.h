@@ -80,13 +80,11 @@ class SliceManager {
     return "sliceFunc." + std::to_string(id.ID);
   }
 
-  /**
-             * @brief Adds a slice of instructions to the slice manager. Any values not defined in the slice are lifted to arguments.
-             * 
-             * @param slice The instructions in the slice
-             * @param returnValue The value 
-             * @return SliceID The id for retrieving the slice. If the return value is not defined in the slice the return value will be lifted to an argument.
-             */
+
+  // Adds a slice of instructions to the slice manager. Any values not defined in the slice are lifted to arguments.
+  // @slice The instructions in the slice
+  // @param returnValue The value that will be returned from the slice.
+  // @returns SliceID The id for retrieving the slice. If the return value is not defined in the slice the return value will be lifted to an argument.
   SliceID addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                    llvm::Value *returnValue);
 
