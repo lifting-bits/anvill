@@ -193,6 +193,7 @@ class UnopExpr final : public Expr {
   }
 };
 
+// Attempts to prove a narrow conservative bound on the index, utilizing the provided constraints.
 class ExprSolve {
  private:
   std::optional<llvm::APInt> getBound(

@@ -23,19 +23,24 @@ struct Cast {
   }
 };
 
-
+// A slice that represents the computation of the program counter, given a loaded value from a jump table.
+// The slice has one unknown argument which is the loaded value. The slice argument and return value are integers.
 class PcRel {
+ private:
+  SliceID slice;
+
  public:
   PcRel(SliceID slice) : slice(slice) {}
 
+  // Interprets the slice, providing loadedVal as the argument.
   llvm::APInt apply(SliceInterpreter &interp, llvm::APInt loadedVal);
 
 
   llvm::IntegerType *getExpectedType(SliceManager &);
-  SliceID slice;
 };
 
-
+// A slice that represents the computation from an index (some non-constant value) to a loaded address.
+// The slice is linear and constant except for the index, resulting in one integer argument for the slice.`
 class IndexRel {
  private:
   SliceID slice;
@@ -43,6 +48,8 @@ class IndexRel {
 
  public:
   llvm::Value *getIndex();
+
+  // Interprets the slice, substituting indexValue for the index, retrieving a jump table address.
   llvm::APInt apply(SliceInterpreter &interp, llvm::APInt indexValue);
 
   IndexRel(SliceID slice, llvm::Value *index) : slice(slice), index(index) {}
