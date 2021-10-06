@@ -225,11 +225,28 @@ class IDAProgram(Program):
         if not isinstance(ret_type, VoidType):
             _expand_locations(arch, pfn, ret_type, ftd.retloc, ret_list)
 
+        # IDA considers all external functions as entrypoint to the binaries and
+        # does not have information about the start function. Get the function
+        # name and check if it is one of the entrypoint defined.
+        func_with_no_return_address = set(["_start"])
+
+        is_entrypoint = _function_name(address) in func_with_no_return_address
         func = IDAFunction(
-            arch, address, param_list, ret_list, pfn, ftd.is_noret(), func_type, cc
+            arch,
+            address,
+            param_list,
+            ret_list,
+            pfn,
+            ftd.is_noret(),
+            func_type,
+            cc,
+            is_entrypoint,
         )
         self.add_symbol(address, _function_name(address))
         return func
+
+    def function_from_addr(self, address):
+        return None
 
     def _init_func_thunk_ctrl_flow(self):
         """Initializes the control flow redirections and targets

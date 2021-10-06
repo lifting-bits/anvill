@@ -43,10 +43,19 @@ class IDAFunction(Function):
     __slots__ = ("_pfn", "_is_noreturn")
 
     def __init__(
-        self, arch, address, param_list, ret_list, ida_func, is_noreturn, func_type, cc
+        self,
+        arch,
+        address,
+        param_list,
+        ret_list,
+        ida_func,
+        is_noreturn,
+        func_type,
+        cc,
+        is_entrypoint=False,
     ):
         super(IDAFunction, self).__init__(
-            arch, address, param_list, ret_list, func_type, cc
+            arch, address, param_list, ret_list, func_type, is_entrypoint, cc
         )
         self._pfn = ida_func
         self._is_noreturn = is_noreturn

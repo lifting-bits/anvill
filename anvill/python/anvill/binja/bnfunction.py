@@ -46,9 +46,10 @@ class BNFunction(Function):
         param_list,
         ret_list,
         func_type,
+        is_entrypoint=False,
         is_external=False,
     ):
-        super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
+        super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type, is_entrypoint)
         self._bn_func = None
         self._is_external = is_external
 

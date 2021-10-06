@@ -147,7 +147,7 @@ class BNProgram(Program):
         function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
 
         variable = self._bv.get_data_var_at(function_start)
-        func = BNFunction(variable, arch, function_start, [], [], func_type, True)
+        func = BNFunction(variable, arch, function_start, [], [], func_type, True, True)
         DEBUG(
             f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
         )
@@ -270,7 +270,10 @@ class BNProgram(Program):
                 loc.set_type(ret_ty)
                 ret_list.append(loc)
 
-        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
+        is_entrypoint = self._bv.entry_function == bn_func
+        func = BNFunction(
+            bn_func, arch, address, param_list, ret_list, func_type, is_entrypoint
+        )
         DEBUG(
             f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments"
         )

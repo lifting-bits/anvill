@@ -153,7 +153,7 @@ following actions:
  * Extract arguments, given that one is at the entrypoint of a function.
  * Extract one or more return values from machine state, just after a function
    call has returned.
- * Store return values into the machine state, prior to a function's return. 
+ * Store return values into the machine state, prior to a function's return.
 
 #### Address
 
@@ -217,6 +217,9 @@ In the above examples, we've represented return address types with integral type
 names; however, it is perfectly valid to represent them using pointer types, e.g.
 `*v` or `*b` or `*B`.
 
+If a function specification is describing the program entrypoint, then it won't
+have a return address.
+
 #### Return stack pointer
 
 A function specification models the value of the stack pointer *after* returning
@@ -257,7 +260,7 @@ state on entry to the function).
 In the below JSON, there is a parameter named `argc`, stored in the `RDI` register,
 with type `int32_t`. In this case, `int32_t` does not fully cover the space that
 can be covered by the `RDI` register, and so the low four bytes of the eight byte
-`RDI` register are used. 
+`RDI` register are used.
 
 ```json
                 {
@@ -371,7 +374,7 @@ list can be found [here](https://code.woboq.org/llvm/llvm/include/llvm/IR/Callin
 ### Global variables
 
 Global variables are specified in a top-level list. Like functions, global variables
-are unnamed, and uniquely identified by their addresses. 
+are unnamed, and uniquely identified by their addresses.
 
 ```json
     "variables": [

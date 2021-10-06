@@ -407,6 +407,8 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
   if (auto pc_reg = tpl.arch->RegisterByName(pc_reg_name)) {
     if (!return_address.type) {
       return_address.type = pc_reg->type;
+    } else if (return_address.type->isVoidTy()) {
+      // Skip the subsequent checks if our function declaration has no return address.
     } else if (!return_address.type->isIntegerTy()) {
       return llvm::createStringError(
           std::make_error_code(std::errc::invalid_argument),
@@ -429,9 +431,12 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
         pc_reg_name.data(), tpl.address);
   }
 
-  auto err = CheckValueDecl(return_address, context, "return address", tpl);
-  if (err) {
-    return std::move(err);
+  llvm::Error err = llvm::Error::success();
+  if (!return_address.type || !return_address.type->isVoidTy()) {
+    auto err = CheckValueDecl(return_address, context, "return address", tpl);
+    if (err) {
+      return std::move(err);
+    }
   }
 
   for (auto &param : tpl.params) {
