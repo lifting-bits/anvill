@@ -30,9 +30,12 @@ class Function(object):
         "_type",
         "_cc",
         "_register_info",
+        "_is_entrypoint",
     )
 
-    def __init__(self, arch, address, parameters, return_values, func_type, cc=0):
+    def __init__(
+        self, arch, address, parameters, return_values, func_type, is_entrypoint, cc=0
+    ):
         assert isinstance(func_type, FunctionType)
         self._arch = arch
         self._address = address
@@ -41,6 +44,7 @@ class Function(object):
         self._type = func_type
         self._cc = cc
         self._register_info: List[Location] = []
+        self._is_entrypoint = is_entrypoint
 
         for param in self._parameters:
             assert isinstance(param, Location)
@@ -88,7 +92,8 @@ class Function(object):
     def proto(self):
         proto = {}
         proto["address"] = self.address()
-        proto["return_address"] = self._arch.return_address_proto()
+        if not self._is_entrypoint:
+            proto["return_address"] = self._arch.return_address_proto()
         proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(
             self.type().num_bytes_popped_off_stack()
         )
