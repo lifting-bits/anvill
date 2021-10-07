@@ -35,11 +35,11 @@ class MockMemProv : public MemoryProvider {
   }
 
 
-  void setCurrJumpTableBase(uint64_t baseAddress) {
+  void SetCurrJumpTableBase(uint64_t baseAddress) {
     this->currBase = baseAddress;
   }
 
-  void addJumpTableOffset(uint32_t offset) {
+  void AddJumpTableOffset(uint32_t offset) {
     std::vector<uint8_t> data(sizeof(uint32_t));
     if (dl.isLittleEndian()) {
       llvm::support::endian::write32le(data.data(), offset);
@@ -58,7 +58,7 @@ class MockMemProv : public MemoryProvider {
 
 namespace {
 
-static llvm::Function *findFunction(llvm::Module *module, std::string name) {
+static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
   for (auto &function : *module) {
     if (function.getName().equals(name)) {
       return &function;
@@ -75,7 +75,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
     auto targetFunction =
-        findFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
+        FindFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
     CHECK(targetFunction != nullptr);
     llvm::legacy::FunctionPassManager fpm(mod.get());
     fpm.add(llvm::createInstructionCombiningPass());
@@ -90,16 +90,16 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     // Since there are 30 entries in the table this test assumes the 5 offsets are in order bookending a bunch of default cases
 
 
-    memProv->setCurrJumpTableBase(136968824);
-    memProv->addJumpTableOffset(-1153321);
-    memProv->addJumpTableOffset(-1153312);
+    memProv->SetCurrJumpTableBase(136968824);
+    memProv->AddJumpTableOffset(-1153321);
+    memProv->AddJumpTableOffset(-1153312);
     for (int i = 0; i < 25; i++) {
-      memProv->addJumpTableOffset(-3209123);
+      memProv->AddJumpTableOffset(-3209123);
     }
 
-    memProv->addJumpTableOffset(-1153303);
-    memProv->addJumpTableOffset(-1153287);
-    memProv->addJumpTableOffset(-1153278);
+    memProv->AddJumpTableOffset(-1153303);
+    memProv->AddJumpTableOffset(-1153287);
+    memProv->AddJumpTableOffset(-1153278);
 
     fpm.add(CreateSwitchLoweringPass(memProv, slc));
     fpm.doInitialization();
@@ -172,7 +172,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     SliceManager slc;
     JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringNeg.ll");
-    auto targetFunction = findFunction(mod.get(), "_start");
+    auto targetFunction = FindFunction(mod.get(), "_start");
     CHECK(targetFunction != nullptr);
     llvm::legacy::FunctionPassManager fpm(mod.get());
     fpm.add(llvm::createInstructionCombiningPass());
@@ -181,15 +181,15 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
-    memProv->setCurrJumpTableBase(4294983520);
-    memProv->addJumpTableOffset(0x10);
-    memProv->addJumpTableOffset(0x3c);
-    memProv->addJumpTableOffset(0x3c);
-    memProv->addJumpTableOffset(0x1c);
-    memProv->addJumpTableOffset(0x28);
-    memProv->addJumpTableOffset(0x3c);
-    memProv->addJumpTableOffset(0x3c);
-    memProv->addJumpTableOffset(0x30);
+    memProv->SetCurrJumpTableBase(4294983520);
+    memProv->AddJumpTableOffset(0x10);
+    memProv->AddJumpTableOffset(0x3c);
+    memProv->AddJumpTableOffset(0x3c);
+    memProv->AddJumpTableOffset(0x1c);
+    memProv->AddJumpTableOffset(0x28);
+    memProv->AddJumpTableOffset(0x3c);
+    memProv->AddJumpTableOffset(0x3c);
+    memProv->AddJumpTableOffset(0x30);
 
     fpm.add(CreateSwitchLoweringPass(memProv, slc));
     fpm.doInitialization();

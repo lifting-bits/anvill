@@ -93,7 +93,7 @@ namespace anvill {
 namespace {
 template <unsigned N>
 static llvm::SmallSet<const llvm::BranchInst *, N>
-getTaintedBranches(const llvm::Value *byVal) {
+GetTaintedBranches(const llvm::Value *byVal) {
   std::vector<const llvm::Value *> worklist;
   llvm::SmallSet<const llvm::Value *, 20> closedList;
   worklist.push_back(byVal);
@@ -118,7 +118,7 @@ getTaintedBranches(const llvm::Value *byVal) {
   return taintedGuards;
 }
 
-static llvm::APInt runSingleIntFunc(SliceInterpreter &interp, SliceID slice,
+static llvm::APInt RunSingleIntFunc(SliceInterpreter &interp, SliceID slice,
                                     llvm::APInt indexValue) {
   std::vector<llvm::GenericValue> args(1);
   llvm::GenericValue v;
@@ -128,7 +128,7 @@ static llvm::APInt runSingleIntFunc(SliceInterpreter &interp, SliceID slice,
   return res.IntVal;
 }
 
-static bool isValidRelType(llvm::FunctionType *ty) {
+static bool IsValidRelType(llvm::FunctionType *ty) {
   return ty->params().size() == 1 && ty->params()[0]->isIntegerTy() &&
          ty->getReturnType()->isIntegerTy();
 }
@@ -150,14 +150,14 @@ struct BoundsCheck {
 class Expr {
  public:
   virtual ~Expr() = default;
-  virtual z3::expr build_expression(z3::context &c,
+  virtual z3::expr BuildExpression(z3::context &c,
                                     z3::expr indexExpr) const = 0;
 };
 
 class AtomIndexExpr final : public Expr {
 
  public:
-  z3::expr build_expression(z3::context &c, z3::expr indexExpr) const override {
+  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
     return indexExpr;
   }
 
@@ -171,7 +171,7 @@ class AtomIntExpr final : public Expr {
   llvm::APInt atomValue;
 
  public:
-  static std::unique_ptr<bool[]> getBigEndianBits(llvm::APInt api) {
+  static std::unique_ptr<bool[]> GetBigEndianBits(llvm::APInt api) {
     llvm::APInt togetBitsFrom = api;
 
     // TODO(ian): verify endianess
@@ -185,9 +185,9 @@ class AtomIntExpr final : public Expr {
 
   AtomIntExpr(llvm::APInt atomValue) : atomValue(atomValue) {}
 
-  z3::expr build_expression(z3::context &c, z3::expr indexExpr) const override {
+  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
     auto bv_width = this->atomValue.getBitWidth();
-    auto bv_bits = AtomIntExpr::getBigEndianBits(this->atomValue);
+    auto bv_bits = AtomIntExpr::GetBigEndianBits(this->atomValue);
     return c.bv_val(bv_width, bv_bits.get());
   }
 
@@ -218,9 +218,9 @@ class BinopExpr final : public Expr {
     return std::make_unique<BinopExpr>(opcode, std::move(lhs), std::move(rhs));
   }
 
-  z3::expr build_expression(z3::context &c, z3::expr indexExpr) const override {
-    auto e1 = this->lhs->build_expression(c, indexExpr);
-    auto e2 = this->rhs->build_expression(c, indexExpr);
+  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
+    auto e1 = this->lhs->BuildExpression(c, indexExpr);
+    auto e2 = this->rhs->BuildExpression(c, indexExpr);
     switch (this->opcode) {
       case ADD: return z3::operator+(e1, e2);
       case ULE: return z3::ule(e1, e2);
@@ -255,8 +255,8 @@ class UnopExpr final : public Expr {
     return std::make_unique<UnopExpr>(opcode, std::move(lhs));
   }
 
-  z3::expr build_expression(z3::context &c, z3::expr indexExpr) const override {
-    auto e1 = this->lhs->build_expression(c, indexExpr);
+  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
+    auto e1 = this->lhs->BuildExpression(c, indexExpr);
     switch (this->opcode) {
       case Z3Unop::LOGNOT: return z3::operator!(e1);
       default: throw std::invalid_argument("unknown opcode unop");
@@ -267,7 +267,7 @@ class UnopExpr final : public Expr {
 // Attempts to prove a narrow conservative bound on the index, utilizing the provided constraints.
 class ExprSolve {
  private:
-  std::optional<llvm::APInt> getBound(
+  std::optional<llvm::APInt> GetBound(
       z3::context &c, z3::expr index_bv, z3::expr constraints,
       std::function<z3::optimize::handle(z3::optimize, z3::expr)> gethandle,
       bool isSigned) {
@@ -280,7 +280,7 @@ class ExprSolve {
     z3::expr tooptimize = index_bv;
     auto numbits = index_bv.get_sort().bv_size();
     auto signShift = llvm::APInt(numbits, 1).shl(numbits - 1);
-    auto shiftBits = AtomIntExpr::getBigEndianBits(signShift);
+    auto shiftBits = AtomIntExpr::GetBigEndianBits(signShift);
     z3::expr signShifted =
         (index_bv + c.bv_val(signShift.getBitWidth(), shiftBits.get()));
 
@@ -304,21 +304,21 @@ class ExprSolve {
       return std::nullopt;
     }
   }
-  std::optional<Bound> optomizeExpr(const std::unique_ptr<Expr> &exp,
+  std::optional<Bound> OptomizeExpr(const std::unique_ptr<Expr> &exp,
                                     llvm::Value *index, bool isSigned) {
 
 
     z3::context c;
     z3::expr index_bv =
         c.bv_const("index", index->getType()->getIntegerBitWidth());
-    z3::expr constraints = exp->build_expression(c, index_bv);
-    auto ub = this->getBound(
+    z3::expr constraints = exp->BuildExpression(c, index_bv);
+    auto ub = this->GetBound(
         c, index_bv, constraints,
         [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
           return o.maximize(toopt);
         },
         isSigned);
-    auto lb = this->getBound(
+    auto lb = this->GetBound(
         c, index_bv, constraints,
         [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
           return o.minimize(toopt);
@@ -329,8 +329,8 @@ class ExprSolve {
       return std::nullopt;
     }
 
-    auto ubbits = AtomIntExpr::getBigEndianBits(*ub);
-    auto lbbits = AtomIntExpr::getBigEndianBits(*lb);
+    auto ubbits = AtomIntExpr::GetBigEndianBits(*ub);
+    auto lbbits = AtomIntExpr::GetBigEndianBits(*lb);
     z3::expr ub_val = c.bv_val(ub->getBitWidth(), ubbits.get());
     z3::expr lb_val = c.bv_val(lb->getBitWidth(), lbbits.get());
 
@@ -359,10 +359,10 @@ class ExprSolve {
   // This algorithm is performed once for the unsigned range of the index and once for the index shifted into the signed domain by adding 2^{n-1}.
   // The signed domain can represent continous ranges on the index that wrap 0 tightly while the unsigned domain can represent values that wrap around 2^{n-1}.
   // The more narrow bounds are selected. The Bound structure keeps track of wether the bounds should use signed or unsigned comparison.
-  std::optional<Bound> solveForBounds(const std::unique_ptr<Expr> &exp,
+  std::optional<Bound> SolveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
-    auto unsignedBounds = this->optomizeExpr(exp, index, false);
-    auto signedBounds = this->optomizeExpr(exp, index, true);
+    auto unsignedBounds = this->OptomizeExpr(exp, index, false);
+    auto signedBounds = this->OptomizeExpr(exp, index, true);
 
 
     if (!signedBounds.has_value()) {
@@ -393,7 +393,7 @@ class ConstraintExtractor
                                std::optional<std::unique_ptr<Expr>>> {
  private:
   static std::optional<Z3Binop>
-  translateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
+  TranslateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
     switch (op) {
       case llvm::Instruction::BinaryOps::And /* constant-expression */:
         /* code */
@@ -406,7 +406,7 @@ class ConstraintExtractor
 
 
   static std::optional<Z3Binop>
-  translateICMPOpToZ3(llvm::CmpInst::Predicate op) {
+  TranslateIcmpOpToZ3(llvm::CmpInst::Predicate op) {
     switch (op) {
       case llvm::CmpInst::Predicate::ICMP_EQ: return Z3Binop::EQ;
       case llvm::CmpInst::Predicate::ICMP_UGE: return Z3Binop::UGE;
@@ -426,7 +426,7 @@ class ConstraintExtractor
   const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces;
 
   std::optional<std::unique_ptr<Expr>>
-  dieOrSubstitute(llvm::Instruction *maybealt) {
+  DieOrSubstitute(llvm::Instruction *maybealt) {
     if (this->alternativeIndeces.contains(maybealt) &&
         (!this->substitudedIndex.has_value() ||
          *this->substitudedIndex == maybealt)) {
@@ -439,7 +439,7 @@ class ConstraintExtractor
 
  public:
   std::optional<llvm::Instruction *> substitudedIndex;
-  std::optional<std::unique_ptr<Expr>> expectInsnOrIndex(llvm::Value *v) {
+  std::optional<std::unique_ptr<Expr>> ExpectInsnOrIndex(llvm::Value *v) {
     if (v == this->index) {
       return AtomIndexExpr::Create();
     }
@@ -469,15 +469,15 @@ class ConstraintExtractor
   }
 
   std::optional<std::unique_ptr<Expr>> visitCastInst(llvm::CastInst &I) {
-    return this->dieOrSubstitute(&I);
+    return this->DieOrSubstitute(&I);
   }
 
   std::optional<std::unique_ptr<Expr>> visitICmpInst(llvm::ICmpInst &I) {
-    auto conn = translateICMPOpToZ3(I.getPredicate());
+    auto conn = TranslateIcmpOpToZ3(I.getPredicate());
 
 
-    if (auto repr0 = this->expectInsnOrIndex(I.getOperand(0))) {
-      if (auto repr1 = this->expectInsnOrIndex(I.getOperand(1))) {
+    if (auto repr0 = this->ExpectInsnOrIndex(I.getOperand(0))) {
+      if (auto repr1 = this->ExpectInsnOrIndex(I.getOperand(1))) {
         if (conn) {
           return {
               BinopExpr::Create(*conn, std::move(*repr0), std::move(*repr1))};
@@ -490,11 +490,11 @@ class ConstraintExtractor
 
   std::optional<std::unique_ptr<Expr>>
   visitBinaryOperator(llvm::BinaryOperator &B) {
-    auto conn = translateOpcodeToConnective(B.getOpcode());
+    auto conn = TranslateOpcodeToConnective(B.getOpcode());
 
 
-    if (auto repr0 = this->expectInsnOrIndex(B.getOperand(0))) {
-      if (auto repr1 = this->expectInsnOrIndex(B.getOperand(1))) {
+    if (auto repr0 = this->ExpectInsnOrIndex(B.getOperand(0))) {
+      if (auto repr1 = this->ExpectInsnOrIndex(B.getOperand(1))) {
         if (conn) {
           return {
               BinopExpr::Create(*conn, std::move(*repr0), std::move(*repr1))};
@@ -521,7 +521,7 @@ class JumpTableDiscovery {
 
  private:
   std::optional<BoundsCheck>
-  translateTerminatorToBoundsCheck(llvm::Instruction *term,
+  TranslateTerminatorToBoundsCheck(llvm::Instruction *term,
                                    const llvm::BasicBlock *targetCTIBlock) {
     if (auto branch = llvm::dyn_cast<llvm::BranchInst>(term)) {
       if (branch->getNumSuccessors() != 2) {
@@ -553,7 +553,7 @@ class JumpTableDiscovery {
     return std::nullopt;
   }
 
-  void replaceIndexWith(llvm::Instruction *newIndex) {
+  void ReplaceIndexWith(llvm::Instruction *newIndex) {
     this->index = newIndex;
 
     auto target = std::find(this->indexRelSlice->begin(),
@@ -565,12 +565,12 @@ class JumpTableDiscovery {
     this->indexRelSlice = {new_insn};
   }
 
-  bool runBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
+  bool RunBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
     assert(this->index);
     auto dtNode = this->DT.getNode(intrinsicCall->getParent());
     auto inode = dtNode->getIDom()->getBlock();
     auto term = inode->getTerminator();
-    auto maybe_bcheck = this->translateTerminatorToBoundsCheck(
+    auto maybe_bcheck = this->TranslateTerminatorToBoundsCheck(
         term, intrinsicCall->getParent());
     if (maybe_bcheck) {
       auto bcheck = *maybe_bcheck;
@@ -582,11 +582,11 @@ class JumpTableDiscovery {
 
       ConstraintExtractor extractor(*this->index, indexSliceValues);
       std::optional<std::unique_ptr<Expr>> indexConstraints =
-          extractor.expectInsnOrIndex(cond);
+          extractor.ExpectInsnOrIndex(cond);
 
       if (indexConstraints) {
         if (extractor.substitudedIndex.has_value()) {
-          this->replaceIndexWith(*extractor.substitudedIndex);
+          this->ReplaceIndexWith(*extractor.substitudedIndex);
         }
         std::unique_ptr<Expr> cons = std::move(*indexConstraints);
         if (!bcheck.passesCheckOnTrue) {
@@ -596,7 +596,7 @@ class JumpTableDiscovery {
 
 
         ExprSolve s;
-        this->bounds = s.solveForBounds(cons, *this->index);
+        this->bounds = s.SolveForBounds(cons, *this->index);
         return this->bounds.has_value();
       }
     }
@@ -618,7 +618,7 @@ class JumpTableDiscovery {
   // Definition a jump table bounds compare is a compare that uses the index and is used by a break that jumps to a block that may reach the indirect jump block or *must* not. the comparing block should dominate the indirect jump
 
 
-  bool runIndexPattern(llvm::Value *pcarg) {
+  bool RunIndexPattern(llvm::Value *pcarg) {
     Slicer pcrelSlicer;
 
     if (auto *pcinst = llvm::dyn_cast<llvm::Instruction>(pcarg)) {
@@ -640,10 +640,10 @@ class JumpTableDiscovery {
   }
 
 
-  std::optional<JumpTableResult> runPattern(const llvm::CallInst *pcCall) {
+  std::optional<JumpTableResult> RunPattern(const llvm::CallInst *pcCall) {
 
-    if (this->runIndexPattern(pcCall->getArgOperand(0)) &&
-        this->runBoundsCheckPattern(pcCall)) {
+    if (this->RunIndexPattern(pcCall->getArgOperand(0)) &&
+        this->RunBoundsCheckPattern(pcCall)) {
       SliceID pcRelId =
           this->slices.addSlice(*this->pcRelSlice, pcCall->getArgOperand(0));
       SliceID indexRelId =
@@ -651,8 +651,8 @@ class JumpTableDiscovery {
 
       auto pcRelRepr = this->slices.getSlice(pcRelId).getRepr();
       auto indexRelRepr = this->slices.getSlice(indexRelId).getRepr();
-      if (!isValidRelType(pcRelRepr->getFunctionType()) ||
-          !isValidRelType(indexRelRepr->getFunctionType())) {
+      if (!IsValidRelType(pcRelRepr->getFunctionType()) ||
+          !IsValidRelType(indexRelRepr->getFunctionType())) {
         return std::nullopt;
       }
 
@@ -674,11 +674,11 @@ llvm::IntegerType *PcRel::getExpectedType(SliceManager &slm) {
 
 
 llvm::APInt PcRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
-  return runSingleIntFunc(interp, this->slice, indexValue);
+  return RunSingleIntFunc(interp, this->slice, indexValue);
 }
 
 llvm::APInt IndexRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
-  return runSingleIntFunc(interp, this->slice, indexValue);
+  return RunSingleIntFunc(interp, this->slice, indexValue);
 }
 
 
@@ -695,7 +695,7 @@ bool JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *callinst) {
   auto const &DT =
       this->getAnalysis<llvm::DominatorTreeWrapperPass>().getDomTree();
   JumpTableDiscovery jtdisc(DT, this->slices);
-  auto res = jtdisc.runPattern(callinst);
+  auto res = jtdisc.RunPattern(callinst);
   if (res.has_value()) {
     this->results.insert({callinst, *res});
   }

@@ -32,7 +32,7 @@ class PcBinding {
 
 
  public:
-  std::optional<llvm::BasicBlock *> lookup(llvm::APInt targetPc) const {
+  std::optional<llvm::BasicBlock *> Lookup(llvm::APInt targetPc) const {
     if (this->mapping.find(targetPc) != this->mapping.end()) {
       return {this->mapping.find(targetPc)->second};
     }
@@ -40,7 +40,7 @@ class PcBinding {
     return std::nullopt;
   }
 
-  static PcBinding build(const llvm::CallInst *complete_switch,
+  static PcBinding Build(const llvm::CallInst *complete_switch,
                          llvm::SwitchInst *follower) {
     assert(complete_switch->getNumArgOperands() - 1 == follower->getNumCases());
 
@@ -73,7 +73,7 @@ class SwitchBuilder {
   const std::shared_ptr<MemoryProvider> &memProv;
   const llvm::DataLayout &dl;
 
-  std::optional<llvm::APInt> readIntFrom(llvm::IntegerType *ty,
+  std::optional<llvm::APInt> ReadIntFrom(llvm::IntegerType *ty,
                                          llvm::APInt addr) {
     auto uaddr = addr.getLimitedValue();
     std::vector<uint8_t> memory;
@@ -114,7 +114,7 @@ class SwitchBuilder {
         dl(dl) {}
 
   std::optional<llvm::SwitchInst *>
-  createNativeSwitch(JumpTableResult jt, const PcBinding &binding,
+  CreateNativeSwitch(JumpTableResult jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
     auto minIndex = jt.bounds.lower;
     auto numberOfCases = (jt.bounds.upper - minIndex) + 1;
@@ -126,14 +126,14 @@ class SwitchBuilder {
          currIndValue += 1) {
       auto readAddress = jt.indexRel.apply(interp, currIndValue);
       std::optional<llvm::APInt> jmpOff =
-          this->readIntFrom(jt.pcRel.getExpectedType(slm), readAddress);
+          this->ReadIntFrom(jt.pcRel.getExpectedType(slm), readAddress);
       if (!jmpOff.has_value()) {
         delete newSwitch;
         return std::nullopt;
       }
 
       auto newPc = jt.pcRel.apply(interp, *jmpOff);
-      auto outBlock = binding.lookup(newPc);
+      auto outBlock = binding.Lookup(newPc);
       if (!outBlock.has_value()) {
         delete newSwitch;
         return std::nullopt;
@@ -169,9 +169,9 @@ bool SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall) {
   SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
   auto followingSwitch = targetCall->getParent()->getTerminator();
   auto follower = llvm::cast<llvm::SwitchInst>(followingSwitch);
-  auto binding = PcBinding::build(targetCall, follower);
+  auto binding = PcBinding::Build(targetCall, follower);
   std::optional<llvm::SwitchInst *> newSwitch =
-      sbuilder.createNativeSwitch(*jresult, binding, context);
+      sbuilder.CreateNativeSwitch(*jresult, binding, context);
 
   if (newSwitch) {
     llvm::ReplaceInstWithInst(follower, *newSwitch);
