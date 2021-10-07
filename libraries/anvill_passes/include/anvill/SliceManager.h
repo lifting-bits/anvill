@@ -23,13 +23,13 @@ class SliceID {
   friend class SliceManager;
 
  private:
-  uint64_t ID;
+  uint64_t id;
 
-  SliceID() : ID(0) {}
+  SliceID() : id(0) {}
 
   SliceID operator++(int) {
     auto temp = *this;
-    this->ID++;
+    this->id++;
     return temp;
   }
 };
@@ -39,26 +39,26 @@ class SliceManager {
  public:
   class Slice {
    private:
-    llvm::Function *reprFunction;
-    SliceID ID;
+    llvm::Function *repr_function;
+    SliceID id;
     // we need origin info for arguments somehow to basically allow analyses to get more context for the slice if they fail.
    public:
-    Slice(llvm::Function *f, SliceID id) : reprFunction(f), ID(id) {}
+    Slice(llvm::Function *f, SliceID id) : repr_function(f), id(id) {}
 
     llvm::Function *getRepr() {
-      return this->reprFunction;
+      return this->repr_function;
     }
   };
 
 
  protected:
-  llvm::LLVMContext context;  // unique context?
+  llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> mod;
 
  private:
   // perhaps at some point we should split modules
 
-  SliceID nextID;
+  SliceID next_id;
   std::map<uint64_t, Slice> slices;
 
   llvm::SmallVector<llvm::Instruction *>
@@ -77,7 +77,7 @@ class SliceManager {
 
  public:
   static std::string getFunctionName(SliceID id) {
-    return "sliceFunc." + std::to_string(id.ID);
+    return "sliceFunc." + std::to_string(id.id);
   }
 
 
@@ -94,7 +94,7 @@ class SliceManager {
   SliceManager()
       : context(),
         mod(std::make_unique<llvm::Module>("slicemodule", this->context)),
-        nextID(SliceID()) {}
+        next_id(SliceID()) {}
 
   ~SliceManager() {
     this->mod.reset();

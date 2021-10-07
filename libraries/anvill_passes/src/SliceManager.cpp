@@ -45,7 +45,7 @@ void SliceManager::insertClonedSliceIntoFunction(
     llvm::ArrayRef<llvm::Instruction *> slice) {
   auto bb = llvm::BasicBlock::Create(
       targetFunc->getParent()->getContext(),
-      "slicebasicblock." + std::to_string(this->nextID.ID), targetFunc);
+      "slicebasicblock." + std::to_string(this->next_id.id), targetFunc);
 
   std::for_each(slice.begin(), slice.end(), [bb](llvm::Instruction *insn) {
     bb->getInstList().push_back(insn);
@@ -59,13 +59,13 @@ void SliceManager::insertClonedSliceIntoFunction(
 }
 
 std::string SliceManager::getNextFunctionName() {
-  return SliceManager::getFunctionName(this->nextID);
+  return SliceManager::getFunctionName(this->next_id);
 }
 
 
 SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                                llvm::Value *returnValue) {
-  auto id = this->nextID;
+  auto id = this->next_id;
   llvm::SmallDenseSet<llvm::Value *> definedValue;
   for (auto insn : slice) {
     definedValue.insert(insn);
@@ -110,14 +110,14 @@ SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 
   this->insertClonedSliceIntoFunction(sliceRepr, newRet, cloned);
   this->slices.insert(
-      {this->nextID.ID, SliceManager::Slice(sliceRepr, this->nextID)});
+      {this->next_id.id, SliceManager::Slice(sliceRepr, this->next_id)});
 
-  this->nextID++;
+  this->next_id++;
   return id;
 }
 
 SliceManager::Slice SliceManager::getSlice(SliceID id) {
-  SliceManager::Slice sl = this->slices.find(id.ID)->second;
+  SliceManager::Slice sl = this->slices.find(id.id)->second;
   return sl;
 }
 
