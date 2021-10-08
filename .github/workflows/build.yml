@@ -473,7 +473,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-12.4_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-13.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/lifting-bits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
