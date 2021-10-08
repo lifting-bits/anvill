@@ -17,10 +17,10 @@ class MockMemProv : public MemoryProvider {
  private:
   std::map<uint64_t, uint8_t> memmap;
   const llvm::DataLayout &dl;
-  uint64_t currBase;
+  uint64_t curr_base;
 
  public:
-  MockMemProv(const llvm::DataLayout &dl) : dl(dl), currBase(0) {}
+  MockMemProv(const llvm::DataLayout &dl) : dl(dl), curr_base(0) {}
 
   std::tuple<uint8_t, ByteAvailability, BytePermission>
   Query(uint64_t address) {
@@ -36,7 +36,7 @@ class MockMemProv : public MemoryProvider {
 
 
   void SetCurrJumpTableBase(uint64_t baseAddress) {
-    this->currBase = baseAddress;
+    this->curr_base = baseAddress;
   }
 
   void AddJumpTableOffset(uint32_t offset) {
@@ -48,10 +48,10 @@ class MockMemProv : public MemoryProvider {
     }
 
     for (uint64_t i = 0; i < data.size(); i++) {
-      this->memmap.insert({this->currBase + i, data[i]});
+      this->memmap.insert({this->curr_base + i, data[i]});
     }
 
-    this->currBase += data.size();
+    this->curr_base += data.size();
   }
 };
 
@@ -74,14 +74,14 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     SliceManager slc;
     JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
-    auto targetFunction =
+    auto target_function =
         FindFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
-    CHECK(targetFunction != nullptr);
+    CHECK(target_function != nullptr);
     llvm::legacy::FunctionPassManager fpm(mod.get());
     fpm.add(llvm::createInstructionCombiningPass());
     fpm.add(new llvm::DominatorTreeWrapperPass());
     fpm.add(jta);
-    auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
+    auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
     // this jump table has 30 entries with these possible offsets
@@ -90,20 +90,20 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     // Since there are 30 entries in the table this test assumes the 5 offsets are in order bookending a bunch of default cases
 
 
-    memProv->SetCurrJumpTableBase(136968824);
-    memProv->AddJumpTableOffset(-1153321);
-    memProv->AddJumpTableOffset(-1153312);
+    mem_prov->SetCurrJumpTableBase(136968824);
+    mem_prov->AddJumpTableOffset(-1153321);
+    mem_prov->AddJumpTableOffset(-1153312);
     for (int i = 0; i < 25; i++) {
-      memProv->AddJumpTableOffset(-3209123);
+      mem_prov->AddJumpTableOffset(-3209123);
     }
 
-    memProv->AddJumpTableOffset(-1153303);
-    memProv->AddJumpTableOffset(-1153287);
-    memProv->AddJumpTableOffset(-1153278);
+    mem_prov->AddJumpTableOffset(-1153303);
+    mem_prov->AddJumpTableOffset(-1153287);
+    mem_prov->AddJumpTableOffset(-1153278);
 
-    fpm.add(CreateSwitchLoweringPass(memProv, slc));
+    fpm.add(CreateSwitchLoweringPass(mem_prov, slc));
     fpm.doInitialization();
-    fpm.run(*targetFunction);
+    fpm.run(*target_function);
     fpm.doFinalization();
 
 
@@ -113,7 +113,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
             3);  // check that we resolve all the switches
 
     auto interp = slc.getInterp();
-    std::optional<JumpTableResult> recoveredSwitch = std::nullopt;
+    std::optional<JumpTableResult> recovered_switch = std::nullopt;
     llvm::CallInst *instrinsic = nullptr;
     for (auto jumpres : analysis_results) {
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
@@ -134,7 +134,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 35)) == 136968940);
           instrinsic = jumpres.first;
-          recoveredSwitch = {res};
+          recovered_switch = {res};
           break;
         case 136578559:
           CHECK(res.bounds.lower.getLimitedValue() == 26);
@@ -147,22 +147,22 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     }
 
     REQUIRE(instrinsic != nullptr);
-    llvm::SwitchInst *loweredSwitch =
+    llvm::SwitchInst *lowered_switch =
         llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
 
-    CHECK(loweredSwitch->getNumCases() == 5);
-    CHECK(loweredSwitch->getCondition() ==
-          recoveredSwitch->indexRel.getIndex());
+    CHECK(lowered_switch->getNumCases() == 5);
+    CHECK(lowered_switch->getCondition() ==
+          recovered_switch->indexRel.getIndex());
 
-    llvm::SmallSet<uint64_t, 10> allowedIndices;
-    allowedIndices.insert(6);
-    allowedIndices.insert(7);
-    allowedIndices.insert(33);
-    allowedIndices.insert(34);
-    allowedIndices.insert(35);
+    llvm::SmallSet<uint64_t, 10> allowed_indices;
+    allowed_indices.insert(6);
+    allowed_indices.insert(7);
+    allowed_indices.insert(33);
+    allowed_indices.insert(34);
+    allowed_indices.insert(35);
 
-    for (auto c : loweredSwitch->cases()) {
-      CHECK(allowedIndices.contains(
+    for (auto c : lowered_switch->cases()) {
+      CHECK(allowed_indices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
   }
@@ -172,28 +172,28 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     SliceManager slc;
     JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringNeg.ll");
-    auto targetFunction = FindFunction(mod.get(), "_start");
-    CHECK(targetFunction != nullptr);
+    auto target_function = FindFunction(mod.get(), "_start");
+    CHECK(target_function != nullptr);
     llvm::legacy::FunctionPassManager fpm(mod.get());
     fpm.add(llvm::createInstructionCombiningPass());
     fpm.add(new llvm::DominatorTreeWrapperPass());
     fpm.add(jta);
-    auto memProv = std::make_shared<MockMemProv>(mod->getDataLayout());
+    auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
-    memProv->SetCurrJumpTableBase(4294983520);
-    memProv->AddJumpTableOffset(0x10);
-    memProv->AddJumpTableOffset(0x3c);
-    memProv->AddJumpTableOffset(0x3c);
-    memProv->AddJumpTableOffset(0x1c);
-    memProv->AddJumpTableOffset(0x28);
-    memProv->AddJumpTableOffset(0x3c);
-    memProv->AddJumpTableOffset(0x3c);
-    memProv->AddJumpTableOffset(0x30);
+    mem_prov->SetCurrJumpTableBase(4294983520);
+    mem_prov->AddJumpTableOffset(0x10);
+    mem_prov->AddJumpTableOffset(0x3c);
+    mem_prov->AddJumpTableOffset(0x3c);
+    mem_prov->AddJumpTableOffset(0x1c);
+    mem_prov->AddJumpTableOffset(0x28);
+    mem_prov->AddJumpTableOffset(0x3c);
+    mem_prov->AddJumpTableOffset(0x3c);
+    mem_prov->AddJumpTableOffset(0x30);
 
-    fpm.add(CreateSwitchLoweringPass(memProv, slc));
+    fpm.add(CreateSwitchLoweringPass(mem_prov, slc));
     fpm.doInitialization();
-    fpm.run(*targetFunction);
+    fpm.run(*target_function);
     fpm.doFinalization();
 
 
@@ -203,7 +203,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
             1);  // check that we resolve all the switches
 
     auto interp = slc.getInterp();
-    std::optional<JumpTableResult> recoveredSwitch = std::nullopt;
+    std::optional<JumpTableResult> recovered_switch = std::nullopt;
     llvm::CallInst *instrinsic = nullptr;
     for (auto jumpres : analysis_results) {
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
@@ -219,28 +219,28 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.indexRel.apply(interp, llvm::APInt(32, -3, true))
                     .getLimitedValue() == 4294983524);
           instrinsic = jumpres.first;
-          recoveredSwitch = {res};
+          recovered_switch = {res};
           break;
         default: CHECK(false);
       }
     }
 
     REQUIRE(instrinsic != nullptr);
-    llvm::SwitchInst *loweredSwitch =
+    llvm::SwitchInst *lowered_switch =
         llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
 
-    CHECK(loweredSwitch->getNumCases() == 4);
-    CHECK(loweredSwitch->getCondition() ==
-          recoveredSwitch->indexRel.getIndex());
+    CHECK(lowered_switch->getNumCases() == 4);
+    CHECK(lowered_switch->getCondition() ==
+          recovered_switch->indexRel.getIndex());
 
-    llvm::SmallSet<uint64_t, 10> allowedIndices;
-    allowedIndices.insert(llvm::APInt(32, -4).getLimitedValue());
-    allowedIndices.insert(llvm::APInt(32, -1).getLimitedValue());
-    allowedIndices.insert(llvm::APInt(32, -0).getLimitedValue());
-    allowedIndices.insert(llvm::APInt(32, 3).getLimitedValue());
+    llvm::SmallSet<uint64_t, 10> allowed_indices;
+    allowed_indices.insert(llvm::APInt(32, -4).getLimitedValue());
+    allowed_indices.insert(llvm::APInt(32, -1).getLimitedValue());
+    allowed_indices.insert(llvm::APInt(32, -0).getLimitedValue());
+    allowed_indices.insert(llvm::APInt(32, 3).getLimitedValue());
 
-    for (auto c : loweredSwitch->cases()) {
-      CHECK(allowedIndices.contains(
+    for (auto c : lowered_switch->cases()) {
+      CHECK(allowed_indices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
   }

@@ -95,27 +95,27 @@ template <unsigned N>
 static llvm::SmallSet<const llvm::BranchInst *, N>
 GetTaintedBranches(const llvm::Value *byVal) {
   std::vector<const llvm::Value *> worklist;
-  llvm::SmallSet<const llvm::Value *, 20> closedList;
+  llvm::SmallSet<const llvm::Value *, 20> closed_list;
   worklist.push_back(byVal);
-  llvm::SmallSet<const llvm::BranchInst *, 10> taintedGuards;
+  llvm::SmallSet<const llvm::BranchInst *, 10> tainted_guards;
 
   while (!worklist.empty()) {
     const llvm::Value *curr = worklist.back();
     worklist.pop_back();
-    closedList.insert(curr);
+    closed_list.insert(curr);
     if (const llvm::BranchInst *branch =
             llvm::dyn_cast<llvm::BranchInst>(curr)) {
-      taintedGuards.insert(branch);
+      tainted_guards.insert(branch);
     }
 
-    for (auto &useOfIndex : curr->uses()) {
-      if (closedList.find(useOfIndex) == closedList.end()) {
-        worklist.push_back(useOfIndex.get());
+    for (auto &use_of_index : curr->uses()) {
+      if (closed_list.find(use_of_index) == closed_list.end()) {
+        worklist.push_back(use_of_index.get());
       }
     }
   }
 
-  return taintedGuards;
+  return tainted_guards;
 }
 
 static llvm::APInt RunSingleIntFunc(SliceInterpreter &interp, SliceID slice,
@@ -143,8 +143,8 @@ namespace pats = llvm::PatternMatch;
 
 struct BoundsCheck {
   const llvm::BranchInst *branch;
-  bool passesCheckOnTrue;
-  llvm::BasicBlock *failDirection;
+  bool passes_check_on_true;
+  llvm::BasicBlock *fail_direction;
 };
 
 class Expr {
@@ -168,26 +168,26 @@ class AtomIndexExpr final : public Expr {
 
 class AtomIntExpr final : public Expr {
  private:
-  llvm::APInt atomValue;
+  llvm::APInt atom_value;
 
  public:
   static std::unique_ptr<bool[]> GetBigEndianBits(llvm::APInt api) {
-    llvm::APInt togetBitsFrom = api;
+    llvm::APInt toget_bits_from = api;
 
     // TODO(ian): verify endianess
-    auto res = std::make_unique<bool[]>(togetBitsFrom.getBitWidth());
+    auto res = std::make_unique<bool[]>(toget_bits_from.getBitWidth());
     for (unsigned int i = 0; i < api.getBitWidth(); i++) {
-      res[i] = togetBitsFrom[i];
+      res[i] = toget_bits_from[i];
     }
 
     return res;
   }
 
-  AtomIntExpr(llvm::APInt atomValue) : atomValue(atomValue) {}
+  AtomIntExpr(llvm::APInt atomValue) : atom_value(atomValue) {}
 
   z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
-    auto bv_width = this->atomValue.getBitWidth();
-    auto bv_bits = AtomIntExpr::GetBigEndianBits(this->atomValue);
+    auto bv_width = this->atom_value.getBitWidth();
+    auto bv_bits = AtomIntExpr::GetBigEndianBits(this->atom_value);
     return c.bv_val(bv_width, bv_bits.get());
   }
 
@@ -279,13 +279,13 @@ class ExprSolve {
 
     z3::expr tooptimize = index_bv;
     auto numbits = index_bv.get_sort().bv_size();
-    auto signShift = llvm::APInt(numbits, 1).shl(numbits - 1);
-    auto shiftBits = AtomIntExpr::GetBigEndianBits(signShift);
-    z3::expr signShifted =
-        (index_bv + c.bv_val(signShift.getBitWidth(), shiftBits.get()));
+    auto sign_shift = llvm::APInt(numbits, 1).shl(numbits - 1);
+    auto shift_bits = AtomIntExpr::GetBigEndianBits(sign_shift);
+    z3::expr sign_shifted =
+        (index_bv + c.bv_val(sign_shift.getBitWidth(), shift_bits.get()));
 
     if (isSigned) {
-      tooptimize = signShifted;
+      tooptimize = sign_shifted;
     }
 
 
@@ -296,7 +296,7 @@ class ExprSolve {
       auto resint = llvm::APInt(index_bv.get_sort().bv_size(), res.as_uint64());
       if (isSigned) {
         // shift back into the signed domain
-        return resint - signShift;
+        return resint - sign_shift;
       } else {
         return resint;
       }
@@ -361,29 +361,29 @@ class ExprSolve {
   // The more narrow bounds are selected. The Bound structure keeps track of wether the bounds should use signed or unsigned comparison.
   std::optional<Bound> SolveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
-    auto unsignedBounds = this->OptomizeExpr(exp, index, false);
-    auto signedBounds = this->OptomizeExpr(exp, index, true);
+    auto unsigned_bounds = this->OptomizeExpr(exp, index, false);
+    auto signed_bounds = this->OptomizeExpr(exp, index, true);
 
 
-    if (!signedBounds.has_value()) {
-      return unsignedBounds;
+    if (!signed_bounds.has_value()) {
+      return unsigned_bounds;
     }
 
-    if (!unsignedBounds.has_value()) {
-      return signedBounds;
+    if (!unsigned_bounds.has_value()) {
+      return signed_bounds;
     }
 
-    auto ub = *unsignedBounds;
-    auto sb = *signedBounds;
+    auto ub = *unsigned_bounds;
+    auto sb = *signed_bounds;
 
-    auto ubSize = ub.upper - ub.lower;
-    auto sbSize = sb.upper - sb.lower;
+    auto ub_size = ub.upper - ub.lower;
+    auto sb_size = sb.upper - sb.lower;
 
     // diff should always be positive
-    if (ubSize.ule(sbSize)) {
-      return unsignedBounds;
+    if (ub_size.ule(sb_size)) {
+      return unsigned_bounds;
     } else {
-      return signedBounds;
+      return signed_bounds;
     }
   }
 };
@@ -423,14 +423,14 @@ class ConstraintExtractor
 
 
   const llvm::Value *index;
-  const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces;
+  const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternative_indeces;
 
   std::optional<std::unique_ptr<Expr>>
   DieOrSubstitute(llvm::Instruction *maybealt) {
-    if (this->alternativeIndeces.contains(maybealt) &&
-        (!this->substitudedIndex.has_value() ||
-         *this->substitudedIndex == maybealt)) {
-      this->substitudedIndex = {maybealt};
+    if (this->alternative_indeces.contains(maybealt) &&
+        (!this->substituded_index.has_value() ||
+         *this->substituded_index == maybealt)) {
+      this->substituded_index = {maybealt};
       return {AtomIndexExpr::Create()};
     }
 
@@ -438,7 +438,7 @@ class ConstraintExtractor
   }
 
  public:
-  std::optional<llvm::Instruction *> substitudedIndex;
+  std::optional<llvm::Instruction *> substituded_index;
   std::optional<std::unique_ptr<Expr>> ExpectInsnOrIndex(llvm::Value *v) {
     if (v == this->index) {
       return AtomIndexExpr::Create();
@@ -461,7 +461,7 @@ class ConstraintExtractor
       const llvm::Value *index,
       const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces)
       : index(index),
-        alternativeIndeces(alternativeIndeces) {}
+        alternative_indeces(alternativeIndeces) {}
 
 
   std::optional<std::unique_ptr<Expr>> visitInstruction(llvm::Instruction &I) {
@@ -509,13 +509,13 @@ class ConstraintExtractor
 
 class JumpTableDiscovery {
  private:
-  std::optional<llvm::SmallVector<llvm::Instruction *>> pcRelSlice;
-  std::optional<llvm::SmallVector<llvm::Instruction *>> indexRelSlice;
+  std::optional<llvm::SmallVector<llvm::Instruction *>> pc_rel_slice;
+  std::optional<llvm::SmallVector<llvm::Instruction *>> index_rel_slice;
   std::optional<llvm::Value *> index;
-  std::optional<llvm::Value *> loadedExpression;
+  std::optional<llvm::Value *> loaded_expression;
   std::optional<Bound> bounds;
-  std::optional<llvm::BasicBlock *> defaultOut;
-  const llvm::DominatorTree &DT;
+  std::optional<llvm::BasicBlock *> default_out;
+  const llvm::DominatorTree &dt;
   SliceManager &slices;
 
 
@@ -528,25 +528,25 @@ class JumpTableDiscovery {
         return std::nullopt;
       }
 
-      const llvm::Instruction *firstCTIInsns = targetCTIBlock->getFirstNonPHI();
-      const llvm::SmallPtrSet<llvm::BasicBlock *, 1> checkSet{
+      const llvm::Instruction *first_cti_insns = targetCTIBlock->getFirstNonPHI();
+      const llvm::SmallPtrSet<llvm::BasicBlock *, 1> check_set{
           branch->getParent()};
-      const llvm::SmallPtrSetImpl<llvm::BasicBlock *> *st = &checkSet;
+      const llvm::SmallPtrSetImpl<llvm::BasicBlock *> *st = &check_set;
 
       // newer versions of llvm let you go from blocks...
       // TODO(ian): should pass loop info
-      bool canReachCTIWithoutCheckS0 = llvm::isPotentiallyReachable(
-          branch->getSuccessor(0)->getFirstNonPHI(), firstCTIInsns, st,
-          &this->DT);
-      bool canReachCTIWithoutCheckS1 = llvm::isPotentiallyReachable(
-          branch->getSuccessor(1)->getFirstNonPHI(), firstCTIInsns, st,
-          &this->DT);
+      bool can_reach_cti_without_check_s0 = llvm::isPotentiallyReachable(
+          branch->getSuccessor(0)->getFirstNonPHI(), first_cti_insns, st,
+          &this->dt);
+      bool can_reach_cti_without_check_s1 = llvm::isPotentiallyReachable(
+          branch->getSuccessor(1)->getFirstNonPHI(), first_cti_insns, st,
+          &this->dt);
 
-      if (canReachCTIWithoutCheckS0 && (!canReachCTIWithoutCheckS1)) {
+      if (can_reach_cti_without_check_s0 && (!can_reach_cti_without_check_s1)) {
         return {{branch, true, branch->getSuccessor(1)}};
       }
 
-      if ((!canReachCTIWithoutCheckS0) && canReachCTIWithoutCheckS1) {
+      if ((!can_reach_cti_without_check_s0) && can_reach_cti_without_check_s1) {
         return {{branch, false, branch->getSuccessor(0)}};
       }
     }
@@ -556,40 +556,40 @@ class JumpTableDiscovery {
   void ReplaceIndexWith(llvm::Instruction *newIndex) {
     this->index = newIndex;
 
-    auto target = std::find(this->indexRelSlice->begin(),
-                            this->indexRelSlice->end(), newIndex);
+    auto target = std::find(this->index_rel_slice->begin(),
+                            this->index_rel_slice->end(), newIndex);
 
-    assert(target != this->indexRelSlice->end());
+    assert(target != this->index_rel_slice->end());
     llvm::SmallVector<llvm::Instruction *> new_insn(std::next(target),
-                                                    this->indexRelSlice->end());
-    this->indexRelSlice = {new_insn};
+                                                    this->index_rel_slice->end());
+    this->index_rel_slice = {new_insn};
   }
 
   bool RunBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
     assert(this->index);
-    auto dtNode = this->DT.getNode(intrinsicCall->getParent());
-    auto inode = dtNode->getIDom()->getBlock();
+    auto dt_node = this->dt.getNode(intrinsicCall->getParent());
+    auto inode = dt_node->getIDom()->getBlock();
     auto term = inode->getTerminator();
     auto maybe_bcheck = this->TranslateTerminatorToBoundsCheck(
         term, intrinsicCall->getParent());
     if (maybe_bcheck) {
       auto bcheck = *maybe_bcheck;
-      this->defaultOut = {bcheck.failDirection};
+      this->default_out = {bcheck.fail_direction};
       auto cond = bcheck.branch->getCondition();
-      llvm::SmallPtrSet<llvm::Instruction *, 10> indexSliceValues(
-          this->indexRelSlice->begin(), this->indexRelSlice->end());
+      llvm::SmallPtrSet<llvm::Instruction *, 10> index_slice_values(
+          this->index_rel_slice->begin(), this->index_rel_slice->end());
 
 
-      ConstraintExtractor extractor(*this->index, indexSliceValues);
-      std::optional<std::unique_ptr<Expr>> indexConstraints =
+      ConstraintExtractor extractor(*this->index, index_slice_values);
+      std::optional<std::unique_ptr<Expr>> index_constraints =
           extractor.ExpectInsnOrIndex(cond);
 
-      if (indexConstraints) {
-        if (extractor.substitudedIndex.has_value()) {
-          this->ReplaceIndexWith(*extractor.substitudedIndex);
+      if (index_constraints) {
+        if (extractor.substituded_index.has_value()) {
+          this->ReplaceIndexWith(*extractor.substituded_index);
         }
-        std::unique_ptr<Expr> cons = std::move(*indexConstraints);
-        if (!bcheck.passesCheckOnTrue) {
+        std::unique_ptr<Expr> cons = std::move(*index_constraints);
+        if (!bcheck.passes_check_on_true) {
           // we want the conditions s.t. the check passes
           cons = UnopExpr::Create(Z3Unop::LOGNOT, std::move(cons));
         }
@@ -607,11 +607,11 @@ class JumpTableDiscovery {
 
  public:
   JumpTableDiscovery(const llvm::DominatorTree &DT, SliceManager &slices)
-      : pcRelSlice(std::nullopt),
-        indexRelSlice(std::nullopt),
+      : pc_rel_slice(std::nullopt),
+        index_rel_slice(std::nullopt),
         index(std::nullopt),
         bounds(std::nullopt),
-        DT(DT),
+        dt(DT),
         slices(slices) {}
 
 
@@ -619,19 +619,19 @@ class JumpTableDiscovery {
 
 
   bool RunIndexPattern(llvm::Value *pcarg) {
-    Slicer pcrelSlicer;
+    Slicer pcrel_slicer;
 
     if (auto *pcinst = llvm::dyn_cast<llvm::Instruction>(pcarg)) {
-      llvm::Value *stopPoint = pcrelSlicer.visit(pcinst);
-      this->pcRelSlice = pcrelSlicer.getSlice();
+      llvm::Value *stop_point = pcrel_slicer.visit(pcinst);
+      this->pc_rel_slice = pcrel_slicer.getSlice();
 
-      llvm::Value *integerLoadExpr = nullptr;
-      if (pats::match(stopPoint, pats::m_Load(pats::m_IntToPtr(
-                                     pats::m_Value(integerLoadExpr))))) {
-        Slicer indexRelSlicer;
-        this->loadedExpression = integerLoadExpr;
-        this->index = indexRelSlicer.checkInstruction(integerLoadExpr);
-        this->indexRelSlice = indexRelSlicer.getSlice();
+      llvm::Value *integer_load_expr = nullptr;
+      if (pats::match(stop_point, pats::m_Load(pats::m_IntToPtr(
+                                     pats::m_Value(integer_load_expr))))) {
+        Slicer index_rel_slicer;
+        this->loaded_expression = integer_load_expr;
+        this->index = index_rel_slicer.checkInstruction(integer_load_expr);
+        this->index_rel_slice = index_rel_slicer.getSlice();
         return true;
       }
     }
@@ -644,21 +644,21 @@ class JumpTableDiscovery {
 
     if (this->RunIndexPattern(pcCall->getArgOperand(0)) &&
         this->RunBoundsCheckPattern(pcCall)) {
-      SliceID pcRelId =
-          this->slices.addSlice(*this->pcRelSlice, pcCall->getArgOperand(0));
-      SliceID indexRelId =
-          this->slices.addSlice(*this->indexRelSlice, *this->loadedExpression);
+      SliceID pc_rel_id =
+          this->slices.addSlice(*this->pc_rel_slice, pcCall->getArgOperand(0));
+      SliceID index_rel_id =
+          this->slices.addSlice(*this->index_rel_slice, *this->loaded_expression);
 
-      auto pcRelRepr = this->slices.getSlice(pcRelId).getRepr();
-      auto indexRelRepr = this->slices.getSlice(indexRelId).getRepr();
-      if (!IsValidRelType(pcRelRepr->getFunctionType()) ||
-          !IsValidRelType(indexRelRepr->getFunctionType())) {
+      auto pc_rel_repr = this->slices.getSlice(pc_rel_id).getRepr();
+      auto index_rel_repr = this->slices.getSlice(index_rel_id).getRepr();
+      if (!IsValidRelType(pc_rel_repr->getFunctionType()) ||
+          !IsValidRelType(index_rel_repr->getFunctionType())) {
         return std::nullopt;
       }
 
-      PcRel pc(pcRelId);
-      IndexRel indexRelation(indexRelId, *this->index);
-      return {{pc, indexRelation, *this->bounds, *this->defaultOut}};
+      PcRel pc(pc_rel_id);
+      IndexRel index_relation(index_rel_id, *this->index);
+      return {{pc, index_relation, *this->bounds, *this->default_out}};
     }
 
     return std::nullopt;
@@ -692,9 +692,9 @@ JumpTableAnalysis::getResultFor(llvm::CallInst *indirectJump) const {
 }
 
 bool JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *callinst) {
-  auto const &DT =
+  auto const &dt =
       this->getAnalysis<llvm::DominatorTreeWrapperPass>().getDomTree();
-  JumpTableDiscovery jtdisc(DT, this->slices);
+  JumpTableDiscovery jtdisc(dt, this->slices);
   auto res = jtdisc.RunPattern(callinst);
   if (res.has_value()) {
     this->results.insert({callinst, *res});

@@ -12,12 +12,12 @@ namespace anvill {
 
 llvm::Function *SliceManager::createFunctionForCurrentID(
     llvm::ArrayRef<llvm::Value *> arguments, llvm::Value *returnVal) {
-  llvm::SmallVector<llvm::Type *> argTypes;
+  llvm::SmallVector<llvm::Type *> arg_types;
   std::transform(
-      arguments.begin(), arguments.end(), std::back_inserter(argTypes),
+      arguments.begin(), arguments.end(), std::back_inserter(arg_types),
       [](llvm::Value *arg) -> llvm::Type * { return arg->getType(); });
   llvm::FunctionType *ty =
-      llvm::FunctionType::get(returnVal->getType(), argTypes, false);
+      llvm::FunctionType::get(returnVal->getType(), arg_types, false);
   auto f = llvm::Function::Create(
       ty, llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       this->getNextFunctionName(), *this->mod);
@@ -28,16 +28,16 @@ llvm::Function *SliceManager::createFunctionForCurrentID(
 llvm::SmallVector<llvm::Instruction *>
 SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                                     llvm::ValueToValueMapTy &mapper) {
-  llvm::SmallVector<llvm::Instruction *> clonedInsns;
+  llvm::SmallVector<llvm::Instruction *> cloned_insns;
 
   std::for_each(slice.begin(), slice.end(),
-                [&mapper, &clonedInsns](llvm::Instruction *insn) {
+                [&mapper, &cloned_insns](llvm::Instruction *insn) {
                   auto cloned = insn->clone();
-                  clonedInsns.push_back(cloned);
+                  cloned_insns.push_back(cloned);
                   mapper.insert({insn, cloned});
                 });
 
-  return clonedInsns;
+  return cloned_insns;
 }
 
 void SliceManager::insertClonedSliceIntoFunction(
@@ -66,38 +66,38 @@ std::string SliceManager::getNextFunctionName() {
 SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                                llvm::Value *returnValue) {
   auto id = this->next_id;
-  llvm::SmallDenseSet<llvm::Value *> definedValue;
+  llvm::SmallDenseSet<llvm::Value *> defined_value;
   for (auto insn : slice) {
-    definedValue.insert(insn);
+    defined_value.insert(insn);
   }
 
-  llvm::SmallDenseSet<llvm::Value *> liftedArgumentSet;
+  llvm::SmallDenseSet<llvm::Value *> lifted_argument_set;
   for (auto insn : slice) {
     for (const auto &use : insn->operands()) {
 
-      if (definedValue.find(use.get()) == definedValue.end() &&
+      if (defined_value.find(use.get()) == defined_value.end() &&
           !llvm::isa<llvm::Constant>(use.get())) {
-        liftedArgumentSet.insert(use.get());
+        lifted_argument_set.insert(use.get());
       }
     }
   }
 
-  if (definedValue.find(returnValue) == definedValue.end()) {
-    liftedArgumentSet.insert(returnValue);
+  if (defined_value.find(returnValue) == defined_value.end()) {
+    lifted_argument_set.insert(returnValue);
   }
 
-  llvm::SmallVector<llvm::Value *> orderedArguments(liftedArgumentSet.begin(),
-                                                    liftedArgumentSet.end());
+  llvm::SmallVector<llvm::Value *> ordered_arguments(lifted_argument_set.begin(),
+                                                    lifted_argument_set.end());
 
-  llvm::Function *sliceRepr =
-      this->createFunctionForCurrentID(orderedArguments, returnValue);
+  llvm::Function *slice_repr =
+      this->createFunctionForCurrentID(ordered_arguments, returnValue);
   llvm::ValueToValueMapTy mapper;
   auto cloned = this->createMapperFromSlice(slice, mapper);
 
   auto i = 0;
-  for (auto liftedArg : orderedArguments) {
-    auto arg = sliceRepr->getArg(i);
-    mapper.insert({liftedArg, arg});
+  for (auto lifted_arg : ordered_arguments) {
+    auto arg = slice_repr->getArg(i);
+    mapper.insert({lifted_arg, arg});
     i++;
   }
 
@@ -106,11 +106,11 @@ SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                   llvm::RemapInstruction(insn, mapper);
                 });
 
-  auto newRet = mapper[returnValue];
+  auto new_ret = mapper[returnValue];
 
-  this->insertClonedSliceIntoFunction(sliceRepr, newRet, cloned);
+  this->insertClonedSliceIntoFunction(slice_repr, new_ret, cloned);
   this->slices.insert(
-      {this->next_id.id, SliceManager::Slice(sliceRepr, this->next_id)});
+      {this->next_id.id, SliceManager::Slice(slice_repr, this->next_id)});
 
   this->next_id++;
   return id;

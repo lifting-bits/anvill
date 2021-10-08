@@ -45,13 +45,13 @@ class PcBinding {
     assert(complete_switch->getNumArgOperands() - 1 == follower->getNumCases());
 
     llvm::DenseMap<llvm::APInt, llvm::BasicBlock *> mapping;
-    for (auto caseHandler : follower->cases()) {
-      auto pcArg = complete_switch->getArgOperand(
-          caseHandler.getCaseValue()->getValue().getLimitedValue() +
+    for (auto case_handler : follower->cases()) {
+      auto pc_arg = complete_switch->getArgOperand(
+          case_handler.getCaseValue()->getValue().getLimitedValue() +
           1);  // is the switch has more than 2^64 cases we have bigger problems
       mapping.insert(
-          {llvm::cast<llvm::ConstantInt>(pcArg)->getValue(),
-           caseHandler
+          {llvm::cast<llvm::ConstantInt>(pc_arg)->getValue(),
+           case_handler
                .getCaseSuccessor()});  //  the argument to a complete switch should always be a constant int
     }
 
@@ -70,7 +70,7 @@ class SwitchBuilder {
  private:
   llvm::LLVMContext &context;
   SliceManager &slm;
-  const std::shared_ptr<MemoryProvider> &memProv;
+  const std::shared_ptr<MemoryProvider> &mem_prov;
   const llvm::DataLayout &dl;
 
   std::optional<llvm::APInt> ReadIntFrom(llvm::IntegerType *ty,
@@ -81,7 +81,7 @@ class SwitchBuilder {
     auto target_bytes = ty->getBitWidth() / 8;
 
     for (uint64_t i = 0; i < target_bytes; i++) {
-      auto res = this->memProv->Query(uaddr + i);
+      auto res = this->mem_prov->Query(uaddr + i);
       ByteAvailability avail = std::get<1>(res);
       if (avail != ByteAvailability::kAvailable) {
         return std::nullopt;
@@ -110,43 +110,43 @@ class SwitchBuilder {
                 const llvm::DataLayout &dl)
       : context(context),
         slm(slm),
-        memProv(memProv),
+        mem_prov(memProv),
         dl(dl) {}
 
   std::optional<llvm::SwitchInst *>
   CreateNativeSwitch(JumpTableResult jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
-    auto minIndex = jt.bounds.lower;
-    auto numberOfCases = (jt.bounds.upper - minIndex) + 1;
+    auto min_index = jt.bounds.lower;
+    auto number_of_cases = (jt.bounds.upper - min_index) + 1;
     auto interp = this->slm.getInterp();
-    llvm::SwitchInst *newSwitch = llvm::SwitchInst::Create(
-        jt.indexRel.getIndex(), jt.defaultOut, numberOfCases.getLimitedValue());
-    for (llvm::APInt currIndValue = minIndex;
-         jt.bounds.lessThanOrEqual(currIndValue, jt.bounds.upper);
-         currIndValue += 1) {
-      auto readAddress = jt.indexRel.apply(interp, currIndValue);
-      std::optional<llvm::APInt> jmpOff =
-          this->ReadIntFrom(jt.pcRel.getExpectedType(slm), readAddress);
-      if (!jmpOff.has_value()) {
-        delete newSwitch;
+    llvm::SwitchInst *new_switch = llvm::SwitchInst::Create(
+        jt.indexRel.getIndex(), jt.defaultOut, number_of_cases.getLimitedValue());
+    for (llvm::APInt curr_ind_value = min_index;
+         jt.bounds.lessThanOrEqual(curr_ind_value, jt.bounds.upper);
+         curr_ind_value += 1) {
+      auto read_address = jt.indexRel.apply(interp, curr_ind_value);
+      std::optional<llvm::APInt> jmp_off =
+          this->ReadIntFrom(jt.pcRel.getExpectedType(slm), read_address);
+      if (!jmp_off.has_value()) {
+        delete new_switch;
         return std::nullopt;
       }
 
-      auto newPc = jt.pcRel.apply(interp, *jmpOff);
-      auto outBlock = binding.Lookup(newPc);
-      if (!outBlock.has_value()) {
-        delete newSwitch;
+      auto new_pc = jt.pcRel.apply(interp, *jmp_off);
+      auto out_block = binding.Lookup(new_pc);
+      if (!out_block.has_value()) {
+        delete new_switch;
         return std::nullopt;
       }
 
 
-      if (*outBlock != jt.defaultOut) {
-        llvm::ConstantInt *indexVal =
-            llvm::ConstantInt::get(this->context, currIndValue);
-        newSwitch->addCase(indexVal, *outBlock);
+      if (*out_block != jt.defaultOut) {
+        llvm::ConstantInt *index_val =
+            llvm::ConstantInt::get(this->context, curr_ind_value);
+        new_switch->addCase(index_val, *out_block);
       }
     }
-    return newSwitch;
+    return new_switch;
   }
 };
 
@@ -154,27 +154,27 @@ class SwitchBuilder {
 bool SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall) {
 
 
-  const auto &jtAnalysis = this->getAnalysis<JumpTableAnalysis>();
-  auto jresult = jtAnalysis.getResultFor(targetCall);
+  const auto &jt_analysis = this->getAnalysis<JumpTableAnalysis>();
+  auto jresult = jt_analysis.getResultFor(targetCall);
 
 
   if (!jresult.has_value()) {
     return false;
   }
 
-  llvm::Function &F = *targetCall->getFunction();
-  auto dl = F.getParent()->getDataLayout();
-  llvm::LLVMContext &context = F.getParent()->getContext();
+  llvm::Function &f = *targetCall->getFunction();
+  auto dl = f.getParent()->getDataLayout();
+  llvm::LLVMContext &context = f.getParent()->getContext();
 
   SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
-  auto followingSwitch = targetCall->getParent()->getTerminator();
-  auto follower = llvm::cast<llvm::SwitchInst>(followingSwitch);
+  auto following_switch = targetCall->getParent()->getTerminator();
+  auto follower = llvm::cast<llvm::SwitchInst>(following_switch);
   auto binding = PcBinding::Build(targetCall, follower);
-  std::optional<llvm::SwitchInst *> newSwitch =
+  std::optional<llvm::SwitchInst *> new_switch =
       sbuilder.CreateNativeSwitch(*jresult, binding, context);
 
-  if (newSwitch) {
-    llvm::ReplaceInstWithInst(follower, *newSwitch);
+  if (new_switch) {
+    llvm::ReplaceInstWithInst(follower, *new_switch);
     return true;
   }
 
