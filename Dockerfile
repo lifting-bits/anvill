@@ -1,4 +1,4 @@
-ARG LLVM_VERSION=11
+ARG LLVM_VERSION=12
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
@@ -104,7 +104,6 @@ ENV PATH="/opt/trailofbits/bin:${PATH}" \
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
-COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
 COPY --from=build ${LIBRARIES} ${LIBRARIES}
 
 # set up a symlink to invoke without a version
@@ -120,7 +119,7 @@ RUN update-alternatives --install \
     /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM} \
     100
 
-ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
+ENTRYPOINT ["anvill-decompile-json"]
 
 
 FROM dist as binja
@@ -139,8 +138,7 @@ RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     source ${VIRTUAL_ENV}/bin/activate && \
     cd /dependencies/binja_install && \
     if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh; fi
-COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
-ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
+ENTRYPOINT ["python3", "-m", "anvill"]
 
 
 # This appears last so that it's default
