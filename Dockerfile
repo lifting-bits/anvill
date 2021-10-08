@@ -138,7 +138,8 @@ RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     source ${VIRTUAL_ENV}/bin/activate && \
     cd /dependencies/binja_install && \
     if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh; fi
-ENTRYPOINT ["python3", "-m", "anvill"]
+COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
+ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
 
 
 # This appears last so that it's default

@@ -25,7 +25,7 @@ CURR_DIR=$( pwd )
 BUILD_DIR="${CURR_DIR}/anvill-build"
 REMILL_BUILD_DIR="${CURR_DIR}/remill-build"
 INSTALL_DIR=/usr/local
-LLVM_VERSION=llvm-11
+LLVM_VERSION=llvm-12
 OS_VERSION=unknown
 ARCH_VERSION=unknown
 BUILD_FLAGS=
@@ -174,16 +174,11 @@ function DownloadLibraries
 
     #BUILD_FLAGS="${BUILD_FLAGS} -DCMAKE_OSX_SYSROOT=${sdk_root}"
     # Min version supported
-    OS_VERSION="macos-10.15"
-    # Hard-coded to match pre-built binaries in CI
-    XCODE_VERSION="12.4"
-    if [[ "$(sw_vers -productVersion)" == "10.15"* ]]; then
-      echo "Found MacOS Catalina"
-      OS_VERSION="macos-10.15"
-    elif [[ "$(sw_vers -productVersion)" == "11."* ]]; then
+    OS_VERSION="macos-10.11"
+    XCODE_VERSION="13.0"
+    if [[ "$(sw_vers -productVersion)" == "11."* ]]; then
       echo "Found MacOS Big Sur"
-      # Uses 10.15 binaries
-      OS_VERSION="macos-10.15"
+      OS_VERSION="macos-11"
     else
       echo "WARNING: ****Likely unsupported MacOS Version****"
       echo "WARNING: ****Using ${OS_VERSION}****"
@@ -344,16 +339,8 @@ function Package
 function GetLLVMVersion
 {
   case ${1} in
-    9)
-      LLVM_VERSION=llvm-9
-      return 0
-    ;;
-    10)
-      LLVM_VERSION=llvm-10
-      return 0
-    ;;
-    11)
-      LLVM_VERSION=llvm-11
+    12)
+      LLVM_VERSION=llvm-12
       return 0
     ;;
     *)
