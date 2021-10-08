@@ -115,7 +115,7 @@ With the IDA plugin:
 **Finally we produce LLVM bitcode from a JSON specification**
 
 ```
-./build/anvill-decompile-json-*.0 --spec spec.json --bc_out out.bc
+./build/anvill-decompile-json-* --spec spec.json --bc_out out.bc
 ```
 
 ### Running tests

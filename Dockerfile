@@ -111,13 +111,13 @@ COPY --from=build ${LIBRARIES} ${LIBRARIES}
 RUN update-alternatives --install \
     /opt/trailofbits/bin/anvill-decompile-json \
     anvill-decompile-json \
-    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM}.0 \
+    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM} \
     100 \
     && \
     update-alternatives --install \
     /opt/trailofbits/bin/anvill-specify-bitcode \
     anvill-specify-bitcode \
-    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM}.0 \
+    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM} \
     100
 
 ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
