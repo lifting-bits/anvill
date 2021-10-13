@@ -22,9 +22,11 @@
 #include <anvill/Providers/TypeProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Verifier.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
+#include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Lifter.h>
 #include <remill/OS/OS.h>
 
@@ -80,6 +82,9 @@ class BrightenPointersFixture {
 */
 bool RunFunctionPass(llvm::Module &module, llvm::FunctionPass *function_pass) {
   llvm::legacy::FunctionPassManager pass_manager(&module);
+  pass_manager.add(new llvm::TargetLibraryInfoWrapperPass());
+  llvm::FunctionPass *dce = llvm::createDeadCodeEliminationPass();
+  pass_manager.add(dce);
   pass_manager.add(function_pass);
 
   pass_manager.doInitialization();

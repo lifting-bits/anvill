@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        llvm: ["11"]
+        llvm: ["12"]
     steps:
     - uses: actions/checkout@v2
       with:
@@ -32,4 +32,3 @@ jobs:
         DO_TOKEN: ${{ secrets.DO_TOKEN }}
         BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
         BRANCH: ${{ steps.extract_branch.outputs.branch }}
- 

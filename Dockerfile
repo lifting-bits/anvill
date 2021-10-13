@@ -1,4 +1,4 @@
-ARG LLVM_VERSION=11
+ARG LLVM_VERSION=12
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
@@ -104,23 +104,22 @@ ENV PATH="/opt/trailofbits/bin:${PATH}" \
 # Allow for mounting of local folder
 WORKDIR /anvill/local
 
-COPY scripts/docker-decompile-json-entrypoint.sh /opt/trailofbits/docker-decompile-json-entrypoint.sh
 COPY --from=build ${LIBRARIES} ${LIBRARIES}
 
 # set up a symlink to invoke without a version
 RUN update-alternatives --install \
     /opt/trailofbits/bin/anvill-decompile-json \
     anvill-decompile-json \
-    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM}.0 \
+    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM} \
     100 \
     && \
     update-alternatives --install \
     /opt/trailofbits/bin/anvill-specify-bitcode \
     anvill-specify-bitcode \
-    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM}.0 \
+    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM} \
     100
 
-ENTRYPOINT ["/opt/trailofbits/docker-decompile-json-entrypoint.sh"]
+ENTRYPOINT ["anvill-decompile-json"]
 
 
 FROM dist as binja

@@ -3,7 +3,7 @@ DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 SRC_DIR=$( cd "$( dirname "${DIR}" )" && pwd )
 
 ANVILL_PYTHON="python3 -m anvill"
-ANVILL_DECOMPILE="anvill-decompile-json-11.0"
+ANVILL_DECOMPILE="anvill-decompile-json-12"
 function Help
 {
   echo "Run Anvill on AnghaBech-1K"

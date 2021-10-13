@@ -5,12 +5,12 @@ export ANVILL_BRANCH=__ANVILL_BRANCH__
 export RUN_SIZE=__RUN_SIZE__
 export BINJA_DECODE_KEY=__BINJA_DECODE_KEY__
 
-export LLVM_VERSION=11
-export CC=clang-11 CXX=clang++-11
+export LLVM_VERSION=12
+export CC=clang-12 CXX=clang++-12
 
 dpkg --add-architecture i386
 apt-get update
-apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-11 g++-multilib unzip
+apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-12 g++-multilib unzip
 apt-get install -yqq libc6-dev:i386 libstdc++-*-dev:i386
 python3 -m pip install requests
 
@@ -63,7 +63,7 @@ tool_run_scripts/anvill.py \
     --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
     --input-dir $(pwd)/binaries \
     --output-dir $(pwd)/anvill_bitcode \
-    --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION}.0 \
+    --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION} \
     --slack-notify
 
 # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY passed in from original invocation environment

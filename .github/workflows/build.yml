@@ -59,8 +59,8 @@ jobs:
         image:
           - { name: 'ubuntu', tag: '20.04' }
 
-        llvm: [ '11' ]
-        cxxcommon_version: [ 'v0.1.4' ]
+        llvm: [ '12' ]
+        cxxcommon_version: [ 'v0.1.5' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -338,7 +338,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}.0"
+            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
 
@@ -349,7 +349,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-angha-1k.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}.0"
+            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
@@ -381,9 +381,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ 'macos-10.15' ]
-        llvm: [ '11' ]
-        cxxcommon_version: [ 'v0.1.4' ]
+        os: [ 'macos-11' ]
+        llvm: [ '12' ]
+        cxxcommon_version: [ 'v0.1.5' ]
 
     runs-on: ${{ matrix.os }}
 
@@ -473,7 +473,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-12.4_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-13.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/lifting-bits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -668,8 +668,8 @@ jobs:
           zip -r9 anvill_ubuntu-20.04_packages.zip \
                   ubuntu-20.04*
 
-          zip -r9 anvill_macos-10.15_packages.zip \
-                  macos-10.15*
+          zip -r9 anvill_macos-11_packages.zip \
+                  macos-11*
 
       - name: Upload the Ubuntu 20.04 packages
         uses: actions/upload-release-asset@v1
@@ -683,7 +683,7 @@ jobs:
           asset_name: anvill_ubuntu-20.04_packages.zip
           asset_content_type: application/gzip
 
-      - name: Upload the macOS 10.15 packages
+      - name: Upload the macOS 11 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -691,8 +691,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: anvill_macos-10.15_packages.zip
-          asset_name: anvill_macos-10.15_packages.zip
+          asset_path: anvill_macos-11_packages.zip
+          asset_name: anvill_macos-11_packages.zip
           asset_content_type: application/gzip
 
   Docker_Linux:
@@ -702,7 +702,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["11"]
+        llvm: ["12"]
         ubuntu: ["18.04", "20.04"]
 
     steps:
