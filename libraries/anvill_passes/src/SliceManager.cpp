@@ -11,7 +11,8 @@ namespace anvill {
 
 
 llvm::Function *SliceManager::createFunctionForCurrentID(
-    llvm::ArrayRef<llvm::Value *> arguments, llvm::Value *returnVal) {
+    SliceID id, llvm::ArrayRef<llvm::Value *> arguments,
+    llvm::Value *returnVal) {
   llvm::SmallVector<llvm::Type *> arg_types;
   std::transform(
       arguments.begin(), arguments.end(), std::back_inserter(arg_types),
@@ -20,7 +21,7 @@ llvm::Function *SliceManager::createFunctionForCurrentID(
       llvm::FunctionType::get(returnVal->getType(), arg_types, false);
   auto f = llvm::Function::Create(
       ty, llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      this->getNextFunctionName(), *this->mod);
+      SliceManager::getFunctionName(id), *this->mod);
   return f;
 }
 
@@ -41,11 +42,11 @@ SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 }
 
 void SliceManager::insertClonedSliceIntoFunction(
-    llvm::Function *targetFunc, llvm::Value *newReturn,
+    SliceID id, llvm::Function *targetFunc, llvm::Value *newReturn,
     llvm::ArrayRef<llvm::Instruction *> slice) {
-  auto bb = llvm::BasicBlock::Create(
-      targetFunc->getParent()->getContext(),
-      "slicebasicblock." + std::to_string(this->next_id.id), targetFunc);
+  auto bb = llvm::BasicBlock::Create(targetFunc->getParent()->getContext(),
+                                     "slicebasicblock." + std::to_string(id.id),
+                                     targetFunc);
 
   std::for_each(slice.begin(), slice.end(), [bb](llvm::Instruction *insn) {
     bb->getInstList().push_back(insn);
@@ -58,14 +59,10 @@ void SliceManager::insertClonedSliceIntoFunction(
   return;
 }
 
-std::string SliceManager::getNextFunctionName() {
-  return SliceManager::getFunctionName(this->next_id);
-}
-
 
 SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                                llvm::Value *returnValue) {
-  auto id = this->next_id;
+  auto id = this->next_id++;
   llvm::SmallDenseSet<llvm::Value *> defined_value;
   for (auto insn : slice) {
     defined_value.insert(insn);
@@ -86,13 +83,14 @@ SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
     lifted_argument_set.insert(returnValue);
   }
 
-  llvm::SmallVector<llvm::Value *> ordered_arguments(lifted_argument_set.begin(),
-                                                    lifted_argument_set.end());
+  llvm::SmallVector<llvm::Value *> ordered_arguments(
+      lifted_argument_set.begin(), lifted_argument_set.end());
 
   llvm::Function *slice_repr =
-      this->createFunctionForCurrentID(ordered_arguments, returnValue);
+      this->createFunctionForCurrentID(id, ordered_arguments, returnValue);
   llvm::ValueToValueMapTy mapper;
   auto cloned = this->createMapperFromSlice(slice, mapper);
+
 
   auto i = 0;
   for (auto lifted_arg : ordered_arguments) {
@@ -108,17 +106,13 @@ SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 
   auto new_ret = mapper[returnValue];
 
-  this->insertClonedSliceIntoFunction(slice_repr, new_ret, cloned);
-  this->slices.insert(
-      {this->next_id.id, SliceManager::Slice(slice_repr, this->next_id)});
-
-  this->next_id++;
+  this->insertClonedSliceIntoFunction(id, slice_repr, new_ret, cloned);
+  this->slices.insert({id.id, SliceManager::Slice(slice_repr, id)});
   return id;
 }
 
 SliceManager::Slice SliceManager::getSlice(SliceID id) {
-  SliceManager::Slice sl = this->slices.find(id.id)->second;
-  return sl;
+  return this->slices.find(id.id)->second;
 }
 
 

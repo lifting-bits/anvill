@@ -7,6 +7,14 @@
 
 namespace anvill {
 namespace {
+
+
+// NOTE(ian): The jump table analysis could also be targetted towards incomplete switch intrinsics.
+// It is always safe to run this analysis because the bounds on the index are conservative.
+// That being said if the intrinsic is truly incomplete when we attempt to lower the switch
+// there will be missing labels in the pcbinding mapping, therefore it is unlikely the switch lowering pass
+// should be run against the incomplete switches. Perhaps the best solution here is to run the jump table analysis
+// on its own against incomplete switches and allow it to call back into the lifter for more code.
 static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
   if (const auto *callee = callinsn->getCalledFunction()) {
     return callee->getName().equals(kAnvillSwitchCompleteFunc);
@@ -30,7 +38,7 @@ getTargetCalls(llvm::Function &fromFunction) {
 }
 }  // namespace
 
-// (ian) Unfortunately pretty sure CRTP is the only way to do this without running into issues with pass IDs
+// NOTE(ian): Unfortunately pretty sure CRTP is the only way to do this without running into issues with pass IDs
 template <typename UserFunctionPass>
 class IndirectJumpPass : public llvm::FunctionPass {
  public:

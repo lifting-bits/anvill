@@ -39,6 +39,8 @@ class SliceManager {
  public:
   class Slice {
    private:
+    // repr_function is an llvm function within the slice module that represents the slice with this ID. Non-constants/values not defined within the slice are
+    // lifted to arguments for the function. The return value is the intended output of the slice for interpretation (generally the analysis target).
     llvm::Function *repr_function;
     SliceID id;
     // we need origin info for arguments somehow to basically allow analyses to get more context for the slice if they fail.
@@ -56,7 +58,8 @@ class SliceManager {
   std::unique_ptr<llvm::Module> mod;
 
  private:
-  // perhaps at some point we should split modules
+  // NOTE(ian): perhaps at some point we should split modules to prevent large numbers of slices in a single
+  // module.
 
   SliceID next_id;
   std::map<uint64_t, Slice> slices;
@@ -65,13 +68,13 @@ class SliceManager {
   createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                         llvm::ValueToValueMapTy &mapper);
 
-  void insertClonedSliceIntoFunction(llvm::Function *targetFunc,
+  void insertClonedSliceIntoFunction(SliceID id, llvm::Function *targetFunc,
                                      llvm::Value *newRet,
                                      llvm::ArrayRef<llvm::Instruction *> slice);
 
-  std::string getNextFunctionName();
   llvm::Function *
-  createFunctionForCurrentID(llvm::ArrayRef<llvm::Value *> arguments,
+  createFunctionForCurrentID(SliceID id,
+                             llvm::ArrayRef<llvm::Value *> arguments,
                              llvm::Value *returnVal);
 
 
