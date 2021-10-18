@@ -1,4 +1,4 @@
-#include <anvill/JumpTableAnalysis.h>
+#include <anvill/BranchAnalysis.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -29,14 +29,13 @@ TEST_SUITE("BranchRecoveryPass") {
   TEST_CASE("Run on sliced function") {
     llvm::LLVMContext context;
     SliceManager slc;
-    JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "RecoverableBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::legacy::FunctionPassManager fpm(mod.get());
     fpm.add(llvm::createInstructionCombiningPass());
     fpm.add(new llvm::DominatorTreeWrapperPass());
-    fpm.add(jta);
+    fpm.add(new BranchRecoverPass())
   }
 }
 
