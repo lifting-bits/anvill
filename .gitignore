@@ -50,3 +50,6 @@ VERSION
 #do not commit decrypted binja/license
 ci/license.txt
 ci/BinaryNinja-headless.zip
+
+# Ignore z3 run info
+.z3-trace

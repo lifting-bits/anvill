@@ -172,14 +172,17 @@ bool SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall) {
 
   SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
   auto following_switch = targetCall->getParent()->getTerminator();
-  auto follower = llvm::cast<llvm::SwitchInst>(following_switch);
-  auto binding = PcBinding::Build(targetCall, follower);
-  std::optional<llvm::SwitchInst *> new_switch =
-      sbuilder.CreateNativeSwitch(*jresult, binding, context);
 
-  if (new_switch) {
-    llvm::ReplaceInstWithInst(follower, *new_switch);
-    return true;
+
+  if (auto *follower = llvm::dyn_cast<llvm::SwitchInst>(following_switch)) {
+    auto binding = PcBinding::Build(targetCall, follower);
+    std::optional<llvm::SwitchInst *> new_switch =
+        sbuilder.CreateNativeSwitch(*jresult, binding, context);
+
+    if (new_switch) {
+      llvm::ReplaceInstWithInst(follower, *new_switch);
+      return true;
+    }
   }
 
   return false;
