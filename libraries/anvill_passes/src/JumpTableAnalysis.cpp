@@ -151,7 +151,7 @@ class Expr {
  public:
   virtual ~Expr() = default;
   virtual z3::expr BuildExpression(z3::context &c,
-                                    z3::expr indexExpr) const = 0;
+                                   z3::expr indexExpr) const = 0;
 };
 
 class AtomIndexExpr final : public Expr {
@@ -520,6 +520,9 @@ class JumpTableDiscovery {
 
 
  private:
+  // Determines the bounds check on an index that is used to compute an indirect CTI. A bounds check must guarentee that there is an exit
+  // that reaches the CTI and another exit that never reaches the CTI without returning to the check. A check is represented as the branch and which direction
+  // reaches the CTI.
   std::optional<BoundsCheck>
   TranslateTerminatorToBoundsCheck(llvm::Instruction *term,
                                    const llvm::BasicBlock *targetCTIBlock) {
@@ -528,7 +531,8 @@ class JumpTableDiscovery {
         return std::nullopt;
       }
 
-      const llvm::Instruction *first_cti_insns = targetCTIBlock->getFirstNonPHI();
+      const llvm::Instruction *first_cti_insns =
+          targetCTIBlock->getFirstNonPHI();
       const llvm::SmallPtrSet<llvm::BasicBlock *, 1> check_set{
           branch->getParent()};
       const llvm::SmallPtrSetImpl<llvm::BasicBlock *> *st = &check_set;
@@ -560,11 +564,15 @@ class JumpTableDiscovery {
                             this->index_rel_slice->end(), newIndex);
 
     assert(target != this->index_rel_slice->end());
-    llvm::SmallVector<llvm::Instruction *> new_insn(std::next(target),
-                                                    this->index_rel_slice->end());
+    llvm::SmallVector<llvm::Instruction *> new_insn(
+        std::next(target), this->index_rel_slice->end());
     this->index_rel_slice = {new_insn};
   }
 
+  // Runs after the index has been selected. Determines the bounds on the index that are enforced by
+  // The dominating branch terminator. These bounds are expressed as the inclusive lower and upper bound
+  // of the index as well as wether the bound utilizes a signed compare.
+  // Returns true if a bound was found.
   bool RunBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
     assert(this->index);
     auto dt_node = this->dt.getNode(intrinsicCall->getParent());
@@ -627,7 +635,7 @@ class JumpTableDiscovery {
 
       llvm::Value *integer_load_expr = nullptr;
       if (pats::match(stop_point, pats::m_Load(pats::m_IntToPtr(
-                                     pats::m_Value(integer_load_expr))))) {
+                                      pats::m_Value(integer_load_expr))))) {
         Slicer index_rel_slicer;
         this->loaded_expression = integer_load_expr;
         this->index = index_rel_slicer.checkInstruction(integer_load_expr);
@@ -641,13 +649,14 @@ class JumpTableDiscovery {
 
 
   std::optional<JumpTableResult> RunPattern(const llvm::CallInst *pcCall) {
+    auto computed_pc = pcCall->getArgOperand(0);
 
-    if (this->RunIndexPattern(pcCall->getArgOperand(0)) &&
+    if (this->RunIndexPattern(computed_pc) &&
         this->RunBoundsCheckPattern(pcCall)) {
       SliceID pc_rel_id =
-          this->slices.addSlice(*this->pc_rel_slice, pcCall->getArgOperand(0));
-      SliceID index_rel_id =
-          this->slices.addSlice(*this->index_rel_slice, *this->loaded_expression);
+          this->slices.addSlice(*this->pc_rel_slice, computed_pc);
+      SliceID index_rel_id = this->slices.addSlice(*this->index_rel_slice,
+                                                   *this->loaded_expression);
 
       auto pc_rel_repr = this->slices.getSlice(pc_rel_id).getRepr();
       auto index_rel_repr = this->slices.getSlice(index_rel_id).getRepr();

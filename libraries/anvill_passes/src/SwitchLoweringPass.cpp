@@ -113,14 +113,18 @@ class SwitchBuilder {
         mem_prov(memProv),
         dl(dl) {}
 
+  // A native switch utilizes llvms switch construct in the intended manner to dispatch control flow on integer values.
+  // This pass converts jump table based compiler implementations of this construct back into simple swith cases over an integer index
+  // that directly jumps to known labels.
   std::optional<llvm::SwitchInst *>
   CreateNativeSwitch(JumpTableResult jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
     auto min_index = jt.bounds.lower;
     auto number_of_cases = (jt.bounds.upper - min_index) + 1;
     auto interp = this->slm.getInterp();
-    llvm::SwitchInst *new_switch = llvm::SwitchInst::Create(
-        jt.indexRel.getIndex(), jt.defaultOut, number_of_cases.getLimitedValue());
+    llvm::SwitchInst *new_switch =
+        llvm::SwitchInst::Create(jt.indexRel.getIndex(), jt.defaultOut,
+                                 number_of_cases.getLimitedValue());
     for (llvm::APInt curr_ind_value = min_index;
          jt.bounds.lessThanOrEqual(curr_ind_value, jt.bounds.upper);
          curr_ind_value += 1) {

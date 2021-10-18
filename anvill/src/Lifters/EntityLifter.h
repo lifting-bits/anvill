@@ -67,8 +67,9 @@ class EntityLifterImpl {
   // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
   // then return the address of that entity in the binary being lifted.
   std::optional<uint64_t> AddressOfEntity(llvm::Constant *entity) const;
-  const std::shared_ptr<MemoryProvider> getMemoryProvider();  
- 
+
+  std::shared_ptr<MemoryProvider> getMemoryProvider(void) const;
+
  private:
   friend class EntityLifter;
   friend class DataLifter;
@@ -108,15 +109,8 @@ class EntityLifterImpl {
   std::unordered_map<uint64_t, llvm::SmallSet<llvm::WeakTrackingVH, 10>>
       address_to_entity;
 
-<<<<<<< HEAD
   // Maps lifted entities to native addresses. The value map acts as a weak reference to the entity.
   llvm::ValueMap<llvm::Constant *, uint64_t> entity_to_address;
-=======
-  // Maps lifted entities to native addresses. The lifted
-  std::unordered_map<llvm::Constant *, uint64_t> entity_to_address;
-
-  
->>>>>>> 76b9d6f (added pass to optimizer)
 };
 
 }  // namespace anvill
