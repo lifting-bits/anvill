@@ -24,6 +24,7 @@
 #include <doctest.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
@@ -80,20 +81,17 @@ class BrightenPointersFixture {
   const std::shared_ptr<TypeProvider> types;
 };
 */
-bool RunFunctionPass(llvm::Module &module, llvm::FunctionPass *function_pass) {
-  llvm::legacy::FunctionPassManager pass_manager(&module);
-  pass_manager.add(new llvm::TargetLibraryInfoWrapperPass());
-  llvm::FunctionPass *dce = llvm::createDeadCodeEliminationPass();
-  pass_manager.add(dce);
-  pass_manager.add(function_pass);
+bool RunFunctionPass(llvm::Module &module) {
+  llvm::FunctionPassManager pass_manager;
+  pass_manager.addPass(llvm::DCEPass());
 
-  pass_manager.doInitialization();
+  AddBrightenPointerOperations(pass_manager, 250U);
 
-  for (auto &function : module) {
-    pass_manager.run(function);
-  }
+  llvm::ModulePassManager mpm;
+  llvm::ModuleAnalysisManager mam;
+  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(pass_manager)));
+  mpm.run(module, mam);
 
-  pass_manager.doFinalization();
   return VerifyModule(&module);
 }
 
@@ -104,7 +102,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "gep_add.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
 
@@ -112,7 +110,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "multiple_bitcast.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
 
@@ -120,7 +118,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "loop_test.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
 
@@ -128,7 +126,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "rx_message.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
 
     // mod->print(llvm::errs(), nullptr);
 
@@ -140,7 +138,7 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "chall2.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
 
     // mod->print(llvm::errs(), nullptr);
 
@@ -151,28 +149,28 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "ret0.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("jmp0") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "jmp0.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_array_swap") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_array_swap_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_binja_var_none_type") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_binja_var_none_type_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     mod->print(llvm::errs(), nullptr);
     CHECK(checkMod(*mod));
   }
@@ -180,91 +178,91 @@ TEST_SUITE("BrightenPointers") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_bitops_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_binops") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_binops_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_cast") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_cast_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_init_list_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_init_list_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_inttoptr_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_inttoptr_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_nullptr_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_nullptr_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_ret0_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_ret0_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_struct_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_struct_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_struct_swap_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_struct_swap_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_trunc_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_trunc_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_zeroinit.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_zeroinit_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_zext_rt.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_zext_rt.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
   TEST_CASE("test_rx.ll") {
     llvm::LLVMContext context;
     auto mod = LoadTestData(context, "test_rx.ll");
     REQUIRE(mod != nullptr);
-    CHECK(RunFunctionPass(*mod, CreateBrightenPointerOperations(250U)));
+    CHECK(RunFunctionPass(*mod));
     CHECK(checkMod(*mod));
   }
 }

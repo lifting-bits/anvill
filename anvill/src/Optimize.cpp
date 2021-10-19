@@ -38,6 +38,19 @@
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
+#include <llvm/Transforms/IPO/Inliner.h>
+#include <llvm/Transforms/IPO/GlobalDCE.h>
+#include <llvm/Transforms/IPO/StripSymbols.h>
+#include <llvm/Transforms/Scalar/DCE.h>
+#include <llvm/Transforms/Scalar/Sink.h>
+#include <llvm/Transforms/Scalar/NewGVN.h>
+#include <llvm/Transforms/Scalar/SCCP.h>
+#include <llvm/Transforms/Scalar/DeadStoreElimination.h>
+#include <llvm/Transforms/Scalar/SROA.h>
+#include <llvm/Transforms/Scalar/EarlyCSE.h>
+#include <llvm/Transforms/Scalar/BDCE.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
 
 // clang-format on
 
@@ -85,64 +98,72 @@ void OptimizeModule(const EntityLifter &lifter_context,
     memory_escape->eraseFromParent();
   }
 
-  llvm::legacy::PassManager mpm;
-  mpm.add(llvm::createFunctionInliningPass(250));
-  mpm.add(llvm::createGlobalOptimizerPass());
-  mpm.add(llvm::createGlobalDCEPass());
-  mpm.add(llvm::createStripDeadDebugInfoPass());
-  mpm.run(module);
+  llvm::ModulePassManager mpm;
+  llvm::ModuleAnalysisManager mam;
 
-  llvm::legacy::FunctionPassManager fpm(&module);
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createSinkingPass());
-  fpm.add(llvm::createNewGVNPass());
-  fpm.add(llvm::createSCCPPass());
-  fpm.add(llvm::createDeadStoreEliminationPass());
-  fpm.add(llvm::createSROAPass());
-  fpm.add(llvm::createEarlyCSEPass(true));
-  fpm.add(llvm::createBitTrackingDCEPass());
-  fpm.add(llvm::createCFGSimplificationPass());
-  fpm.add(llvm::createSinkingPass());
-  fpm.add(llvm::createCFGSimplificationPass());
-  fpm.add(llvm::createInstructionCombiningPass());
+  llvm::InlineParams params;
+  params.DefaultThreshold = 250;
+  auto inliner = llvm::ModuleInlinerWrapperPass(params);
+  mpm.addPass(std::move(inliner));
+  mpm.addPass(llvm::GlobalDCEPass());
+  mpm.addPass(llvm::StripDeadDebugInfoPass());
+
+
+  llvm::FunctionPassManager fpm;
+  fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::SinkingPass());
+  fpm.addPass(llvm::NewGVNPass());
+  fpm.addPass(llvm::SCCPPass());
+  fpm.addPass(llvm::DSEPass());
+  fpm.addPass(llvm::SROA());
+  fpm.addPass(llvm::EarlyCSEPass(true));
+  fpm.addPass(llvm::BDCEPass());
+  fpm.addPass(llvm::SimplifyCFGPass());
+  fpm.addPass(llvm::SinkingPass());
+  fpm.addPass(llvm::SimplifyCFGPass());
+  fpm.addPass(llvm::InstCombinePass());
 
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
-  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
-  fpm.add(CreateRemoveUnusedFPClassificationCalls());
-  fpm.add(CreateRemoveDelaySlotIntrinsics());
-  fpm.add(CreateRemoveErrorIntrinsics());
-  fpm.add(CreateLowerRemillMemoryAccessIntrinsics());
-  fpm.add(CreateRemoveCompilerBarriers());
-  fpm.add(CreateLowerTypeHintIntrinsics());
-  fpm.add(CreateInstructionFolderPass(err_man));
-  fpm.add(new llvm::TargetLibraryInfoWrapperPass());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(CreateRecoverEntityUseInformation(err_man, lifter_context));
-  fpm.add(CreateSinkSelectionsIntoBranchTargets(err_man));
-  fpm.add(CreateRemoveTrivialPhisAndSelects());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(CreateRecoverStackFrameInformation(err_man, options));
-  fpm.add(llvm::createSROAPass());
-  fpm.add(CreateSplitStackFrameAtReturnAddress(err_man));
-  fpm.add(llvm::createSROAPass());
+  // Todo this needs to be in an analysis   fpm.addPass(new llvm::TargetLibraryInfoWrapperPass());
+
+
+  AddSinkSelectionsIntoBranchTargets(fpm, err_man);
+  AddRemoveUnusedFPClassificationCalls(fpm);
+  AddRemoveDelaySlotIntrinsics(fpm);
+  AddRemoveErrorIntrinsics(fpm);
+  AddLowerRemillMemoryAccessIntrinsics(fpm);
+  AddRemoveCompilerBarriers(fpm);
+  AddLowerTypeHintIntrinsics(fpm);
+  AddInstructionFolderPass(fpm, err_man);
+  AddLowerTypeHintIntrinsics(fpm);
+  AddInstructionFolderPass(fpm, err_man);
+
+
+  fpm.addPass(llvm::DCEPass());
+  AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
+  AddSinkSelectionsIntoBranchTargets(fpm, err_man);
+  AddRemoveTrivialPhisAndSelects(fpm);
+  fpm.addPass(llvm::DCEPass());
+  AddRecoverStackFrameInformation(fpm, err_man, options);
+  fpm.addPass(llvm::SROA());
+  AddSplitStackFrameAtReturnAddress(fpm, err_man);
+  fpm.addPass(llvm::SROA());
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
-  fpm.add(CreateConvertXorToCmp());
+  AddConvertXorToCmp(fpm);
 
   if (FLAGS_pointer_brighten_gas) {
-    fpm.add(CreateBrightenPointerOperations(FLAGS_pointer_brighten_gas));
+    AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
   }
 
-  fpm.doInitialization();
-  for (auto &func : module) {
-    fpm.run(func);
-  }
-  fpm.doFinalization();
+
+  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
+  mpm.run(module, mam);
 
   // We can extend error handling here to provide more visibility
   // into what has happened
@@ -185,14 +206,21 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   CHECK(!err_man.HasFatalError());
 
-  fpm.add(CreateTransformRemillJumpIntrinsics(lifter_context));
-  fpm.add(CreateRemoveRemillFunctionReturns(lifter_context));
-  fpm.add(CreateLowerRemillUndefinedIntrinsics());
-  fpm.doInitialization();
-  for (auto &func : module) {
-    fpm.run(func);
-  }
-  fpm.doFinalization();
+
+  llvm::FunctionPassManager second_fpm;
+
+
+  AddTransformRemillJumpIntrinsics(second_fpm, lifter_context);
+  AddRemoveRemillFunctionReturns(second_fpm, lifter_context);
+  AddLowerRemillUndefinedIntrinsics(second_fpm);
+
+
+  llvm::ModulePassManager second_mpm;
+
+  second_mpm.addPass(
+      llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
+  second_mpm.run(module, mam);
+
 
   // Get rid of all final uses of `__anvill_pc`.
   if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {

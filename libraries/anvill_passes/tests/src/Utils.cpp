@@ -81,17 +81,19 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
   return llvm_module;
 }
 
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass) {
-  llvm::legacy::FunctionPassManager pass_manager(module);
-  pass_manager.add(function_pass);
+template <typename PassT>
+bool RunFunctionPass(llvm::Module *module, PassT function_pass) {
 
-  pass_manager.doInitialization();
+  llvm::ModulePassManager mpm;
+  llvm::ModuleAnalysisManager mam;
 
-  for (auto &function : *module) {
-    pass_manager.run(function);
-  }
+  mpm.addPass(
+      llvm::createModuleToFunctionPassAdaptor(std::move(function_pass)));
 
-  pass_manager.doFinalization();
+
+  mpm.run(module, mam);
+
+
   return VerifyModule(module);
 }
 

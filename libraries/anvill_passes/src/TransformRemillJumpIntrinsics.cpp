@@ -63,13 +63,14 @@ enum ReturnAddressResult {
   kUnclassifiableProgramCounter
 };
 
-class TransformRemillJumpIntrinsics final : public llvm::FunctionPass {
+class TransformRemillJumpIntrinsics final
+    : public llvm::PassInfoMixin<TransformRemillJumpIntrinsics> {
  public:
   TransformRemillJumpIntrinsics(const EntityLifter &lifter_)
-      : llvm::FunctionPass(ID),
-        xref_resolver_(lifter_) {}
+      : xref_resolver_(lifter_) {}
 
-  bool runOnFunction(llvm::Function &func) final;
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &AM);
 
  private:
   ReturnAddressResult QueryReturnAddress(llvm::Module *module,
@@ -94,12 +95,12 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(llvm::Module *module,
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
     return QueryReturnAddress(module, pti->getOperand(0));
 
-  // Sometimes optimizations result in really crazy looking constant expressions
-  // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
-  // this situation by initializing a "magic" address associated with
-  // `__anvill_ra`, and then if we find this magic value on something that
-  // references `__anvill_ra`, then we conclude that all those manipulations
-  // in the constant expression are actually not important.
+    // Sometimes optimizations result in really crazy looking constant expressions
+    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+    // this situation by initializing a "magic" address associated with
+    // `__anvill_ra`, and then if we find this magic value on something that
+    // references `__anvill_ra`, then we conclude that all those manipulations
+    // in the constant expression are actually not important.
   } else if (auto xr = xref_resolver_.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_resolver_.MagicReturnAddressValue()) {
@@ -179,7 +180,8 @@ bool TransformRemillJumpIntrinsics::TransformJumpIntrinsic(
 
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
-bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses run(llvm::Function &F,
+                            llvm::FunctionAnalysisManager &AM) {
   const auto module = func.getParent();
   const auto &dl = module->getDataLayout();
   auto calls = FindFunctionCalls(func, [&](llvm::CallBase *call) -> bool {
@@ -215,7 +217,11 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
     fpm.doFinalization();
   }
 
-  return ret;
+  if (ret) {
+    return llvm::PreservedAnalyses::none();
+  } else {
+    return llvm::PreservedAnalyses::all();
+  }
 }
 
 }  // namespace
@@ -233,8 +239,7 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
 // indirect jump and fixes the intrinsics for them. The pass should be run before
 // `RemoveRemillFunctionReturns` and as late as possible in the list
 
-llvm::FunctionPass *
-CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter) {
+void CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter) {
   return new TransformRemillJumpIntrinsics(lifter);
 }
 
