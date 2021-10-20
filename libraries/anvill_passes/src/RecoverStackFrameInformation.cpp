@@ -33,7 +33,8 @@ RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
   return new RecoverStackFrameInformation(error_manager, options);
 }
 
-bool RecoverStackFrameInformation::Run(llvm::Function &function) {
+bool RecoverStackFrameInformation::Run(llvm::Function &function,
+                                       llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }

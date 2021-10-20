@@ -81,7 +81,7 @@ class SinkSelectionsIntoBranchTargets final
   Create(ITransformationErrorManager &error_manager);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
+  bool Run(llvm::Function &function, llvm::FunctionAnalysisManager &fam);
 
   // Returns the pass name
   static llvm::StringRef name(void);

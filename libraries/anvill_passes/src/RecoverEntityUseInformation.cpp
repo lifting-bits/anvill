@@ -35,7 +35,8 @@ RecoverEntityUseInformation::Create(ITransformationErrorManager &error_manager,
   return new RecoverEntityUseInformation(error_manager, lifter);
 }
 
-bool RecoverEntityUseInformation::Run(llvm::Function &function) {
+bool RecoverEntityUseInformation::Run(llvm::Function &function,
+                                      llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }

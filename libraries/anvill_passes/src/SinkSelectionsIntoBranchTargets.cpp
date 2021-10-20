@@ -154,7 +154,8 @@ void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
   }
 }
 
-bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
+bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function,
+                                          llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }

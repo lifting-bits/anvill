@@ -27,15 +27,6 @@
 namespace anvill {
 
 namespace {
-
-
-class PassFunctionState {
- private:
-  const llvm::DominatorTreeAnalysis::Result &dt;
-
- public:
-};
-
 //
 // These maps select the correct fold operation for the given instruction
 // types.
@@ -49,13 +40,13 @@ class PassFunctionState {
 //  - PHINode: kPHINodeFolderMap
 //
 
-using InstructionFolder = bool (InstructionFolderPass::*)(
+using InstructionFolder = bool (InstructionFolderPass::PassFunctionState::*)(
     InstructionFolderPass::InstructionList &, llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap = {
-  { llvm::Instruction::Select, &InstructionFolderPass::FoldSelectInstruction },
-  { llvm::Instruction::PHI, &InstructionFolderPass::FoldPHINode },
+  { llvm::Instruction::Select, &InstructionFolderPass::PassFunctionState::FoldSelectInstruction },
+  { llvm::Instruction::PHI, &InstructionFolderPass::PassFunctionState::FoldPHINode },
 };
 
 // clang-format on
@@ -70,83 +61,84 @@ using SelectInstructionFolder = bool (*)(llvm::Instruction *&output,
 const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstructionFolderMap = {
 
   // Binary operators
-  { llvm::Instruction::Add, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::FAdd, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::Sub, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::FSub, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::Mul, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::FMul, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::UDiv, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::SDiv, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::FDiv, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::URem, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::SRem, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::FRem, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::Shl, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::LShr, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::AShr, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::And, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::Or, InstructionFolderPass::FoldSelectWithBinaryOp },
-  { llvm::Instruction::Xor, InstructionFolderPass::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Add, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::FAdd, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Sub, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::FSub, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Mul, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::FMul, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::UDiv, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::SDiv, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp},
+  { llvm::Instruction::FDiv, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::URem, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::SRem, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::FRem, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Shl, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::LShr, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp},
+  { llvm::Instruction::AShr, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::And, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Or, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
+  { llvm::Instruction::Xor, InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp },
 
   // Cast operators
-  { llvm::Instruction::Trunc, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::ZExt, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::SExt, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::FPToUI, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::FPToSI, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::UIToFP, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::SIToFP, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::FPTrunc, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::FPExt, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::PtrToInt, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::IntToPtr, InstructionFolderPass::FoldSelectWithCastInst },
-  { llvm::Instruction::BitCast, InstructionFolderPass::FoldSelectWithCastInst },
+  { llvm::Instruction::Trunc, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::ZExt, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::SExt, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::FPToUI, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::FPToSI, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst},
+  { llvm::Instruction::UIToFP, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::SIToFP,InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::FPTrunc, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::FPExt, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::PtrToInt,InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::IntToPtr, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
+  { llvm::Instruction::BitCast, InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst },
 
   // Memory operators
-  { llvm::Instruction::GetElementPtr, InstructionFolderPass::FoldSelectWithGEPInst },
+  { llvm::Instruction::GetElementPtr, InstructionFolderPass::PassFunctionState::FoldSelectWithGEPInst },
 };
 
 // clang-format on
 
 // Case handlers for `PHINode` instructions
-using PHINodeInstructionFolder = bool (InstructionFolderPass::*)(
-    llvm::Instruction *&output, llvm::Instruction *,
-    InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
+using PHINodeInstructionFolder =
+    bool (InstructionFolderPass::PassFunctionState::*)(
+        llvm::Instruction *&output, llvm::Instruction *,
+        InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolderMap = {
 
   // Binary operators
-  { llvm::Instruction::Add, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FAdd, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Sub, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FSub, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Mul, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FMul, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::UDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::SDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::URem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::SRem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FRem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Shl, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::LShr, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::AShr, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::And, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Or, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Xor, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Add, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FAdd, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Sub, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FSub, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Mul, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FMul, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::UDiv, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::SDiv, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FDiv, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::URem, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::SRem, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FRem, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Shl, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::LShr, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::AShr, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::And, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Or, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Xor, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp },
 
   // Cast operators
-  { llvm::Instruction::Trunc, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::ZExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::SExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPToUI, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPToSI, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::UIToFP, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::SIToFP, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPTrunc, &InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::Trunc, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::ZExt, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::SExt, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPToUI, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPToSI, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::UIToFP, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::SIToFP, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPTrunc, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPExt, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst },
 
 
   // NOTE(akshayk): A phi node folding with cast instructions like IntToPtr
@@ -160,7 +152,7 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
 #endif
 
   // Memory operators
-  { llvm::Instruction::GetElementPtr, &InstructionFolderPass::FoldPHINodeWithGEPInst },
+  { llvm::Instruction::GetElementPtr, &InstructionFolderPass::PassFunctionState::FoldPHINodeWithGEPInst },
 };
 
 // clang-format on
@@ -173,13 +165,14 @@ InstructionFolderPass::InstructionFolderPass(
 
 
 bool InstructionFolderPass::Run(llvm::Function &function,
-                                llvm::FunctionAnalysisManager fam) {
+                                llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
 
   const auto &dt = fam.getResult<llvm::DominatorTreeAnalysis>(function);
-
+  auto function_state =
+      std::make_unique<InstructionFolderPass::PassFunctionState>(dt);
   // Create an initial queue of possible candidates
   auto next_worklist =
       SelectInstructions<llvm::SelectInst, llvm::PHINode>(function);
@@ -210,7 +203,7 @@ bool InstructionFolderPass::Run(llvm::Function &function,
       auto instr_folder_it = kInstructionFolderMap.find(instr->getOpcode());
       if (instr_folder_it != kInstructionFolderMap.end()) {
         const auto instr_folder = instr_folder_it->second;
-        if ((this->*instr_folder)(next_worklist, instr)) {
+        if ((function_state.get()->*instr_folder)(next_worklist, instr)) {
           function_changed = true;
         }
       }
@@ -235,60 +228,6 @@ llvm::StringRef InstructionFolderPass::name(void) {
   return llvm::StringRef("InstructionFolderPass");
 }
 
-bool InstructionFolderPass::FoldSelectInstruction(
-    InstructionFolderPass::InstructionList &output, llvm::Instruction *instr) {
-
-  // Extract the condition and the two operands for later
-  llvm::Value *condition{nullptr};
-  llvm::Value *true_value{nullptr};
-  llvm::Value *false_value{nullptr};
-
-  {
-
-    // FoldSelectInstruction is automatically called for SelectInst
-    // types (see kInstructionFolderMap)
-    auto select_instr = llvm::dyn_cast<llvm::SelectInst>(instr);
-
-    condition = select_instr->getCondition();
-    true_value = select_instr->getTrueValue();
-    false_value = select_instr->getFalseValue();
-  }
-
-  // Postpone the replacement and cleanup at the end of the
-  // rewrite to avoid possible issues with PHI nodes or
-  // iterator invalidation
-  InstructionReplacementList inst_replacement_list;
-
-  // Go through all the users of this `select` instruction
-  for (auto user : instr->users()) {
-    InstructionReplacement repl;
-    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
-
-    // Search for a function that knows how to handle this case
-    auto instr_folder_it =
-        kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
-
-    if (instr_folder_it == kSelectInstructionFolderMap.end()) {
-      continue;
-    }
-
-    const auto &instr_folder = instr_folder_it->second;
-    if (!instr_folder(repl.replacement_instr, instr, condition, true_value,
-                      false_value, repl.original_instr)) {
-      continue;
-    }
-
-    output.push_back(repl.replacement_instr);
-    inst_replacement_list.push_back(std::move(repl));
-  }
-
-  // Finally, drop all the instructions we no longer need; the `SelectInst`
-  // instruction will be deleted later by the caller
-  auto function_changed = !inst_replacement_list.empty();
-  PerformInstructionReplacements(inst_replacement_list);
-
-  return function_changed;
-}
 
 void InstructionFolderPass::PerformInstructionReplacements(
     const InstructionReplacementList &replacement_list) {
@@ -317,80 +256,6 @@ IsPHINodeFoldable(llvm::Instruction *instr,
   return true;
 }
 
-bool InstructionFolderPass::FoldPHINode(
-    InstructionFolderPass::InstructionList &output, llvm::Instruction *instr) {
-
-  // Extract the incoming values
-  IncomingValueList incoming_value_list;
-
-  {
-
-    // FoldPHINode is automatically called for PHINode types
-    // (see kInstructionFolderMap)
-    auto phi_node = llvm::dyn_cast<llvm::PHINode>(instr);
-
-    auto incoming_value_count = phi_node->getNumIncomingValues();
-    for (auto i = 0U; i < incoming_value_count; ++i) {
-      IncomingValue incoming_value;
-
-      incoming_value.value = phi_node->getIncomingValue(i);
-      incoming_value.basic_block = phi_node->getIncomingBlock(i);
-
-      incoming_value_list.push_back(std::move(incoming_value));
-    }
-  }
-
-  if (!IsPHINodeFoldable(instr, incoming_value_list)) {
-    return false;
-  }
-
-  // Postpone the replacement and cleanup at the end of the
-  // rewrite to avoid possible issues with PHI nodes or
-  // iterator invalidation
-  InstructionReplacementList inst_replacement_list;
-
-  // Go through all the users of this `phi` instruction
-  for (auto user : instr->users()) {
-    InstructionReplacement repl;
-    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
-
-    // Search for a function that knows how to handle this case
-    auto instr_folder_it =
-        kPHINodeFolderMap.find(repl.original_instr->getOpcode());
-    if (instr_folder_it == kPHINodeFolderMap.end()) {
-      continue;
-    }
-
-    const auto instr_folder = instr_folder_it->second;
-    if (!(this->*instr_folder)(repl.replacement_instr, instr,
-                               incoming_value_list, repl.original_instr)) {
-      continue;
-    }
-
-    output.push_back(repl.replacement_instr);
-    inst_replacement_list.push_back(std::move(repl));
-  }
-
-  // Finally, drop all the instructions we no longer need; the `PHINode`
-  // instruction will be deleted later by the caller
-  auto function_changed = !inst_replacement_list.empty();
-  PerformInstructionReplacements(inst_replacement_list);
-
-  for (auto &incoming_value : incoming_value_list) {
-    auto value_as_instr =
-        llvm::dyn_cast<llvm::Instruction>(incoming_value.value);
-
-    if (value_as_instr == nullptr) {
-      continue;
-    }
-
-    if (value_as_instr->use_empty()) {
-      value_as_instr->eraseFromParent();
-    }
-  }
-
-  return function_changed;
-}
 
 bool InstructionFolderPass::CollectAndValidateGEPIndexes(
     std::vector<llvm::Value *> &index_list,
@@ -441,7 +306,7 @@ bool InstructionFolderPass::CollectAndValidateGEPIndexes(
   return true;
 }
 
-bool InstructionFolderPass::FoldSelectWithBinaryOp(
+bool InstructionFolderPass::PassFunctionState::FoldSelectWithBinaryOp(
     llvm::Instruction *&output, llvm::Instruction *select_instr,
     llvm::Value *condition, llvm::Value *true_value, llvm::Value *false_value,
     llvm::Instruction *binary_op_instr) {
@@ -478,7 +343,7 @@ bool InstructionFolderPass::FoldSelectWithBinaryOp(
   return true;
 }
 
-bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
+bool InstructionFolderPass::PassFunctionState::FoldPHINodeWithBinaryOp(
     llvm::Instruction *&output, llvm::Instruction *phi_node,
     InstructionFolderPass::IncomingValueList &incoming_values,
     llvm::Instruction *binary_op_instr) {
@@ -536,7 +401,7 @@ bool InstructionFolderPass::FoldPHINodeWithBinaryOp(
   return true;
 }
 
-bool InstructionFolderPass::FoldSelectWithCastInst(
+bool InstructionFolderPass::PassFunctionState::FoldSelectWithCastInst(
     llvm::Instruction *&output, llvm::Instruction *select_instr,
     llvm::Value *condition, llvm::Value *true_value, llvm::Value *false_value,
     llvm::Instruction *cast_instr) {
@@ -596,7 +461,7 @@ bool InstructionFolderPass::FoldSelectWithCastInst(
   return true;
 }
 
-bool InstructionFolderPass::FoldPHINodeWithCastInst(
+bool InstructionFolderPass::PassFunctionState::FoldPHINodeWithCastInst(
     llvm::Instruction *&output, llvm::Instruction *phi_node,
     InstructionFolderPass::IncomingValueList &incoming_values,
     llvm::Instruction *cast_instr) {
@@ -650,7 +515,7 @@ bool InstructionFolderPass::FoldPHINodeWithCastInst(
 }
 
 
-bool InstructionFolderPass::FoldSelectWithGEPInst(
+bool InstructionFolderPass::PassFunctionState::FoldSelectWithGEPInst(
     llvm::Instruction *&output, llvm::Instruction *select_instr,
     llvm::Value *condition, llvm::Value *true_value, llvm::Value *false_value,
     llvm::Instruction *gep_instr) {
@@ -688,7 +553,7 @@ bool InstructionFolderPass::FoldSelectWithGEPInst(
   return true;
 }
 
-bool InstructionFolderPass::FoldPHINodeWithGEPInst(
+bool InstructionFolderPass::PassFunctionState::FoldPHINodeWithGEPInst(
     llvm::Instruction *&output, llvm::Instruction *phi_node,
     InstructionFolderPass::IncomingValueList &incoming_values,
     llvm::Instruction *gep_instr) {
@@ -827,5 +692,137 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
   output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
   return true;
 }
+
+
+bool InstructionFolderPass::PassFunctionState::FoldPHINode(
+    InstructionFolderPass::InstructionList &output, llvm::Instruction *instr) {
+
+  // Extract the incoming values
+  IncomingValueList incoming_value_list;
+
+  {
+
+    // FoldPHINode is automatically called for PHINode types
+    // (see kInstructionFolderMap)
+    auto phi_node = llvm::dyn_cast<llvm::PHINode>(instr);
+
+    auto incoming_value_count = phi_node->getNumIncomingValues();
+    for (auto i = 0U; i < incoming_value_count; ++i) {
+      IncomingValue incoming_value;
+
+      incoming_value.value = phi_node->getIncomingValue(i);
+      incoming_value.basic_block = phi_node->getIncomingBlock(i);
+
+      incoming_value_list.push_back(std::move(incoming_value));
+    }
+  }
+
+  if (!IsPHINodeFoldable(instr, incoming_value_list)) {
+    return false;
+  }
+
+  // Postpone the replacement and cleanup at the end of the
+  // rewrite to avoid possible issues with PHI nodes or
+  // iterator invalidation
+  InstructionReplacementList inst_replacement_list;
+
+  // Go through all the users of this `phi` instruction
+  for (auto user : instr->users()) {
+    InstructionReplacement repl;
+    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
+
+    // Search for a function that knows how to handle this case
+    auto instr_folder_it =
+        kPHINodeFolderMap.find(repl.original_instr->getOpcode());
+    if (instr_folder_it == kPHINodeFolderMap.end()) {
+      continue;
+    }
+
+    const auto instr_folder = instr_folder_it->second;
+    if (!(this->*instr_folder)(repl.replacement_instr, instr,
+                               incoming_value_list, repl.original_instr)) {
+      continue;
+    }
+
+    output.push_back(repl.replacement_instr);
+    inst_replacement_list.push_back(std::move(repl));
+  }
+
+  // Finally, drop all the instructions we no longer need; the `PHINode`
+  // instruction will be deleted later by the caller
+  auto function_changed = !inst_replacement_list.empty();
+  PerformInstructionReplacements(inst_replacement_list);
+
+  for (auto &incoming_value : incoming_value_list) {
+    auto value_as_instr =
+        llvm::dyn_cast<llvm::Instruction>(incoming_value.value);
+
+    if (value_as_instr == nullptr) {
+      continue;
+    }
+
+    if (value_as_instr->use_empty()) {
+      value_as_instr->eraseFromParent();
+    }
+  }
+
+  return function_changed;
+}
+
+bool InstructionFolderPass::PassFunctionState::FoldSelectInstruction(
+    InstructionFolderPass::InstructionList &output, llvm::Instruction *instr) {
+
+  // Extract the condition and the two operands for later
+  llvm::Value *condition{nullptr};
+  llvm::Value *true_value{nullptr};
+  llvm::Value *false_value{nullptr};
+
+  {
+
+    // FoldSelectInstruction is automatically called for SelectInst
+    // types (see kInstructionFolderMap)
+    auto select_instr = llvm::dyn_cast<llvm::SelectInst>(instr);
+
+    condition = select_instr->getCondition();
+    true_value = select_instr->getTrueValue();
+    false_value = select_instr->getFalseValue();
+  }
+
+  // Postpone the replacement and cleanup at the end of the
+  // rewrite to avoid possible issues with PHI nodes or
+  // iterator invalidation
+  InstructionReplacementList inst_replacement_list;
+
+  // Go through all the users of this `select` instruction
+  for (auto user : instr->users()) {
+    InstructionReplacement repl;
+    repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
+
+    // Search for a function that knows how to handle this case
+    auto instr_folder_it =
+        kSelectInstructionFolderMap.find(repl.original_instr->getOpcode());
+
+    if (instr_folder_it == kSelectInstructionFolderMap.end()) {
+      continue;
+    }
+
+    const auto &instr_folder = instr_folder_it->second;
+    if (!instr_folder(repl.replacement_instr, instr, condition, true_value,
+                      false_value, repl.original_instr)) {
+      continue;
+    }
+
+    output.push_back(repl.replacement_instr);
+    inst_replacement_list.push_back(std::move(repl));
+  }
+
+  // Finally, drop all the instructions we no longer need; the `SelectInst`
+  // instruction will be deleted later by the caller
+  auto function_changed = !inst_replacement_list.empty();
+  PerformInstructionReplacements(inst_replacement_list);
+
+  return function_changed;
+}
+
 
 }  // namespace anvill

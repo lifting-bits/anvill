@@ -37,7 +37,6 @@ class TransformRemillJumpIntrinsics final
 
   bool TransformJumpIntrinsic(llvm::CallBase *call);
 
-  static char ID;
   const CrossReferenceResolver xref_resolver_;
 };
 }  // namespace anvill

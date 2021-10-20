@@ -55,7 +55,8 @@ SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
   return new SplitStackFrameAtReturnAddress(error_manager);
 }
 
-bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
+bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function,
+                                         llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
@@ -546,5 +547,5 @@ std::string SplitStackFrameAtReturnAddress::GenerateStackFramePartTypeName(
 SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
-    
+
 }  // namespace anvill
