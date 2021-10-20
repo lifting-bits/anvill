@@ -27,7 +27,8 @@ bool VerifyModule(llvm::Module *module);
 std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
                                            const std::string &data_name);
 
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass);
+template <typename PassT>
+bool RunFunctionPass(llvm::Module *module, PassT function_pass);
 
 struct Platform final {
   std::string os;

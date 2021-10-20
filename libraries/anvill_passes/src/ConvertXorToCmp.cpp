@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
+#include "ConvertXorToCmp.h"
 
 #include <anvill/ABI.h>
 #include <glog/logging.h>
@@ -30,20 +30,9 @@
 #include <tuple>
 #include <vector>
 
+#include "Utils.h"
 namespace anvill {
 namespace {
-
-class ConvertXorToCmp final : public llvm::FunctionPass {
- public:
-  ConvertXorToCmp(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
-};
-
-char ConvertXorToCmp::ID = '\0';
 
 // If the operator (op) is between an ICmpInst and a ConstantInt,
 // return a tuple representing the ICmpInst and ConstantInt
@@ -79,6 +68,9 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   // create a new compare with negated predicate
   return ir.CreateICmp(new_pred, cmp->getOperand(0), cmp->getOperand(1));
 }
+
+}  // namespace
+
 
 bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
   std::vector<llvm::BinaryOperator *> xors;
@@ -230,17 +222,12 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
             << " xors with negated comparisons";
   return changed;
 }
-
-}  // namespace
-
 // Convert operations in the form of:
 // (left OP right) ^ 1
 // into:
 // (left !OP right)
 // this makes the output more natural for humans and computers to reason about
 // This problem comes up a fair bit due to how some instruction semantics compute carry/parity/etc bits
-llvm::FunctionPass *CreateConvertXorToCmp(void) {
-  return new ConvertXorToCmp;
-}
+
 
 }  // namespace anvill

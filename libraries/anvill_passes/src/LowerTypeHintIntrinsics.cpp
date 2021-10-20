@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
+#include "LowerTypeHintIntrinsics.h"
 
 #include <anvill/ABI.h>
 #include <llvm/IR/IRBuilder.h>
@@ -26,23 +26,13 @@
 
 #include <vector>
 
+#include "Utils.h"
+
 namespace anvill {
-namespace {
 
-class LowerTypeHintIntrinsics final : public llvm::FunctionPass {
- public:
-  LowerTypeHintIntrinsics(void)
-      : llvm::FunctionPass(ID) {}
 
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
-};
-
-char LowerTypeHintIntrinsics::ID = '\0';
-
-bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses run(llvm::Function &func,
+                            llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::CallInst *> calls;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -71,23 +61,7 @@ bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return changed;
-}
-
-}  // namespace
-
-// Type information from prior lifting efforts, or from front-end tools
-// (e.g. Binary Ninja) is plumbed through the system by way of calls to
-// intrinsic functions such as `__anvill_type<blah>`. These function calls
-// don't interfere (too much) with optimizations, and they also survive
-// optimizations. In general, the key role that they serve is to enable us to
-// propagate through pointer type information at an instruction/register
-// granularity.
-//
-// These function calls need to be removed/lowered into `inttoptr` or `bitcast`
-// instructions.
-llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void) {
-  return new LowerTypeHintIntrinsics;
+  return ConvertBoolToPreserved(changed);
 }
 
 }  // namespace anvill

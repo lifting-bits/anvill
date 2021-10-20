@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveUnusedFPClassificationCalls.h"
+
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
@@ -26,22 +28,9 @@
 #include "Utils.h"
 
 namespace anvill {
-namespace {
-
-class RemoveUnusedFPClassificationCalls final : public llvm::FunctionPass {
- public:
-  RemoveUnusedFPClassificationCalls(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char RemoveUnusedFPClassificationCalls::ID = '\0';
-
 // Try to remove unused floating point classification function calls.
-bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses RemoveUnusedFPClassificationCalls::run(
+    llvm::Function &func, llvm::FunctionAnalysisManager &analysisManager) {
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
@@ -61,11 +50,8 @@ bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return ret;
+  return ConvertBoolToPreserved(ret);
 }
-
-}  // namespace
-
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics
 // functions. It's frequently the case that instructions don't actually care
@@ -77,8 +63,6 @@ bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
 // NOTE(pag): This pass must be applied before any kind of renaming of lifted
 //            functions is performed, so that we don't accidentally remove
 //            calls to classification functions present in the target binary.
-llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void) {
-  return new RemoveUnusedFPClassificationCalls;
-}
+
 
 }  // namespace anvill

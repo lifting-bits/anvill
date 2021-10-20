@@ -195,9 +195,12 @@ class SplitStackFrameAtReturnAddress final
   GenerateStackFramePartTypeName(const llvm::Function &function,
                                  std::size_t part_number);
 
- private:
+
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
+
   virtual ~SplitStackFrameAtReturnAddress(void) override = default;
+
+ private:
 };
 
 }  // namespace anvill

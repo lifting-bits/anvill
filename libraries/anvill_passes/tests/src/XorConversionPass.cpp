@@ -27,6 +27,7 @@
 
 #include <iostream>
 
+#include "ConvertXorToCmp.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -45,7 +46,7 @@ TEST_SUITE("XorConversion") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(), CreateConvertXorToCmp()));
+    CHECK(RunFunctionPass(module.get(), ConvertXorToCmp()));
 
     const auto xor_as_not = module->getFunction("xor_as_not");
     int xor_count = 0;
@@ -76,7 +77,7 @@ TEST_SUITE("XorConversion") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(), CreateConvertXorToCmp()));
+    CHECK(RunFunctionPass(module.get(), ConvertXorToCmp()));
 
     const auto xor_as_not_nochange = module->getFunction("xor_as_not_nochange");
     int xor_count = 0;

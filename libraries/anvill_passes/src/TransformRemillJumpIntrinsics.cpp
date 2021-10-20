@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "TransformRemillJumpIntrinsics.h"
+
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Lifters/EntityLifter.h>
@@ -31,6 +33,9 @@
 #include <llvm/Pass.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Transforms/Scalar/DCE.h>
+#include <llvm/Transforms/Scalar/SROA.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/Utils/Local.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
@@ -48,67 +53,6 @@ namespace {
 const std::string kRemillJumpIntrinsicName = "__remill_jump";
 const std::string kRemillFunctionReturnIntrinsicName =
     "__remill_function_return";
-
-enum ReturnAddressResult {
-
-  // This is a case where a value returned by `llvm.returnaddress`, or
-  // casted from `__anvill_ra`, reaches into the `pc` argument of the
-  // `__remill_jump` intrinsic. This is the ideal case that we want to
-  // replace it with `__remill_function_return`.
-  kReturnAddressProgramCounter,
-
-  // This is a case a value returned by `llvm.returnaddress`, or casted
-  // from `__anvill_ra` does not reaches to the `pc` argument and it
-  // should not get transformed to `__remill_function_return`.
-  kUnclassifiableProgramCounter
-};
-
-class TransformRemillJumpIntrinsics final
-    : public llvm::PassInfoMixin<TransformRemillJumpIntrinsics> {
- public:
-  TransformRemillJumpIntrinsics(const EntityLifter &lifter_)
-      : xref_resolver_(lifter_) {}
-
-  llvm::PreservedAnalyses run(llvm::Function &F,
-                              llvm::FunctionAnalysisManager &AM);
-
- private:
-  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
-                                         llvm::Value *val) const;
-
-  bool TransformJumpIntrinsic(llvm::CallBase *call);
-
-  static char ID;
-  const CrossReferenceResolver xref_resolver_;
-};
-
-char TransformRemillJumpIntrinsics::ID = '\0';
-
-// Returns `true` if `val` is a possible return address
-ReturnAddressResult
-TransformRemillJumpIntrinsics::QueryReturnAddress(llvm::Module *module,
-                                                  llvm::Value *val) const {
-
-  if (IsReturnAddress(module, val)) {
-    return kReturnAddressProgramCounter;
-
-  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(module, pti->getOperand(0));
-
-    // Sometimes optimizations result in really crazy looking constant expressions
-    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
-    // this situation by initializing a "magic" address associated with
-    // `__anvill_ra`, and then if we find this magic value on something that
-    // references `__anvill_ra`, then we conclude that all those manipulations
-    // in the constant expression are actually not important.
-  } else if (auto xr = xref_resolver_.TryResolveReferenceWithClearedCache(val);
-             xr.is_valid && xr.references_return_address &&
-             xr.u.address == xref_resolver_.MagicReturnAddressValue()) {
-    return kReturnAddressProgramCounter;
-  }
-
-  return kUnclassifiableProgramCounter;
-}
 
 // Find the remill intrinsic in module. If it is missing create one
 // with the given function type
@@ -143,6 +87,36 @@ std::vector<llvm::CallBase *> FindFunctionCalls(llvm::Function &func, T pred) {
     }
   }
   return found;
+}
+
+
+}  // namespace
+
+
+// Returns `true` if `val` is a possible return address
+ReturnAddressResult
+TransformRemillJumpIntrinsics::QueryReturnAddress(llvm::Module *module,
+                                                  llvm::Value *val) const {
+
+  if (IsReturnAddress(module, val)) {
+    return kReturnAddressProgramCounter;
+
+  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+    return QueryReturnAddress(module, pti->getOperand(0));
+
+    // Sometimes optimizations result in really crazy looking constant expressions
+    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+    // this situation by initializing a "magic" address associated with
+    // `__anvill_ra`, and then if we find this magic value on something that
+    // references `__anvill_ra`, then we conclude that all those manipulations
+    // in the constant expression are actually not important.
+  } else if (auto xr = xref_resolver_.TryResolveReferenceWithClearedCache(val);
+             xr.is_valid && xr.references_return_address &&
+             xr.u.address == xref_resolver_.MagicReturnAddressValue()) {
+    return kReturnAddressProgramCounter;
+  }
+
+  return kUnclassifiableProgramCounter;
 }
 
 // Dispatch to the proper memory replacement function given a function call.
@@ -180,11 +154,12 @@ bool TransformRemillJumpIntrinsics::TransformJumpIntrinsic(
 
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
-llvm::PreservedAnalyses run(llvm::Function &F,
-                            llvm::FunctionAnalysisManager &AM) {
-  const auto module = func.getParent();
+llvm::PreservedAnalyses
+TransformRemillJumpIntrinsics::run(llvm::Function &F,
+                                   llvm::FunctionAnalysisManager &AM) {
+  const auto module = F.getParent();
   const auto &dl = module->getDataLayout();
-  auto calls = FindFunctionCalls(func, [&](llvm::CallBase *call) -> bool {
+  auto calls = FindFunctionCalls(F, [&](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func || func->getName() != kRemillJumpIntrinsicName) {
       return false;
@@ -207,24 +182,18 @@ llvm::PreservedAnalyses run(llvm::Function &F,
 
     // Run private function passes if the jump instrinsics
     // are replaced
-    llvm::legacy::FunctionPassManager fpm(module);
-    fpm.add(llvm::createDeadCodeEliminationPass());
-    fpm.add(llvm::createSROAPass());
-    fpm.add(llvm::createCFGSimplificationPass());
-    fpm.add(llvm::createInstructionCombiningPass());
-    fpm.doInitialization();
-    fpm.run(func);
-    fpm.doFinalization();
+    llvm::FunctionPassManager fpm;
+    llvm::FunctionAnalysisManager fam;
+
+    fpm.addPass(llvm::DCEPass());
+    fpm.addPass(llvm::SROA());
+    fpm.addPass(llvm::SimplifyCFGPass());
+    fpm.addPass(llvm::InstructionCombiningPass());
+    fpm.run(F, fam);
   }
 
-  if (ret) {
-    return llvm::PreservedAnalyses::none();
-  } else {
-    return llvm::PreservedAnalyses::all();
-  }
+  return ConvertBoolToPreserved(ret);
 }
-
-}  // namespace
 
 
 // The pass transforms bitcode to replace the calls to `__remill_jump` into
@@ -238,9 +207,5 @@ llvm::PreservedAnalyses run(llvm::Function &F,
 // It identifies the possible cases where a return instruction is lifted as
 // indirect jump and fixes the intrinsics for them. The pass should be run before
 // `RemoveRemillFunctionReturns` and as late as possible in the list
-
-void CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter) {
-  return new TransformRemillJumpIntrinsics(lifter);
-}
 
 }  // namespace anvill

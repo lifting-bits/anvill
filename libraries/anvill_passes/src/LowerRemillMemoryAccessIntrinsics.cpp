@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "LowerRemillMemoryAccessIntrinsics.h"
+
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
@@ -27,19 +29,6 @@
 
 namespace anvill {
 namespace {
-
-class LowerRemillMemoryAccessIntrinsics final : public llvm::FunctionPass {
- public:
-  LowerRemillMemoryAccessIntrinsics(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char LowerRemillMemoryAccessIntrinsics::ID = '\0';
-
 
 // Lower a memory read intrinsic into a `load` instruction.
 static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
@@ -190,8 +179,12 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
   return false;
 }
 
+}  // namespace
+
+
 // Try to lower remill memory access intrinsics.
-bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses run(llvm::Function &func,
+                            llvm::FunctionAnalysisManager &AM) {
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
@@ -209,15 +202,11 @@ bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
     ret = ReplaceMemoryOp(call) || ret;
   }
 
-  return ret;
+  return ConvertBoolToPreserved(ret);
 }
-
-}  // namespace
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
-llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void) {
-  return new LowerRemillMemoryAccessIntrinsics;
-}
+
 
 }  // namespace anvill

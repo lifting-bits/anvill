@@ -91,7 +91,7 @@ bool RunFunctionPass(llvm::Module *module, PassT function_pass) {
       llvm::createModuleToFunctionPassAdaptor(std::move(function_pass)));
 
 
-  mpm.run(module, mam);
+  mpm.run(*module, mam);
 
 
   return VerifyModule(module);

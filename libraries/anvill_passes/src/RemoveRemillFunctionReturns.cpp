@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveRemillFunctionReturns.h"
+
 #include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Transforms.h>
@@ -40,100 +42,6 @@
 namespace anvill {
 namespace {
 
-enum ReturnAddressResult {
-
-  // We've found a case where a value returned by `llvm.returnaddress`, or
-  // casted from `__anvill_ra`, reaches into the `pc` argument of the
-  // `__remill_function_return` intrinsic. This is the ideal case that we
-  // want to handle.
-  kFoundReturnAddress,
-
-  // We've found a case where we're seeing a load from something derived from
-  // `__anvill_sp`, our "symbolic stack pointer", is reaching into the `pc`
-  // argument of `__remill_function_return`. This suggests that stack frame
-  // recovery has not happened yet, and thus we haven't really given stack
-  // frame recovery or stack frame splitting a chance to work.
-  kFoundSymbolicStackPointerLoad,
-
-  // We've found a `load` or something else. This is probably a sign that
-  // stack frame recovery has happened, and that the actual return address
-  // is not necessarily the expected value, and so we need to try to swap
-  // out the return address with whatever we loaded.
-  kUnclassifiableReturnAddress
-};
-
-class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
- public:
-  RemoveRemillFunctionReturns(const EntityLifter &lifter_)
-      : llvm::FunctionPass(ID),
-        xref_resolver(lifter_) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
-                                         llvm::Value *val) const;
-
-  static char ID;
-  const CrossReferenceResolver xref_resolver;
-};
-
-char RemoveRemillFunctionReturns::ID = '\0';
-
-// Returns `true` if `val` is a return address.
-ReturnAddressResult
-RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
-                                                llvm::Value *val) const {
-
-  if (IsReturnAddress(module, val)) {
-    return kFoundReturnAddress;
-  }
-
-  if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    if (auto func = call->getCalledFunction()) {
-      if (func->getName().startswith("__remill_read_memory_")) {
-        auto addr = call->getArgOperand(1);  // Address
-        if (IsRelatedToStackPointer(module, addr)) {
-          return kFoundSymbolicStackPointerLoad;
-        } else {
-          return kUnclassifiableReturnAddress;
-        }
-      }
-    }
-    return kUnclassifiableReturnAddress;
-
-  } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
-    if (IsRelatedToStackPointer(module, li->getPointerOperand())) {
-      return kFoundSymbolicStackPointerLoad;
-    } else {
-      return kUnclassifiableReturnAddress;
-    }
-
-  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(module, pti->getOperand(0));
-
-  } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
-    return QueryReturnAddress(module, cast->getOperand(0));
-
-  } else if (IsRelatedToStackPointer(module, val)) {
-    return kFoundSymbolicStackPointerLoad;
-
-  // Sometimes optimizations result in really crazy looking constant expressions
-  // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
-  // this situation by initializing a "magic" address associated with
-  // `__anvill_ra`, and then if we find this magic value on something that
-  // references `__anvill_ra`, then we conclude that all those manipulations
-  // in the constant expression are actually not important.
-  } else if (auto xr = xref_resolver.TryResolveReferenceWithClearedCache(val);
-             xr.is_valid && xr.references_return_address &&
-             xr.u.address == xref_resolver.MagicReturnAddressValue()) {
-    return kFoundReturnAddress;
-
-  } else {
-    return kUnclassifiableReturnAddress;
-  }
-}
-
 // Remove a single case of a call to `__remill_function_return` where the return
 // addresses reaches the `pc` argument of the call.
 static void FoldReturnAddressMatch(llvm::CallBase *call) {
@@ -156,12 +64,12 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
       ret_addr->eraseFromParent();
       ret_addr = next_ret_addr;
 
-    // Call to `llvm.returnaddress`.
+      // Call to `llvm.returnaddress`.
     } else if (IsReturnAddress(module, ret_addr)) {
       ret_addr->eraseFromParent();
       break;
 
-    // Who knows?!
+      // Who knows?!
     } else {
       LOG(ERROR)
           << "Encountered unexpected instruction when removing return address: "
@@ -244,9 +152,15 @@ static void OverwriteReturnAddress(
   }
 }
 
+
+}  // namespace
+
+
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
-bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveRemillFunctionReturns::run(llvm::Function &func,
+                                 llvm::FunctionAnalysisManager &AM) {
 
   const auto module = func.getParent();
   std::vector<llvm::CallBase *> matches_pattern;
@@ -291,10 +205,62 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return ret;
+  return ConvertBoolToPreserved(ret);
 }
 
-}  // namespace
+// Returns `true` if `val` is a return address.
+ReturnAddressResult
+RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
+                                                llvm::Value *val) const {
+
+  if (IsReturnAddress(module, val)) {
+    return kFoundReturnAddress;
+  }
+
+  if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
+    if (auto func = call->getCalledFunction()) {
+      if (func->getName().startswith("__remill_read_memory_")) {
+        auto addr = call->getArgOperand(1);  // Address
+        if (IsRelatedToStackPointer(module, addr)) {
+          return kFoundSymbolicStackPointerLoad;
+        } else {
+          return kUnclassifiableReturnAddress;
+        }
+      }
+    }
+    return kUnclassifiableReturnAddress;
+
+  } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
+    if (IsRelatedToStackPointer(module, li->getPointerOperand())) {
+      return kFoundSymbolicStackPointerLoad;
+    } else {
+      return kUnclassifiableReturnAddress;
+    }
+
+  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+    return QueryReturnAddress(module, pti->getOperand(0));
+
+  } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
+    return QueryReturnAddress(module, cast->getOperand(0));
+
+  } else if (IsRelatedToStackPointer(module, val)) {
+    return kFoundSymbolicStackPointerLoad;
+
+    // Sometimes optimizations result in really crazy looking constant expressions
+    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+    // this situation by initializing a "magic" address associated with
+    // `__anvill_ra`, and then if we find this magic value on something that
+    // references `__anvill_ra`, then we conclude that all those manipulations
+    // in the constant expression are actually not important.
+  } else if (auto xr = xref_resolver.TryResolveReferenceWithClearedCache(val);
+             xr.is_valid && xr.references_return_address &&
+             xr.u.address == xref_resolver.MagicReturnAddressValue()) {
+    return kFoundReturnAddress;
+
+  } else {
+    return kUnclassifiableReturnAddress;
+  }
+}
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is
@@ -323,9 +289,6 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *
-CreateRemoveRemillFunctionReturns(const EntityLifter &lifter) {
-  return new RemoveRemillFunctionReturns(lifter);
-}
+
 
 }  // namespace anvill

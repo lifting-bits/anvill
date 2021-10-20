@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveTrivialPhisAndSelects.h"
+
 #include <anvill/Transforms.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
@@ -27,22 +29,14 @@
 #include <utility>
 #include <vector>
 
+#include "RemoveTrivialPhisAndSelects.h"
+#include "Utils.h"
+
 namespace anvill {
-namespace {
 
-class RemoveTrivialPhisAndSelects final : public llvm::FunctionPass {
- public:
-  RemoveTrivialPhisAndSelects(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char RemoveTrivialPhisAndSelects::ID = '\0';
-
-bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveTrivialPhisAndSelects::run(llvm::Function &func,
+                                 llvm::FunctionAnalysisManager &AM) {
 
   std::unordered_set<llvm::Instruction *> remove;
   std::vector<llvm::Instruction *> work_list;
@@ -82,8 +76,8 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
       next:
         continue;
 
-      // Check if `inst` is a `select cond, VAL, VAL`, and schedule a
-      // replacement of the `select` with `VAL`.
+        // Check if `inst` is a `select cond, VAL, VAL`, and schedule a
+        // replacement of the `select` with `VAL`.
       } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(inst)) {
         const auto base_val = sel->getTrueValue();
         if (base_val == sel->getFalseValue()) {
@@ -116,17 +110,12 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return changed;
+  return ConvertBoolToPreserved(changed);
 }
-
-}  // namespace
 
 // Removes trivial PHI and select nodes. These are PHI and select nodes whose
 // incoming values or true/false values match. This can happen as a result of
 // the instruction folding pass that hoists and folds values up through selects
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
-llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void) {
-  return new RemoveTrivialPhisAndSelects;
-}
 
 }  // namespace anvill

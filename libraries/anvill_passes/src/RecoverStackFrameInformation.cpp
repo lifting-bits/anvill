@@ -171,8 +171,8 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
         type_size = data_layout.getTypeAllocSize(stored_type).getFixedSize();
       }
 
-    // In the case of `load` instructions, we want to redord the size of the
-    // loaded value.
+      // In the case of `load` instructions, we want to redord the size of the
+      // loaded value.
     } else if (auto load_inst =
                    llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
       type_size =

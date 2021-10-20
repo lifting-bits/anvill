@@ -68,7 +68,7 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
       return remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
     }
 
-  // Cast an integer to a pointer type.
+    // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
     if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
@@ -111,7 +111,7 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
       return remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
     }
 
-  // Cast an integer to a pointer type.
+    // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
     if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
@@ -168,9 +168,8 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
   for (auto &inst : *block) {
     if (llvm::isa<llvm::PHINode>(&inst)) {
       if (!in_phis) {
-        DLOG(ERROR)
-            << "Found " << remill::LLVMThingToString(&inst)
-            << " after " << remill::LLVMThingToString(inst.getPrevNode());
+        DLOG(ERROR) << "Found " << remill::LLVMThingToString(&inst) << " after "
+                    << remill::LLVMThingToString(inst.getPrevNode());
         return false;
       }
     } else {
@@ -188,5 +187,8 @@ void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
   }
 }
 
-
+static llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
+  return modified ? llvm::PreservedAnalyses::none()
+                  : llvm::PreservedAnalyses::all();
+}
 }  // namespace anvill
