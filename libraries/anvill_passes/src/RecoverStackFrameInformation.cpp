@@ -437,5 +437,9 @@ RecoverStackFrameInformation::RecoverStackFrameInformation(
     : BaseFunctionPass(error_manager),
       options(options) {}
 
-
+void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
+                                     ITransformationErrorManager &error_manager,
+                                     const LifterOptions &options) {
+  fpm.addPass(RecoverStackFrameInformation(error_manager, options));
+}
 }  // namespace anvill

@@ -64,4 +64,8 @@ llvm::PreservedAnalyses run(llvm::Function &func,
   return ConvertBoolToPreserved(changed);
 }
 
+void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerTypeHintIntrinsics());
+}
+
 }  // namespace anvill

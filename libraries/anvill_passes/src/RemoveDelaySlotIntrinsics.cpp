@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveDelaySlotIntrinsics.h"
+
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
@@ -55,5 +57,7 @@ llvm::PreservedAnalyses run(llvm::Function &func,
 }
 
 // Removes calls to `__remill_delay_slot_begin` and `__remill_delay_slot_end`.
-
+void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveDelaySlotIntrinsics());
+}
 }  // namespace anvill

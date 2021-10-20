@@ -207,5 +207,9 @@ TransformRemillJumpIntrinsics::run(llvm::Function &F,
 // It identifies the possible cases where a return instruction is lifted as
 // indirect jump and fixes the intrinsics for them. The pass should be run before
 // `RemoveRemillFunctionReturns` and as late as possible in the list
+void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
+                                      const EntityLifter &lifter) {
+  fpm.addPass(TransformRemillJumpIntrinsics(lifter));
+}
 
 }  // namespace anvill

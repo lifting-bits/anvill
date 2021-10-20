@@ -236,6 +236,8 @@ llvm::StringRef ConvertXorToCmp::name(void) {
 // (left !OP right)
 // this makes the output more natural for humans and computers to reason about
 // This problem comes up a fair bit due to how some instruction semantics compute carry/parity/etc bits
-
+void AddConvertXorToCmp(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(ConvertXorToCmp());
+}
 
 }  // namespace anvill

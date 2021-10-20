@@ -71,6 +71,8 @@ llvm::PreservedAnalyses run(llvm::Function &func,
 //
 // This pass exists to do the lowering to `undef` values, and should be run
 // as late as possible.
-
+void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerRemillUndefinedIntrinsics());
+}
 
 }  // namespace anvill

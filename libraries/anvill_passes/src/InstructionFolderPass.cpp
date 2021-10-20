@@ -824,5 +824,8 @@ bool InstructionFolderPass::PassFunctionState::FoldSelectInstruction(
   return function_changed;
 }
 
-
+void AddInstructionFolderPass(llvm::FunctionPassManager &fpm,
+                              ITransformationErrorManager &error_manager) {
+  fpm.addPass(InstructionFolderPass(error_manager));
+}
 }  // namespace anvill

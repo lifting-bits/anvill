@@ -24,11 +24,18 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
+#include "RemoveCompilerBarriers.h"
 #include "Utils.h"
 
 namespace anvill {
+
+llvm::StringRef RemoveCompilerBarriers::name(void) {
+  return llvm::StringRef("RemoveCompilerBarriers");
+}
+
 // Try to lower remill memory access intrinsics.
-llvm::PreservedAnalyses run(llvm::Function &func,
+llvm::PreservedAnalyses
+RemoveCompilerBarriers::run(llvm::Function &func,
                             llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::CallBase *> to_remove;
 
@@ -89,5 +96,7 @@ llvm::PreservedAnalyses run(llvm::Function &func,
 // statements), especially related to floating point code (i.e. preventing
 // re-ordering of floating point operations so that we can capture the flags).
 // This pass eliminates those empty inline assembly statements.
-
+void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveCompilerBarriers());
+}
 }  // namespace anvill

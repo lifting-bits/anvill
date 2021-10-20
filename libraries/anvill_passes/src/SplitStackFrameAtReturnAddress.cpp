@@ -548,4 +548,10 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
+
+void AddSplitStackFrameAtReturnAddress(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager) {
+      fpm.addPass(SplitStackFrameAtReturnAddress(error_manager));
+    }
+
 }  // namespace anvill

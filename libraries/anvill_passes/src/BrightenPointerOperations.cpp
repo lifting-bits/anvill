@@ -1113,5 +1113,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-
+void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
+                                  unsigned max_gas) {
+  fpm.addPass(PointerLifterPass(max_gas));
+}
 }  // namespace anvill

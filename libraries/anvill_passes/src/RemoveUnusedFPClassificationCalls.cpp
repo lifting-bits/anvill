@@ -63,6 +63,9 @@ llvm::PreservedAnalyses RemoveUnusedFPClassificationCalls::run(
 // NOTE(pag): This pass must be applied before any kind of renaming of lifted
 //            functions is performed, so that we don't accidentally remove
 //            calls to classification functions present in the target binary.
+void AddRemoveUnusedFPClassificationCalls(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveUnusedFPClassificationCalls());
+}
 
 
 }  // namespace anvill

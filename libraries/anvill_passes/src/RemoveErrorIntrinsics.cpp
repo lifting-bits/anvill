@@ -173,5 +173,7 @@ llvm::PreservedAnalyses run(llvm::Function &func,
   return ConvertBoolToPreserved(!removed.empty());
 }
 // Removes calls to `__remill_error`.
-
+void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveErrorIntrinsics());
+}
 }  // namespace anvill

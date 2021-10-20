@@ -117,5 +117,7 @@ RemoveTrivialPhisAndSelects::run(llvm::Function &func,
 // incoming values or true/false values match. This can happen as a result of
 // the instruction folding pass that hoists and folds values up through selects
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
-
+void AddRemoveTrivialPhisAndSelects(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveTrivialPhisAndSelects());
+}
 }  // namespace anvill

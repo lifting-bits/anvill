@@ -177,5 +177,10 @@ SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
+void AddSinkSelectionsIntoBranchTargets(
+    llvm::FunctionPassManager &fpm,
+    ITransformationErrorManager &error_manager) {
+  fpm.addPass(SinkSelectionsIntoBranchTargets(error_manager));
+}
 
 }  // namespace anvill

@@ -207,6 +207,8 @@ llvm::PreservedAnalyses run(llvm::Function &func,
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
-
+void AddLowerRemillMemoryAccessIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerRemillMemoryAccessIntrinsics());
+}
 
 }  // namespace anvill

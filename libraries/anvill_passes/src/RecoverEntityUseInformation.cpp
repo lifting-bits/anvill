@@ -251,6 +251,10 @@ RecoverEntityUseInformation::RecoverEntityUseInformation(
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-
+void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+                                    ITransformationErrorManager &error_manager,
+                                    const EntityLifter &lifter) {
+  fpm.addPass(RecoverEntityUseInformation(error_manager, lifter));
+}
 
 }  // namespace anvill
