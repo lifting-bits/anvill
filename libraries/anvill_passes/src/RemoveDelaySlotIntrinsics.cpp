@@ -31,8 +31,9 @@ namespace anvill {
 
 
 // Try to lower remill memory access intrinsics.
-llvm::PreservedAnalyses run(llvm::Function &func,
-                            llvm::FunctionAnalysisManager &AM) {
+llvm::PreservedAnalyses
+RemoveDelaySlotIntrinsics::run(llvm::Function &func,
+                               llvm::FunctionAnalysisManager &AM) {
   auto module = func.getParent();
   auto begin = module->getFunction("__remill_delay_slot_begin");
   auto end = module->getFunction("__remill_delay_slot_end");

@@ -183,8 +183,9 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 
 
 // Try to lower remill memory access intrinsics.
-llvm::PreservedAnalyses run(llvm::Function &func,
-                            llvm::FunctionAnalysisManager &AM) {
+llvm::PreservedAnalyses
+LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
+                                       llvm::FunctionAnalysisManager &AM) {
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {

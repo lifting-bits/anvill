@@ -31,8 +31,9 @@
 namespace anvill {
 
 
-llvm::PreservedAnalyses run(llvm::Function &func,
-                            llvm::FunctionAnalysisManager &AM) {
+llvm::PreservedAnalyses
+LowerTypeHintIntrinsics::run(llvm::Function &func,
+                             llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::CallInst *> calls;
 
   for (auto &inst : llvm::instructions(func)) {

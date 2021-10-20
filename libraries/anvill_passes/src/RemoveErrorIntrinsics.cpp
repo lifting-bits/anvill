@@ -32,8 +32,9 @@
 namespace anvill {
 
 // Try to lower remill error intrinsics.
-llvm::PreservedAnalyses run(llvm::Function &func,
-                            llvm::FunctionAnalysisManager &AM) {
+llvm::PreservedAnalyses
+RemoveErrorIntrinsics::run(llvm::Function &func,
+                           llvm::FunctionAnalysisManager &AM) {
   auto module = func.getParent();
   auto error = module->getFunction("__remill_error");
 
