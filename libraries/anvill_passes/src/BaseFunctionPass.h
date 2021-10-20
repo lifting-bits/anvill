@@ -130,7 +130,7 @@ BaseFunctionPass<UserFunctionPass>::BaseFunctionPass(
 template <typename UserFunctionPass>
 llvm::PreservedAnalyses
 BaseFunctionPass<UserFunctionPass>::run(llvm::Function &function_,
-                                        llvm::FunctionAnalysisManager &) {
+                                        llvm::FunctionAnalysisManager &fam) {
   function = &function_;
   module = function->getParent();
   original_function_ir = GetFunctionIR(*function);
@@ -138,7 +138,7 @@ BaseFunctionPass<UserFunctionPass>::run(llvm::Function &function_,
   original_function_name = function->getName().str();
 
   auto &function_pass = *static_cast<UserFunctionPass *>(this);
-  return function_pass.Run(*function);
+  return ConvertBoolToPreserved(function_pass.Run(function, fam));
 }
 
 template <typename UserFunctionPass>

@@ -60,6 +60,7 @@ getComparisonOperands(llvm::BinaryOperator *op) {
   return std::nullopt;
 }
 
+
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   auto pred = cmp->getPredicate();
   llvm::IRBuilder<> ir(cmp);
@@ -72,7 +73,8 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
 }  // namespace
 
 
-bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses run(llvm::Function &func,
+                            llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -220,8 +222,14 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
 
   LOG(INFO) << "ConvertXorToCmp: replaced " << replaced_items
             << " xors with negated comparisons";
-  return changed;
+  return ConvertBoolToPreserved(changed);
 }
+
+
+llvm::StringRef ConvertXorToCmp::name(void) {
+  return llvm::StringRef("ConvertXorToCmp");
+}
+
 // Convert operations in the form of:
 // (left OP right) ^ 1
 // into:

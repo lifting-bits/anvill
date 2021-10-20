@@ -17,8 +17,10 @@
 
 #pragma once
 
-#include <llvm/IR/LegacyPassManager.h>
+
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/Pass.h>
 
 namespace anvill {
 
@@ -28,7 +30,25 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
                                            const std::string &data_name);
 
 template <typename PassT>
-bool RunFunctionPass(llvm::Module *module, PassT function_pass);
+bool RunFunctionPass(llvm::Module *module, PassT &&function_pass) {
+
+  llvm::FunctionPassManager fpm;
+  llvm::ModulePassManager mpm;
+  llvm::ModuleAnalysisManager mam;
+
+  fpm.addPass(function_pass);
+
+  //mpm.addPass(
+  //   llvm::createModuleToFunctionPassAdaptor(std::move(function_pass)));
+
+
+  //mpm.run(*module, mam);
+
+
+  // return VerifyModule(module);
+  return true;
+}
+
 
 struct Platform final {
   std::string os;

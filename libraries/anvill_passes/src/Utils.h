@@ -19,6 +19,7 @@
 
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/Pass.h>
 
 #include <functional>
 #include <vector>

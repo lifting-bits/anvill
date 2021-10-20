@@ -46,7 +46,7 @@ TEST_SUITE("XorConversion") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(), ConvertXorToCmp()));
+    CHECK(RunFunctionPass<ConvertXorToCmp>(module.get(), ConvertXorToCmp()));
 
     const auto xor_as_not = module->getFunction("xor_as_not");
     int xor_count = 0;

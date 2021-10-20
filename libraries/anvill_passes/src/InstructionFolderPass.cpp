@@ -28,6 +28,14 @@ namespace anvill {
 
 namespace {
 
+
+class PassFunctionState {
+ private:
+  const llvm::DominatorTreeAnalysis::Result &dt;
+
+ public:
+};
+
 //
 // These maps select the correct fold operation for the given instruction
 // types.
@@ -164,17 +172,13 @@ InstructionFolderPass::InstructionFolderPass(
     : BaseFunctionPass(error_manager) {}
 
 
-InstructionFolderPass *
-InstructionFolderPass::Create(ITransformationErrorManager &error_manager) {
-  return new InstructionFolderPass(error_manager);
-}
-
-bool InstructionFolderPass::Run(llvm::Function &function) {
+bool InstructionFolderPass::Run(llvm::Function &function,
+                                llvm::FunctionAnalysisManager fam) {
   if (function.isDeclaration()) {
     return false;
   }
 
-  dt.reset(new llvm::DominatorTree(function));
+  const auto &dt = fam.getResult<llvm::DominatorTreeAnalysis>(function);
 
   // Create an initial queue of possible candidates
   auto next_worklist =
@@ -730,7 +734,7 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
 
       auto all_dominated = true;
       for (auto &incoming_val : incoming_values) {
-        if (!dt->dominates(iv, incoming_val.basic_block->getTerminator())) {
+        if (!dt.dominates(iv, incoming_val.basic_block->getTerminator())) {
           all_dominated = false;
           break;
         }

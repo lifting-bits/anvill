@@ -17,9 +17,9 @@
 
 #pragma once
 
-#include "BaseFunctionPass.h"
-
 #include <llvm/IR/Dominators.h>
+
+#include "BaseFunctionPass.h"
 
 namespace anvill {
 
@@ -28,11 +28,7 @@ class InstructionFolderPass final
  public:
   explicit InstructionFolderPass(ITransformationErrorManager &error_manager);
 
-  virtual ~InstructionFolderPass(void) override = default;
-
-  // Creates a new InstructionFolderPass object
-  static InstructionFolderPass *
-  Create(ITransformationErrorManager &error_manager);
+  ~InstructionFolderPass(void) override = default;
 
   // Function pass entry point
   bool Run(llvm::Function &function);
@@ -44,8 +40,7 @@ class InstructionFolderPass final
   // `BinaryOperator` and `GetElementPtrInst` instructions
   //
   // Returns true if the function was changed
-  bool FoldSelectInstruction(InstructionList &output,
-                             llvm::Instruction *instr);
+  bool FoldSelectInstruction(InstructionList &output, llvm::Instruction *instr);
 
   // A single incoming value + basic_block for a PHI node
   struct IncomingValue final {
@@ -104,9 +99,9 @@ class InstructionFolderPass final
                                      llvm::Instruction *binary_op_instr);
 
   bool FoldPHINodeWithBinaryOp(llvm::Instruction *&output,
-                                      llvm::Instruction *phi_node,
-                                      IncomingValueList &incoming_values,
-                                      llvm::Instruction *binary_op_instr);
+                               llvm::Instruction *phi_node,
+                               IncomingValueList &incoming_values,
+                               llvm::Instruction *binary_op_instr);
 
   // Folders for
   //   `SelectInst` + `CastInst`
@@ -153,11 +148,9 @@ class InstructionFolderPass final
                         llvm::Instruction *gep_instr);
 
   bool FoldPHINodeWithGEPInst(llvm::Instruction *&output,
-                                     llvm::Instruction *phi_node,
-                                     IncomingValueList &incoming_values,
-                                     llvm::Instruction *cast_instr);
-
-  std::unique_ptr<llvm::DominatorTree> dt;
+                              llvm::Instruction *phi_node,
+                              IncomingValueList &incoming_values,
+                              llvm::Instruction *cast_instr);
 };
 
 }  // namespace anvill
