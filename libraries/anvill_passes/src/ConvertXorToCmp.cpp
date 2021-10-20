@@ -73,8 +73,8 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
 }  // namespace
 
 
-llvm::PreservedAnalyses run(llvm::Function &func,
-                            llvm::FunctionAnalysisManager &AM) {
+llvm::PreservedAnalyses
+ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
 
   for (auto &inst : llvm::instructions(func)) {

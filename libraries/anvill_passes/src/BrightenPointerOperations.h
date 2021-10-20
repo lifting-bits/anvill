@@ -21,6 +21,7 @@
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 #include <algorithm>
@@ -44,11 +45,12 @@ namespace anvill {
 
 class CrossReferenceResolver;
 
-class PointerLifterPass final : public llvm::FunctionPass {
+class PointerLifterPass final : public llvm::PassInfoMixin<PointerLifterPass> {
  public:
   explicit PointerLifterPass(unsigned max_gas_);
 
-  bool runOnFunction(llvm::Function &f) final;
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &AM);
 
  private:
   static char ID;
@@ -74,24 +76,27 @@ class PointerLifter
 
   std::pair<llvm::Value *, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
   std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
-  std::pair<llvm::Value *, bool> visitReturnInst(llvm::ReturnInst& inst);
-  std::pair<llvm::Value *, bool> visitStoreInst(llvm::StoreInst& store);
-  std::pair<llvm::Value *, bool> visitAllocaInst(llvm::AllocaInst& alloca);
-  
-  std::pair<llvm::Value *, bool> visitSExtInst(llvm::SExtInst& inst);
-  std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst& inst);
+  std::pair<llvm::Value *, bool> visitReturnInst(llvm::ReturnInst &inst);
+  std::pair<llvm::Value *, bool> visitStoreInst(llvm::StoreInst &store);
+  std::pair<llvm::Value *, bool> visitAllocaInst(llvm::AllocaInst &alloca);
 
-  std::pair<llvm::Value *, bool> visitCmpInst(llvm::CmpInst& inst);
-  llvm::Value* flattenGEP(llvm::GetElementPtrInst *gep);
-  std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
+  std::pair<llvm::Value *, bool> visitSExtInst(llvm::SExtInst &inst);
+  std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst &inst);
+
+  std::pair<llvm::Value *, bool> visitCmpInst(llvm::CmpInst &inst);
+  llvm::Value *flattenGEP(llvm::GetElementPtrInst *gep);
+  std::pair<llvm::Value *, bool>
+  BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
                             llvm::Type *inferred_type);
-  std::pair<llvm::Value *, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
+  std::pair<llvm::Value *, bool>
+  visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
   std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
   std::pair<llvm::Value *, bool> visitPHINode(llvm::PHINode &inst);
-  std::pair<llvm::Value *, bool> visitPtrToIntInst(llvm::PtrToIntInst& inst);
+  std::pair<llvm::Value *, bool> visitPtrToIntInst(llvm::PtrToIntInst &inst);
   // Simple wrapper for storing the type information into the list, and then
   // calling visit.
-  std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);
+  std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst,
+                                                llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> visitInstruction(llvm::Instruction &I);
   std::pair<llvm::Value *, bool>
   visitBinaryOperator(llvm::BinaryOperator &inst);
