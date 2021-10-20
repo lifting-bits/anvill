@@ -48,7 +48,7 @@ struct StackPointerUse final {
   // An operand inside of a particular instruction, where `use->getUser()`
   // is an `llvm::Instruction`, and `use->get()` is a value related to the
   // stack pointer.
-  llvm::Use * const use;
+  llvm::Use *const use;
 
   // Operand size
   const std::uint64_t type_size;
@@ -97,7 +97,7 @@ class RecoverStackFrameInformation final
   bool Run(llvm::Function &function);
 
   // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  static llvm::StringRef name();
 
   // Enumerates all the store and load instructions that reference
   // the stack

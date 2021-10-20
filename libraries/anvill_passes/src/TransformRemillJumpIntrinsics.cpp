@@ -188,7 +188,7 @@ TransformRemillJumpIntrinsics::run(llvm::Function &F,
     fpm.addPass(llvm::DCEPass());
     fpm.addPass(llvm::SROA());
     fpm.addPass(llvm::SimplifyCFGPass());
-    fpm.addPass(llvm::InstructionCombiningPass());
+    fpm.addPass(llvm::InstCombinePass());
     fpm.run(F, fam);
   }
 

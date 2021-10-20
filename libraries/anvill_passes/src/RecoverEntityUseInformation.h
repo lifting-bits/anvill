@@ -43,7 +43,7 @@ struct EntityUse final {
   // An operand inside of a particular instruction, where `use->getUser()`
   // is an `llvm::Instruction`, and `use->get()` is a value related to the
   // stack pointer.
-  llvm::Use * const use;
+  llvm::Use *const use;
 
   // Resolved cross-reference.
   const ResolvedCrossReference xref;
@@ -77,12 +77,11 @@ class RecoverEntityUseInformation final
   bool Run(llvm::Function &function);
 
   // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  static llvm::StringRef name(void);
 
   // Enumerates some of the possible entity usages that are isolated to
   // specific instruction operand uses.
-  EntityUsages EnumeratePossibleEntityUsages(
-      llvm::Function &function);
+  EntityUsages EnumeratePossibleEntityUsages(llvm::Function &function);
 
   // Patches the function, replacing the uses known to the entity lifter.
   Result<std::monostate, EntityReferenceErrorCode>

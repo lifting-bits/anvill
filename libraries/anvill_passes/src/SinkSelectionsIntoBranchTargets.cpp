@@ -168,7 +168,7 @@ bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef SinkSelectionsIntoBranchTargets::getPassName(void) const {
+llvm::StringRef SinkSelectionsIntoBranchTargets::name(void) {
   return llvm::StringRef("SinkSelectionsIntoBranchTargets");
 }
 
@@ -176,9 +176,5 @@ SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
-    ITransformationErrorManager &error_manager) {
-  return SinkSelectionsIntoBranchTargets::Create(error_manager);
-}
 
 }  // namespace anvill

@@ -28,6 +28,7 @@
 #include <array>
 #include <sstream>
 
+#include "RecoverStackFrameInformation.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -74,9 +75,9 @@ TEST_SUITE("RecoverStackFrameInformation") {
           lift_options.stack_frame_lower_padding =
               lift_options.stack_frame_higher_padding = padding_bytes / 2U;
 
-          CHECK(RunFunctionPass(module.get(),
-                                CreateRecoverStackFrameInformation(
-                                    *error_manager.get(), lift_options)));
+          CHECK(RunFunctionPass(
+              module.get(), RecoverStackFrameInformation(*error_manager.get(),
+                                                         lift_options)));
 
 
           for (const auto &error : error_manager->ErrorList()) {

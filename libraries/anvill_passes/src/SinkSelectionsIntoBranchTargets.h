@@ -84,11 +84,10 @@ class SinkSelectionsIntoBranchTargets final
   bool Run(llvm::Function &function);
 
   // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  static llvm::StringRef name(void);
 
- private:
   SinkSelectionsIntoBranchTargets(ITransformationErrorManager &error_manager);
-  virtual ~SinkSelectionsIntoBranchTargets(void) override = default;
+  ~SinkSelectionsIntoBranchTargets(void) override = default;
 };
 
 }  // namespace anvill

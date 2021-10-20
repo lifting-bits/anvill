@@ -38,7 +38,7 @@ class InstructionFolderPass final
   bool Run(llvm::Function &function);
 
   // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  static llvm::StringRef name(void);
 
   // Folds `Select` instructions interacting with `CastInst`,
   // `BinaryOperator` and `GetElementPtrInst` instructions

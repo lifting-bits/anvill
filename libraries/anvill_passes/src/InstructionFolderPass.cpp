@@ -227,7 +227,7 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
   return function_changed;
 }
 
-llvm::StringRef InstructionFolderPass::getPassName(void) const {
+llvm::StringRef InstructionFolderPass::name(void) {
   return llvm::StringRef("InstructionFolderPass");
 }
 
@@ -822,11 +822,6 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
 
   output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
   return true;
-}
-
-llvm::FunctionPass *
-CreateInstructionFolderPass(ITransformationErrorManager &error_manager) {
-  return InstructionFolderPass::Create(error_manager);
 }
 
 }  // namespace anvill

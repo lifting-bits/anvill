@@ -34,8 +34,8 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
     REQUIRE(module != nullptr);
 
     auto error_manager = ITransformationErrorManager::Create();
-    CHECK(RunFunctionPass(module.get(), CreateSinkSelectionsIntoBranchTargets(
-                                            *error_manager.get())));
+    CHECK(RunFunctionPass(
+        module.get(), SinkSelectionsIntoBranchTargets(*error_manager.get())));
 
     for (const auto &error : error_manager->ErrorList()) {
       CHECK_MESSAGE(false, error.description);

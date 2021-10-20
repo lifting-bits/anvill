@@ -89,7 +89,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef RecoverStackFrameInformation::getPassName(void) const {
+llvm::StringRef RecoverStackFrameInformation::name(void) {
   return llvm::StringRef("RecoverStackFrameInformation");
 }
 
@@ -436,10 +436,5 @@ RecoverStackFrameInformation::RecoverStackFrameInformation(
     : BaseFunctionPass(error_manager),
       options(options) {}
 
-llvm::FunctionPass *
-CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
-                                   const LifterOptions &options) {
-  return RecoverStackFrameInformation::Create(error_manager, options);
-}
 
 }  // namespace anvill

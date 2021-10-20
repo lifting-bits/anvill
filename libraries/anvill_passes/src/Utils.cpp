@@ -187,7 +187,8 @@ void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
   }
 }
 
-static llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
+
+llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
   return modified ? llvm::PreservedAnalyses::none()
                   : llvm::PreservedAnalyses::all();
 }

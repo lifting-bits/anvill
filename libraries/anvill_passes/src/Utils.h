@@ -58,6 +58,6 @@ std::string GetModuleIR(llvm::Module &module);
 // Copies metadata from the source to destination if both values are instructions.
 void CopyMetadataTo(llvm::Value *src, llvm::Value *dst);
 
-static llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
+llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
 
 }  // namespace anvill

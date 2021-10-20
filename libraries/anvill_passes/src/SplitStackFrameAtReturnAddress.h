@@ -165,8 +165,6 @@ class SplitStackFrameAtReturnAddress final
   // Function pass entry point
   bool Run(llvm::Function &function);
 
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
 
   // Analyses the function to determine the necessary steps to split
   // the function's stack frame
@@ -195,6 +193,8 @@ class SplitStackFrameAtReturnAddress final
   GenerateStackFramePartTypeName(const llvm::Function &function,
                                  std::size_t part_number);
 
+
+  static llvm::StringRef name(void);
 
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
 
