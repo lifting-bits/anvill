@@ -106,6 +106,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   llvm::LoopAnalysisManager lam;
   llvm::CGSCCAnalysisManager cam;
   llvm::InlineParams params;
+  llvm::FunctionAnalysisManager fam;
+
+  pb.registerFunctionAnalyses(fam);
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cam);
+  pb.registerLoopAnalyses(lam);
 
   params.DefaultThreshold = 250;
   auto inliner = llvm::ModuleInlinerWrapperPass(params);
@@ -115,7 +121,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
 
   llvm::FunctionPassManager fpm;
-  llvm::FunctionAnalysisManager fam;
 
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SinkingPass());
@@ -132,10 +137,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
-
-  // TODO(ian) Is there a better way to do this? I assume llvm has builders somewhere.
-  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
-
 
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveUnusedFPClassificationCalls(fpm);
