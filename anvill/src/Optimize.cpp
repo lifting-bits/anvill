@@ -77,6 +77,8 @@ namespace anvill {
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
+// When utilizing crossRegisterProxies cleanup triggers asan
+
 void OptimizeModule(const EntityLifter &lifter_context,
                     const remill::Arch *arch, const Program &program,
                     llvm::Module &module, const LifterOptions &options) {
@@ -172,7 +174,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
-
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
   mpm.run(module, mam);
 
@@ -240,6 +241,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   }
 
   CHECK(remill::VerifyModule(&module));
+
+  // manually clear the analyses to prevent ASAN failures in the destructor
+  mam.clear();
+  fam.clear();
+  cam.clear();
+  lam.clear();
 }
 
 }  // namespace anvill
