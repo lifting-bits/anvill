@@ -23,6 +23,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
@@ -1032,11 +1033,12 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     }
   }
   // Deadcode remove stale geps.
-  llvm::legacy::FunctionPassManager fpm(mod);
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.doInitialization();
-  fpm.run(func);
-  fpm.doFinalization();
+  llvm::FunctionPassManager fpm(mod);
+  llvm::FunctionAnalysisManager fam;
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
+  fam.registerPass([&] { return llvm::PassInstrumentationAnalysis(); });
+  fpm.addPass(llvm::DCEPass());
+  fpm.run(func, fam);
 
   made_progress = true;
   for (auto i = 0u; i < max_gas && made_progress; ++i) {
@@ -1089,9 +1091,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     next_inferred_types.clear();
     to_remove.clear();
 
-    fpm.doInitialization();
-    fpm.run(func);
-    fpm.doFinalization();
+    fpm.run(func, fam);
   }
 }
 

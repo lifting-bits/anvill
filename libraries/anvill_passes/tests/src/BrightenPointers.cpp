@@ -24,6 +24,7 @@
 #include <doctest.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -87,10 +88,16 @@ bool RunFunctionPass(llvm::Module &module) {
 
   AddBrightenPointerOperations(pass_manager, 250U);
 
-  llvm::ModulePassManager mpm;
-  llvm::ModuleAnalysisManager mam;
-  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(pass_manager)));
-  mpm.run(module, mam);
+  llvm::FunctionAnalysisManager fam;
+
+
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
+  fam.registerPass([&] { return llvm::PassInstrumentationAnalysis(); });
+
+  for (auto &func : module) {
+    pass_manager.run(func, fam);
+  }
+
 
   return VerifyModule(&module);
 }

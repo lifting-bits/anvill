@@ -51,6 +51,7 @@
 #include <llvm/Transforms/Scalar/BDCE.h>
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Passes/PassBuilder.h>
 
 // clang-format on
 
@@ -98,10 +99,14 @@ void OptimizeModule(const EntityLifter &lifter_context,
     memory_escape->eraseFromParent();
   }
 
+
+  llvm::PassBuilder pb;
   llvm::ModulePassManager mpm;
   llvm::ModuleAnalysisManager mam;
-
+  llvm::LoopAnalysisManager lam;
+  llvm::CGSCCAnalysisManager cam;
   llvm::InlineParams params;
+
   params.DefaultThreshold = 250;
   auto inliner = llvm::ModuleInlinerWrapperPass(params);
   mpm.addPass(std::move(inliner));
@@ -110,6 +115,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
 
   llvm::FunctionPassManager fpm;
+  llvm::FunctionAnalysisManager fam;
+
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SinkingPass());
   fpm.addPass(llvm::NewGVNPass());
@@ -126,7 +133,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
-  // Todo this needs to be in an analysis   fpm.addPass(new llvm::TargetLibraryInfoWrapperPass());
+  // TODO(ian) Is there a better way to do this? I assume llvm has builders somewhere.
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
 
 
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
@@ -160,6 +168,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
   }
+
+  pb.crossRegisterProxies(lam, fam, cam, mam);
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));

@@ -23,6 +23,8 @@
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
+#include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
@@ -183,13 +185,12 @@ TransformRemillJumpIntrinsics::run(llvm::Function &F,
     // Run private function passes if the jump instrinsics
     // are replaced
     llvm::FunctionPassManager fpm;
-    llvm::FunctionAnalysisManager fam;
 
     fpm.addPass(llvm::DCEPass());
     fpm.addPass(llvm::SROA());
     fpm.addPass(llvm::SimplifyCFGPass());
     fpm.addPass(llvm::InstCombinePass());
-    fpm.run(F, fam);
+    fpm.run(F, AM);
   }
 
   return ConvertBoolToPreserved(ret);
