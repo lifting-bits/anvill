@@ -242,7 +242,7 @@ class IDAProgram(Program):
             cc,
             is_entrypoint,
         )
-        self.add_symbol(address, _function_name(address))
+        
         return func
 
     def function_from_addr(self, address):

@@ -255,8 +255,6 @@ class BNProgram(Program):
                 "No function defined at or containing address {:x}".format(address)
             )
 
-        self._try_add_symbol(address)
-
         func_type = self.type_cache.get(bn_func.function_type)
         calling_conv = CallingConvention(arch, bn_func, bn_func.calling_convention)
         param_list = self._get_function_parameters(bn_func)
