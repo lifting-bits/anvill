@@ -103,12 +103,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
 
   llvm::PassBuilder pb;
-  llvm::ModulePassManager mpm;
-  llvm::ModuleAnalysisManager mam;
-  llvm::LoopAnalysisManager lam;
-  llvm::CGSCCAnalysisManager cam;
+  llvm::ModulePassManager mpm(false);
+  llvm::ModuleAnalysisManager mam(false);
+  llvm::LoopAnalysisManager lam(false);
+  llvm::CGSCCAnalysisManager cam(false);
   llvm::InlineParams params;
-  llvm::FunctionAnalysisManager fam;
+  llvm::FunctionAnalysisManager fam(false);
 
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);

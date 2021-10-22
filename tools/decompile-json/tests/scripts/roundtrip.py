@@ -160,8 +160,7 @@ if __name__ == "__main__":
                         help="Where to save temporary unit test outputs")
     parser.add_argument("-t", "--timeout",
                         help="set timeout in seconds", type=int)
-    parser.add_argument("--compiler_opt", action="append",
-                        required=False, help="adds a compiler opt when compiling")
+
     args = parser.parse_args()
 
     if args.workspace:
@@ -171,7 +170,7 @@ if __name__ == "__main__":
         def test(self):
             specifier = ["python3", "-m", "anvill"]
             roundtrip(self, specifier, args.anvill, path, test_name,
-                      args.clang, args.timeout, args.workspace, args.compiler_opt)
+                      args.clang, args.timeout, args.workspace)
 
         return test
 

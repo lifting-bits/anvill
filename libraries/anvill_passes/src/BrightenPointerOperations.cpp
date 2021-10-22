@@ -1033,7 +1033,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     }
   }
   // Deadcode remove stale geps.
-  llvm::FunctionPassManager fpm(mod);
+  llvm::FunctionPassManager fpm(false);
   llvm::FunctionAnalysisManager fam;
   fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
   fam.registerPass([&] { return llvm::PassInstrumentationAnalysis(); });
