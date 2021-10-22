@@ -147,9 +147,9 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddRemoveDelaySlotIntrinsics(fpm);
   AddRemoveErrorIntrinsics(fpm);
   AddLowerRemillMemoryAccessIntrinsics(fpm);
-  /*
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
+  /*
   AddInstructionFolderPass(fpm, err_man);
   fpm.addPass(llvm::DCEPass());
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
@@ -231,13 +231,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   second_mpm.addPass(
       llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
   second_mpm.run(module, mam);
-*/
 
   // Get rid of all final uses of `__anvill_pc`.
   if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {
     remill::ReplaceAllUsesOfConstant(
         anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), &module);
-  }
+  }*/
 
   CHECK(remill::VerifyModule(&module));
 
