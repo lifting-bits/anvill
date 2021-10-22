@@ -167,7 +167,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
   AddConvertXorToCmp(fpm);
-  
+
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
   }
@@ -219,7 +219,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   CHECK(!err_man.HasFatalError());
 
-  /*
+
   llvm::FunctionPassManager second_fpm;
 
 
@@ -228,17 +228,14 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddLowerRemillUndefinedIntrinsics(second_fpm);
 
 
-  llvm::ModulePassManager second_mpm;
-
-  second_mpm.addPass(
-      llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
-  second_mpm.run(module, mam);
+  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
+  mpm.run(module, mam);
 
   // Get rid of all final uses of `__anvill_pc`.
   if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {
     remill::ReplaceAllUsesOfConstant(
         anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), &module);
-  }*/
+  }
 
   CHECK(remill::VerifyModule(&module));
 
