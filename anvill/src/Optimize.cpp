@@ -151,10 +151,11 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddLowerTypeHintIntrinsics(fpm);
   AddInstructionFolderPass(fpm, err_man);
   fpm.addPass(llvm::DCEPass());
-  /*
+
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveTrivialPhisAndSelects(fpm);
+  /*
   fpm.addPass(llvm::DCEPass());
   AddRecoverStackFrameInformation(fpm, err_man, options);
   fpm.addPass(llvm::SROA());
