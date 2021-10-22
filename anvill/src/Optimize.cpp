@@ -52,6 +52,7 @@
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/IPO/GlobalOpt.h>
 
 // clang-format on
 
@@ -118,6 +119,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   params.DefaultThreshold = 250;
   auto inliner = llvm::ModuleInlinerWrapperPass(params);
   mpm.addPass(std::move(inliner));
+  mpm.addPass(llvm::GlobalOptPass());
   mpm.addPass(llvm::GlobalDCEPass());
   mpm.addPass(llvm::StripDeadDebugInfoPass());
 
@@ -148,10 +150,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
   AddInstructionFolderPass(fpm, err_man);
-  AddLowerTypeHintIntrinsics(fpm);
-  AddInstructionFolderPass(fpm, err_man);
-
-
   fpm.addPass(llvm::DCEPass());
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
