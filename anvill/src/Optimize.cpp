@@ -167,10 +167,10 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
   AddConvertXorToCmp(fpm);
-  /*
+  
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
-  }*/
+  }
 
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
