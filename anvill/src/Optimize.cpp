@@ -147,6 +147,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddRemoveDelaySlotIntrinsics(fpm);
   AddRemoveErrorIntrinsics(fpm);
   AddLowerRemillMemoryAccessIntrinsics(fpm);
+  /*
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
   AddInstructionFolderPass(fpm, err_man);
@@ -168,7 +169,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
-  }
+  }*/
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
@@ -216,7 +217,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   CHECK(!err_man.HasFatalError());
 
-
+  /*
   llvm::FunctionPassManager second_fpm;
 
 
@@ -230,7 +231,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   second_mpm.addPass(
       llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
   second_mpm.run(module, mam);
-
+*/
 
   // Get rid of all final uses of `__anvill_pc`.
   if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {
