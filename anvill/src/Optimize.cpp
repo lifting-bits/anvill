@@ -149,9 +149,9 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddLowerRemillMemoryAccessIntrinsics(fpm);
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
-  /*
   AddInstructionFolderPass(fpm, err_man);
   fpm.addPass(llvm::DCEPass());
+  /*
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveTrivialPhisAndSelects(fpm);
@@ -170,6 +170,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   if (FLAGS_pointer_brighten_gas) {
     AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
   }*/
+
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
