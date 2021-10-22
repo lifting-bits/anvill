@@ -24,6 +24,7 @@ import platform
 import sys
 import shutil
 
+
 class RunError(Exception):
     def __init__(self, msg):
         self.msg = msg
@@ -38,6 +39,7 @@ def write_command_log(cmd_description, cmd_exec, ws):
             cmdlog.write(f"# {cmd_description}\n")
         cmdlog.write(f"{cmd_exec}\n")
 
+
 def run_cmd(cmd, timeout, description, ws):
     try:
         exec_cmd = f"{' '.join(cmd)}"
@@ -51,9 +53,11 @@ def run_cmd(cmd, timeout, description, ws):
             universal_newlines=True,
         )
     except FileNotFoundError as e:
-        raise RunError('Error: No such file or directory: "' + e.filename + '"')
+        raise RunError('Error: No such file or directory: "' +
+                       e.filename + '"')
     except PermissionError as e:
-        raise RunError('Error: File "' + e.filename + '" is not an executable.')
+        raise RunError('Error: File "' + e.filename +
+                       '" is not an executable.')
 
     return p
 
@@ -64,7 +68,8 @@ def compile(self, clang, input, output, timeout, ws, options=None):
     if options is not None:
         cmd.extend(options)
     cmd.extend([input, "-o", output])
-    p = run_cmd(cmd, timeout, description="Original source Clang compile command", ws=ws)
+    p = run_cmd(
+        cmd, timeout, description="Original source Clang compile command", ws=ws)
 
     self.assertEqual(p.returncode, 0, "clang failure")
     self.assertEqual(
@@ -107,14 +112,15 @@ def decompile(self, decompiler, input, output, timeout, ws):
 def roundtrip(self, specifier, decompiler, filename, testname, clang, timeout, workspace):
 
     # Python refuses to add delete=False to the TemporaryDirectory constructor
-    #with tempfile.TemporaryDirectory(prefix=f"{testname}_", dir=workspace) as tempdir:
+    # with tempfile.TemporaryDirectory(prefix=f"{testname}_", dir=workspace) as tempdir:
     tempdir = tempfile.mkdtemp(prefix=f"{testname}_", dir=workspace)
 
     compiled = os.path.join(tempdir, f"{testname}_compiled")
     compile(self, clang, filename, compiled, timeout, tempdir)
 
     # capture binary run outputs
-    compiled_output = run_cmd([compiled], timeout, description="capture compilation output", ws=tempdir)
+    compiled_output = run_cmd(
+        [compiled], timeout, description="capture compilation output", ws=tempdir)
 
     rt_json = os.path.join(tempdir, f"{testname}_rt.json")
     specify(self, specifier, compiled, rt_json, timeout, tempdir)
@@ -123,18 +129,22 @@ def roundtrip(self, specifier, decompiler, filename, testname, clang, timeout, w
     decompile(self, decompiler, rt_json, rt_bc, timeout, tempdir)
 
     rebuilt = os.path.join(tempdir, f"{testname}_rebuilt")
-    compile(self, clang, rt_bc, rebuilt, timeout, tempdir, ["-Wno-everything"]) 
+    compile(self, clang, rt_bc, rebuilt, timeout, tempdir, ["-Wno-everything"])
     # capture outputs of binary after roundtrip
-    rebuilt_output = run_cmd([rebuilt], timeout, description="Capture binary output after roundtrip", ws=tempdir)
+    rebuilt_output = run_cmd(
+        [rebuilt], timeout, description="Capture binary output after roundtrip", ws=tempdir)
 
     # Clean up tempdir if no workspace specified
     # otherwise keep it for debugging purposes
     if not workspace:
         shutil.rmtree(tempdir)
 
-    self.assertEqual(compiled_output.stderr, rebuilt_output.stderr, "Different stderr")
-    self.assertEqual(compiled_output.stdout, rebuilt_output.stdout, "Different stdout")
-    self.assertEqual(compiled_output.returncode, rebuilt_output.returncode, "Different return code")
+    self.assertEqual(compiled_output.stderr,
+                     rebuilt_output.stderr, "Different stderr")
+    self.assertEqual(compiled_output.stdout,
+                     rebuilt_output.stdout, "Different stdout")
+    self.assertEqual(compiled_output.returncode,
+                     rebuilt_output.returncode, "Different return code")
 
 
 class TestRoundtrip(unittest.TestCase):
@@ -146,9 +156,12 @@ if __name__ == "__main__":
     parser.add_argument("anvill", help="path to anvill-decompile-json")
     parser.add_argument("tests", help="path to test directory")
     parser.add_argument("clang", help="path to clang")
-    parser.add_argument("workspace", nargs="?", default=None, help="Where to save temporary unit test outputs")
-    parser.add_argument("-t", "--timeout", help="set timeout in seconds", type=int)
-
+    parser.add_argument("workspace", nargs="?", default=None,
+                        help="Where to save temporary unit test outputs")
+    parser.add_argument("-t", "--timeout",
+                        help="set timeout in seconds", type=int)
+    parser.add_argument("--compiler_opt", action="append",
+                        required=False, help="adds a compiler opt when compiling")
     args = parser.parse_args()
 
     if args.workspace:
@@ -157,7 +170,8 @@ if __name__ == "__main__":
     def test_generator(path, test_name):
         def test(self):
             specifier = ["python3", "-m", "anvill"]
-            roundtrip(self, specifier, args.anvill, path, test_name, args.clang, args.timeout, args.workspace)
+            roundtrip(self, specifier, args.anvill, path, test_name,
+                      args.clang, args.timeout, args.workspace, args.compiler_opt)
 
         return test
 
