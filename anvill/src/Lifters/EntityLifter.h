@@ -21,6 +21,8 @@
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <llvm/ADT/SmallSet.h>
+#include <llvm/IR/ValueMap.h>
 
 #include <functional>
 #include <unordered_map>
@@ -98,11 +100,11 @@ class EntityLifterImpl {
 
   // Maps native code addresses to lifted entities. The lifted entities reside
   // in the `options.module` module.
-  std::unordered_map<uint64_t, std::unordered_set<llvm::Constant *>>
+  std::unordered_map<uint64_t, llvm::SmallSet<llvm::WeakTrackingVH,10>>
       address_to_entity;
 
-  // Maps lifted entities to native addresses. The lifted
-  std::unordered_map<llvm::Constant *, uint64_t> entity_to_address;
+  // Maps lifted entities to native addresses. The value map acts as a weak reference to the entity.
+  llvm::ValueMap<llvm::Constant *, uint64_t> entity_to_address;
 };
 
 }  // namespace anvill

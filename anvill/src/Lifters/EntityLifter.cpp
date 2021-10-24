@@ -55,7 +55,7 @@ EntityLifterImpl::EntityLifterImpl(
 void EntityLifterImpl::AddEntity(llvm::Constant *entity, uint64_t address) {
   CHECK_NOTNULL(entity);
   address_to_entity[address].insert(entity);
-  if (auto [it, added] = entity_to_address.emplace(entity, address); added) {
+  if (auto [it, added] = entity_to_address.insert({entity, address}); added) {
     if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(entity); gv) {
       llvm::GlobalValue *used[] = {gv};
       llvm::appendToCompilerUsed(*(options.module), used);
@@ -81,8 +81,10 @@ void EntityLifterImpl::ForEachEntityAtAddress(
     uint64_t address, std::function<void(llvm::Constant *)> cb) const {
   if (auto it = address_to_entity.find(address);
       it != address_to_entity.end()) {
-    for (auto gv : it->second) {
-      cb(gv);
+    for (llvm::Value *gv : it->second) {
+      if (gv && llvm::isa<llvm::Constant>(gv)) {
+        cb(llvm::cast<llvm::Constant>(gv));
+      }
     }
   }
 }
