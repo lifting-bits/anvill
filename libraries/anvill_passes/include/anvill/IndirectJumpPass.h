@@ -3,6 +3,7 @@
 #include <anvill/ABI.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 namespace anvill {
@@ -23,7 +24,7 @@ static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
   return false;
 }
 
-static std::vector<llvm::CallInst *>
+static inline std::vector<llvm::CallInst *>
 getTargetCalls(llvm::Function &fromFunction) {
   std::vector<llvm::CallInst *> calls;
   for (auto &insn : llvm::instructions(fromFunction)) {
@@ -39,28 +40,24 @@ getTargetCalls(llvm::Function &fromFunction) {
 }  // namespace
 
 // NOTE(ian): Unfortunately pretty sure CRTP is the only way to do this without running into issues with pass IDs
-template <typename UserFunctionPass>
-class IndirectJumpPass : public llvm::FunctionPass {
+template <typename UserFunctionPass, typename Result>
+class IndirectJumpPass {
  public:
-  static char ID;
+  IndirectJumpPass(void) {}
 
-  IndirectJumpPass(void) : llvm::FunctionPass(ID) {}
-
-  virtual bool runOnFunction(llvm::Function &F) override;
+  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &am);
 };
 
 
-template <typename UserFunctionPass>
-char IndirectJumpPass<UserFunctionPass>::ID = '\0';
-
-template <typename UserFunctionPass>
-bool IndirectJumpPass<UserFunctionPass>::runOnFunction(llvm::Function &F) {
+template <typename UserFunctionPass, typename Result>
+Result IndirectJumpPass<UserFunctionPass, Result>::run(
+    llvm::Function &F, llvm::FunctionAnalysisManager &am) {
   auto &function_pass = *static_cast<UserFunctionPass *>(this);
-  bool isModified = false;
+  Result total = function_pass.INIT_RES;
   for (auto targetCall : getTargetCalls(F)) {
-    isModified |= function_pass.runOnIndirectJump(targetCall);
+    total = function_pass.runOnIndirectJump(targetCall, am, std::move(total));
   }
 
-  return isModified;
+  return total;
 }
 }  // namespace anvill

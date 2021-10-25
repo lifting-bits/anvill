@@ -4,6 +4,7 @@
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/SliceManager.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 /*
@@ -17,7 +18,9 @@ This pass focuses on lowering switch statements where a jumptable does exist
 */
 
 namespace anvill {
-class SwitchLoweringPass : public IndirectJumpPass<SwitchLoweringPass> {
+class SwitchLoweringPass
+    : public IndirectJumpPass<SwitchLoweringPass, llvm::PreservedAnalyses>,
+      public llvm::PassInfoMixin<SwitchLoweringPass> {
 
  private:
   const std::shared_ptr<MemoryProvider> &memProv;
@@ -29,10 +32,14 @@ class SwitchLoweringPass : public IndirectJumpPass<SwitchLoweringPass> {
       : memProv(memProv),
         slm(slm) {}
 
-  llvm::StringRef getPassName() const override;
 
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  static llvm::StringRef name(void);
 
-  bool runOnIndirectJump(llvm::CallInst *indirectJump);
+  llvm::PreservedAnalyses runOnIndirectJump(llvm::CallInst *indirectJump,
+                                            llvm::FunctionAnalysisManager &am,
+                                            llvm::PreservedAnalyses);
+
+
+  static llvm::PreservedAnalyses INIT_RES;
 };
 }  // namespace anvill

@@ -1,3 +1,5 @@
+#include "SwitchLoweringPass.h"
+
 #include <anvill/JumpTableAnalysis.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Transforms.h>
@@ -5,6 +7,7 @@
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 
@@ -72,15 +75,28 @@ TEST_SUITE("SwitchLowerLargeFunction") {
   TEST_CASE("Run on large function") {
     llvm::LLVMContext context;
     SliceManager slc;
-    JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
     auto target_function =
         FindFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
     CHECK(target_function != nullptr);
-    llvm::legacy::FunctionPassManager fpm(mod.get());
-    fpm.add(llvm::createInstructionCombiningPass());
-    fpm.add(new llvm::DominatorTreeWrapperPass());
-    fpm.add(jta);
+    llvm::FunctionPassManager fpm;
+    llvm::FunctionAnalysisManager fam;
+    llvm::ModuleAnalysisManager mam;
+    llvm::LoopAnalysisManager lam;
+    llvm::CGSCCAnalysisManager cgam;
+
+    llvm::PassBuilder pb;
+
+    pb.registerFunctionAnalyses(fam);
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerLoopAnalyses(lam);
+
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+    fam.registerPass([&] { return JumpTableAnalysis(slc); });
+
+    fpm.addPass(llvm::InstCombinePass());
     auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
@@ -101,13 +117,12 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(-1153287);
     mem_prov->AddJumpTableOffset(-1153278);
 
-    fpm.add(CreateSwitchLoweringPass(mem_prov, slc));
-    fpm.doInitialization();
-    fpm.run(*target_function);
-    fpm.doFinalization();
+    fpm.addPass(SwitchLoweringPass(mem_prov, slc));
+    fpm.run(*target_function, fam);
 
 
-    const auto &analysis_results = jta->getAllResults();
+    const auto &analysis_results =
+        fam.getResult<JumpTableAnalysis>(*target_function);
 
     REQUIRE(analysis_results.size() ==
             3);  // check that we resolve all the switches
@@ -165,19 +180,37 @@ TEST_SUITE("SwitchLowerLargeFunction") {
       CHECK(allowed_indices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
+
+    lam.clear();
+    fam.clear();
+    mam.clear();
+    cgam.clear();
   }
 
   TEST_CASE("Try negative Index") {
     llvm::LLVMContext context;
     SliceManager slc;
-    JumpTableAnalysis *jta = new JumpTableAnalysis(slc);
     auto mod = LoadTestData(context, "SwitchLoweringNeg.ll");
     auto target_function = FindFunction(mod.get(), "_start");
     CHECK(target_function != nullptr);
-    llvm::legacy::FunctionPassManager fpm(mod.get());
-    fpm.add(llvm::createInstructionCombiningPass());
-    fpm.add(new llvm::DominatorTreeWrapperPass());
-    fpm.add(jta);
+    llvm::FunctionPassManager fpm;
+    llvm::FunctionAnalysisManager fam;
+    llvm::ModuleAnalysisManager mam;
+    llvm::LoopAnalysisManager lam;
+    llvm::CGSCCAnalysisManager cgam;
+
+    llvm::PassBuilder pb;
+
+    pb.registerFunctionAnalyses(fam);
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerLoopAnalyses(lam);
+
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+    fam.registerPass([&] { return JumpTableAnalysis(slc); });
+
+
     auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
 
 
@@ -191,13 +224,14 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(0x3c);
     mem_prov->AddJumpTableOffset(0x30);
 
-    fpm.add(CreateSwitchLoweringPass(mem_prov, slc));
-    fpm.doInitialization();
-    fpm.run(*target_function);
-    fpm.doFinalization();
+    fpm.addPass(llvm::InstCombinePass());
+    fpm.addPass(SwitchLoweringPass(mem_prov, slc));
+
+    fpm.run(*target_function, fam);
 
 
-    const auto &analysis_results = jta->getAllResults();
+    const auto &analysis_results =
+        fam.getResult<JumpTableAnalysis>(*target_function);
 
     REQUIRE(analysis_results.size() ==
             1);  // check that we resolve all the switches
@@ -243,6 +277,11 @@ TEST_SUITE("SwitchLowerLargeFunction") {
       CHECK(allowed_indices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
+
+    fam.clear();
+    cgam.clear();
+    lam.clear();
+    mam.clear();
   }
 }
 

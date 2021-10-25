@@ -690,42 +690,31 @@ llvm::APInt IndexRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
   return RunSingleIntFunc(interp, this->slice, indexValue);
 }
 
-
-std::optional<JumpTableResult>
-JumpTableAnalysis::getResultFor(llvm::CallInst *indirectJump) const {
-  if (this->results.find(indirectJump) != this->results.end()) {
-    return {this->results.find(indirectJump)->second};
-  }
-
-  return std::nullopt;
-}
-
-bool JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *callinst) {
+llvm::DenseMap<llvm::CallInst *, JumpTableResult>
+JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *indirectJump,
+                                     llvm::FunctionAnalysisManager &am,
+                                     Result agg) {
   auto const &dt =
-      this->getAnalysis<llvm::DominatorTreeWrapperPass>().getDomTree();
+      am.getResult<llvm::DominatorTreeAnalysis>(*indirectJump->getFunction());
+
+  llvm::DenseMap<llvm::CallInst *, JumpTableResult> results;
   JumpTableDiscovery jtdisc(dt, this->slices);
-  auto res = jtdisc.RunPattern(callinst);
+  auto res = jtdisc.RunPattern(indirectJump);
   if (res.has_value()) {
-    this->results.insert({callinst, *res});
+    agg.insert({indirectJump, *res});
   }
-  return false;
+  return agg;
 }
 
-llvm::FunctionPass *CreateJumpTableAnalysis(SliceManager &slices) {
-  return new JumpTableAnalysis(slices);
-}
 
-void JumpTableAnalysis::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-
-  AU.setPreservesCFG();  // (ian) TODO in the future this will need to get removed when we eliminate the branch for table range checking.
-  AU.addRequired<llvm::DominatorTreeWrapperPass>();
-  AU.addRequired<
-      llvm::
-          InstructionCombiningPass>();  // needs instruction combiner to fold constants and order complexity
-}
-
-llvm::StringRef JumpTableAnalysis::getPassName() const {
+llvm::StringRef JumpTableAnalysis::name() {
   return "JumpTableAnalysis";
 }
+
+llvm::DenseMap<llvm::CallInst *, JumpTableResult> JumpTableAnalysis::INIT_RES =
+    llvm::DenseMap<llvm::CallInst *, JumpTableResult>();
+
+
+llvm::AnalysisKey JumpTableAnalysis::Key;
 
 }  // namespace anvill

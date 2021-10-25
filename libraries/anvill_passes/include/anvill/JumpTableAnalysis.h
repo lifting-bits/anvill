@@ -3,8 +3,9 @@
 #include <anvill/IndirectJumpPass.h>
 #include <anvill/SliceInterpreter.h>
 #include <anvill/SliceManager.h>
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/ValueMap.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 namespace anvill {
@@ -76,28 +77,28 @@ struct JumpTableResult {
   llvm::BasicBlock *defaultOut;
 };
 
-class JumpTableAnalysis : public IndirectJumpPass<JumpTableAnalysis> {
+class JumpTableAnalysis
+    : public IndirectJumpPass<
+          JumpTableAnalysis, llvm::DenseMap<llvm::CallInst *, JumpTableResult>>,
+      public llvm::AnalysisInfoMixin<JumpTableAnalysis> {
 
  private:
+  friend llvm::AnalysisInfoMixin<JumpTableAnalysis>;
+  static llvm::AnalysisKey Key;
   SliceManager &slices;
-  llvm::ValueMap<llvm::CallInst *, JumpTableResult> results;
 
  public:
   JumpTableAnalysis(SliceManager &slices)
       : IndirectJumpPass(),
         slices(slices) {}
 
-  llvm::StringRef getPassName() const override;
+  static llvm::StringRef name(void);
 
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-  bool runOnIndirectJump(llvm::CallInst *indirectJump);
+  using Result = llvm::DenseMap<llvm::CallInst *, JumpTableResult>;
 
-  std::optional<JumpTableResult>
-  getResultFor(llvm::CallInst *indirectJump) const;
+  static Result INIT_RES;
 
-  const llvm::ValueMap<llvm::CallInst *, JumpTableResult> &
-  getAllResults() const {
-    return this->results;
-  }
+  Result runOnIndirectJump(llvm::CallInst *indirectJump,
+                           llvm::FunctionAnalysisManager &am, Result agg);
 };
 }  // namespace anvill

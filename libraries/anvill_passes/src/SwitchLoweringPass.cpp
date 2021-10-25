@@ -59,13 +59,6 @@ class PcBinding {
   }
 };
 
-
-void SwitchLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.setPreservesCFG();  // (ian) TODO in the future this will need to get removed when we eliminate the branch for table range checking.
-  AU.addRequired<JumpTableAnalysis>();
-}
-
-
 class SwitchBuilder {
  private:
   llvm::LLVMContext &context;
@@ -155,15 +148,19 @@ class SwitchBuilder {
 };
 
 
-bool SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall) {
+llvm::PreservedAnalyses
+SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall,
+                                      llvm::FunctionAnalysisManager &am,
+                                      llvm::PreservedAnalyses agg) {
 
 
-  const auto &jt_analysis = this->getAnalysis<JumpTableAnalysis>();
-  auto jresult = jt_analysis.getResultFor(targetCall);
+  const auto &jt_analysis =
+      am.getResult<JumpTableAnalysis>(*targetCall->getFunction());
+  auto jresult = jt_analysis.find(targetCall);
 
 
-  if (!jresult.has_value()) {
-    return false;
+  if (jresult == jt_analysis.end()) {
+    return agg;
   }
 
   llvm::Function &f = *targetCall->getFunction();
@@ -177,26 +174,24 @@ bool SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall) {
   if (auto *follower = llvm::dyn_cast<llvm::SwitchInst>(following_switch)) {
     auto binding = PcBinding::Build(targetCall, follower);
     std::optional<llvm::SwitchInst *> new_switch =
-        sbuilder.CreateNativeSwitch(*jresult, binding, context);
+        sbuilder.CreateNativeSwitch(jresult->second, binding, context);
 
     if (new_switch) {
       llvm::ReplaceInstWithInst(follower, *new_switch);
-      return true;
+      agg.intersect(llvm::PreservedAnalyses::none());
+      return agg;
     }
   }
 
-  return false;
+  return agg;
 }
 
 
-llvm::FunctionPass *
-CreateSwitchLoweringPass(const std::shared_ptr<MemoryProvider> &memProv,
-                         SliceManager &slm) {
-  return new SwitchLoweringPass(memProv, slm);
-}
-
-llvm::StringRef SwitchLoweringPass::getPassName() const {
+llvm::StringRef SwitchLoweringPass::name() {
   return "SwitchLoweringPass";
 }
+
+llvm::PreservedAnalyses SwitchLoweringPass::INIT_RES =
+    llvm::PreservedAnalyses::all();
 
 }  // namespace anvill
