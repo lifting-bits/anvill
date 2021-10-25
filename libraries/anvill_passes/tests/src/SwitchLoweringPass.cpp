@@ -10,11 +10,14 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <remill/Arch/Arch.h>
+#include <remill/Arch/Name.h>
 
 #include <iostream>
 
 #include "Utils.h"
 namespace anvill {
+
 
 class MockMemProv : public MemoryProvider {
  private:
@@ -74,6 +77,7 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 TEST_SUITE("SwitchLowerLargeFunction") {
   TEST_CASE("Run on large function") {
     llvm::LLVMContext context;
+
     SliceManager slc;
     auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
     auto target_function =

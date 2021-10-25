@@ -114,7 +114,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   llvm::CGSCCAnalysisManager cam(false);
   llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam(false);
-  SliceManager slc;
+  SliceManager slc(lifter_context);
 
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);

@@ -1,11 +1,13 @@
 #pragma once
 
+#include <anvill/Lifters/EntityLifter.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 
+#include <functional>
 #include <memory>
 #include <tuple>
 
@@ -56,6 +58,7 @@ class SliceManager {
  protected:
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> mod;
+  std::optional<std::reference_wrapper<const EntityLifter>> lifter;
 
  private:
   // NOTE(ian): perhaps at some point we should split modules to prevent large numbers of slices in a single
@@ -77,6 +80,13 @@ class SliceManager {
                              llvm::ArrayRef<llvm::Value *> arguments,
                              llvm::Value *returnVal);
 
+  bool replaceGVsInUser(llvm::User *user);
+
+  bool handleGV(llvm::GlobalVariable *gv, llvm::User *user);
+
+  // returns true if succesful
+  bool replaceAllGVConstantsWithInterpretableValue(
+      llvm::ArrayRef<llvm::Instruction *> insn);
 
  public:
   static std::string getFunctionName(SliceID id) {
@@ -88,15 +98,22 @@ class SliceManager {
   // @slice The instructions in the slice
   // @param returnValue The value that will be returned from the slice.
   // @returns SliceID The id for retrieving the slice. If the return value is not defined in the slice the return value will be lifted to an argument.
-  SliceID addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
-                   llvm::Value *returnValue);
+  std::optional<SliceID> addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
+                                  llvm::Value *returnValue);
 
 
   Slice getSlice(SliceID id);
 
+  SliceManager(const EntityLifter &lifter)
+      : context(),
+        mod(std::make_unique<llvm::Module>("slicemodule", this->context)),
+        lifter({std::cref(lifter)}),
+        next_id(SliceID()) {}
+
   SliceManager()
       : context(),
         mod(std::make_unique<llvm::Module>("slicemodule", this->context)),
+        lifter(std::nullopt),
         next_id(SliceID()) {}
 
   ~SliceManager() {

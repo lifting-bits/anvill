@@ -653,20 +653,25 @@ class JumpTableDiscovery {
 
     if (this->RunIndexPattern(computed_pc) &&
         this->RunBoundsCheckPattern(pcCall)) {
-      SliceID pc_rel_id =
+      std::optional<SliceID> pc_rel_id =
           this->slices.addSlice(*this->pc_rel_slice, computed_pc);
-      SliceID index_rel_id = this->slices.addSlice(*this->index_rel_slice,
-                                                   *this->loaded_expression);
+      std::optional<SliceID> index_rel_id = this->slices.addSlice(
+          *this->index_rel_slice, *this->loaded_expression);
 
-      auto pc_rel_repr = this->slices.getSlice(pc_rel_id).getRepr();
-      auto index_rel_repr = this->slices.getSlice(index_rel_id).getRepr();
+
+      if (!pc_rel_id.has_value() || !index_rel_id.has_value()) {
+        return std::nullopt;
+      }
+
+      auto pc_rel_repr = this->slices.getSlice(*pc_rel_id).getRepr();
+      auto index_rel_repr = this->slices.getSlice(*index_rel_id).getRepr();
       if (!IsValidRelType(pc_rel_repr->getFunctionType()) ||
           !IsValidRelType(index_rel_repr->getFunctionType())) {
         return std::nullopt;
       }
 
-      PcRel pc(pc_rel_id);
-      IndexRel index_relation(index_rel_id, *this->index);
+      PcRel pc(*pc_rel_id);
+      IndexRel index_relation(*index_rel_id, *this->index);
       return {{pc, index_relation, *this->bounds, *this->default_out}};
     }
 

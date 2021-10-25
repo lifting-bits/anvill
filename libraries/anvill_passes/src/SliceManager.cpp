@@ -2,6 +2,7 @@
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 
 #include <exception>
@@ -55,13 +56,59 @@ void SliceManager::insertClonedSliceIntoFunction(
 
   llvm::ReturnInst::Create(targetFunc->getParent()->getContext(), newReturn,
                            bb);
-
   return;
+}
+bool SliceManager::handleGV(llvm::GlobalVariable *constant, llvm::User *user) {
+  if (!constant->hasInitializer()) {
+    if (auto *castIn = llvm::dyn_cast<llvm::PtrToIntOperator>(user)) {
+      if (this->lifter.has_value()) {
+        if (auto addr = this->lifter->get().AddressOfEntity(constant)) {
+          auto intType = llvm::cast<llvm::IntegerType>(castIn->getType());
+          castIn->replaceAllUsesWith(llvm::ConstantInt::get(intType, *addr));
+          llvm::cast<llvm::Constant>(castIn)
+              ->destroyConstant();  // we only look at constant expressions
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
+bool SliceManager::replaceGVsInUser(llvm::User *user) {
+  auto UE = user->op_end();
+  for (auto UI = user->op_begin(); UI != UE; UI++) {
+    if (auto *constant = llvm::dyn_cast<llvm::GlobalVariable>(UI->get())) {
+      if (!this->handleGV(constant, UI->getUser())) {
+        return false;
+      }
+    } else if (auto *CE = llvm::dyn_cast<llvm::ConstantExpr>(UI->get())) {
+      if (!this->replaceGVsInUser(CE)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool SliceManager::replaceAllGVConstantsWithInterpretableValue(
+    llvm::ArrayRef<llvm::Instruction *> insns) {
+  for (auto insn : insns) {
+    if (!this->replaceGVsInUser(insn)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 
-SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
-                               llvm::Value *returnValue) {
+std::optional<SliceID>
+SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
+                       llvm::Value *returnValue) {
   auto id = this->next_id++;
   llvm::SmallDenseSet<llvm::Value *> defined_value;
   for (auto insn : slice) {
@@ -104,11 +151,20 @@ SliceID SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
                   llvm::RemapInstruction(insn, mapper);
                 });
 
+
   auto new_ret = mapper[returnValue];
 
+
   this->insertClonedSliceIntoFunction(id, slice_repr, new_ret, cloned);
+
+  if (!this->replaceAllGVConstantsWithInterpretableValue(cloned)) {
+    assert(false);
+    slice_repr->eraseFromParent();
+    return std::nullopt;
+  }
+
   this->slices.insert({id.id, SliceManager::Slice(slice_repr, id)});
-  return id;
+  return {id};
 }
 
 SliceManager::Slice SliceManager::getSlice(SliceID id) {
