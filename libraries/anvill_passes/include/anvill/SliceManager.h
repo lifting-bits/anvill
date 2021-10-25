@@ -80,9 +80,12 @@ class SliceManager {
                              llvm::ArrayRef<llvm::Value *> arguments,
                              llvm::Value *returnVal);
 
-  bool replaceGVsInUser(llvm::User *user);
+  bool replaceGVsInUser(
+      llvm::User *user,
+      llvm::DenseMap<llvm::Constant *, llvm::Constant *> &to_replace);
 
-  bool handleGV(llvm::GlobalVariable *gv, llvm::User *user);
+  bool handleGV(llvm::GlobalVariable *gv, llvm::User *user,
+                llvm::DenseMap<llvm::Constant *, llvm::Constant *> &to_replace);
 
   // returns true if succesful
   bool replaceAllGVConstantsWithInterpretableValue(

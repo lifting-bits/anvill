@@ -58,15 +58,22 @@ void SliceManager::insertClonedSliceIntoFunction(
                            bb);
   return;
 }
-bool SliceManager::handleGV(llvm::GlobalVariable *constant, llvm::User *user) {
+bool SliceManager::handleGV(
+    llvm::GlobalVariable *constant, llvm::User *user,
+    llvm::DenseMap<llvm::Constant *, llvm::Constant *> &to_replace) {
+
+  if (to_replace.find(llvm::cast<llvm::Constant>(user)) != to_replace.end()) {
+    return true;
+  }
+
   if (!constant->hasInitializer()) {
     if (auto *castIn = llvm::dyn_cast<llvm::PtrToIntOperator>(user)) {
       if (this->lifter.has_value()) {
         if (auto addr = this->lifter->get().AddressOfEntity(constant)) {
           auto intType = llvm::cast<llvm::IntegerType>(castIn->getType());
-          castIn->replaceAllUsesWith(llvm::ConstantInt::get(intType, *addr));
-          llvm::cast<llvm::Constant>(castIn)
-              ->destroyConstant();  // we only look at constant expressions
+          to_replace.insert({llvm::cast<llvm::Constant>(castIn),
+                             llvm::ConstantInt::get(intType, *addr)});
+
           return true;
         }
       }
@@ -78,15 +85,17 @@ bool SliceManager::handleGV(llvm::GlobalVariable *constant, llvm::User *user) {
   return true;
 }
 
-bool SliceManager::replaceGVsInUser(llvm::User *user) {
+bool SliceManager::replaceGVsInUser(
+    llvm::User *user,
+    llvm::DenseMap<llvm::Constant *, llvm::Constant *> &to_replace) {
   auto UE = user->op_end();
   for (auto UI = user->op_begin(); UI != UE; UI++) {
     if (auto *constant = llvm::dyn_cast<llvm::GlobalVariable>(UI->get())) {
-      if (!this->handleGV(constant, UI->getUser())) {
+      if (!this->handleGV(constant, UI->getUser(), to_replace)) {
         return false;
       }
     } else if (auto *CE = llvm::dyn_cast<llvm::ConstantExpr>(UI->get())) {
-      if (!this->replaceGVsInUser(CE)) {
+      if (!this->replaceGVsInUser(CE, to_replace)) {
         return false;
       }
     }
@@ -97,11 +106,20 @@ bool SliceManager::replaceGVsInUser(llvm::User *user) {
 
 bool SliceManager::replaceAllGVConstantsWithInterpretableValue(
     llvm::ArrayRef<llvm::Instruction *> insns) {
+
+  llvm::DenseMap<llvm::Constant *, llvm::Constant *> remapper;
   for (auto insn : insns) {
-    if (!this->replaceGVsInUser(insn)) {
+    if (!this->replaceGVsInUser(insn, remapper)) {
       return false;
     }
   }
+
+  for (auto ent : remapper) {
+
+    ent.first->replaceAllUsesWith(ent.second);
+    ent.first->destroyConstant();
+  }
+
   return true;
 }
 
@@ -156,7 +174,6 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 
 
   this->insertClonedSliceIntoFunction(id, slice_repr, new_ret, cloned);
-
   if (!this->replaceAllGVConstantsWithInterpretableValue(cloned)) {
     assert(false);
     slice_repr->eraseFromParent();
