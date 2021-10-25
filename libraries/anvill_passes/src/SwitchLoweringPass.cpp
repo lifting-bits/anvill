@@ -194,4 +194,11 @@ llvm::StringRef SwitchLoweringPass::name() {
 llvm::PreservedAnalyses SwitchLoweringPass::INIT_RES =
     llvm::PreservedAnalyses::all();
 
+void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
+                           const std::shared_ptr<MemoryProvider> &memprov,
+                           SliceManager &slc) {
+  fpm.addPass(SwitchLoweringPass(memprov, slc));
+}
+
+
 }  // namespace anvill
