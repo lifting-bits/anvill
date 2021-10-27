@@ -100,7 +100,11 @@ class EntityLifterImpl {
 
   // Maps native code addresses to lifted entities. The lifted entities reside
   // in the `options.module` module.
-  std::unordered_map<uint64_t, llvm::SmallSet<llvm::WeakTrackingVH,10>>
+  // address_to_entity may become out of date with entity_to_address when a constant is removed by an optimization.
+  // The llvm::WeakTrackingVH will still exist in the smallset for the address, however, since address_to_entity is only accessed through ForEachEntityAtAddress
+  // this function checks if the WeakTrackingVH has been nulled and only invokes the callback on non-null value handles.
+  // This effectively removes a VH from the SmallSet when it is removed from the ValueMap.
+  std::unordered_map<uint64_t, llvm::SmallSet<llvm::WeakTrackingVH, 10>>
       address_to_entity;
 
   // Maps lifted entities to native addresses. The value map acts as a weak reference to the entity.
