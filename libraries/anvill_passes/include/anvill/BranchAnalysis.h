@@ -21,7 +21,18 @@ struct RemillComparison {
   llvm::CmpInst::Predicate pred;
 };
 
+enum ArithFlags { OF, ZF, SIGN };
+struct RemillFlag {
+  ArithFlags flg;
+  llvm::Value *over;
+};
+
+
 RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name);
+
+// TODO(ian): perhaps this isnt a generally useful parse function, should maybe narrow it
+std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value);
+
 
 class BranchAnalysis : public llvm::AnalysisInfoMixin<BranchAnalysis> {
  private:
