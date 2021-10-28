@@ -37,13 +37,16 @@ target triple = "x86_64-apple-macosx-macho"
 %struct.SegmentShadow = type { %union.anon, i32, i32 }
 
 ; Function Attrs: noduplicate noinline nounwind optnone readnone willreturn
-declare zeroext i1 @__remill_zero_flag_computation(i1 zeroext, ...) local_unnamed_addr #0
+declare zeroext i1 @__remill_flag_computation_zero(i1 zeroext, ...) local_unnamed_addr #0
 
 ; Function Attrs: noduplicate noinline nounwind optnone readnone willreturn
-declare zeroext i1 @__remill_sign_flag_computation(i1 zeroext, ...) local_unnamed_addr #0
+declare zeroext i1 @__remill_flag_computation_sign(i1 zeroext, ...) local_unnamed_addr #0
 
 ; Function Attrs: noduplicate noinline nounwind optnone readnone willreturn
-declare zeroext i1 @__remill_overflow_flag_computation(i1 zeroext, ...) local_unnamed_addr #0
+declare zeroext i1 @__remill_flag_computation_overflow(i1 zeroext, ...) local_unnamed_addr #0
+
+; Function Attrs: noduplicate noinline nounwind optnone readnone willreturn
+declare zeroext i1 @__remill_compare_sle(i1 zeroext) local_unnamed_addr #0
 
 ; Function Attrs: noduplicate noinline nounwind optnone readnone willreturn
 declare i64 @__remill_read_memory_64(%struct.Memory*, i64) local_unnamed_addr #0
@@ -58,9 +61,9 @@ declare %struct.Memory* @__remill_missing_block(%struct.State* nonnull align 1, 
 define %struct.Memory* @slice(%struct.Memory* %0, i64 %RAX, i64 %RDX, i64* nocapture %RIP_output) local_unnamed_addr #2 {
   %2 = add i64 %RDX, %RAX
   %3 = icmp eq i64 %2, 0
-  %4 = tail call zeroext i1 (i1, ...) @__remill_zero_flag_computation(i1 zeroext %3, i64 %2) #3
+  %4 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_zero(i1 zeroext %3, i64 %2) #3
   %5 = icmp slt i64 %2, 0
-  %6 = tail call zeroext i1 (i1, ...) @__remill_sign_flag_computation(i1 zeroext %5, i64 %2) #3
+  %6 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_sign(i1 zeroext %5, i64 %2) #3
   %7 = lshr i64 %RAX, 63
   %8 = lshr i64 %RDX, 63
   %9 = lshr i64 %2, 63
@@ -68,32 +71,34 @@ define %struct.Memory* @slice(%struct.Memory* %0, i64 %RAX, i64 %RDX, i64* nocap
   %11 = xor i64 %9, %8
   %12 = add nuw nsw i64 %10, %11
   %13 = icmp eq i64 %12, 2
-  %14 = tail call zeroext i1 (i1, ...) @__remill_overflow_flag_computation(i1 zeroext %13, i64 %RAX, i64 %RDX, i64 %2) #3
+  %14 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_overflow(i1 zeroext %13, i64 %RAX, i64 %RDX, i64 %2) #3
   %15 = xor i1 %6, %14
   %16 = or i1 %4, %15
-  br i1 %16, label %17, label %20
+  %17 = tail call zeroext i1 @__remill_compare_sle(i1 zeroext %16) #4
+  br i1 %17, label %18, label %21
 
-17:                                               ; preds = %1
-  %18 = tail call i64 @__remill_read_memory_64(%struct.Memory* %0, i64 undef) #3
-  %19 = tail call %struct.Memory* @__remill_function_return(%struct.State* undef, i64 %18, %struct.Memory* %0) #4, !noalias !0
+18:                                               ; preds = %1
+  %19 = tail call i64 @__remill_read_memory_64(%struct.Memory* %0, i64 undef) #3
+  %20 = tail call %struct.Memory* @__remill_function_return(%struct.State* undef, i64 %19, %struct.Memory* %0) #5, !noalias !0
   br label %sub_0.exit
 
-20:                                               ; preds = %1
-  %21 = tail call %struct.Memory* @__remill_missing_block(%struct.State* undef, i64 8, %struct.Memory* %0) #4, !noalias !0
+21:                                               ; preds = %1
+  %22 = tail call %struct.Memory* @__remill_missing_block(%struct.State* undef, i64 8, %struct.Memory* %0) #5, !noalias !0
   br label %sub_0.exit
 
-sub_0.exit:                                       ; preds = %20, %17
-  %.sroa.13.0 = phi i64 [ %18, %17 ], [ 8, %20 ]
-  %22 = phi %struct.Memory* [ %19, %17 ], [ %21, %20 ]
+sub_0.exit:                                       ; preds = %21, %18
+  %.sroa.13.0 = phi i64 [ %19, %18 ], [ 8, %21 ]
+  %23 = phi %struct.Memory* [ %20, %18 ], [ %22, %21 ]
   store i64 %.sroa.13.0, i64* %RIP_output, align 8
-  ret %struct.Memory* %22
+  ret %struct.Memory* %23
 }
 
 attributes #0 = { noduplicate noinline nounwind optnone readnone willreturn "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "no-builtins" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "tune-cpu"="generic" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #1 = { noduplicate noinline nounwind optnone "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "no-builtins" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "tune-cpu"="generic" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { nounwind ssp }
 attributes #3 = { nobuiltin nounwind readnone willreturn "no-builtins" }
-attributes #4 = { nounwind }
+attributes #4 = { alwaysinline nobuiltin nounwind readnone willreturn "no-builtins" }
+attributes #5 = { nounwind }
 
 !0 = !{!1}
 !1 = distinct !{!1, !2, !"sub_0: %state"}

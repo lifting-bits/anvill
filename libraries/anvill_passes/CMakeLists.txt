@@ -57,6 +57,7 @@ add_library(anvill_passes STATIC
   #src/IndirectJumpPass.h
   src/JumpTableAnalysis.cpp
   #src/JumpTableAnalysis.h
+  src/BranchAnalysis.cpp
   src/SwitchLoweringPass.h
   src/SwitchLoweringPass.cpp
   src/BaseFunctionPass.h
@@ -75,6 +76,7 @@ add_library(anvill_passes STATIC
   src/SlicerVisitor.cpp
   src/SliceInterpreter.cpp
 
+  include/anvill/ConstraintExtractor.h
   include/anvill/ITransformationErrorManager.h
   src/TransformationErrorManager.h
   src/TransformationErrorManager.cpp

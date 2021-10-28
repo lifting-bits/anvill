@@ -32,10 +32,34 @@ TEST_SUITE("BranchRecoveryPass") {
     auto mod = LoadTestData(context, "RecoverableBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
-    llvm::legacy::FunctionPassManager fpm(mod.get());
-    fpm.add(llvm::createInstructionCombiningPass());
-    fpm.add(new llvm::DominatorTreeWrapperPass());
-    fpm.add(new BranchRecoverPass())
+    llvm::FunctionPassManager fpm;
+    llvm::FunctionAnalysisManager fam;
+    llvm::LoopAnalysisManager lam;
+    llvm::CGSCCAnalysisManager cgam;
+    llvm::ModuleAnalysisManager mam;
+
+    llvm::PassBuilder pb;
+    pb.registerFunctionAnalyses(fam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerLoopAnalyses(lam);
+    pb.registerModuleAnalyses(mam);
+
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+    fpm.addPass(llvm::InstCombinePass());
+
+
+    fam.registerPass([&] { return llvm::DominatorTreeAnalysis(); });
+    fam.registerPass([&] { return BranchAnalysis(); });
+
+
+    fpm.run(*target_function, fam);
+    auto res = fam.getResult<BranchAnalysis>(*target_function);
+
+    lam.clear();
+    fam.clear();
+    cgam.clear();
+    mam.clear();
   }
 }
 
