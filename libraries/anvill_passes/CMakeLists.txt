@@ -77,6 +77,9 @@ add_library(anvill_passes STATIC
   src/SliceInterpreter.cpp
 
   include/anvill/ConstraintExtractor.h
+  include/anvill/Constraints.h
+  src/Constraints.cpp
+
   include/anvill/ITransformationErrorManager.h
   src/TransformationErrorManager.h
   src/TransformationErrorManager.cpp
