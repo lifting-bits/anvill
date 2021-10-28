@@ -1,4 +1,6 @@
 #include <anvill/ABI.h>
+#include <anvill/ConstraintExtractor.h>
+#include <anvill/Constraints.h>
 #include <anvill/JumpTableAnalysis.h>
 #include <anvill/SliceManager.h>
 #include <anvill/Transforms.h>
@@ -91,6 +93,9 @@
 
 namespace anvill {
 namespace {
+
+
+const std::string IndexVarName = "index";
 template <unsigned N>
 static llvm::SmallSet<const llvm::BranchInst *, N>
 GetTaintedBranches(const llvm::Value *byVal) {
@@ -147,122 +152,6 @@ struct BoundsCheck {
   llvm::BasicBlock *fail_direction;
 };
 
-class Expr {
- public:
-  virtual ~Expr() = default;
-  virtual z3::expr BuildExpression(z3::context &c,
-                                   z3::expr indexExpr) const = 0;
-};
-
-class AtomIndexExpr final : public Expr {
-
- public:
-  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
-    return indexExpr;
-  }
-
-  static std::unique_ptr<Expr> Create() {
-    return std::make_unique<AtomIndexExpr>();
-  }
-};
-
-class AtomIntExpr final : public Expr {
- private:
-  llvm::APInt atom_value;
-
- public:
-  static std::unique_ptr<bool[]> GetBigEndianBits(llvm::APInt api) {
-    llvm::APInt toget_bits_from = api;
-
-    // TODO(ian): verify endianess
-    auto res = std::make_unique<bool[]>(toget_bits_from.getBitWidth());
-    for (unsigned int i = 0; i < api.getBitWidth(); i++) {
-      res[i] = toget_bits_from[i];
-    }
-
-    return res;
-  }
-
-  AtomIntExpr(llvm::APInt atomValue) : atom_value(atomValue) {}
-
-  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
-    auto bv_width = this->atom_value.getBitWidth();
-    auto bv_bits = AtomIntExpr::GetBigEndianBits(this->atom_value);
-    return c.bv_val(bv_width, bv_bits.get());
-  }
-
-  static std::unique_ptr<Expr> Create(llvm::APInt value) {
-    return std::make_unique<AtomIntExpr>(value);
-  }
-};
-
-// might be able to combine complex formula with binop tbh
-// this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
-enum Z3Binop { ADD, ULE, ULT, UGT, UGE, AND, OR, EQ, SGT, SGE, SLE, SLT };
-class BinopExpr final : public Expr {
- private:
-  Z3Binop opcode;
-  std::unique_ptr<Expr> lhs;
-  std::unique_ptr<Expr> rhs;
-
- public:
-  BinopExpr(Z3Binop opcode, std::unique_ptr<Expr> lhs,
-            std::unique_ptr<Expr> rhs)
-      : opcode(opcode),
-        lhs(std::move(lhs)),
-        rhs(std::move(rhs)) {}
-
-
-  static std::unique_ptr<Expr> Create(Z3Binop opcode, std::unique_ptr<Expr> lhs,
-                                      std::unique_ptr<Expr> rhs) {
-    return std::make_unique<BinopExpr>(opcode, std::move(lhs), std::move(rhs));
-  }
-
-  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
-    auto e1 = this->lhs->BuildExpression(c, indexExpr);
-    auto e2 = this->rhs->BuildExpression(c, indexExpr);
-    switch (this->opcode) {
-      case ADD: return z3::operator+(e1, e2);
-      case ULE: return z3::ule(e1, e2);
-      case ULT: return z3::ult(e1, e2);
-      case UGT: return z3::ugt(e1, e2);
-      case UGE: return z3::uge(e1, e2);
-      case SGT: return z3::sgt(e1, e2);
-      case SGE: return z3::sge(e1, e2);
-      case SLT: return z3::slt(e1, e2);
-      case SLE: return z3::sle(e1, e2);
-      case EQ: return z3::operator==(e1, e2);
-      case AND: return z3::operator&&(e1, e2);
-      case OR: return z3::operator||(e1, e2);
-      default: throw std::invalid_argument("unknown opcode binop");
-    }
-  }
-};
-
-enum Z3Unop { LOGNOT };
-class UnopExpr final : public Expr {
- private:
-  Z3Unop opcode;
-  std::unique_ptr<Expr> lhs;
-
- public:
-  UnopExpr(Z3Unop opcode, std::unique_ptr<Expr> lhs)
-      : opcode(opcode),
-        lhs(std::move(lhs)) {}
-
-  static std::unique_ptr<Expr> Create(Z3Unop opcode,
-                                      std::unique_ptr<Expr> lhs) {
-    return std::make_unique<UnopExpr>(opcode, std::move(lhs));
-  }
-
-  z3::expr BuildExpression(z3::context &c, z3::expr indexExpr) const override {
-    auto e1 = this->lhs->BuildExpression(c, indexExpr);
-    switch (this->opcode) {
-      case Z3Unop::LOGNOT: return z3::operator!(e1);
-      default: throw std::invalid_argument("unknown opcode unop");
-    }
-  }
-};
 
 // Attempts to prove a narrow conservative bound on the index, utilizing the provided constraints.
 class ExprSolve {
@@ -311,7 +200,10 @@ class ExprSolve {
     z3::context c;
     z3::expr index_bv =
         c.bv_const("index", index->getType()->getIntegerBitWidth());
-    z3::expr constraints = exp->BuildExpression(c, index_bv);
+
+    Environment env;
+    env.insert(IndexVarName, index_bv);
+    z3::expr constraints = exp->BuildExpression(c, env);
     auto ub = this->GetBound(
         c, index_bv, constraints,
         [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
@@ -388,9 +280,8 @@ class ExprSolve {
   }
 };
 
-class ConstraintExtractor
-    : public llvm::InstVisitor<ConstraintExtractor,
-                               std::optional<std::unique_ptr<Expr>>> {
+class LocalConstraintExtractor
+    : public ConstraintExtractor<LocalConstraintExtractor> {
  private:
   static std::optional<Z3Binop>
   TranslateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
@@ -431,7 +322,7 @@ class ConstraintExtractor
         (!this->substituded_index.has_value() ||
          *this->substituded_index == maybealt)) {
       this->substituded_index = {maybealt};
-      return {AtomIndexExpr::Create()};
+      return {AtomVariable::Create(IndexVarName)};
     }
 
     return std::nullopt;
@@ -439,70 +330,24 @@ class ConstraintExtractor
 
  public:
   std::optional<llvm::Instruction *> substituded_index;
-  std::optional<std::unique_ptr<Expr>> ExpectInsnOrIndex(llvm::Value *v) {
-    if (v == this->index) {
-      return AtomIndexExpr::Create();
-    }
-
-    if (auto *constint = llvm::dyn_cast<llvm::ConstantInt>(v)) {
-      return AtomIntExpr::Create(constint->getValue());
-    }
-
-    if (auto *insn = llvm::dyn_cast<llvm::Instruction>(v)) {
-      return this->visit(*insn);
-    }
 
 
-    return std::nullopt;
-  }
-
-
-  ConstraintExtractor(
+  LocalConstraintExtractor(
       const llvm::Value *index,
       const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces)
       : index(index),
         alternative_indeces(alternativeIndeces) {}
 
-
-  std::optional<std::unique_ptr<Expr>> visitInstruction(llvm::Instruction &I) {
-    return std::nullopt;
-  }
-
   std::optional<std::unique_ptr<Expr>> visitCastInst(llvm::CastInst &I) {
     return this->DieOrSubstitute(&I);
   }
 
-  std::optional<std::unique_ptr<Expr>> visitICmpInst(llvm::ICmpInst &I) {
-    auto conn = TranslateIcmpOpToZ3(I.getPredicate());
-
-
-    if (auto repr0 = this->ExpectInsnOrIndex(I.getOperand(0))) {
-      if (auto repr1 = this->ExpectInsnOrIndex(I.getOperand(1))) {
-        if (conn) {
-          return {
-              BinopExpr::Create(*conn, std::move(*repr0), std::move(*repr1))};
-        }
-      }
+  std::optional<std::unique_ptr<Expr>> attemptStop(llvm::Value *value) {
+    if (value == this->index) {
+      return {AtomVariable::Create(IndexVarName)};
+    } else {
+      return std::nullopt;
     }
-
-    return std::nullopt;
-  }
-
-  std::optional<std::unique_ptr<Expr>>
-  visitBinaryOperator(llvm::BinaryOperator &B) {
-    auto conn = TranslateOpcodeToConnective(B.getOpcode());
-
-
-    if (auto repr0 = this->ExpectInsnOrIndex(B.getOperand(0))) {
-      if (auto repr1 = this->ExpectInsnOrIndex(B.getOperand(1))) {
-        if (conn) {
-          return {
-              BinopExpr::Create(*conn, std::move(*repr0), std::move(*repr1))};
-        }
-      }
-    }
-
-    return std::nullopt;
   }
 };
 
@@ -588,9 +433,9 @@ class JumpTableDiscovery {
           this->index_rel_slice->begin(), this->index_rel_slice->end());
 
 
-      ConstraintExtractor extractor(*this->index, index_slice_values);
+      LocalConstraintExtractor extractor(*this->index, index_slice_values);
       std::optional<std::unique_ptr<Expr>> index_constraints =
-          extractor.ExpectInsnOrIndex(cond);
+          extractor.ExpectInsnOrStopCondition(cond);
 
       if (index_constraints) {
         if (extractor.substituded_index.has_value()) {
