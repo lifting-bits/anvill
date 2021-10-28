@@ -283,36 +283,6 @@ class ExprSolve {
 class LocalConstraintExtractor
     : public ConstraintExtractor<LocalConstraintExtractor> {
  private:
-  static std::optional<Z3Binop>
-  TranslateOpcodeToConnective(llvm::Instruction::BinaryOps op) {
-    switch (op) {
-      case llvm::Instruction::BinaryOps::And /* constant-expression */:
-        /* code */
-        return {Z3Binop::AND};
-      case llvm::Instruction::BinaryOps::Or: return {Z3Binop::OR};
-      case llvm::Instruction::BinaryOps::Add: return {Z3Binop::ADD};
-      default: return std::nullopt;
-    }
-  }
-
-
-  static std::optional<Z3Binop>
-  TranslateIcmpOpToZ3(llvm::CmpInst::Predicate op) {
-    switch (op) {
-      case llvm::CmpInst::Predicate::ICMP_EQ: return Z3Binop::EQ;
-      case llvm::CmpInst::Predicate::ICMP_UGE: return Z3Binop::UGE;
-      case llvm::CmpInst::Predicate::ICMP_UGT: return Z3Binop::UGT;
-      case llvm::CmpInst::Predicate::ICMP_ULE: return Z3Binop::ULE;
-      case llvm::CmpInst::Predicate::ICMP_ULT: return Z3Binop::ULT;
-      case llvm::CmpInst::Predicate::ICMP_SGE: return Z3Binop::SGE;
-      case llvm::CmpInst::Predicate::ICMP_SGT: return Z3Binop::SGT;
-      case llvm::CmpInst::Predicate::ICMP_SLE: return Z3Binop::SLE;
-      case llvm::CmpInst::Predicate::ICMP_SLT: return Z3Binop::SLT;
-      default: return std::nullopt;
-    }
-  }
-
-
   const llvm::Value *index;
   const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternative_indeces;
 
