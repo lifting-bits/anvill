@@ -176,8 +176,8 @@ class EnvironmentBuilder {
     return cont.bv_val(ty->getIntegerBitWidth(), bits.get());
   }
 
-  z3::expr get_flag_assertion(z3::context &cont, z3::expr flag_name,
-                              z3::expr binop_res, z3::expr lhs, z3::expr rhs,
+  z3::expr get_flag_assertion(z3::context &cont, z3::expr binop_res,
+                              z3::expr lhs, z3::expr rhs,
                               FlagDefinition flagdef) {
     switch (flagdef.flagres) {
       case ArithFlags::ZF:
