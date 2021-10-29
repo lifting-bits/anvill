@@ -50,7 +50,8 @@ std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value) {
       auto suffix = call->getCalledFunction()->getName().rsplit('_');
       auto flag_repr = FlagPredMap.find(suffix.second.str());
       if (flag_repr != FlagPredMap.end()) {
-        auto value = call->getArgOperand(1);
+        // the arithmetic result that the flag was computed over is the last operand
+        auto value = call->getArgOperand(call->getNumArgOperands() - 1);
         return {{flag_repr->second, value}};
       }
     }
@@ -176,9 +177,31 @@ class EnvironmentBuilder {
     return cont.bv_val(ty->getIntegerBitWidth(), bits.get());
   }
 
-  z3::expr get_flag_assertion(z3::context &cont, z3::expr binop_res,
-                              z3::expr lhs, z3::expr rhs,
-                              FlagDefinition flagdef) {
+
+  static std::optional<z3::expr>
+  get_overflow_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
+                    z3::expr rhs, FlagDefinition flagdef) {
+    // TODO(ian): need overflow semantics for mul
+    if (flagdef.binop != Z3Binop::ADD) {
+      return std::nullopt;
+    }
+
+
+    z3::expr zero =
+        EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0);
+    z3::expr sign_lhs = z3::slt(lhs, EnvironmentBuilder::get_constant_in_z3(
+                                         cont, flagdef.lhs->getType(), 0));
+    z3::expr sign_rhs = z3::slt(rhs, EnvironmentBuilder::get_constant_in_z3(
+                                         cont, flagdef.rhs->getType(), 0));
+    z3::expr binop_sign = z3::slt(
+        binop_res,
+        EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0));
+    return {(sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign)};
+  }
+
+  std::optional<z3::expr>
+  get_flag_assertion(z3::context &cont, z3::expr binop_res, z3::expr lhs,
+                     z3::expr rhs, FlagDefinition flagdef) {
     switch (flagdef.flagres) {
       case ArithFlags::ZF:
         return binop_res == EnvironmentBuilder::get_constant_in_z3(
@@ -186,11 +209,14 @@ class EnvironmentBuilder {
       case ArithFlags::SIGN:
         return binop_res < EnvironmentBuilder::get_constant_in_z3(
                                cont, flagdef.resultTy, 0);
+      case ArithFlags::OF:
+        return EnvironmentBuilder::get_overflow_flag(cont, binop_res, lhs, rhs,
+                                                     flagdef);
       default: throw std::runtime_error("unsupported arithmetic flag");
     }
   }
 
-  void define_flag_in_context(z3::context &cont, z3::solver &solver,
+  bool define_flag_in_context(z3::context &cont, z3::solver &solver,
                               const Environment &env, FlagDefinition flagdef,
                               z3::expr flag_expr) {
 
@@ -198,7 +224,13 @@ class EnvironmentBuilder {
     auto rhs = this->get_expr_for_binop(flagdef.rhs, env);
     auto binop = BinopExpr::ExpressionFromLhsRhs(flagdef.binop, lhs, rhs);
     auto flag_assertion = get_flag_assertion(cont, binop, lhs, rhs, flagdef);
-    solver.add(flag_expr == flag_assertion);
+
+    if (flag_assertion.has_value()) {
+      solver.add(flag_expr == *flag_assertion);
+      return true;
+    } else {
+      return false;
+    }
   }
 
   std::optional<Environment> BuildEnvironment(z3::context &cont,
@@ -215,7 +247,10 @@ class EnvironmentBuilder {
       auto flag_expr = this->create_flag_for_name(cont, pr.first);
       env.insert(pr.first, flag_expr);
 
-      this->define_flag_in_context(cont, solver, env, pr.second, flag_expr);
+      if (!this->define_flag_in_context(cont, solver, env, pr.second,
+                                        flag_expr)) {
+        return std::nullopt;
+      }
     }
     return env;
   }
