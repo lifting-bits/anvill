@@ -64,6 +64,7 @@ struct FlagDefinition {
   llvm::Value *rhs;
   Z3Binop binop;
   ArithFlags flagres;
+  llvm::Type *resultTy;
 };
 
 class EnvironmentBuilder {
@@ -78,14 +79,9 @@ class EnvironmentBuilder {
     return FlagIDPrefix + std::to_string(this->id_counter++);
   }
 
- public:
-  EnvironmentBuilder()
-      : symbols(std::nullopt),
-        bindings(std::unordered_map<std::string, FlagDefinition>()),
-        id_counter(0) {}
-
-  inline const static std::string FlagIDPrefix = "flag";
-
+  static std::string getValueName(uint64_t number) {
+    return "value" + std::to_string(number);
+  }
 
   std::optional<FlagDefinition> parseFlagDefinition(RemillFlag rf) {
     std::optional<Z3Binop> conn = std::nullopt;
@@ -98,11 +94,11 @@ class EnvironmentBuilder {
     } else if (auto *binop = llvm::dyn_cast<llvm::ICmpInst>(rf.over)) {
       conn = BinopExpr::TranslateIcmpOpToZ3(binop->getPredicate());
       lhs = binop->getOperand(0);
-      rhs = binop->getOperand(0);
+      rhs = binop->getOperand(1);
     }
 
     if (conn && lhs && rhs) {
-      return {{*lhs, *rhs, *conn, rf.flg}};
+      return {{*lhs, *rhs, *conn, rf.flg, rf.over->getType()}};
     }
 
 
@@ -116,15 +112,110 @@ class EnvironmentBuilder {
                                this->symbols->second == flagdef.rhs));
   }
 
+  bool areIntegerTypes(FlagDefinition flagdef) {
+    return flagdef.lhs->getType()->isIntegerTy() &&
+           flagdef.rhs->getType()->isIntegerTy();
+  }
+
+ public:
+  EnvironmentBuilder()
+      : symbols(std::nullopt),
+        bindings(std::unordered_map<std::string, FlagDefinition>()),
+        id_counter(0) {}
+
+  inline const static std::string FlagIDPrefix = "flag";
+
+
   std::optional<std::unique_ptr<Expr>> addFlag(RemillFlag rf) {
     auto flagdef = this->parseFlagDefinition(rf);
 
-    if (flagdef.has_value() && this->composedOfSameSymbols(*flagdef)) {
+    if (flagdef.has_value() && this->composedOfSameSymbols(*flagdef) &&
+        this->areIntegerTypes(*flagdef)) {
       this->symbols = {std::make_pair(flagdef->lhs, flagdef->rhs)};
       this->bindings.insert({this->nextID(), *flagdef});
     }
 
     return std::nullopt;
+  }
+
+  z3::expr create_flag_for_name(z3::context &cont, std::string name) {
+    return cont.bool_const(name.c_str());
+  }
+
+  std::pair<z3::expr, z3::expr> symbols_as_z3(z3::context &cont,
+                                              Environment &env) {
+    auto v1name = EnvironmentBuilder::getValueName(0);
+    auto v2name = EnvironmentBuilder::getValueName(1);
+    auto v1 = cont.bv_const(
+        v1name.c_str(), this->symbols->first->getType()->getIntegerBitWidth());
+    auto v2 = cont.bv_const(
+        v2name.c_str(), this->symbols->first->getType()->getIntegerBitWidth());
+
+    env.insert(v1name, v1);
+    env.insert(v2name, v2);
+
+    return std::make_pair(v1, v2);
+  }
+
+  z3::expr get_expr_for_binop(llvm::Value *v, const Environment &env) {
+    if (v == this->symbols->first) {
+      return env.lookup(EnvironmentBuilder::getValueName(0));
+    } else if (v == this->symbols->second) {
+      return env.lookup(EnvironmentBuilder::getValueName(1));
+    }
+
+    throw std::invalid_argument(
+        "Expression Builder has value in flagdef that is not one of the symbols");
+  }
+
+
+  static z3::expr get_constant_in_z3(z3::context &cont, llvm::Type *ty,
+                                     uint64_t constant) {
+    auto bits = AtomIntExpr::GetBigEndianBits(
+        llvm::APInt(ty->getIntegerBitWidth(), constant));
+    return cont.bv_val(ty->getIntegerBitWidth(), bits.get());
+  }
+
+  z3::expr get_flag_assertion(z3::context &cont, z3::expr flag_name,
+                              z3::expr binop_res, z3::expr lhs, z3::expr rhs,
+                              FlagDefinition flagdef) {
+    switch (flagdef.flagres) {
+      case ArithFlags::ZF:
+        return binop_res == EnvironmentBuilder::get_constant_in_z3(
+                                cont, flagdef.resultTy, 0);
+      default: throw std::runtime_error("unsupported arithmetic flag");
+    }
+  }
+
+  void define_flag_in_context(z3::context &cont, z3::solver &solver,
+                              const Environment &env, FlagDefinition flagdef,
+                              z3::expr flag_expr) {
+
+    auto lhs = this->get_expr_for_binop(flagdef.lhs, env);
+    auto rhs = this->get_expr_for_binop(flagdef.rhs, env);
+    auto binop = BinopExpr::ExpressionFromLhsRhs(flagdef.binop, lhs, rhs);
+    auto flag_assertion =
+        get_flag_assertion(cont, flag_expr, binop, lhs, rhs, flagdef);
+    solver.add(flag_assertion);
+  }
+
+  std::optional<Environment> BuildEnvironment(z3::context &cont,
+                                              z3::solver &solver) {
+    if (!symbols.has_value()) {
+      return std::nullopt;
+    }
+
+    Environment env;
+
+    auto symbs = this->symbols_as_z3(cont, env);
+
+    for (auto pr : this->bindings) {
+      auto flag_expr = this->create_flag_for_name(cont, pr.first);
+      env.insert(pr.first, flag_expr);
+
+      this->define_flag_in_context(cont, solver, env, pr.second, flag_expr);
+    }
+    return env;
   }
 };
 

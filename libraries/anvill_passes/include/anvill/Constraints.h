@@ -75,6 +75,10 @@ class BinopExpr final : public Expr {
 
   static std::unique_ptr<Expr> Create(Z3Binop opcode, std::unique_ptr<Expr> lhs,
                                       std::unique_ptr<Expr> rhs);
+
+  static z3::expr ExpressionFromLhsRhs(Z3Binop opcode, z3::expr lhs,
+                                       z3::expr rhs);
+
   z3::expr BuildExpression(z3::context &c,
                            const Environment &env) const override;
 

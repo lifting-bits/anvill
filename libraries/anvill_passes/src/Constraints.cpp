@@ -55,11 +55,10 @@ std::unique_ptr<Expr> BinopExpr::Create(Z3Binop opcode,
   return std::make_unique<BinopExpr>(opcode, std::move(lhs), std::move(rhs));
 }
 
-z3::expr BinopExpr::BuildExpression(z3::context &c,
-                                    const Environment &env) const {
-  auto e1 = this->lhs->BuildExpression(c, env);
-  auto e2 = this->rhs->BuildExpression(c, env);
-  switch (this->opcode) {
+
+z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
+                                         z3::expr e2) {
+  switch (opcode) {
     case ADD: return z3::operator+(e1, e2);
     case ULE: return z3::ule(e1, e2);
     case ULT: return z3::ult(e1, e2);
@@ -74,6 +73,12 @@ z3::expr BinopExpr::BuildExpression(z3::context &c,
     case OR: return z3::operator||(e1, e2);
     default: throw std::invalid_argument("unknown opcode binop");
   }
+}
+z3::expr BinopExpr::BuildExpression(z3::context &c,
+                                    const Environment &env) const {
+  auto e1 = this->lhs->BuildExpression(c, env);
+  auto e2 = this->rhs->BuildExpression(c, env);
+  return BinopExpr::ExpressionFromLhsRhs(this->opcode, e1, e2);
 }
 
 std::unique_ptr<Expr> UnopExpr::Create(Z3Unop opcode,
