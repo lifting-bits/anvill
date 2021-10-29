@@ -38,15 +38,11 @@ class ConstraintExtractor
       return this->visit(*insn);
     }
 
-
     return std::nullopt;
   }
 
 
   ConstraintExtractor() {}
-
-
-  virtual std::optional<std::unique_ptr<Expr>> attemptStop(llvm::Value *v) = 0;
 
   std::optional<std::unique_ptr<Expr>> visitInstruction(llvm::Instruction &I) {
     return std::nullopt;

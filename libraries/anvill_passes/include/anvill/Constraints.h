@@ -58,7 +58,7 @@ class AtomIntExpr final : public Expr {
 
 // might be able to combine complex formula with binop tbh
 // this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
-enum Z3Binop { ADD, ULE, ULT, UGT, UGE, AND, OR, EQ, SGT, SGE, SLE, SLT };
+enum Z3Binop { ADD, ULE, ULT, UGT, UGE, AND, OR, EQ, SGT, SGE, SLE, SLT, XOR };
 class BinopExpr final : public Expr {
  private:
   Z3Binop opcode;
@@ -90,6 +90,7 @@ class BinopExpr final : public Expr {
         return {Z3Binop::AND};
       case llvm::Instruction::BinaryOps::Or: return {Z3Binop::OR};
       case llvm::Instruction::BinaryOps::Add: return {Z3Binop::ADD};
+      case llvm::Instruction::BinaryOps::Xor: return {Z3Binop::XOR};
       default: return std::nullopt;
     }
   }

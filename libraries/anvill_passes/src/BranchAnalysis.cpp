@@ -18,7 +18,7 @@ const std::unordered_map<std::string, llvm::CmpInst::Predicate> CompPredMap = {
 
 const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"zero", ArithFlags::ZF},
-    {"overflow", ArithFlags::ZF},
+    {"overflow", ArithFlags::OF},
     {"sign", ArithFlags::SIGN}};
 
 static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
@@ -129,11 +129,12 @@ class EnvironmentBuilder {
 
   std::optional<std::unique_ptr<Expr>> addFlag(RemillFlag rf) {
     auto flagdef = this->parseFlagDefinition(rf);
-
     if (flagdef.has_value() && this->composedOfSameSymbols(*flagdef) &&
         this->areIntegerTypes(*flagdef)) {
       this->symbols = {std::make_pair(flagdef->lhs, flagdef->rhs)};
-      this->bindings.insert({this->nextID(), *flagdef});
+      auto name = this->nextID();
+      this->bindings.insert({name, *flagdef});
+      return {AtomVariable::Create(name)};
     }
 
     return std::nullopt;
@@ -196,7 +197,8 @@ class EnvironmentBuilder {
     z3::expr binop_sign = z3::slt(
         binop_res,
         EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0));
-    return {(sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign)};
+    auto of_flag = (sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign);
+    return {of_flag};
   }
 
   std::optional<z3::expr>
@@ -269,7 +271,8 @@ class LocalConstraintExtractor
   std::optional<std::unique_ptr<Expr>> attemptStop(llvm::Value *value) {
     auto flag_semantics = ParseFlagIntrinsic(value);
     if (flag_semantics.has_value()) {
-      return envBuilder.addFlag(*flag_semantics);
+      auto res = envBuilder.addFlag(*flag_semantics);
+      return res;
     } else {
       return std::nullopt;
     }
@@ -295,6 +298,24 @@ std::optional<BranchResult>
 BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
   auto pred =
       ParseComparisonIntrinsic(intrinsic_call->getCalledFunction()->getName());
+  EnvironmentBuilder envbuilder;
+  LocalConstraintExtractor consextract(envbuilder);
+
+
+  auto expr =
+      consextract.ExpectInsnOrStopCondition(intrinsic_call->getArgOperand(0));
+
+  if (expr.has_value()) {
+    z3::context c;
+    z3::solver s(c);
+    auto env = envbuilder.BuildEnvironment(c, s);
+    if (env.has_value()) {
+      auto exp = expr->get()->BuildExpression(c, *env);
+      std::cout << exp << std::endl;
+      std::cout << s << std::endl;
+    }
+  }
+
   return std::nullopt;
 }
 
