@@ -183,6 +183,9 @@ class EnvironmentBuilder {
       case ArithFlags::ZF:
         return binop_res == EnvironmentBuilder::get_constant_in_z3(
                                 cont, flagdef.resultTy, 0);
+      case ArithFlags::SIGN:
+        return binop_res < EnvironmentBuilder::get_constant_in_z3(
+                               cont, flagdef.resultTy, 0);
       default: throw std::runtime_error("unsupported arithmetic flag");
     }
   }
@@ -194,9 +197,8 @@ class EnvironmentBuilder {
     auto lhs = this->get_expr_for_binop(flagdef.lhs, env);
     auto rhs = this->get_expr_for_binop(flagdef.rhs, env);
     auto binop = BinopExpr::ExpressionFromLhsRhs(flagdef.binop, lhs, rhs);
-    auto flag_assertion =
-        get_flag_assertion(cont, flag_expr, binop, lhs, rhs, flagdef);
-    solver.add(flag_assertion);
+    auto flag_assertion = get_flag_assertion(cont, binop, lhs, rhs, flagdef);
+    solver.add(flag_expr == flag_assertion);
   }
 
   std::optional<Environment> BuildEnvironment(z3::context &cont,
