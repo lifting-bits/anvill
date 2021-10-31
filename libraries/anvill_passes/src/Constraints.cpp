@@ -60,6 +60,7 @@ z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
                                          z3::expr e2) {
   switch (opcode) {
     case ADD: return z3::operator+(e1, e2);
+    case SUB: return z3::operator-(e1, e2);
     case ULE: return z3::ule(e1, e2);
     case ULT: return z3::ult(e1, e2);
     case UGT: return z3::ugt(e1, e2);
