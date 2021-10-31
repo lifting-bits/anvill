@@ -75,14 +75,16 @@ class EnvironmentBuilder {
   uint64_t id_counter;
 
 
+ public:
+  static std::string getValueName(uint64_t number) {
+    return "value" + std::to_string(number);
+  }
+
  private:
   std::string nextID() {
     return FlagIDPrefix + std::to_string(this->id_counter++);
   }
 
-  static std::string getValueName(uint64_t number) {
-    return "value" + std::to_string(number);
-  }
 
   std::optional<FlagDefinition> parseFlagDefinition(RemillFlag rf) {
     std::optional<Z3Binop> conn = std::nullopt;
@@ -182,10 +184,6 @@ class EnvironmentBuilder {
   static std::optional<z3::expr>
   get_overflow_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
                     z3::expr rhs, FlagDefinition flagdef) {
-    // TODO(ian): need overflow semantics for mul
-    if (flagdef.binop != Z3Binop::ADD) {
-      return std::nullopt;
-    }
 
 
     z3::expr zero =
@@ -197,8 +195,15 @@ class EnvironmentBuilder {
     z3::expr binop_sign = z3::slt(
         binop_res,
         EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0));
-    auto of_flag = (sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign);
-    return {of_flag};
+    // TODO(ian): need overflow semantics for mul
+    switch (flagdef.binop) {
+      case Z3Binop::ADD:
+        return (sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign);
+      case Z3Binop::SUB:
+        return (sign_lhs ^ sign_rhs) && (sign_lhs ^ binop_sign);
+
+      default: return std::nullopt;
+    }
   }
 
   std::optional<z3::expr>
@@ -280,6 +285,34 @@ class LocalConstraintExtractor
 };
 
 
+// (declare-fun value1 () (_ BitVec 64))
+// (declare-fun value0 () (_ BitVec 64))
+// (declare-fun flag2 () Bool)
+// (declare-fun flag1 () Bool)
+// (declare-fun flag0 () Bool)
+// (declare-fun flagRes () Bool)
+
+// (assert (= (or flag0 (xor flag1 flag2)) flagRes))
+
+// (declare-fun value1neg () (_ BitVec 64))
+// (assert (let ((a!1 (and (xor (bvslt value1 #x0000000000000000)
+//                      (bvslt (bvadd value0 value1) #x0000000000000000))
+//                 (xor (bvslt value0 #x0000000000000000)
+//                      (bvslt (bvadd value0 value1) #x0000000000000000)))))
+//   (= flag2 a!1)))
+// (assert (= flag1 (bvslt (bvadd value0 value1) #x0000000000000000)))
+// (assert (= flag0 (= (bvadd value0 value1) #x0000000000000000)))
+// (assert (not (= value1 (bvshl #x0000000000000001 #x000000000000003f))))
+
+// (assert (or (and flagRes (not (bvsle value0 (bvneg value1))) )
+//  (and  (bvsle value0 (bvneg value1))  (not flagRes)        )))
+
+// (check-sat)
+// (get-model)
+
+
+// Proof of a sle via add ish. So the question is with negatives do we allow proving with inclusion of no wrap assertion (assert (not (= value1 (bvshl #x0000000000000001 #x000000000000003f))))
+// The proof is then bvsle or value = wrap.
 RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name) {
   auto cmpname = intrinsic_name.rsplit('_').second;
   auto pred = CompPredMap.find(cmpname.str());
@@ -294,6 +327,46 @@ RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name) {
 const std::string kFlagIntrinsicPrefix("__remill_flag_computation");
 const std::string kCompareInstrinsicPrefix("__remill_compare");
 
+class Guess {
+ private:
+  Z3Binop op;
+  bool sign_flag_v0;
+  bool sign_flag_v1;
+
+ public:
+  Guess(Z3Binop op, bool sign_flag_v0, bool sign_flag_v1)
+      : op(op),
+        sign_flag_v0(sign_flag_v0),
+        sign_flag_v1(sign_flag_v1) {}
+
+  // Attempts to prove the guess, should leave the solver and context as they were so uses push pop
+  bool AttemptToProve(z3::expr flagRes, z3::solver &solv, z3::context &cont,
+                      const Environment &env) {
+    solv.push();
+
+    auto v0 = env.lookup(EnvironmentBuilder::getValueName(0));
+    auto v0final = this->sign_flag_v0 ? -v0 : v0;
+    auto v1 = env.lookup(EnvironmentBuilder::getValueName(1));
+    auto v1final = this->sign_flag_v1 ? -v1 : v1;
+
+    auto guessexpr =
+        BinopExpr::ExpressionFromLhsRhs(this->op, v0final, v1final);
+
+    auto guess_implies_flag_cex = guessexpr && (!flagRes);
+    auto flag_implies_guess_cex = flagRes && (!guessexpr);
+
+    solv.add(guess_implies_flag_cex || flag_implies_guess_cex);
+
+    std::cout << solv << std::endl;
+
+    auto proven = solv.check() == z3::unsat;
+
+    solv.pop();
+    return proven;
+  }
+};
+
+
 std::optional<BranchResult>
 BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
   auto pred =
@@ -304,15 +377,17 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
 
   auto expr =
       consextract.ExpectInsnOrStopCondition(intrinsic_call->getArgOperand(0));
-
+  std::cout << "checking expr " << expr.has_value() << std::endl;
   if (expr.has_value()) {
     z3::context c;
     z3::solver s(c);
     auto env = envbuilder.BuildEnvironment(c, s);
     if (env.has_value()) {
       auto exp = expr->get()->BuildExpression(c, *env);
-      std::cout << exp << std::endl;
-      std::cout << s << std::endl;
+
+      std::cout
+          << Guess(Z3Binop::SLE, false, false).AttemptToProve(exp, s, c, *env)
+          << std::endl;
     }
   }
 

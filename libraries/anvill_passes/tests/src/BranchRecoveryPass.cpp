@@ -29,7 +29,7 @@ TEST_SUITE("BranchRecoveryPass") {
   TEST_CASE("Run on sliced function") {
     llvm::LLVMContext context;
     SliceManager slc;
-    auto mod = LoadTestData(context, "RecoverableBranch.ll");
+    auto mod = LoadTestData(context, "RecoverSubBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
