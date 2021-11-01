@@ -386,8 +386,17 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
       auto exp = expr->get()->BuildExpression(c, *env);
 
       std::cout
+          << Guess(Z3Binop::SLE, false, true).AttemptToProve(exp, s, c, *env)
+          << std::endl;
+
+      std::cout
           << Guess(Z3Binop::SLE, false, false).AttemptToProve(exp, s, c, *env)
           << std::endl;
+
+
+      std::cout << z3::bvneg_no_overflow(
+                       env->lookup(EnvironmentBuilder::getValueName(1)))
+                << std::endl;
     }
   }
 
