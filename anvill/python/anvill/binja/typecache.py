@@ -135,7 +135,7 @@ class TypeCache:
 
         ret = PointerType()
         self._cache[self._cache_key(tinfo)] = ret
-        ret.set_element_type(self._convert_bn_type(tinfo.element_type))
+        ret.set_element_type(self._convert_bn_type(tinfo.target))
         return ret
 
     def _convert_function(self, tinfo) -> Type:
