@@ -92,7 +92,7 @@ class Function(object):
     def proto(self):
         proto = {}
         proto["address"] = self.address()
-        if not self.is_noreturn():
+        if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()
         proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(
             self.type().num_bytes_popped_off_stack()
