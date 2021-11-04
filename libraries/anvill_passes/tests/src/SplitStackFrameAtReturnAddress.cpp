@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "SplitStackFrameAtReturnAddress.h"
+
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -22,6 +24,7 @@
 #include <iostream>
 
 #include "Utils.h"
+
 
 namespace anvill {
 
@@ -34,8 +37,8 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
     REQUIRE(module != nullptr);
 
     auto error_manager = ITransformationErrorManager::Create();
-    CHECK(RunFunctionPass(module.get(), CreateSplitStackFrameAtReturnAddress(
-                                            *error_manager.get())));
+    CHECK(RunFunctionPass(
+        module.get(), SplitStackFrameAtReturnAddress(*error_manager.get())));
 
     for (const auto &error : error_manager->ErrorList()) {
       CHECK_MESSAGE(false, error.description);

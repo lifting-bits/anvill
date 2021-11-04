@@ -154,7 +154,8 @@ void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
   }
 }
 
-bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
+bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function,
+                                          llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
@@ -168,7 +169,7 @@ bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef SinkSelectionsIntoBranchTargets::getPassName(void) const {
+llvm::StringRef SinkSelectionsIntoBranchTargets::name(void) {
   return llvm::StringRef("SinkSelectionsIntoBranchTargets");
 }
 
@@ -176,9 +177,10 @@ SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
+void AddSinkSelectionsIntoBranchTargets(
+    llvm::FunctionPassManager &fpm,
     ITransformationErrorManager &error_manager) {
-  return SinkSelectionsIntoBranchTargets::Create(error_manager);
+  fpm.addPass(SinkSelectionsIntoBranchTargets(error_manager));
 }
 
 }  // namespace anvill

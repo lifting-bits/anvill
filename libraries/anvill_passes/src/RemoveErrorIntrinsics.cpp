@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveErrorIntrinsics.h"
+
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
@@ -28,27 +30,16 @@
 #include "Utils.h"
 
 namespace anvill {
-namespace {
-
-class RemoveErrorIntrinsics final : public llvm::FunctionPass {
- public:
-  RemoveErrorIntrinsics(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char RemoveErrorIntrinsics::ID = '\0';
 
 // Try to lower remill error intrinsics.
-bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveErrorIntrinsics::run(llvm::Function &func,
+                           llvm::FunctionAnalysisManager &AM) {
   auto module = func.getParent();
   auto error = module->getFunction("__remill_error");
 
   if (!error) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto calls = FindFunctionCalls(func, [=](llvm::CallBase *call) -> bool {
@@ -69,11 +60,11 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
     call->getAllMetadata(mds);
 
     // Work backward through the block, up until we can remove the instruction.
-    llvm::BasicBlock * const block = call->getParent();
+    llvm::BasicBlock *const block = call->getParent();
     affected_blocks.insert(block);
 
     auto pred_inst = call->getPrevNode();
-    for (auto inst = block->getTerminator(); inst != pred_inst; ) {
+    for (auto inst = block->getTerminator(); inst != pred_inst;) {
       const auto next_inst = inst->getPrevNode();
       CHECK_EQ(inst->getParent(), block);
 
@@ -90,8 +81,8 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
     }
 
     DCHECK(!block->getTerminator());
-    auto unreachable_inst = new llvm::UnreachableInst(
-        block->getContext(), block);
+    auto unreachable_inst =
+        new llvm::UnreachableInst(block->getContext(), block);
 
     for (auto [md_id, md_node] : mds) {
       unreachable_inst->setMetadata(md_id, md_node);
@@ -103,7 +94,7 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
   std::vector<llvm::BasicBlock *> new_incoming_blocks;
   std::unordered_set<llvm::BasicBlock *> unreachable_blocks;
 
-  for (auto changed = true; changed; ) {
+  for (auto changed = true; changed;) {
     changed = false;
 
     // Find PHI nodes with predecessor blocks that now no longer actually
@@ -162,7 +153,7 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
         phi->dropAllReferences();
         phi->eraseFromParent();
 
-      // Create a new PHI node.
+        // Create a new PHI node.
       } else {
         auto new_phi = llvm::PHINode::Create(
             phi->getType(), static_cast<unsigned>(new_incoming_vals.size()),
@@ -180,14 +171,10 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return !removed.empty();
+  return ConvertBoolToPreserved(!removed.empty());
 }
-
-}  // namespace
-
 // Removes calls to `__remill_error`.
-llvm::FunctionPass *CreateRemoveErrorIntrinsics(void) {
-  return new RemoveErrorIntrinsics;
+void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveErrorIntrinsics());
 }
-
 }  // namespace anvill

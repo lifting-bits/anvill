@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
+#include "LowerRemillUndefinedIntrinsics.h"
 
 #include <anvill/ABI.h>
 #include <llvm/IR/Constants.h>
@@ -26,23 +26,14 @@
 
 #include <vector>
 
+#include "Utils.h"
+
 namespace anvill {
-namespace {
 
-class LowerRemillUndefinedIntrinsics final : public llvm::FunctionPass {
- public:
-  LowerRemillUndefinedIntrinsics(void)
-      : llvm::FunctionPass(ID) {}
 
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
-};
-
-char LowerRemillUndefinedIntrinsics::ID = '\0';
-
-bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+LowerRemillUndefinedIntrinsics::run(llvm::Function &func,
+                                    llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::CallInst *> calls;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -63,10 +54,8 @@ bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
     changed = true;
   }
 
-  return changed;
+  return ConvertBoolToPreserved(changed);
 }
-
-}  // namespace
 
 // Some machine code instructions explicitly introduce undefined values /
 // behavior. Often, this is a result of the CPUs of different steppings of
@@ -83,8 +72,8 @@ bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
 //
 // This pass exists to do the lowering to `undef` values, and should be run
 // as late as possible.
-llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void) {
-  return new LowerRemillUndefinedIntrinsics;
+void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerRemillUndefinedIntrinsics());
 }
 
 }  // namespace anvill

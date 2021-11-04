@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "RemoveCompilerBarriers.h"
+
 #include <anvill/Transforms.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InlineAsm.h>
@@ -22,23 +24,19 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
+#include "RemoveCompilerBarriers.h"
+#include "Utils.h"
+
 namespace anvill {
-namespace {
 
-class RemoveCompilerBarriers final : public llvm::FunctionPass {
- public:
-  RemoveCompilerBarriers(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
-};
-
-char RemoveCompilerBarriers::ID = '\0';
+llvm::StringRef RemoveCompilerBarriers::name(void) {
+  return llvm::StringRef("RemoveCompilerBarriers");
+}
 
 // Try to lower remill memory access intrinsics.
-bool RemoveCompilerBarriers::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveCompilerBarriers::run(llvm::Function &func,
+                            llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::CallBase *> to_remove;
 
   for (llvm::BasicBlock &block : func) {
@@ -91,17 +89,14 @@ bool RemoveCompilerBarriers::runOnFunction(llvm::Function &func) {
     call_inst->eraseFromParent();
   }
 
-  return !to_remove.empty();
+  return ConvertBoolToPreserved(!to_remove.empty());
 }
-
-}  // namespace
 
 // Remill semantics sometimes contain compiler barriers (empty inline assembly
 // statements), especially related to floating point code (i.e. preventing
 // re-ordering of floating point operations so that we can capture the flags).
 // This pass eliminates those empty inline assembly statements.
-llvm::FunctionPass *CreateRemoveCompilerBarriers(void) {
-  return new RemoveCompilerBarriers;
+void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveCompilerBarriers());
 }
-
 }  // namespace anvill

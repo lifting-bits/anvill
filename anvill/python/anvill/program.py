@@ -23,7 +23,7 @@ from .function import *
 from .var import *
 from .mem import *
 from .exc import *
-
+import traceback
 
 @dataclass
 class ControlFlowTargetList:

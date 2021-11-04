@@ -25,6 +25,7 @@
 
 #include <iostream>
 
+#include "TransformRemillJumpIntrinsics.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -43,8 +44,7 @@ TEST_SUITE("TransformRemillJump_Test0") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -68,8 +68,7 @@ TEST_SUITE("TransformRemillJump_Test1") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -95,8 +94,7 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -122,8 +120,7 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");

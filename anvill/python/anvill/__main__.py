@@ -29,6 +29,7 @@ from .binja import get_program
 
 
 def main():
+
     arg_parser = argparse.ArgumentParser()
 
     arg_parser.add_argument("--bin_in", help="Path to input binary.", required=True)
@@ -114,20 +115,21 @@ def main():
     elif isinstance(ep, int):
         p.add_function_definition(ep, args.refs_as_defs)
     else:
-        for s in bv.get_symbols():
-            ea, name = s.address, s.name
-            if name == ep:
-                ep_ea = ea
-                break
 
         # On macOS, we often have underscore-prefixed names, e.g. `_main`, so
         # with `--entry_point main` we really want to find `_main`, but lift it
         # as `main`.
-        if ep_ea is None and is_macos:
+        if is_macos:
             underscore_ep = "_{}".format(ep)
             for s in bv.get_symbols():
                 ea, name = s.address, s.name
                 if name == underscore_ep:
+                    ep_ea = ea
+                    break
+        if ep_ea is None:
+            for s in bv.get_symbols():
+                ea, name = s.address, s.name
+                if name == ep:
                     ep_ea = ea
                     break
 

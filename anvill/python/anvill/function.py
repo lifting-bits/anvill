@@ -98,7 +98,8 @@ class Function(object):
             self.type().num_bytes_popped_off_stack()
         )
         if self._parameters:
-            proto["parameters"] = [loc.proto(self._arch) for loc in self._parameters]
+            proto["parameters"] = [loc.proto(self._arch)
+                                   for loc in self._parameters]
         if self._return_values:
             proto["return_values"] = [
                 loc.proto(self._arch) for loc in self._return_values

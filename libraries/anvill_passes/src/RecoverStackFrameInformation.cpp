@@ -33,7 +33,8 @@ RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
   return new RecoverStackFrameInformation(error_manager, options);
 }
 
-bool RecoverStackFrameInformation::Run(llvm::Function &function) {
+bool RecoverStackFrameInformation::Run(llvm::Function &function,
+                                       llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
@@ -89,7 +90,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef RecoverStackFrameInformation::getPassName(void) const {
+llvm::StringRef RecoverStackFrameInformation::name(void) {
   return llvm::StringRef("RecoverStackFrameInformation");
 }
 
@@ -171,8 +172,8 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
         type_size = data_layout.getTypeAllocSize(stored_type).getFixedSize();
       }
 
-    // In the case of `load` instructions, we want to redord the size of the
-    // loaded value.
+      // In the case of `load` instructions, we want to redord the size of the
+      // loaded value.
     } else if (auto load_inst =
                    llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
       type_size =
@@ -436,10 +437,9 @@ RecoverStackFrameInformation::RecoverStackFrameInformation(
     : BaseFunctionPass(error_manager),
       options(options) {}
 
-llvm::FunctionPass *
-CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
-                                   const LifterOptions &options) {
-  return RecoverStackFrameInformation::Create(error_manager, options);
+void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
+                                     ITransformationErrorManager &error_manager,
+                                     const LifterOptions &options) {
+  fpm.addPass(RecoverStackFrameInformation(error_manager, options));
 }
-
 }  // namespace anvill

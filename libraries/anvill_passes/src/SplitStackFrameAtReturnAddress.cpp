@@ -55,7 +55,8 @@ SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
   return new SplitStackFrameAtReturnAddress(error_manager);
 }
 
-bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
+bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function,
+                                         llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
@@ -116,7 +117,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
+llvm::StringRef SplitStackFrameAtReturnAddress::name(void) {
   return llvm::StringRef("SplitStackFrameAtReturnAddress");
 }
 
@@ -547,9 +548,10 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
-llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
-    ITransformationErrorManager &error_manager) {
-  return SplitStackFrameAtReturnAddress::Create(error_manager);
-}
+
+void AddSplitStackFrameAtReturnAddress(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager) {
+      fpm.addPass(SplitStackFrameAtReturnAddress(error_manager));
+    }
 
 }  // namespace anvill

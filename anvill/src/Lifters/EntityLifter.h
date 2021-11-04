@@ -21,6 +21,8 @@
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <llvm/ADT/SmallSet.h>
+#include <llvm/IR/ValueMap.h>
 
 #include <functional>
 #include <unordered_map>
@@ -98,11 +100,15 @@ class EntityLifterImpl {
 
   // Maps native code addresses to lifted entities. The lifted entities reside
   // in the `options.module` module.
-  std::unordered_map<uint64_t, std::unordered_set<llvm::Constant *>>
+  // address_to_entity may become out of date with entity_to_address when a constant is removed by an optimization.
+  // The llvm::WeakTrackingVH will still exist in the smallset for the address, however, since address_to_entity is only accessed through ForEachEntityAtAddress
+  // this function checks if the WeakTrackingVH has been nulled and only invokes the callback on non-null value handles.
+  // This effectively removes a VH from the SmallSet when it is removed from the ValueMap.
+  std::unordered_map<uint64_t, llvm::SmallSet<llvm::WeakTrackingVH, 10>>
       address_to_entity;
 
-  // Maps lifted entities to native addresses. The lifted
-  std::unordered_map<llvm::Constant *, uint64_t> entity_to_address;
+  // Maps lifted entities to native addresses. The value map acts as a weak reference to the entity.
+  llvm::ValueMap<llvm::Constant *, uint64_t> entity_to_address;
 };
 
 }  // namespace anvill

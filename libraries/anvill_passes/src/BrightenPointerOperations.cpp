@@ -23,6 +23,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
@@ -35,11 +36,10 @@ namespace anvill {
 
 char PointerLifterPass::ID = '\0';
 
-PointerLifterPass::PointerLifterPass(unsigned max_gas_)
-    : FunctionPass(ID),
-      max_gas(max_gas_) {}
+PointerLifterPass::PointerLifterPass(unsigned max_gas_) : max_gas(max_gas_) {}
 
-bool PointerLifterPass::runOnFunction(llvm::Function &f) {
+llvm::PreservedAnalyses
+PointerLifterPass::run(llvm::Function &f, llvm::FunctionAnalysisManager &AM) {
 
   // f.print(llvm::errs(), nullptr);
   PointerLifter lifter(&f, max_gas);
@@ -49,7 +49,7 @@ bool PointerLifterPass::runOnFunction(llvm::Function &f) {
   // TODO (Carson) have an analysis function which determines modifications
   // Then use lift function to run those modifications
   // Can return true/false depending on what was modified
-  return true;
+  return llvm::PreservedAnalyses::none();
 }
 
 PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_)
@@ -112,13 +112,13 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
     next_inferred_val_type = nullptr;
     return {first_ret, changed && first_ret->getType() == inferred_type};
 
-  // We are recursively processing the same inference.
+    // We are recursively processing the same inference.
   } else if (inferred_val_type == inferred_type) {
     return {inst, false};
 
-  // We're recursively making a /different/ inference than some parent caller.
-  // Set it up so that the top-level caller commits to the last nest inferred
-  // value type.
+    // We're recursively making a /different/ inference than some parent caller.
+    // Set it up so that the top-level caller commits to the last nest inferred
+    // value type.
   } else {
     next_inferred_val_type = inferred_type;
     return {inst, false};
@@ -532,7 +532,7 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
     }
 
 
-  // If its a constant expr/argument/whatever, if its types match return it.
+    // If its a constant expr/argument/whatever, if its types match return it.
   } else if (auto operand = inst.getOperand(0)) {
     if (operand->getType() == inferred_type) {
       return {operand, true};
@@ -610,7 +610,7 @@ PointerLifter::visitPHINode(llvm::PHINode &inst) {
       }
       new_phi->addIncoming(new_inst, incoming_block);
 
-    // TODO (Carson) handle const expr
+      // TODO (Carson) handle const expr
     } else {
 
       //      DLOG(WARNING) << "Unknown type in Phi op: "
@@ -748,10 +748,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
 
   switch (inst->getOpcode()) {
     case llvm::Instruction::Add:
-    case llvm::Instruction::Sub:
-      break;
-    default:
-      return {&binop, false};
+    case llvm::Instruction::Sub: break;
+    default: return {&binop, false};
   }
 
   llvm::Value *lhs_op = inst->getOperand(0);
@@ -820,8 +818,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
     ReplaceAllUses(inst, new_pointer);
     return {new_pointer, true};
 
-  // If neither of them are known pointers, then we have some inference to
-  // propagate!
+    // If neither of them are known pointers, then we have some inference to
+    // propagate!
   } else if (!lhs_ptr && !rhs_ptr) {
     auto lhs_inst = llvm::dyn_cast<llvm::Instruction>(lhs_op);
     auto rhs_inst = llvm::dyn_cast<llvm::Instruction>(rhs_op);
@@ -867,7 +865,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       // Mark as updated
       return {indexed_pointer, true};
 
-    // Same but for RHS
+      // Same but for RHS
     } else if (rhs_inst) {
       auto [ptr_val, changed] = visitInferInst(rhs_inst, inferred_type);
       if (!changed) {
@@ -893,7 +891,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       // Mark as updated
       return {indexed_pointer, true};
 
-    // We know there is some pointer info, but they are both consts?
+      // We know there is some pointer info, but they are both consts?
     } else {
 
       // We don't have a L/RHS instruction, just create a pointer
@@ -1035,11 +1033,12 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     }
   }
   // Deadcode remove stale geps.
-  llvm::legacy::FunctionPassManager fpm(mod);
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.doInitialization();
-  fpm.run(func);
-  fpm.doFinalization();
+  llvm::FunctionPassManager fpm(false);
+  llvm::FunctionAnalysisManager fam;
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(); });
+  fam.registerPass([&] { return llvm::PassInstrumentationAnalysis(); });
+  fpm.addPass(llvm::DCEPass());
+  fpm.run(func, fam);
 
   made_progress = true;
   for (auto i = 0u; i < max_gas && made_progress; ++i) {
@@ -1092,9 +1091,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     next_inferred_types.clear();
     to_remove.clear();
 
-    fpm.doInitialization();
-    fpm.run(func);
-    fpm.doFinalization();
+    fpm.run(func, fam);
   }
 }
 
@@ -1116,8 +1113,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas) {
-  return new PointerLifterPass(max_gas ? max_gas : 250u);
+void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
+                                  unsigned max_gas) {
+  fpm.addPass(PointerLifterPass(max_gas));
 }
-
 }  // namespace anvill

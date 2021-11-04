@@ -35,7 +35,8 @@ RecoverEntityUseInformation::Create(ITransformationErrorManager &error_manager,
   return new RecoverEntityUseInformation(error_manager, lifter);
 }
 
-bool RecoverEntityUseInformation::Run(llvm::Function &function) {
+bool RecoverEntityUseInformation::Run(llvm::Function &function,
+                                      llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return false;
   }
@@ -61,7 +62,7 @@ bool RecoverEntityUseInformation::Run(llvm::Function &function) {
   return true;
 }
 
-llvm::StringRef RecoverEntityUseInformation::getPassName(void) const {
+llvm::StringRef RecoverEntityUseInformation::name(void) {
   return llvm::StringRef("RecoverEntityUseInformation");
 }
 
@@ -156,7 +157,7 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
       //            unresolved references in order to satisfy the request.
       entity = address_lifter.Lift(ra.u.address, inferred_type);
 
-    // We have not inferred information about this, time to go find it.
+      // We have not inferred information about this, time to go find it.
     } else {
 
       bool is_var = false;
@@ -167,14 +168,14 @@ RecoverEntityUseInformation::UpdateFunction(llvm::Function &function,
           maybe_func_decl) {
         entity = entity_lifter.DeclareEntity(*maybe_func_decl);
 
-      // Try to look it up as a variable.
+        // Try to look it up as a variable.
       } else if (auto maybe_var_decl =
                      type_provider.TryGetVariableType(ra.u.address, dl)) {
         is_var = true;
         var_address = maybe_var_decl->address;
         entity = entity_lifter.LiftEntity(*maybe_var_decl);
 
-      // Try to see if it's one past the end of a known entity.
+        // Try to see if it's one past the end of a known entity.
       } else if (auto maybe_prev_var_decl =
                      type_provider.TryGetVariableType(ra.u.address - 1u, dl);
                  maybe_prev_var_decl && ra.u.address) {
@@ -250,10 +251,10 @@ RecoverEntityUseInformation::RecoverEntityUseInformation(
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-llvm::FunctionPass *
-CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
-                                  const EntityLifter &lifter) {
-  return RecoverEntityUseInformation::Create(error_manager, lifter);
+void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+                                    ITransformationErrorManager &error_manager,
+                                    const EntityLifter &lifter) {
+  fpm.addPass(RecoverEntityUseInformation(error_manager, lifter));
 }
 
 }  // namespace anvill

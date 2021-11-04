@@ -117,12 +117,14 @@ class BNProgram(Program):
 
         if symbol != None and symbol.type != bn.SymbolType.ImportAddressSymbol:
             raise InvalidFunctionException(
-                "Not an imported address symbol defined at address {:x}".format(address)
+                "Not an imported address symbol defined at address {:x}".format(
+                    address)
             )
 
         if not _is_function_pointer(bn_var):
             raise InvalidFunctionException(
-                "No function pointer is defined at address {:x}".format(address)
+                "No function pointer is defined at address {:x}".format(
+                    address)
             )
 
         arch = self._arch
@@ -147,7 +149,8 @@ class BNProgram(Program):
         function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
 
         variable = self._bv.get_data_var_at(function_start)
-        func = BNFunction(variable, arch, function_start, [], [], func_type, True, True)
+        func = BNFunction(variable, arch, function_start,
+                          [], [], func_type, True, True)
         DEBUG(
             f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
         )
@@ -211,13 +214,15 @@ class BNProgram(Program):
                         )
 
                     loc = Location()
-                    loc.set_register(self._arch.register_name(storage_reg_name))
+                    loc.set_register(
+                        self._arch.register_name(storage_reg_name))
                     loc.set_type(arg_type)
                     param_list.append(loc)
 
                 elif source_type == bn.VariableSourceType.StackVariableSourceType:
                     loc = Location()
-                    loc.set_memory(self._arch.stack_pointer_name(), var.storage)
+                    loc.set_memory(
+                        self._arch.stack_pointer_name(), var.storage)
                     loc.set_type(arg_type)
                     param_list.append(loc)
 
@@ -252,13 +257,13 @@ class BNProgram(Program):
             #    return self._get_function_from_bnvariable(address, bn_var)
             # else:
             raise InvalidFunctionException(
-                "No function defined at or containing address {:x}".format(address)
+                "No function defined at or containing address {:x}".format(
+                    address)
             )
 
-        self._try_add_symbol(address)
-
         func_type = self.type_cache.get(bn_func.function_type)
-        calling_conv = CallingConvention(arch, bn_func, bn_func.calling_convention)
+        calling_conv = CallingConvention(
+            arch, bn_func, bn_func.calling_convention)
         param_list = self._get_function_parameters(bn_func)
 
         ret_list = []
@@ -444,5 +449,6 @@ def _get_arch(bv):
         return AArch32Arch()
     else:
         raise UnhandledArchitectureType(
-            "Missing architecture object type for architecture '{}'".format(name)
+            "Missing architecture object type for architecture '{}'".format(
+                name)
         )

@@ -18,6 +18,8 @@
 #pragma once
 
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/Pass.h>
 
 #include <functional>
 #include <vector>
@@ -56,5 +58,7 @@ std::string GetModuleIR(llvm::Module &module);
 
 // Copies metadata from the source to destination if both values are instructions.
 void CopyMetadataTo(llvm::Value *src, llvm::Value *dst);
+
+llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
 
 }  // namespace anvill

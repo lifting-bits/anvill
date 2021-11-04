@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Utils.h"
+#include "ConvertXorToCmp.h"
 
 #include <anvill/ABI.h>
 #include <glog/logging.h>
@@ -30,20 +30,9 @@
 #include <tuple>
 #include <vector>
 
+#include "Utils.h"
 namespace anvill {
 namespace {
-
-class ConvertXorToCmp final : public llvm::FunctionPass {
- public:
-  ConvertXorToCmp(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
-};
-
-char ConvertXorToCmp::ID = '\0';
 
 // If the operator (op) is between an ICmpInst and a ConstantInt,
 // return a tuple representing the ICmpInst and ConstantInt
@@ -71,6 +60,7 @@ getComparisonOperands(llvm::BinaryOperator *op) {
   return std::nullopt;
 }
 
+
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   auto pred = cmp->getPredicate();
   llvm::IRBuilder<> ir(cmp);
@@ -80,7 +70,11 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   return ir.CreateICmp(new_pred, cmp->getOperand(0), cmp->getOperand(1));
 }
 
-bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
+}  // namespace
+
+
+llvm::PreservedAnalyses
+ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -228,10 +222,13 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
 
   LOG(INFO) << "ConvertXorToCmp: replaced " << replaced_items
             << " xors with negated comparisons";
-  return changed;
+  return ConvertBoolToPreserved(changed);
 }
 
-}  // namespace
+
+llvm::StringRef ConvertXorToCmp::name(void) {
+  return llvm::StringRef("ConvertXorToCmp");
+}
 
 // Convert operations in the form of:
 // (left OP right) ^ 1
@@ -239,8 +236,8 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
 // (left !OP right)
 // this makes the output more natural for humans and computers to reason about
 // This problem comes up a fair bit due to how some instruction semantics compute carry/parity/etc bits
-llvm::FunctionPass *CreateConvertXorToCmp(void) {
-  return new ConvertXorToCmp;
+void AddConvertXorToCmp(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(ConvertXorToCmp());
 }
 
 }  // namespace anvill

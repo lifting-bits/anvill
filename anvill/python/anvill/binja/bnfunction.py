@@ -49,7 +49,8 @@ class BNFunction(Function):
         is_entrypoint=False,
         is_external=False,
     ):
-        super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type, is_entrypoint)
+        super(BNFunction, self).__init__(arch, address,
+                                         param_list, ret_list, func_type, is_entrypoint)
         self._bn_func = None
         self._is_external = is_external
 
@@ -90,7 +91,8 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(program, inst.operands, inst)
+                register_information = self._extract_types(
+                    program, inst.operands, inst)
                 for reg_info in register_information:
                     if should_ignore_register(
                         program.bv, self._arch.register_name(reg_info[0])
@@ -130,10 +132,12 @@ class BNFunction(Function):
         results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types_mlil(program, item, initial_inst))
+                results.extend(self._extract_types_mlil(
+                    program, item, initial_inst))
         elif isinstance(item_or_list, mlinst):
             results.extend(
-                self._extract_types_mlil(program, item_or_list.operands, initial_inst)
+                self._extract_types_mlil(
+                    program, item_or_list.operands, initial_inst)
             )
         elif isinstance(item_or_list, bn.Variable):
             if item_or_list.type is None:
@@ -150,7 +154,8 @@ class BNFunction(Function):
                     item_or_list.source_type
                     == bn.VariableSourceType.RegisterVariableSourceType
                 ):
-                    reg_name = program.bv.arch.get_reg_name(item_or_list.storage)
+                    reg_name = program.bv.arch.get_reg_name(
+                        item_or_list.storage)
                     results.append(
                         (reg_name, program.type_cache.get(item_or_list.type), None)
                     )
@@ -174,10 +179,12 @@ class BNFunction(Function):
 
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types(program, item, initial_inst))
+                results.extend(self._extract_types(
+                    program, item, initial_inst))
         elif isinstance(item_or_list, llinst):
             results.extend(
-                self._extract_types(program, item_or_list.operands, initial_inst)
+                self._extract_types(
+                    program, item_or_list.operands, initial_inst)
             )
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # Check if the register is not temp. Need to check if the temp register is
@@ -234,7 +241,8 @@ class BNFunction(Function):
                 memory.map_byte(ea, br.read8(), seg.writable, is_executable)
                 inst = self._bn_func.get_low_level_il_at(ea)
                 if inst and not is_unimplemented(program.bv, inst):
-                    _collect_xrefs_from_inst(program.bv, program, inst, ref_eas)
+                    _collect_xrefs_from_inst(
+                        program.bv, program, inst, ref_eas)
 
 
 def _convert_bn_llil_type(

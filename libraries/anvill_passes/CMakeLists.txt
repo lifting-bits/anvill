@@ -10,14 +10,31 @@ add_library(anvill_passes STATIC
   include/anvill/Transforms.h
 
   src/LowerRemillMemoryAccessIntrinsics.cpp
+  src/LowerRemillMemoryAccessIntrinsics.h
+  
   src/LowerRemillUndefinedIntrinsics.cpp
+  src/LowerRemillUndefinedIntrinsics.h
+
   src/LowerTypeHintIntrinsics.cpp
+  src/LowerTypeHintIntrinsics.h
+
   src/RemoveCompilerBarriers.cpp
+  src/RemoveCompilerBarriers.h
+
   src/RemoveDelaySlotIntrinsics.cpp
+  src/RemoveDelaySlotIntrinsics.h
+
   src/RemoveErrorIntrinsics.cpp
+  src/RemoveErrorIntrinsics.h
+
   src/RemoveRemillFunctionReturns.cpp
+  src/RemoveRemillFunctionReturns.h
+  
   src/RemoveTrivialPhisAndSelects.cpp
+  src/RemoveTrivialPhisAndSelects.h
+
   src/RemoveUnusedFPClassificationCalls.cpp
+  src/RemoveUnusedFPClassificationCalls.h
 
   src/SinkSelectionsIntoBranchTargets.h
   src/SinkSelectionsIntoBranchTargets.cpp
@@ -31,9 +48,9 @@ add_library(anvill_passes STATIC
   src/RecoverEntityUseInformation.h
   src/RecoverEntityUseInformation.cpp
 
-  src/RecoverStackFrameInformation.h
   src/RecoverStackFrameInformation.cpp
-
+  src/RecoverStackFrameInformation.h
+  
   src/InstructionFolderPass.h
   src/InstructionFolderPass.cpp
 
@@ -46,8 +63,10 @@ add_library(anvill_passes STATIC
   src/TransformationErrorManager.h
   src/TransformationErrorManager.cpp
   src/TransformRemillJumpIntrinsics.cpp
+  src/TransformRemillJumpIntrinsics.h
 
   src/ConvertXorToCmp.cpp
+  src/ConvertXorToCmp.h
 )
 
 target_include_directories(anvill_passes PUBLIC

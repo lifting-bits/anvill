@@ -81,19 +81,6 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
   return llvm_module;
 }
 
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass) {
-  llvm::legacy::FunctionPassManager pass_manager(module);
-  pass_manager.add(function_pass);
-
-  pass_manager.doInitialization();
-
-  for (auto &function : *module) {
-    pass_manager.run(function);
-  }
-
-  pass_manager.doFinalization();
-  return VerifyModule(module);
-}
 
 const PlatformList &GetSupportedPlatforms(void) {
   static const PlatformList kSupportedPlatforms = {{"linux", "amd64"}};
