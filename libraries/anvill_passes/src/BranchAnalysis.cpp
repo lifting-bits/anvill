@@ -21,27 +21,6 @@ const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"overflow", ArithFlags::OF},
     {"sign", ArithFlags::SIGN}};
 
-static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
-  if (const auto *callee = callinsn->getCalledFunction()) {
-    return callee->getName().startswith(kCompareInstrinsicPrefix);
-  }
-
-  return false;
-}
-static inline std::vector<llvm::CallInst *>
-getTargetCalls(llvm::Function &fromFunction) {
-  std::vector<llvm::CallInst *> calls;
-  for (auto &insn : llvm::instructions(fromFunction)) {
-    llvm::Instruction *new_insn = &insn;
-    if (llvm::CallInst *call_insn = llvm::dyn_cast<llvm::CallInst>(new_insn)) {
-      if (isTargetInstrinsic(call_insn)) {
-        calls.push_back(call_insn);
-      }
-    }
-  }
-  return calls;
-}
-
 }  // namespace
 
 std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value) {
@@ -403,20 +382,32 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
   return std::nullopt;
 }
 
+
+BranchAnalysis::Result BranchAnalysis::INIT_RES = BranchAnalysis::Result();
+
+
+BranchAnalysis::Result
+BranchAnalysis::runOnIntrinsic(llvm::CallInst *call,
+                               llvm::FunctionAnalysisManager &am,
+                               BranchAnalysis::Result agg) {
+  auto mayberes = this->analyzeComparison(call);
+  if (mayberes.has_value()) {
+    agg.insert({call, *mayberes});
+  }
+
+  return agg;
+}
+
+
+bool BranchAnalysis::isTargetInstrinsic(const llvm::CallInst *callinsn) {
+  if (const auto *callee = callinsn->getCalledFunction()) {
+    return callee->getName().startswith(kCompareInstrinsicPrefix);
+  }
+
+  return false;
+}
 llvm::AnalysisKey BranchAnalysis::Key;
 
-
-BranchAnalysis::Result BranchAnalysis::run(llvm::Function &F,
-                                           llvm::FunctionAnalysisManager &am) {
-  Result res;
-  for (auto targetcompare : getTargetCalls(F)) {
-    auto analysis_result = this->analyzeComparison(targetcompare);
-    if (analysis_result) {
-      res.insert({targetcompare, *analysis_result});
-    }
-  }
-  return res;
-}
 
 llvm::StringRef BranchAnalysis::name() {
   return "BranchAnalysis";
