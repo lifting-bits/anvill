@@ -1,4 +1,7 @@
+#pragma once
+
 #include <anvill/ABI.h>
+#include <anvill/IntrinsicPass.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
@@ -7,9 +10,15 @@
 
 namespace anvill {
 // Proven equivalent comparison
+
+struct ComparisonComponent {
+  llvm::Value *Val;
+  bool ShouldNegate;
+};
+
 struct BranchResult {
-  llvm::Value *lhs;
-  llvm::Value *rhs;
+  ComparisonComponent lhs;
+  ComparisonComponent rhs;
 };
 
 
@@ -34,7 +43,10 @@ RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name);
 std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value);
 
 
-class BranchAnalysis : public llvm::AnalysisInfoMixin<BranchAnalysis> {
+class BranchAnalysis
+    : public IntrinsicPass<BranchAnalysis,
+                           llvm::DenseMap<llvm::CallInst *, BranchResult>>,
+      public llvm::AnalysisInfoMixin<BranchAnalysis> {
  private:
   friend llvm::AnalysisInfoMixin<BranchAnalysis>;
   static llvm::AnalysisKey Key;
@@ -50,7 +62,14 @@ class BranchAnalysis : public llvm::AnalysisInfoMixin<BranchAnalysis> {
   // Maps CallInst to anvill_compare prims to the result
   using Result = llvm::DenseMap<llvm::CallInst *, BranchResult>;
 
-  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &am);
+  static Result INIT_RES;
+
+
+  Result runOnIntrinsic(llvm::CallInst *indirectJump,
+                        llvm::FunctionAnalysisManager &am, Result agg);
+
+
+  bool isTargetInstrinsic(const llvm::CallInst *callinsn);
 
   static llvm::StringRef name();
 };

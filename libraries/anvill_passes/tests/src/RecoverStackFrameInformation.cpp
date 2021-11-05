@@ -34,6 +34,7 @@
 namespace anvill {
 
 TEST_SUITE("RecoverStackFrameInformation") {
+
   TEST_CASE("Run the whole pass on a well-formed function") {
     static const StackFrameStructureInitializationProcedure
         kInitStackSettings[] = {
@@ -90,6 +91,51 @@ TEST_SUITE("RecoverStackFrameInformation") {
     }
   }
 
+
+  TEST_CASE("Regression") {
+    llvm::LLVMContext context;
+    auto module = LoadTestData(context, "RegressionRecoverStack.ll");
+    REQUIRE(module != nullptr);
+
+
+    auto &function_list = module->getFunctionList();
+    auto function_it = std::find_if(function_list.begin(), function_list.end(),
+
+                                    [](const llvm::Function &function) -> bool {
+                                      return !function.empty();
+                                    });
+
+    REQUIRE(function_it != function_list.end());
+    auto &function = *function_it;
+    WHEN("the stack frame is recovered") {
+      THEN("There are no remaining stack frame uses") {
+        auto res = RecoverStackFrameInformation::AnalyzeStackFrame(function);
+        REQUIRE(res.Succeeded());
+        auto stack_analysis = res.TakeValue();
+
+        for (auto ref : stack_analysis.instruction_uses) {
+          //ref.use->get()->dump();
+          //ref.use->getUser()->dump();
+        }
+
+        CHECK(stack_analysis.instruction_uses.size() == 2);
+
+        RecoverStackFrameInformation::UpdateFunction(
+            function, stack_analysis,
+            StackFrameStructureInitializationProcedure::kZeroes);
+
+        auto sp_uses_res =
+            RecoverStackFrameInformation::EnumerateStackPointerUsages(function);
+
+        REQUIRE(sp_uses_res.Succeeded());
+        auto sp_uses = sp_uses_res.TakeValue();
+
+        CHECK(sp_uses.empty());
+      }
+    }
+  }
+
+
   SCENARIO("Function analysis can recreate a simple, byte-array frame type") {
     GIVEN("a lifted function without stack information") {
       llvm::LLVMContext context;
@@ -106,7 +152,6 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       REQUIRE(function_it != function_list.end());
       auto &function = *function_it;
-
       WHEN("enumerating stack pointer usages") {
         auto stack_ptr_usages_res =
             RecoverStackFrameInformation::EnumerateStackPointerUsages(function);
