@@ -40,7 +40,7 @@ struct RemillFlag {
 RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name);
 
 // TODO(ian): perhaps this isnt a generally useful parse function, should maybe narrow it
-std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value);
+std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value);
 
 
 class BranchAnalysis

@@ -272,7 +272,7 @@ void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
                            const std::shared_ptr<MemoryProvider> &memprov,
                            SliceManager &slc);
 
-void AddRemoveComparisonAndBranchIntrinsics(llvm::FunctionPassManager &fpm);
 
-void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm);
+void AddSimplifyStackArithFlags(llvm::FunctionPassManager &fpm,
+                                bool stack_pointer_is_signed);
 }  // namespace anvill
