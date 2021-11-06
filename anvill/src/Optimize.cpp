@@ -167,7 +167,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddRemoveTrivialPhisAndSelects(fpm);
 
   fpm.addPass(llvm::DCEPass());
-  AddRemoveStackPointerCExprs(fpm);
+  AddSimplifyStackArithFlags(fpm, options.stack_pointer_is_signed);
   AddRecoverStackFrameInformation(fpm, err_man, options);
   fpm.addPass(llvm::SROA());
   AddSplitStackFrameAtReturnAddress(fpm, err_man);

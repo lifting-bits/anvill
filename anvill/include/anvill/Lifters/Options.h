@@ -102,7 +102,8 @@ class LifterOptions {
         symbolic_register_types(true),
         store_inferred_register_values(true),
         add_breakpoints(false),
-        track_provenance(false) {
+        track_provenance(false),
+        stack_pointer_is_signed(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -213,6 +214,10 @@ class LifterOptions {
   // Enable data provenance gathering via uninterpreted function calls, in a
   // way that will survive LLVM optimizations.
   bool track_provenance : 1;
+
+  // Should we treat the stack pointer as signed when simplifying sign flags.
+  // NOTE(ian): following the style here but why are these bitfields?
+  bool stack_pointer_is_signed : 1;
 
  private:
   LifterOptions(void) = delete;

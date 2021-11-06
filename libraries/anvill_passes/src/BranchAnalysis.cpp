@@ -23,9 +23,11 @@ const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
 
 }  // namespace
 
-std::optional<RemillFlag> ParseFlagIntrinsic(llvm::Value *value) {
+std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value) {
   if (auto *call = llvm::dyn_cast<llvm::CallInst>(value)) {
-    if (call->getCalledFunction()->getName().startswith(kFlagIntrinsicPrefix)) {
+    auto called = call->getCalledFunction();
+    if (called != nullptr &&
+        called->getName().startswith(kFlagIntrinsicPrefix)) {
       auto suffix = call->getCalledFunction()->getName().rsplit('_');
       auto flag_repr = FlagPredMap.find(suffix.second.str());
       if (flag_repr != FlagPredMap.end()) {
