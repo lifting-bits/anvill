@@ -49,12 +49,13 @@ struct FlagDefinition {
   llvm::Type *resultTy;
 };
 
+
 class EnvironmentBuilder {
+
  private:
-  std::optional<std::pair<llvm::Value *, llvm::Value *>> symbols;
+  std::optional<ComparedValues> symbols;
   std::unordered_map<std::string, FlagDefinition> bindings;
   uint64_t id_counter;
-
 
  public:
   static std::string getValueName(uint64_t number) {
@@ -221,8 +222,8 @@ class EnvironmentBuilder {
     }
   }
 
-  std::optional<Environment> BuildEnvironment(z3::context &cont,
-                                              z3::solver &solver) {
+  std::optional<std::pair<Environment, ComparedValues>>
+  BuildEnvironment(z3::context &cont, z3::solver &solver) {
     if (!symbols.has_value()) {
       return std::nullopt;
     }
@@ -240,7 +241,7 @@ class EnvironmentBuilder {
         return std::nullopt;
       }
     }
-    return env;
+    return {std::make_pair(env, *this->symbols)};
   }
 };
 
@@ -308,45 +309,47 @@ RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name) {
 const std::string kFlagIntrinsicPrefix("__remill_flag_computation");
 const std::string kCompareInstrinsicPrefix("__remill_compare");
 
-class Guess {
- private:
-  Z3Binop op;
-  bool sign_flag_v0;
-  bool sign_flag_v1;
+Guess::Guess(llvm::CmpInst::Predicate op, bool flip_symbols)
+    : op(op),
+      flip_symbols(flip_symbols) {
+  // enforce z3 modeling at construction
+  auto z3res = BinopExpr::TranslateIcmpOpToZ3(this->op);
+  assert(z3res.has_value());
+  this->z3_op = *z3res;
+}
 
- public:
-  Guess(Z3Binop op, bool sign_flag_v0, bool sign_flag_v1)
-      : op(op),
-        sign_flag_v0(sign_flag_v0),
-        sign_flag_v1(sign_flag_v1) {}
-
-  // Attempts to prove the guess, should leave the solver and context as they were so uses push pop
-  bool AttemptToProve(z3::expr flagRes, z3::solver &solv, z3::context &cont,
-                      const Environment &env) {
-    solv.push();
-
-    auto v0 = env.lookup(EnvironmentBuilder::getValueName(0));
-    auto v0final = this->sign_flag_v0 ? -v0 : v0;
-    auto v1 = env.lookup(EnvironmentBuilder::getValueName(1));
-    auto v1final = this->sign_flag_v1 ? -v1 : v1;
-
-    auto guessexpr =
-        BinopExpr::ExpressionFromLhsRhs(this->op, v0final, v1final);
-
-    auto guess_implies_flag_cex = guessexpr && (!flagRes);
-    auto flag_implies_guess_cex = flagRes && (!guessexpr);
-
-    solv.add(guess_implies_flag_cex || flag_implies_guess_cex);
-
-    std::cout << solv << std::endl;
-
-    auto proven = solv.check() == z3::unsat;
-
-    solv.pop();
-    return proven;
+BranchResult Guess::ConstructSimplifiedCondition(ComparedValues symb) {
+  if (this->flip_symbols) {
+    symb = {symb.second, symb.first};
   }
-};
 
+  return {symb, this->op};
+}
+
+bool Guess::AttemptToProve(z3::expr flagRes, z3::solver &solv,
+                           z3::context &cont, const Environment &env) {
+  solv.push();
+
+  auto v0 = env.lookup(EnvironmentBuilder::getValueName(0));
+  auto v1 = env.lookup(EnvironmentBuilder::getValueName(1));
+  auto v0final = flip_symbols ? v1 : v0;
+  auto v1final = flip_symbols ? v0 : v1;
+
+  auto guessexpr =
+      BinopExpr::ExpressionFromLhsRhs(this->z3_op, v0final, v1final);
+
+  auto guess_implies_flag_cex = guessexpr && (!flagRes);
+  auto flag_implies_guess_cex = flagRes && (!guessexpr);
+
+  solv.add(guess_implies_flag_cex || flag_implies_guess_cex);
+
+  std::cout << solv << std::endl;
+
+  auto proven = solv.check() == z3::unsat;
+
+  solv.pop();
+  return proven;
+}
 
 std::optional<BranchResult>
 BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
@@ -362,22 +365,18 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
   if (expr.has_value()) {
     z3::context c;
     z3::solver s(c);
-    auto env = envbuilder.BuildEnvironment(c, s);
-    if (env.has_value()) {
-      auto exp = expr->get()->BuildExpression(c, *env);
-
-      std::cout
-          << Guess(Z3Binop::SLE, false, true).AttemptToProve(exp, s, c, *env)
-          << std::endl;
-
-      std::cout
-          << Guess(Z3Binop::SLE, false, false).AttemptToProve(exp, s, c, *env)
-          << std::endl;
-
-
-      std::cout << z3::bvneg_no_overflow(
-                       env->lookup(EnvironmentBuilder::getValueName(1)))
-                << std::endl;
+    auto env_and_symbols = envbuilder.BuildEnvironment(c, s);
+    if (env_and_symbols.has_value()) {
+      auto env = env_and_symbols->first;
+      auto symbols = env_and_symbols->second;
+      auto exp = expr->get()->BuildExpression(c, env);
+      for (const auto &strat : this->guess_generation_strategies) {
+        auto res = strat(pred.pred);
+        if (res.AttemptToProve(exp, s, c, env)) {
+          BranchResult cmp = res.ConstructSimplifiedCondition(symbols);
+          return {cmp};
+        }
+      }
     }
   }
 
