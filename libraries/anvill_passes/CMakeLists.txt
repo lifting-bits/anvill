@@ -87,6 +87,8 @@ add_library(anvill_passes STATIC
 
   include/anvill/CodeQualityStatCollector.h
   src/CodeQualityStatCollector.cpp
+  src/BranchRecovery.h
+  src/BranchRecovery.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC

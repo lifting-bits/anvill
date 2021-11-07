@@ -306,9 +306,6 @@ RemillComparison ParseComparisonIntrinsic(llvm::StringRef intrinsic_name) {
   return {pred->second};
 }
 
-const std::string kFlagIntrinsicPrefix("__remill_flag_computation");
-const std::string kCompareInstrinsicPrefix("__remill_compare");
-
 Guess::Guess(llvm::CmpInst::Predicate op, bool flip_symbols)
     : op(op),
       flip_symbols(flip_symbols) {
@@ -400,13 +397,6 @@ BranchAnalysis::runOnIntrinsic(llvm::CallInst *call,
 }
 
 
-bool BranchAnalysis::isTargetInstrinsic(const llvm::CallInst *callinsn) {
-  if (const auto *callee = callinsn->getCalledFunction()) {
-    return callee->getName().startswith(kCompareInstrinsicPrefix);
-  }
-
-  return false;
-}
 llvm::AnalysisKey BranchAnalysis::Key;
 
 
