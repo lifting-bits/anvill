@@ -56,6 +56,7 @@
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/JumpTableAnalysis.h>
+#include <anvill/BranchAnalysis.h>
 // clang-format on
 
 #include <anvill/Providers/MemoryProvider.h>
@@ -122,6 +123,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   pb.registerLoopAnalyses(lam);
 
   fam.registerPass([&] { return JumpTableAnalysis(slc); });
+  fam.registerPass([&] { return BranchAnalysis(); });
 
   params.DefaultThreshold = 250;
   auto inliner = llvm::ModuleInlinerWrapperPass(params);
@@ -171,6 +173,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   fpm.addPass(llvm::SROA());
   AddSplitStackFrameAtReturnAddress(fpm, err_man);
   fpm.addPass(llvm::SROA());
+  AddBranchRecovery(fpm);
+
 
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
