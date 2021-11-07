@@ -15,6 +15,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#if !__has_include(<llvm/Support/JSON.h>)
+#  error "Unsupported LLVM version"
+#endif
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -99,8 +103,7 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-#if __has_include(<llvm/Support/JSON.h>)
-#  include <llvm/Support/JSON.h>
+#include <llvm/Support/JSON.h>
 
 namespace {
 
@@ -140,7 +143,7 @@ static bool ParseValue(const remill::Arch *arch, anvill::ValueDecl &decl,
     LOG(ERROR) << "A " << desc << " cannot be resident in both a register "
                << "and a memory location.";
     return false;
-  } else if (!decl.reg && !decl.mem_reg) {
+  } else if (!decl.reg && !(decl.mem_reg || decl.mem_offset)) {
     LOG(ERROR)
         << "A " << desc << " must be resident in either a register or "
         << "a memory location (defined in terms of a register and offset).";
@@ -302,6 +305,21 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
 
   auto address = static_cast<uint64_t>(*maybe_ea);
 
+  decl.arch = arch;
+  decl.address = address;
+
+  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
+    decl.is_noreturn = *maybe_is_noreturn;
+  }
+
+  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
+    decl.is_variadic = *maybe_is_variadic;
+  }
+
+  if (auto maybe_cc = obj->getInteger("calling_convention")) {
+    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
+  }
+
   // NOTE (akshayk): An external function can have function type in the spec. If
   //                 the function type is available, it will have precedence over
   //                 the parameter variables and return values. If the function
@@ -327,16 +345,30 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
       return false;
     }
 
+    if (decl.is_variadic != func_type->isVarArg()) {
+      LOG(ERROR) << "Type associated with function at address " << std::hex
+                 << address << std::dec << " does not match variadic nature of "
+                 << "specification: "
+                 << remill::LLVMThingToString(type_spec->Type());
+      return false;
+    }
+
     std::stringstream ss;
     ss << "dummy_" << std::hex << address;
-    auto dummy_function = llvm::Function::Create(
+    llvm::Function *dummy_function = llvm::Function::Create(
         func_type, llvm::Function::ExternalLinkage, ss.str().c_str(), module);
+
+    dummy_function->setCallingConv(decl.calling_convention);
+    if (decl.is_noreturn) {
+      dummy_function->addFnAttr(llvm::Attribute::NoReturn);
+    }
 
     // Create a FunctionDecl object from the dummy function. This will set
     // the correct function types, bind the parameters & return values
     // with the architectural registers, and set the calling convention
 
-    auto maybe_decl = anvill::FunctionDecl::Create(*dummy_function, arch);
+    llvm::Expected<anvill::FunctionDecl> maybe_decl =
+        anvill::FunctionDecl::Create(*dummy_function, arch);
     dummy_function->eraseFromParent();
 
     if (remill::IsError(maybe_decl)) {
@@ -346,15 +378,12 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
       return false;
     }
 
+    maybe_decl->address = address;
     decl = std::move(remill::GetReference(maybe_decl));
-    decl.address = address;
 
+  // The function is not external and does not have associated type
+  // in the spec. Fallback to processing parameters and return values
   } else {
-
-    // The function is not external and does not have associated type
-    // in the spec. Fallback to processing parameters and return values
-    decl.arch = arch;
-    decl.address = address;
 
     if (auto params = obj->getArray("parameters")) {
       for (llvm::json::Value &maybe_param : *params) {
@@ -429,18 +458,6 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
           return false;
         }
       }
-    }
-
-    if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
-      decl.is_noreturn = *maybe_is_noreturn;
-    }
-
-    if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
-      decl.is_variadic = *maybe_is_variadic;
-    }
-
-    if (auto maybe_cc = obj->getInteger("calling_convention")) {
-      decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
     }
   }
 
@@ -1205,12 +1222,3 @@ int main(int argc, char *argv[]) {
 
   return ret;
 }
-
-#else
-int main(int argc, char *argv[]) {
-  SetVersion();
-  google::ParseCommandLineFlags(&argc, &argv, true);
-  std::cerr << "LLVM JSON API is not available in this version of LLVM\n";
-  return EXIT_FAILURE;
-}
-#endif

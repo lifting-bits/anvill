@@ -180,10 +180,30 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
     llvm::IRBuilder<> ir(in_block);
-    const auto addr = ir.CreateAdd(
-        ir.CreateLoad(ptr_to_reg),
-        llvm::ConstantInt::get(decl.mem_reg->type,
-                               static_cast<uint64_t>(decl.mem_offset), true));
+    llvm::Value *addr = ir.CreateLoad(ptr_to_reg);
+    if (0ll < decl.mem_offset) {
+      addr = ir.CreateAdd(
+          addr,
+          llvm::ConstantInt::get(
+              decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
+              false));
+
+    } else if (0ll > decl.mem_offset) {
+      addr = ir.CreateSub(
+        addr,
+        llvm::ConstantInt::get(
+            decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
+            false));
+    }
+    return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
+                                 addr);
+
+  // Store to memory at an absolute offset.
+  } else if (decl.mem_offset) {
+    llvm::IRBuilder<> ir(in_block);
+    const auto addr = llvm::ConstantInt::get(
+        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
+        static_cast<uint64_t>(decl.mem_offset), false);
     return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
                                  addr);
 
@@ -218,10 +238,30 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    const auto addr = ir.CreateAdd(
-        ir.CreateLoad(ptr_to_reg),
-        llvm::ConstantInt::get(decl.mem_reg->type,
-                               static_cast<uint64_t>(decl.mem_offset), true));
+    llvm::Value *addr = ir.CreateLoad(ptr_to_reg);
+    if (0ll < decl.mem_offset) {
+      addr = ir.CreateAdd(
+          addr,
+          llvm::ConstantInt::get(
+              decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
+              false));
+
+    } else if (0ll > decl.mem_offset) {
+      addr = ir.CreateSub(
+        addr,
+        llvm::ConstantInt::get(
+            decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
+            false));
+    }
+    return llvm::dyn_cast<llvm::Instruction>(
+        remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
+
+  // Store to memory at an absolute offset.
+  } else if (decl.mem_offset) {
+    llvm::IRBuilder<> ir(in_block);
+    const auto addr = llvm::ConstantInt::get(
+        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
+        static_cast<uint64_t>(decl.mem_offset), false);
     return llvm::dyn_cast<llvm::Instruction>(
         remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
 

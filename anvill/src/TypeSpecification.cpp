@@ -132,6 +132,12 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     case llvm::Type::StructTyID: {
       auto struct_ptr = llvm::cast<llvm::StructType>(&type);
 
+      // This is an opaque structure; mark it as a void type.
+      if (struct_ptr->isOpaque()) {
+        ss << 'v';
+        break;
+      }
+
       // If we're already serialized this structure type, or if we're inside
       // of the structure type, then use a back reference to avoid infinite
       // recursion.
