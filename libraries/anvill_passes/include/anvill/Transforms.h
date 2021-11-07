@@ -275,4 +275,7 @@ void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
 
 void AddSimplifyStackArithFlags(llvm::FunctionPassManager &fpm,
                                 bool stack_pointer_is_signed);
+
+
+void AddBranchRecovery(llvm::FunctionPassManager &fpm);
 }  // namespace anvill

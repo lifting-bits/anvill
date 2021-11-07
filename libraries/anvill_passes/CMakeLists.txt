@@ -84,6 +84,9 @@ add_library(anvill_passes STATIC
 
   src/ConvertXorToCmp.cpp
   src/ConvertXorToCmp.h
+
+  src/BranchRecovery.h
+  src/BranchRecovery.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC

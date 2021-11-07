@@ -1,6 +1,7 @@
 #pragma once
 
 #include <anvill/ABI.h>
+#include <anvill/BranchHintPass.h>
 #include <anvill/Constraints.h>
 #include <anvill/IntrinsicPass.h>
 #include <llvm/IR/InstrTypes.h>
@@ -58,8 +59,8 @@ std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value);
 
 
 class BranchAnalysis
-    : public IntrinsicPass<BranchAnalysis,
-                           llvm::DenseMap<llvm::CallInst *, BranchResult>>,
+    : public BranchHintPass<BranchAnalysis,
+                            llvm::DenseMap<llvm::CallInst *, BranchResult>>,
       public llvm::AnalysisInfoMixin<BranchAnalysis> {
  private:
   friend llvm::AnalysisInfoMixin<BranchAnalysis>;
@@ -100,8 +101,6 @@ class BranchAnalysis
   Result runOnIntrinsic(llvm::CallInst *indirectJump,
                         llvm::FunctionAnalysisManager &am, Result agg);
 
-
-  bool isTargetInstrinsic(const llvm::CallInst *callinsn);
 
   static llvm::StringRef name();
 };
