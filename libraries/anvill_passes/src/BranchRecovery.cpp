@@ -8,7 +8,8 @@ void AddBranchRecovery(llvm::FunctionPassManager &fpm) {
   fpm.addPass(BranchRecovery());
 }
 
-static BranchRecovery::Result INIT_RES = llvm::PreservedAnalyses::all();
+BranchRecovery::Result BranchRecovery::INIT_RES =
+    llvm::PreservedAnalyses::all();
 
 llvm::StringRef BranchRecovery::name() {
   return "BranchRecovery";
