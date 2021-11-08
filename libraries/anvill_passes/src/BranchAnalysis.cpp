@@ -14,12 +14,22 @@ namespace anvill {
 namespace {
 
 const std::unordered_map<std::string, llvm::CmpInst::Predicate> CompPredMap = {
-    {"sle", llvm::CmpInst::Predicate::ICMP_SLE}};
+    {"sle", llvm::CmpInst::Predicate::ICMP_SLE},
+    {"slt", llvm::CmpInst::Predicate::ICMP_SLT},
+    {"ult", llvm::CmpInst::Predicate::ICMP_ULT},
+    {"ule", llvm::CmpInst::Predicate::ICMP_ULE},
+    {"sge", llvm::CmpInst::Predicate::ICMP_SGE},
+    {"sgt", llvm::CmpInst::Predicate::ICMP_SGT},
+    {"ugt", llvm::CmpInst::Predicate::ICMP_UGT},
+    {"uge", llvm::CmpInst::Predicate::ICMP_UGE},
+    {"eq", llvm::CmpInst::Predicate::ICMP_EQ},
+    {"neq", llvm::CmpInst::Predicate::ICMP_NE}};
 
 const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"zero", ArithFlags::ZF},
     {"overflow", ArithFlags::OF},
-    {"sign", ArithFlags::SIGN}};
+    {"sign", ArithFlags::SIGN},
+    {"carry", ArithFlags::CARRY}};
 
 }  // namespace
 
@@ -188,6 +198,20 @@ class EnvironmentBuilder {
     }
   }
 
+  static std::optional<z3::expr>
+  get_carry_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
+                 z3::expr rhs, FlagDefinition flagdef) {
+
+    switch (flagdef.binop) {
+      case Z3Binop::ADD:
+        return z3::ult(binop_res, lhs) || z3::ult(binop_res, rhs);
+      case Z3Binop::SUB: return z3::ult(lhs, rhs);
+
+      default: return std::nullopt;
+    }
+  }
+
+
   std::optional<z3::expr>
   get_flag_assertion(z3::context &cont, z3::expr binop_res, z3::expr lhs,
                      z3::expr rhs, FlagDefinition flagdef) {
@@ -201,6 +225,9 @@ class EnvironmentBuilder {
       case ArithFlags::OF:
         return EnvironmentBuilder::get_overflow_flag(cont, binop_res, lhs, rhs,
                                                      flagdef);
+      case ArithFlags::CARRY:
+        return EnvironmentBuilder::get_carry_flag(cont, binop_res, lhs, rhs,
+                                                  flagdef);
       default: throw std::runtime_error("unsupported arithmetic flag");
     }
   }
