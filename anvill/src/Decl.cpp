@@ -277,19 +277,24 @@ ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
     // The value is in a register
     value_json.insert(
         llvm::json::Object::KV{llvm::json::ObjectKey("register"), reg->name});
-  } else if (mem_reg) {
+  } else if (mem_reg || mem_offset) {
 
     // The value is in memory
     llvm::json::Object memory_json;
-    memory_json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("register"),
-                                              mem_reg->name});
-    memory_json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("offset"), mem_offset});
+    if (mem_reg) {
+      memory_json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("register"), mem_reg->name});
+    }
+    if (mem_offset) {
+      memory_json.insert(
+          llvm::json::Object::KV{llvm::json::ObjectKey("offset"), mem_offset});
+    }
 
     // Wrap the memory_json structure in a memory block
     value_json.insert(
         llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
                                llvm::json::Value(std::move(memory_json))});
+
   } else {
     LOG(FATAL) << "Trying to serialize a value that has not been allocated";
   }
