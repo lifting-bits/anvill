@@ -72,7 +72,8 @@ enum Z3Binop {
   SGE,
   SLE,
   SLT,
-  XOR
+  XOR,
+  NEQ
 };
 class BinopExpr final : public Expr {
  private:
@@ -116,6 +117,7 @@ class BinopExpr final : public Expr {
   TranslateIcmpOpToZ3(llvm::CmpInst::Predicate op) {
     switch (op) {
       case llvm::CmpInst::Predicate::ICMP_EQ: return Z3Binop::EQ;
+      case llvm::CmpInst::Predicate::ICMP_NE: return Z3Binop::NEQ;
       case llvm::CmpInst::Predicate::ICMP_UGE: return Z3Binop::UGE;
       case llvm::CmpInst::Predicate::ICMP_UGT: return Z3Binop::UGT;
       case llvm::CmpInst::Predicate::ICMP_ULE: return Z3Binop::ULE;
