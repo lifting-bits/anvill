@@ -58,6 +58,7 @@ std::unique_ptr<Expr> BinopExpr::Create(Z3Binop opcode,
 
 z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
                                          z3::expr e2) {
+
   switch (opcode) {
     case ADD: return z3::operator+(e1, e2);
     case SUB: return z3::operator-(e1, e2);
@@ -77,10 +78,30 @@ z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
     default: throw std::invalid_argument("unknown opcode binop");
   }
 }
+
 z3::expr BinopExpr::BuildExpression(z3::context &c,
                                     const Environment &env) const {
   auto e1 = this->lhs->BuildExpression(c, env);
   auto e2 = this->rhs->BuildExpression(c, env);
+
+  if (e1.is_bool() && !e2.is_bool()) {
+    // If it's well typed then we should have a 1 bit
+    assert(e2.is_bv() && e2.get_sort().bv_size() == 1);
+    return BinopExpr::ExpressionFromLhsRhs(
+        this->opcode, e1,
+        e2 != c.bv_val(1,
+                       AtomIntExpr::GetBigEndianBits(llvm::APInt(1, 0)).get()));
+  } else if (e2.is_bool() && !e1.is_bool()) {
+    // If it's well typed then we should have a 1 bit
+    assert(e1.is_bv() && e1.get_sort().bv_size() == 1);
+    return BinopExpr::ExpressionFromLhsRhs(
+        this->opcode,
+        e1 !=
+            c.bv_val(1, AtomIntExpr::GetBigEndianBits(llvm::APInt(1, 0)).get()),
+        e2);
+  }
+
+
   return BinopExpr::ExpressionFromLhsRhs(this->opcode, e1, e2);
 }
 
