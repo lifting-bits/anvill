@@ -72,8 +72,19 @@ z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
     case SLE: return z3::sle(e1, e2);
     case EQ: return z3::operator==(e1, e2);
     case NEQ: return z3::operator!=(e1, e2);
-    case AND: return z3::operator&&(e1, e2);
-    case OR: return z3::operator||(e1, e2);
+    case AND:
+      if (e1.is_bv()) {
+        return z3::operator&(e1, e2);
+      } else {
+        return z3::operator&&(e1, e2);
+      }
+    case OR:
+      if (e1.is_bv()) {
+        return z3::operator|(e1, e2);
+      } else {
+        return z3::operator||(e1, e2);
+      }
+
     case XOR: return e1 ^ e2;
     default: throw std::invalid_argument("unknown opcode binop");
   }
