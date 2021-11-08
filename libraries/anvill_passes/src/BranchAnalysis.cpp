@@ -260,6 +260,7 @@ class EnvironmentBuilder {
     auto symbs = this->symbols_as_z3(cont, env);
 
     for (auto pr : this->bindings) {
+
       auto flag_expr = this->create_flag_for_name(cont, pr.first);
       env.insert(pr.first, flag_expr);
 
@@ -375,6 +376,7 @@ bool Guess::AttemptToProve(z3::expr flagRes, z3::solver &solv,
 
 std::optional<BranchResult>
 BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
+  intrinsic_call->getFunction()->dump();
   auto pred =
       ParseComparisonIntrinsic(intrinsic_call->getCalledFunction()->getName());
   EnvironmentBuilder envbuilder;
