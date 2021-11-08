@@ -28,7 +28,7 @@ struct RemillComparison {
   llvm::CmpInst::Predicate pred;
 };
 
-enum ArithFlags { OF, ZF, SIGN };
+enum ArithFlags { OF, ZF, SIGN, CARRY };
 struct RemillFlag {
   ArithFlags flg;
   llvm::Value *over;
