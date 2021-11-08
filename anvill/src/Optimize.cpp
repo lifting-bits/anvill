@@ -54,8 +54,11 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalOpt.h>
 
+#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/JumpTableAnalysis.h>
 // clang-format on
 
+#include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
@@ -81,6 +84,7 @@ namespace anvill {
 // When utilizing crossRegisterProxies cleanup triggers asan
 
 void OptimizeModule(const EntityLifter &lifter_context,
+                    const std::shared_ptr<MemoryProvider> &memprov,
                     const remill::Arch *arch, const Program &program,
                     llvm::Module &module, const LifterOptions &options) {
 
@@ -110,11 +114,14 @@ void OptimizeModule(const EntityLifter &lifter_context,
   llvm::CGSCCAnalysisManager cam(false);
   llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam(false);
+  SliceManager slc(lifter_context);
 
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cam);
   pb.registerLoopAnalyses(lam);
+
+  fam.registerPass([&] { return JumpTableAnalysis(slc); });
 
   params.DefaultThreshold = 250;
   auto inliner = llvm::ModuleInlinerWrapperPass(params);
@@ -151,7 +158,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddLowerTypeHintIntrinsics(fpm);
   AddInstructionFolderPass(fpm, err_man);
   fpm.addPass(llvm::DCEPass());
-
+  fpm.addPass(llvm::SROA());
+  AddSwitchLoweringPass(fpm, memprov, slc);
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveTrivialPhisAndSelects(fpm);

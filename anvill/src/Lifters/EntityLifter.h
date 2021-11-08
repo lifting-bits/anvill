@@ -68,6 +68,8 @@ class EntityLifterImpl {
   // then return the address of that entity in the binary being lifted.
   std::optional<uint64_t> AddressOfEntity(llvm::Constant *entity) const;
 
+  std::shared_ptr<MemoryProvider> getMemoryProvider(void) const;
+
  private:
   friend class EntityLifter;
   friend class DataLifter;

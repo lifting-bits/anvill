@@ -113,8 +113,8 @@ static void MuteStateEscape(llvm::CallInst *call) {
 // This returns a special anvill built-in used to describe jumps tables
 // inside lifted code; It takes the address type to generate the function
 // parameters of correct type.
-static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module, llvm::Type *type,
-                                           bool complete) {
+static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
+                                           llvm::Type *type, bool complete) {
 
   const auto &func_name =
       complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
@@ -125,7 +125,7 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module, llvm::Type *typ
   }
 
   auto &context = module.getContext();
-  llvm::Type* func_parameters[] = {type};
+  llvm::Type *func_parameters[] = {type};
 
   auto func_type = llvm::FunctionType::get(type, func_parameters, true);
 
@@ -351,9 +351,9 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       auto destination = target_list.destination_list.front();
       llvm::BranchInst::Create(GetOrCreateTargetBlock(destination), block);
 
-    // We have multiple destinations. Handle this with a switch. If the target
-    // list is not marked as complete, then we'll still add __remill_jump
-    // inside the default block
+      // We have multiple destinations. Handle this with a switch. If the target
+      // list is not marked as complete, then we'll still add __remill_jump
+      // inside the default block
     } else {
       llvm::BasicBlock *default_case{nullptr};
 
@@ -365,8 +365,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
         llvm::IRBuilder<> builder(default_case);
         builder.CreateUnreachable();
 
-      // Create a default case that will contain the __remill_jump. For this
-      // to work, we need to update `current_bb`
+        // Create a default case that will contain the __remill_jump. For this
+        // to work, we need to update `current_bb`
       } else {
         add_remill_jump = true;
 
@@ -382,7 +382,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       switch_parameters.push_back(pc);
 
       for (auto destination : target_list.destination_list) {
-        auto dest_as_value = GenerateProgramCounter(block, destination);
+        auto dest_as_value = GenerateConcreteProgramCounter(block, destination);
         switch_parameters.push_back(dest_as_value);
       }
 
@@ -731,14 +731,12 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                             remill::Instruction *delayed_inst,
                                             llvm::BasicBlock *block) {
   std::stringstream taken_ss;
-  taken_ss
-      << "inst_" << std::hex << inst.pc << "_taken_"
-      << inst.branch_taken_pc;
+  taken_ss << "inst_" << std::hex << inst.pc << "_taken_"
+           << inst.branch_taken_pc;
 
   std::stringstream not_taken_ss;
-  not_taken_ss
-      << "inst_" << std::hex << inst.pc << "_not_taken_"
-      << inst.branch_not_taken_pc;
+  not_taken_ss << "inst_" << std::hex << inst.pc << "_not_taken_"
+               << inst.branch_not_taken_pc;
 
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
@@ -874,9 +872,9 @@ void FunctionLifter::InstrumentDataflowProvenance(llvm::BasicBlock *block) {
     if (!data_provenance_function) {
       llvm::Type *args[] = {mem_ptr_type, pc_reg_type};
       auto fty = llvm::FunctionType::get(mem_ptr_type, args, true);
-      data_provenance_function = llvm::Function::Create(
-          fty, llvm::GlobalValue::ExternalLinkage,
-          kAnvillDataProvenanceFunc, *semantics_module);
+      data_provenance_function =
+          llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage,
+                                 kAnvillDataProvenanceFunc, *semantics_module);
     }
   }
 
@@ -927,8 +925,8 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
   }
 
   llvm::Value *args[] = {
-      new llvm::LoadInst(mem_ptr_type, mem_ptr_ref,
-                         llvm::Twine::createNull(), block),
+      new llvm::LoadInst(mem_ptr_type, mem_ptr_ref, llvm::Twine::createNull(),
+                         block),
       inst_lifter.LoadRegValue(block, state_ptr, remill::kPCVariableName),
       inst_lifter.LoadRegValue(block, state_ptr, remill::kNextPCVariableName)};
   llvm::IRBuilder<> ir(block);
@@ -1197,7 +1195,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     if (!inst_block) {
       inst_block = block;
 
-    // We've already lifted this instruction via another control-flow edge.
+      // We've already lifted this instruction via another control-flow edge.
     } else {
       llvm::BranchInst::Create(inst_block, block);
       continue;
@@ -1211,7 +1209,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
-    // Didn't get a valid instruction.
+      // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
@@ -1332,24 +1330,22 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
     const auto gsbase_reg = options.arch->RegisterByName("GSBASE");
 
     if (gsbase_reg) {
-      const auto gsbase_val =
-          llvm::ConstantExpr::getPtrToInt(
-              llvm::ConstantExpr::getAddrSpaceCast(
-                  llvm::ConstantExpr::getNullValue(
-                      llvm::PointerType::get(i8_type, 256)),
-                  llvm::PointerType::get(i8_type, 0)),
-              pc_reg_type);
+      const auto gsbase_val = llvm::ConstantExpr::getPtrToInt(
+          llvm::ConstantExpr::getAddrSpaceCast(
+              llvm::ConstantExpr::getNullValue(
+                  llvm::PointerType::get(i8_type, 256)),
+              llvm::PointerType::get(i8_type, 0)),
+          pc_reg_type);
       ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(state_ptr, ir));
     }
 
     if (fsbase_reg) {
-      const auto fsbase_val =
-          llvm::ConstantExpr::getPtrToInt(
-              llvm::ConstantExpr::getAddrSpaceCast(
-                  llvm::ConstantExpr::getNullValue(
-                      llvm::PointerType::get(i8_type, 257)),
-                  llvm::PointerType::get(i8_type, 0)),
-              pc_reg_type);
+      const auto fsbase_val = llvm::ConstantExpr::getPtrToInt(
+          llvm::ConstantExpr::getAddrSpaceCast(
+              llvm::ConstantExpr::getNullValue(
+                  llvm::PointerType::get(i8_type, 257)),
+              llvm::PointerType::get(i8_type, 0)),
+          pc_reg_type);
       ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(state_ptr, ir));
     }
 
@@ -1624,8 +1620,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   //            for marshalling return values back out because there may be
   //            multiple return/tail-call sites in the function we've just
   //            lifted.
-  AnnotateInstructions(block, pc_annotation_id,
-                       GetPCAnnotation(func_address));
+  AnnotateInstructions(block, pc_annotation_id, GetPCAnnotation(func_address));
 
   llvm::Value *ret_val = nullptr;
 
@@ -1704,13 +1699,13 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
             if (insts_without_provenance.count(&inst)) {
               continue;
 
-            // This call site had no associated PC metadata, and so we want
-            // to exclude any inlined code from accidentally being associated
-            // with other PCs on future passes.
+              // This call site had no associated PC metadata, and so we want
+              // to exclude any inlined code from accidentally being associated
+              // with other PCs on future passes.
             } else if (!call_pc) {
               insts_without_provenance.insert(&inst);
 
-            // We can propagate the annotation.
+              // We can propagate the annotation.
             } else {
               inst.setMetadata(pc_annotation_id, call_pc);
             }
@@ -2035,8 +2030,8 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
       CHECK(new_version->isDeclaration());
     }
 
-  // It's possible that we've lifted this function before, but that it was
-  // renamed by user code, and so the above check failed. Go check for that.
+    // It's possible that we've lifted this function before, but that it was
+    // renamed by user code, and so the above check failed. Go check for that.
   } else {
     lifter_context.ForEachEntityAtAddress(address, [&](llvm::Constant *gv) {
       if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);

@@ -1123,7 +1123,7 @@ int main(int argc, char *argv[]) {
   }
 
   // OLD: Apply optimizations.
-  anvill::OptimizeModule(lifter, arch.get(), program, module, options);
+  anvill::OptimizeModule(lifter, memory, arch.get(), program, module, options);
 
   std::unordered_set<llvm::Constant *> has_name;
 
