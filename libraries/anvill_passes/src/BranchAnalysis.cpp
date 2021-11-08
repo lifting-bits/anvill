@@ -367,8 +367,6 @@ bool Guess::AttemptToProve(z3::expr flagRes, z3::solver &solv,
 
   solv.add(guess_implies_flag_cex || flag_implies_guess_cex);
 
-  std::cout << solv << std::endl;
-
   auto proven = solv.check() == z3::unsat;
 
   solv.pop();
@@ -385,7 +383,6 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
 
   auto expr =
       consextract.ExpectInsnOrStopCondition(intrinsic_call->getArgOperand(0));
-  std::cout << "checking expr " << expr.has_value() << std::endl;
   if (expr.has_value()) {
     z3::context c;
     z3::solver s(c);
