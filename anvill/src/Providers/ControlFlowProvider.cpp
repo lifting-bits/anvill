@@ -15,45 +15,54 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "ControlFlowProvider.h"
+#include <anvill/Providers/ControlFlowProvider.h>
+
+#include <anvill/Program.h>
+
+#include <remill/Arch/Instruction.h>
 
 namespace anvill {
+namespace {
 
-struct ControlFlowProvider::PrivateData final {
-  PrivateData(const Program &program_) : program(program_) {}
-
+class ProgramControlFlowProvider final : public ControlFlowProvider {
+ public:
   const Program &program;
+
+  ProgramControlFlowProvider(const Program &program_)
+      : program(program_) {}
+
+  virtual ~ProgramControlFlowProvider(void) = default;
+
+  std::uint64_t GetRedirection(
+      const remill::Instruction &from_inst,
+      std::uint64_t address) const final;
+
+  std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
 };
 
-ControlFlowProvider::ControlFlowProvider(const Program &program)
-    : d(new PrivateData(program)) {}
-
-ControlFlowProvider::~ControlFlowProvider(void) = default;
-
-std::uint64_t ControlFlowProvider::GetRedirection(std::uint64_t address) const {
-  std::uint64_t destination{};
-  if (!d->program.TryGetControlFlowRedirection(destination, address)) {
-    destination = address;
+std::uint64_t ProgramControlFlowProvider::GetRedirection(
+    const remill::Instruction &, std::uint64_t address) const {
+  std::uint64_t destination = address;
+  if (program.TryGetControlFlowRedirection(destination, address)) {
+    return destination;
+  } else {
+    return address;
   }
-
-  return destination;
 }
 
 std::optional<ControlFlowTargetList>
-ControlFlowProvider::TryGetControlFlowTargets(std::uint64_t address) const {
-  return d->program.TryGetControlFlowTargets(address);
+ProgramControlFlowProvider::TryGetControlFlowTargets(
+    const remill::Instruction &from_inst) const {
+  return program.TryGetControlFlowTargets(from_inst.pc);
 }
 
-Result<IControlFlowProvider::Ptr, ControlFlowProviderError>
-IControlFlowProvider::Create(const Program &program) {
-  try {
-    return Ptr(new ControlFlowProvider(program));
+}  // namespace
 
-  } catch (const std::bad_alloc &) {
-    return ControlFlowProviderError::MemoryAllocationError;
-
-  } catch (const ControlFlowProviderError &error) {
-    return error;
-  }
+std::unique_ptr<ControlFlowProvider>
+ControlFlowProvider::Create(const Program &program) {
+  std::unique_ptr<ControlFlowProvider> ret(
+      new ProgramControlFlowProvider(program));
+  return ret;
 }
 }  // namespace anvill

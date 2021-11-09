@@ -45,10 +45,10 @@
 // clang-format on
 
 #include <anvill/ABI.h>
-#include <anvill/ITypeSpecification.h>
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/TypeSpecification.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
@@ -176,23 +176,23 @@ static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  auto type_spec_res =
-      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
+
+  std::string spec = maybe_type_str->str();
+  auto type_spec_res = type_specifier.DecodeFromString(spec);
   if (!type_spec_res.Succeeded()) {
     auto error = type_spec_res.TakeError();
 
-    LOG(ERROR) << error.message << " in spec " << error.spec;
+    LOG(ERROR) << error.message << " in spec " << spec;
     return false;
   }
 
-  auto type_spec = type_spec_res.TakeValue();
-  if (!type_spec->Sized()) {
-    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
-               << " -> " << type_spec->Description();
+  decl.type = type_spec_res.TakeValue();
+  if (!decl.type->isSized()) {
+    LOG(ERROR) << "The following type is not sized: " << spec;
     return false;
   }
 
-  decl.type = type_spec->Type();
   return ParseValue(arch, decl, obj, "function parameter");
 }
 
@@ -220,23 +220,21 @@ static bool ParseTypedRegister(
     return false;
   }
 
-  auto type_spec_res =
-      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
+  std::string spec = maybe_type_str->str();
+  auto type_spec_res = type_specifier.DecodeFromString(spec);
   if (!type_spec_res.Succeeded()) {
     auto error = type_spec_res.TakeError();
 
-    LOG(ERROR) << error.message << " in spec " << error.spec;
+    LOG(ERROR) << error.message << " in spec " << spec;
     return false;
   }
 
-  auto type_spec = type_spec_res.TakeValue();
-  if (!type_spec->Sized()) {
-    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
-               << " -> " << type_spec->Description();
+  decl.type = type_spec_res.TakeValue();
+  if (!decl.type->isSized()) {
+    LOG(ERROR) << "The following type is not sized: " << spec;
     return false;
   }
-
-  decl.type = type_spec->Type();
 
   auto register_name = obj->getString("register");
   if (!register_name) {
@@ -268,23 +266,21 @@ static bool ParseReturnValue(const remill::Arch *arch,
     return false;
   }
 
-  auto type_spec_res =
-      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
+  std::string spec = maybe_type_str->str();
+  auto type_spec_res = type_specifier.DecodeFromString(spec);
   if (!type_spec_res.Succeeded()) {
     auto error = type_spec_res.TakeError();
-
-    LOG(ERROR) << error.message << " in spec " << error.spec;
+    LOG(ERROR) << error.message << " in spec " << spec;
     return false;
   }
 
-  auto type_spec = type_spec_res.TakeValue();
-  if (!type_spec->Sized()) {
-    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
-               << " -> " << type_spec->Description();
+  decl.type = type_spec_res.TakeValue();
+  if (!decl.type->isSized()) {
+    LOG(ERROR) << "The following type is not sized: " << spec;
     return false;
   }
 
-  decl.type = type_spec->Type();
   return ParseValue(arch, decl, obj, "function return value");
 }
 
@@ -328,28 +324,26 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
 
   auto maybe_type = obj->getString("type");
   if (maybe_type) {
-    auto type_spec_result =
-        anvill::ITypeSpecification::Create(context, *maybe_type);
+    anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
+    std::string spec = maybe_type->str();
+    auto type_spec_result = type_specifier.DecodeFromString(spec);
     if (!type_spec_result.Succeeded()) {
       auto error = type_spec_result.TakeError();
-      LOG(ERROR) << error.message << " in spec " << error.spec;
+      LOG(ERROR) << error.message << " in spec " << spec;
       return false;
     }
 
-    auto type_spec = type_spec_result.TakeValue();
-    auto func_type = llvm::dyn_cast<llvm::FunctionType>(type_spec->Type());
+    auto func_type = llvm::dyn_cast<llvm::FunctionType>(type_spec_result.TakeValue());
     if (!func_type) {
       LOG(ERROR) << "Type associated with function at address " << std::hex
-                 << address << std::dec << " is incorrect! "
-                 << remill::LLVMThingToString(type_spec->Type());
+                 << address << std::dec << " is incorrect! " << spec;
       return false;
     }
 
     if (decl.is_variadic != func_type->isVarArg()) {
       LOG(ERROR) << "Type associated with function at address " << std::hex
                  << address << std::dec << " does not match variadic nature of "
-                 << "specification: "
-                 << remill::LLVMThingToString(type_spec->Type());
+                 << "specification: " << spec;
       return false;
     }
 
@@ -507,17 +501,17 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     return false;
   }
 
-  auto type_spec_res =
-      anvill::ITypeSpecification::Create(context, *maybe_type_str);
+  anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
+  std::string spec = maybe_type_str->str();
+  auto type_spec_res = type_specifier.DecodeFromString(spec);
   if (!type_spec_res.Succeeded()) {
     auto error = type_spec_res.TakeError();
 
-    LOG(ERROR) << error.message << " in spec " << error.spec;
+    LOG(ERROR) << error.message << " in spec " << spec;
     return false;
   }
 
-  auto type_spec = type_spec_res.TakeValue();
-  auto type = type_spec->Type();
+  llvm::Type *type = type_spec_res.TakeValue();
 
   if (type->isFunctionTy()) {
     auto type_as_func_ty = llvm::dyn_cast<llvm::FunctionType>(type);
@@ -557,9 +551,8 @@ static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
     return true;
   }
 
-  if (!type_spec->Sized()) {
-    LOG(ERROR) << "The following type is not sized: " << type_spec->Spec()
-               << " -> " << type_spec->Description();
+  if (!type->isSized()) {
+    LOG(ERROR) << "The following type is not sized: " << spec;
     return false;
   }
 
@@ -1055,18 +1048,8 @@ int main(int argc, char *argv[]) {
   auto types =
       anvill::TypeProvider::CreateProgramTypeProvider(context, program);
 
-  auto ctrl_flow_provider_res = anvill::IControlFlowProvider::Create(program);
-  if (!ctrl_flow_provider_res.Succeeded()) {
-    auto error = ctrl_flow_provider_res.TakeError();
-
-    std::cerr << "Failed to create the control flow provider: "
-              << magic_enum::enum_name(error) << "\n";
-
-    return EXIT_FAILURE;
-  }
-
   anvill::LifterOptions options(arch.get(), module,
-                                ctrl_flow_provider_res.TakeValue());
+                                anvill::ControlFlowProvider::Create(program));
 
   if (FLAGS_add_breakpoints) {
     options.add_breakpoints = true;

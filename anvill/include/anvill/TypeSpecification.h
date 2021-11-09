@@ -25,8 +25,10 @@
 #include <string>
 
 namespace llvm {
+class DataLayout;
 class LLVMContext;
 class StringRef;
+class Type;
 }  // namespace llvm
 namespace anvill {
 
@@ -60,37 +62,33 @@ namespace anvill {
 
 struct TypeSpecificationError final {
   enum class ErrorCode {
-    MemoryAllocationFailure,
     InvalidSpecFormat,
     InvalidState,
   };
 
-  std::string spec;
   ErrorCode error_code;
   std::string message;
 };
 
-class ITypeSpecification {
+class TypeSpecifierImpl;
+
+class TypeSpecifier {
+ private:
+  std::unique_ptr<TypeSpecifierImpl> impl;
+
  public:
-  ITypeSpecification(void) = default;
-  virtual ~ITypeSpecification(void) = default;
+  ~TypeSpecifier(void);
+  TypeSpecifier(llvm::LLVMContext &context, const llvm::DataLayout &dl);
 
-  using Ptr = std::unique_ptr<ITypeSpecification>;
-  static Result<Ptr, TypeSpecificationError>
-  Create(llvm::LLVMContext &llvm_context, llvm::StringRef spec);
+  // Convert the type `type` to a string encoding. If `alphanum` is `true`
+  // then only alphanumeric characters (and underscores) are used. The
+  // alphanumeric representation is always safe to use when appended to
+  // identifier names.
+  std::string EncodeToString(const llvm::Type *type, bool alphanum = false) const;
 
-  static std::string TypeToString(const llvm::Type &type,
-                                  const llvm::DataLayout &dl,
-                                  bool alphanum = false);
-
-  virtual llvm::Type *Type(void) const = 0;
-  virtual bool Sized(void) const = 0;
-
-  virtual const std::string &Spec(void) const = 0;
-  virtual const std::string &Description(void) const = 0;
-
-  ITypeSpecification(const ITypeSpecification &) = delete;
-  ITypeSpecification &operator=(const ITypeSpecification &) = delete;
+  // Parse an encoded type string into its represented type.
+  Result<llvm::Type *, TypeSpecificationError>
+  DecodeFromString(const std::string_view str);
 };
 
 }  // namespace anvill

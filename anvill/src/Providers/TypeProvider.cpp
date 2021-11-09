@@ -151,6 +151,14 @@ class NullTypeProvider final : public TypeProvider {
 
 TypeProvider::~TypeProvider(void) {}
 
+// Try to return the type of a function starting at address `address`. This
+// type is the prototype of the function. The type can be call site specific,
+// where the call site is `from_inst`.
+std::optional<FunctionDecl> TypeProvider::TryGetFunctionType(
+    const remill::Instruction &, uint64_t address) {
+  return TryGetFunctionType(address);
+}
+
 TypeProvider::TypeProvider(llvm::LLVMContext &context_) : context(context_) {}
 
 // Try to get the type of the register named `reg_name` on entry to the

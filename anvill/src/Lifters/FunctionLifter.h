@@ -19,6 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/TypeSpecification.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -79,6 +80,7 @@ class FunctionLifter {
   const LifterOptions &options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
+  TypeSpecifier type_specifier;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
@@ -116,6 +118,9 @@ class FunctionLifter {
 
   // Address of the function currently being lifted.
   uint64_t func_address{0};
+
+  // The declaration of the current function being lifted.
+  const FunctionDecl *curr_decl{nullptr};
 
   // The higher-level C/C++-like function that we're trying to lift.
   llvm::Function *native_func{nullptr};
@@ -178,11 +183,12 @@ class FunctionLifter {
   // function drives a work list, where the first time we ask for the
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
+  llvm::BasicBlock *GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr);
 
   // Attempts to lookup any redirection of the given address, and then
   // calls GetOrCreateBlock
-  llvm::BasicBlock *GetOrCreateTargetBlock(uint64_t addr);
+  llvm::BasicBlock *GetOrCreateTargetBlock(const remill::Instruction &from_inst,
+                                           uint64_t to_addr);
 
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are
@@ -262,7 +268,8 @@ class FunctionLifter {
   // A wrapper around the type provider's TryGetFunctionType that makes use
   // of the control flow provider to handle control flow redirections for
   // thunks
-  std::optional<FunctionDecl> TryGetTargetFunctionType(std::uint64_t address);
+  std::optional<FunctionDecl> TryGetTargetFunctionType(
+      const remill::Instruction &inst, std::uint64_t address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in

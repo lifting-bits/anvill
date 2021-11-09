@@ -17,8 +17,8 @@
 
 #include "anvill/Decl.h"
 
-#include <anvill/ITypeSpecification.h>
 #include <anvill/Lifters/DeclLifter.h>
+#include <anvill/TypeSpecification.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
@@ -227,15 +227,16 @@ FunctionDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
                              llvm::json::Value(std::move(returns_json))});
 
   if (return_stack_pointer) {
+    TypeSpecifier type_specifier(return_stack_pointer->type->getContext(), dl);
+
     llvm::json::Object return_stack_pointer_json;
     return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("register"), this->return_stack_pointer->name});
+        llvm::json::ObjectKey("register"), return_stack_pointer->name});
     return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("offset"), this->return_stack_pointer_offset});
+        llvm::json::ObjectKey("offset"), return_stack_pointer_offset});
     return_stack_pointer_json.insert(
         llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-                               ITypeSpecification::TypeToString(
-                                   *this->return_stack_pointer->type, dl)});
+      type_specifier.EncodeToString(return_stack_pointer->type)});
 
     json.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("return_stack_pointer"),
@@ -299,9 +300,11 @@ ValueDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
     LOG(FATAL) << "Trying to serialize a value that has not been allocated";
   }
 
+  TypeSpecifier type_specifier(type->getContext(), dl);
+
   value_json.insert(
       llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-                             ITypeSpecification::TypeToString(*type, dl)});
+      type_specifier.EncodeToString(type)});
 
   return value_json;
 }

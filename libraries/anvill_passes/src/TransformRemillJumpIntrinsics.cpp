@@ -160,7 +160,6 @@ llvm::PreservedAnalyses
 TransformRemillJumpIntrinsics::run(llvm::Function &F,
                                    llvm::FunctionAnalysisManager &AM) {
   const auto module = F.getParent();
-  const auto &dl = module->getDataLayout();
   auto calls = FindFunctionCalls(F, [&](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func || func->getName() != kRemillJumpIntrinsicName) {

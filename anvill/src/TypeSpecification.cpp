@@ -15,31 +15,79 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "TypeSpecification.h"
+#include <anvill/TypeSpecification.h>
 
 // clang-format off
-#include <remill/BC/Compat/CTypes.h>
-#include <remill/BC/Compat/VectorType.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
-
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Type.h>
+#include <llvm/Support/Error.h>
 // clang-format on
 
 #include <glog/logging.h>
+
+#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace anvill {
 
-namespace {
+class TypeSpecifierImpl {
+ public:
+  llvm::LLVMContext &context;
+  const llvm::DataLayout dl;
+  std::unordered_map<llvm::StructType *, size_t> type_to_id;
+  std::vector<llvm::StructType *> id_to_type;
+
+  inline TypeSpecifierImpl(llvm::LLVMContext &context_,
+                           const llvm::DataLayout &dl_)
+      : context(context_),
+        dl(dl_) {}
+
+  // Translates an llvm::Type to a type that conforms to the spec in
+  // TypeSpecification.cpp
+  void TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
+                             bool alphanum);
+
+  template <typename Filter, typename T>
+  bool Parse(llvm::StringRef spec, size_t &i, Filter filter,
+             T *out) {
+    std::stringstream ss;
+
+    auto found = false;
+    for (; i < spec.size(); ++i) {
+      if (filter(spec[i])) {
+        ss << spec[i];
+        found = true;
+
+      } else {
+        break;
+      }
+    }
+
+    if (!found) {
+      return false;
+    }
+
+    ss >> *out;
+    return !ss.bad();
+  }
+
+
+  Result<llvm::Type *, TypeSpecificationError>
+  ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
+            llvm::StringRef spec, size_t &i);
+};
 
 // Translates an llvm::Type to a type that conforms to the spec in
 // TypeSpecification.cpp
-static void
-TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
-                      std::unordered_map<llvm::StructType *, size_t> &ids,
-                      const llvm::DataLayout &dl, bool alphanum) {
+void TypeSpecifierImpl::TranslateTypeInternal(
+    llvm::Type &type, std::stringstream &ss, bool alphanum) {
   switch (type.getTypeID()) {
     case llvm::Type::VoidTyID: ss << 'v'; break;
 
@@ -115,7 +163,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       ss << (alphanum ? "_A" : "(");
 
       for (llvm::Type *param : func_ptr->params()) {
-        TranslateTypeInternal(*param, ss, ids, dl, alphanum);
+        TranslateTypeInternal(*param, ss, alphanum);
       }
 
       if (func_ptr->isVarArg()) {
@@ -124,7 +172,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
         ss << 'v';
       }
 
-      TranslateTypeInternal(*func_ptr->getReturnType(), ss, ids, dl, alphanum);
+      TranslateTypeInternal(*func_ptr->getReturnType(), ss, alphanum);
       ss << (alphanum ? "_B" : ")");
       break;
     }
@@ -141,16 +189,16 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
       // If we're already serialized this structure type, or if we're inside
       // of the structure type, then use a back reference to avoid infinite
       // recursion.
-      if (ids.count(struct_ptr)) {
-        ss << (alphanum ? "_M" : "%") << ids[struct_ptr];
+      if (type_to_id.count(struct_ptr)) {
+        ss << (alphanum ? "_M" : "%") << type_to_id[struct_ptr];
 
       // We've not yet serialized this structure.
       } else {
 
         // Start by emitting a new structure ID for this structure and memoizing
         // it to prevent infinite recursion (e.g. on linked lists).
-        ids[struct_ptr] = ids.size();
-        ss << (alphanum ? "_X" : "=") << ids[struct_ptr]
+        type_to_id[struct_ptr] = type_to_id.size();
+        ss << (alphanum ? "_X" : "=") << type_to_id[struct_ptr]
            << (alphanum ? "_E" : "{");
 
         auto layout = dl.getStructLayout(struct_ptr);
@@ -175,7 +223,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
           }
 
           const auto el_ty = struct_ptr->getElementType(i);
-          TranslateTypeInternal(*el_ty, ss, ids, dl, alphanum);
+          TranslateTypeInternal(*el_ty, ss, alphanum);
           expected_offset = offset + dl.getTypeStoreSize(el_ty);
         }
 
@@ -198,7 +246,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     case llvm::GetFixedVectorTypeId(): {
       const auto vec_ptr = llvm::cast<llvm::FixedVectorType>(&type);
       ss << (alphanum ? "_G" : "<");
-      TranslateTypeInternal(*vec_ptr->getElementType(), ss, ids, dl, alphanum);
+      TranslateTypeInternal(*vec_ptr->getElementType(), ss, alphanum);
       ss << 'x' << vec_ptr->getNumElements() << (alphanum ? "_H" : ">");
       break;
     }
@@ -206,8 +254,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
     case llvm::Type::ArrayTyID: {
       const auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
       ss << (alphanum ? "_C" : "[");
-      TranslateTypeInternal(*array_ptr->getElementType(), ss, ids, dl,
-                            alphanum);
+      TranslateTypeInternal(*array_ptr->getElementType(), ss, alphanum);
       ss << 'x' << array_ptr->getNumElements() << (alphanum ? "_D" : "]");
       break;
     }
@@ -219,7 +266,7 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
 
       // Get the type of the pointee.
       if (elem_type->isSized()) {
-        TranslateTypeInternal(*elem_type, ss, ids, dl, alphanum);
+        TranslateTypeInternal(*elem_type, ss, alphanum);
 
       // It's an opaque type, e.g. a structure that is declared but not defined.
       } else {
@@ -247,136 +294,30 @@ TranslateTypeInternal(llvm::Type &type, std::stringstream &ss,
   }
 }
 
-}  // namespace
-
-TypeSpecification::~TypeSpecification(void) {}
-
-llvm::Type *TypeSpecification::Type(void) const {
-  return context.type;
-}
-
-bool TypeSpecification::Sized(void) const {
-  return context.sized;
-}
-
-const std::string &TypeSpecification::Spec(void) const {
-  return context.spec;
-}
-
-const std::string &TypeSpecification::Description(void) const {
-  return context.description;
-}
-
-TypeSpecification::TypeSpecification(llvm::LLVMContext &llvm_context,
-                                     llvm::StringRef spec) {
-  auto context_res = ParseSpec(llvm_context, spec);
-  if (!context_res.Succeeded()) {
-    throw context_res.TakeError();
-  }
-
-  context = context_res.TakeValue();
-}
-
-TypeSpecificationError
-TypeSpecification::CreateError(const std::string &spec,
-                               TypeSpecificationError::ErrorCode error_code,
-                               const std::string &message) {
-
-  TypeSpecificationError error;
-  error.spec = spec;
-  error.error_code = error_code;
-  error.message = message;
-
-  return error;
-}
-
 Result<llvm::Type *, TypeSpecificationError>
-TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
-                             std::vector<llvm::Type *> &ids,
-                             llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
+TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
                              llvm::StringRef spec, size_t &i) {
 
   llvm::StructType *struct_type = nullptr;
-
-  while (i < spec.size()) {
+  const auto spec_size = spec.size();
+  while (i < spec_size) {
     auto ch = spec[i];
-    bool in_retry = false;
-  retry:
     switch (ch) {
-
-      // An underscore is a prefix to re-interpret the subsequent letter/digit
-      // as a different character. This lets us have a type encoding that is
-      // purely alphanumeric, and thus well-suited toward embedding in symbol
-      // names.
-      case '_':
-        if ((i + 1) >= spec.size()) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Unterminated continuation character '_' at end of type specification");
-
-        } else if (in_retry) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Cannot have continuation '_' following a continuation '_' in type specification");
-
-        } else {
-          in_retry = true;
-          switch (spec[++i]) {
-
-            // `_M` -> `%`.
-            case 'M': ch = '%'; goto retry;
-
-            // `_S` -> `*`.
-            case 'S': ch = '*'; goto retry;
-
-            // `_A` -> `(`.
-            case 'A': ch = '('; goto retry;
-
-            // `_B` -> `)`.
-            case 'B': ch = ')'; goto retry;
-
-            // `_C` -> `[`.
-            case 'C': ch = '['; goto retry;
-
-            // `_D` -> `]`.
-            case 'D': ch = ']'; goto retry;
-
-            // `_E` -> `{`.
-            case 'E': ch = '['; goto retry;
-
-            // `_F` -> `}`.
-            case 'F': ch = ']'; goto retry;
-
-            // `_G` -> `<`.
-            case 'G': ch = '<'; goto retry;
-
-            // `_H` -> `>`.
-            case 'H': ch = '>'; goto retry;
-
-            // `_V` -> `&`.
-            case 'V': ch = '&'; goto retry;
-
-            // `_X` -> `=`.
-            case 'X': ch = '='; goto retry;
-          }
-        }
 
       // Parse a structure type.
       case '{': {
         llvm::SmallVector<llvm::Type *, 4> elem_types;
-        for (i += 1; i < spec.size() && spec[i] != '}';) {
-          auto maybe_elem_type =
-              ParseType(llvm_context, ids, size_checked, spec, i);
+        for (i += 1; i < spec_size && spec[i] != '}';) {
+          auto maybe_elem_type = ParseType(size_checked, spec, i);
           if (!maybe_elem_type.Succeeded()) {
             return maybe_elem_type.TakeError();
           }
 
           if (auto elem_type = maybe_elem_type.Value()) {
             if (!elem_type->isSized(&size_checked)) {
-              return CreateError(
-                  spec.str(),
+              return TypeSpecificationError{
                   TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                  "Cannot create structure with an unsized element type (e.g. void or function type) in type specification");
+                  "Cannot create structure with an unsized element type (e.g. void or function type) in type specification"};
             }
 
             elem_types.push_back(elem_type);
@@ -386,20 +327,20 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         }
 
         if (elem_types.empty()) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Invalid structure in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Invalid structure in type specification"};
         }
 
-        if (i >= spec.size() || '}' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing closing '}' in type specification");
+        if (i >= spec_size || '}' != spec[i]) {
+          return TypeSpecificationError{
+            TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+            "Missing closing '}' in type specification"};
         }
 
         i += 1;
         if (!struct_type) {
-          return llvm::StructType::get(llvm_context, elem_types);
+          return llvm::StructType::get(context, elem_types);
         } else {
           struct_type->setBody(elem_types);
           return struct_type;
@@ -409,36 +350,35 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
       // Parse an array type.
       case '[': {
         i += 1;
-        auto maybe_elem_type =
-            ParseType(llvm_context, ids, size_checked, spec, i);
+        auto maybe_elem_type = ParseType(size_checked, spec, i);
         if (!maybe_elem_type.Succeeded()) {
           return maybe_elem_type.TakeError();
         }
 
         llvm::Type *elem_type = maybe_elem_type.TakeValue();
         if (!elem_type->isSized(&size_checked)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Cannot create array with unsized element type (e.g. void or function type) in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Cannot create array with unsized element type (e.g. void or function type) in type specification"};
         }
-        if (i >= spec.size() || 'x' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing 'x' in array type specification");
+        if (i >= spec_size || 'x' != spec[i]) {
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing 'x' in array type specification"};
         }
 
         i += 1;
         size_t num_elems = 0;
         if (!Parse(spec, i, isdigit, &num_elems)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Unable to parse array size in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Unable to parse array size in type specification"};
         }
 
-        if (i >= spec.size() || ']' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing closing ']' in type specification");
+        if (i >= spec_size || ']' != spec[i]) {
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing closing ']' in type specification"};
         }
 
         // An array can be of size `0` used in the variable length object. The specs for
@@ -461,43 +401,42 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
       // Parse a vector type.
       case '<': {
         i += 1;
-        auto maybe_elem_type =
-            ParseType(llvm_context, ids, size_checked, spec, i);
+        auto maybe_elem_type = ParseType(size_checked, spec, i);
         if (!maybe_elem_type.Succeeded()) {
           return maybe_elem_type.TakeError();
         }
 
         llvm::Type *elem_type = maybe_elem_type.TakeValue();
         if (!elem_type->isSized(&size_checked)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Cannot create vector with unsized element type (e.g. void or function type) in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Cannot create vector with unsized element type (e.g. void or function type) in type specification"};
         }
 
-        if (i >= spec.size() || 'x' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing 'x' in vector type specification");
+        if (i >= spec_size || 'x' != spec[i]) {
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing 'x' in vector type specification"};
         }
 
         i += 1;
         unsigned num_elems = 0;
         if (!Parse(spec, i, isdigit, &num_elems)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Unable to parse vector size in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Unable to parse vector size in type specification"};
         }
 
         if (!num_elems) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Invalid zero-sized vector in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Invalid zero-sized vector in type specification"};
         }
 
-        if (i >= spec.size() || '>' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing closing '>' in type specification");
+        if (i >= spec_size || '>' != spec[i]) {
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing closing '>' in type specification"};
         }
 
         i += 1;
@@ -507,21 +446,20 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
       // Parse a pointer type.
       case '*': {
         i += 1;
-        auto maybe_elem_type =
-            ParseType(llvm_context, ids, size_checked, spec, i);
+        auto maybe_elem_type = ParseType(size_checked, spec, i);
         if (!maybe_elem_type.Succeeded()) {
           return maybe_elem_type.TakeError();
         }
 
         llvm::Type *elem_type = maybe_elem_type.TakeValue();
         if (!elem_type) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing subtype for pointer type in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing subtype for pointer type in type specification"};
         }
 
         if (elem_type->isVoidTy()) {
-          return llvm::IntegerType::getInt8PtrTy(llvm_context, 0);
+          return llvm::IntegerType::getInt8PtrTy(context, 0);
 
         } else {
 
@@ -534,9 +472,8 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
       // Parse a function type.
       case '(': {
         llvm::SmallVector<llvm::Type *, 4> elem_types;
-        for (i += 1; i < spec.size() && spec[i] != ')';) {
-          auto maybe_elem_type =
-              ParseType(llvm_context, ids, size_checked, spec, i);
+        for (i += 1; i < spec_size && spec[i] != ')';) {
+          auto maybe_elem_type = ParseType(size_checked, spec, i);
           if (!maybe_elem_type.Succeeded()) {
             return maybe_elem_type.TakeError();
           }
@@ -560,16 +497,16 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         //
         // Not valid: (v...v).
         if (elem_types.size() < 2) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Function types must have at least two internal types. E.g. '(vv)' for a function taking nothing and returning nothing, in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Function types must have at least two internal types. E.g. '(vv)' for a function taking nothing and returning nothing, in type specification"};
         }
 
         const auto ret_type = elem_types.pop_back_val();
         if (ret_type->isTokenTy()) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Cannot have a variadic return type in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Cannot have a variadic return type in type specification"};
         }
 
         // Second-to-last type can optionally be a token type, which is
@@ -584,10 +521,9 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
           if (1 == elem_types.size()) {
             elem_types.pop_back();
           } else {
-            return CreateError(
-                spec.str(),
+            return TypeSpecificationError{
                 TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                "Invalid placement of void parameter type in type specification");
+                "Invalid placement of void parameter type in type specification"};
           }
         }
 
@@ -595,17 +531,16 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         for (auto param_type : elem_types) {
           if (param_type->isVoidTy() || param_type->isTokenTy() ||
               param_type->isFunctionTy()) {
-            return CreateError(
-                spec.str(),
+            return TypeSpecificationError{
                 TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                "Invalid parameter type in type specification");
+                "Invalid parameter type in type specification"};
           }
         }
 
         if (i >= spec.size() || ')' != spec[i]) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing closing ')' in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing closing ')' in type specification"};
         }
 
         i += 1;
@@ -615,7 +550,7 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
       // Parse a varargs type, and represent it as a token type.
       case '&': {
         i += 1;
-        return llvm::Type::getTokenTy(llvm_context);
+        return llvm::Type::getTokenTy(context);
       }
 
       // Parse an assignment of a type ID (local to this specification) for later
@@ -640,36 +575,34 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         i += 1;
         unsigned type_id = 0;
         if (!Parse(spec, i, isdigit, &type_id)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Unable to parse type ID in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Unable to parse type ID in type specification"};
         }
 
-        if (type_id != ids.size()) {
+        if (type_id != id_to_type.size()) {
           std::stringstream message;
           message << "Invalid type ID assignment '" << type_id
                   << "'; next expected type ID was '"
-                  << static_cast<unsigned>(ids.size()) << "'";
+                  << static_cast<unsigned>(id_to_type.size()) << "'";
 
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              message.str());
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              message.str()};
         }
 
-        if (i >= spec.size() || spec[i] != '{') {
+        if (i >= spec_size || spec[i] != '{') {
           std::stringstream message;
           message << "Non-structure type assigned to type ID '" << type_id
                   << "'";
 
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              message.str());
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              message.str()};
         }
 
-        std::stringstream ss;
-        ss << "anvill.struct." << type_id;
-        struct_type = llvm::StructType::create(llvm_context, ss.str());
-        ids.push_back(struct_type);
+        struct_type = llvm::StructType::create(context);
+        id_to_type.push_back(struct_type);
 
         // Jump to the next iteration, which will parse the struct.
         continue;
@@ -680,65 +613,65 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         i += 1;
         unsigned type_id = 0;
         if (!Parse(spec, i, isdigit, &type_id)) {
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Unable to parse type ID in type specification");
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Unable to parse type ID in type specification"};
         }
 
-        if (type_id >= ids.size()) {
+        if (type_id >= id_to_type.size()) {
           std::stringstream message;
           message << "Invalid type ID use '" << type_id << "'";
 
-          return CreateError(
-              spec.str(), TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              message.str());
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              message.str()};
+        } else {
+          return id_to_type[type_id];
         }
-
-        return ids[type_id];
       }
 
       case '?':  // bool, _Bool.
       case 'b':  // int8_t.
       case 'B':  // uint8_t.
         i += 1;
-        return llvm::IntegerType::getInt8Ty(llvm_context);
+        return llvm::IntegerType::getInt8Ty(context);
       case 'h':  // int16_t.
       case 'H':  // uint16_t.
         i += 1;
-        return llvm::IntegerType::getInt16Ty(llvm_context);
+        return llvm::IntegerType::getInt16Ty(context);
       case 'i':  // int32_t.
       case 'I':  // uint32_t.
         i += 1;
-        return llvm::IntegerType::getInt32Ty(llvm_context);
+        return llvm::IntegerType::getInt32Ty(context);
       case 'l':  // int64_t.
       case 'L':  // uint64_t.
         i += 1;
-        return llvm::IntegerType::getInt64Ty(llvm_context);
+        return llvm::IntegerType::getInt64Ty(context);
       case 'o':  // int128_t.
       case 'O':  // uint128_t.
         i += 1;
-        return llvm::IntegerType::getInt128Ty(llvm_context);
+        return llvm::IntegerType::getInt128Ty(context);
       case 'e':  // float16_t`.
         i += 1;
-        return llvm::Type::getHalfTy(llvm_context);
+        return llvm::Type::getHalfTy(context);
       case 'f':  // float.
         i += 1;
-        return llvm::Type::getFloatTy(llvm_context);
+        return llvm::Type::getFloatTy(context);
       case 'd':  // double.
         i += 1;
-        return llvm::Type::getDoubleTy(llvm_context);
+        return llvm::Type::getDoubleTy(context);
       case 'D':  // long double.
         i += 1;
-        return llvm::Type::getX86_FP80Ty(llvm_context);
+        return llvm::Type::getX86_FP80Ty(context);
       case 'M':  // MMX type.
         i += 1;
-        return llvm::Type::getX86_MMXTy(llvm_context);
+        return llvm::Type::getX86_MMXTy(context);
       case 'Q':  // Quad-precision float.
         i += 1;
-        return llvm::Type::getFP128Ty(llvm_context);
+        return llvm::Type::getFP128Ty(context);
       case 'v':  // void.
         i += 1;
-        return llvm::Type::getVoidTy(llvm_context);
+        return llvm::Type::getVoidTy(context);
 
       default: {
         i += 1;
@@ -746,70 +679,134 @@ TypeSpecification::ParseType(llvm::LLVMContext &llvm_context,
         std::stringstream message;
         message << "Unexpected character '" << spec[i - 1] << "'";
 
-        return CreateError(spec.str(),
-                           TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                           message.str());
+        return TypeSpecificationError{
+            TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+            message.str()};
       }
     }
   }
   return nullptr;
 }
 
-Result<TypeSpecification::Context, TypeSpecificationError>
-TypeSpecification::ParseSpec(llvm::LLVMContext &llvm_context,
-                             llvm::StringRef spec) {
+TypeSpecifier::~TypeSpecifier(void) {}
 
-  std::vector<llvm::Type *> ids;
+TypeSpecifier::TypeSpecifier(llvm::LLVMContext &context,
+                             const llvm::DataLayout &dl)
+    : impl(std::make_unique<TypeSpecifierImpl>(context, dl)) {}
+
+// Convert the type `type` to a string encoding. If `alphanum` is `true`
+// then only alphanumeric characters (and underscores) are used. The
+// alphanumeric representation is always safe to use when appended to
+// identifier names.
+std::string TypeSpecifier::EncodeToString(
+    const llvm::Type *type, bool alphanum) const {
+  std::stringstream ss;
+  if (type) {
+    impl->type_to_id.clear();
+    impl->TranslateTypeInternal(*const_cast<llvm::Type *>(type), ss, alphanum);
+  }
+  return ss.str();
+}
+
+// Parse an encoded type string into its represented type.
+Result<llvm::Type *, TypeSpecificationError>
+TypeSpecifier::DecodeFromString(const std::string_view spec) {
+  std::string decoded;
+  const auto len = spec.size();
+  decoded.reserve(len);
+  for (auto i = 0ul; i < len; ++i) {
+    auto ch = spec[i];
+
+    switch (ch) {
+
+      // An underscore is a prefix to re-interpret the subsequent letter/digit
+      // as a different character. This lets us have a type encoding that is
+      // purely alphanumeric, and thus well-suited toward embedding in symbol
+      // names.
+      case '_':
+        if ((i + 1u) >= len) {
+          decoded.push_back('_');
+
+        } else {
+          switch (spec[++i]) {
+
+            // `_M` -> `%`.
+            case 'M':
+              decoded.push_back('%');
+              break;
+
+            // `_S` -> `*`.
+            case 'S':
+              decoded.push_back('*');
+              break;
+
+            // `_A` -> `(`.
+            case 'A':
+              decoded.push_back('(');
+              break;
+
+            // `_B` -> `)`.
+            case 'B':
+              decoded.push_back(')');
+              break;
+
+            // `_C` -> `[`.
+            case 'C':
+              decoded.push_back('[');
+              break;
+
+            // `_D` -> `]`.
+            case 'D':
+              decoded.push_back(']');
+              break;
+
+            // `_E` -> `{`.
+            case 'E':
+              decoded.push_back('{');
+              break;
+
+            // `_F` -> `}`.
+            case 'F':
+              decoded.push_back('}');
+              break;
+
+            // `_G` -> `<`.
+            case 'G':
+              decoded.push_back('<');
+              break;
+
+            // `_H` -> `>`.
+            case 'H':
+              decoded.push_back('>');
+              break;
+
+            // `_V` -> `&`.
+            case 'V':
+              decoded.push_back('&');
+              break;
+
+            // `_X` -> `=`.
+            case 'X':
+              decoded.push_back('=');
+              break;
+
+            default:
+              decoded.push_back('_');
+              decoded.push_back(ch);
+              break;
+          }
+        }
+        break;
+      default:
+        decoded.push_back(ch);
+        break;
+    }
+  }
+
   size_t i = 0;
   llvm::SmallPtrSet<llvm::Type *, 8> size_checked;
-
-  auto type_res = ParseType(llvm_context, ids, size_checked, spec, i);
-  if (!type_res.Succeeded()) {
-    return type_res.TakeError();
-  }
-
-  Context context;
-  context.type = type_res.TakeValue();
-  context.spec = spec.str();
-  context.description = remill::LLVMThingToString(context.type);
-
-  if (i < spec.size()) {
-    return CreateError(spec.str(),
-                       TypeSpecificationError::ErrorCode::InvalidState,
-                       "Found trailing unparsed characters");
-  }
-
-  context.sized = context.type->isSized(&size_checked);
-  return context;
-}
-
-Result<ITypeSpecification::Ptr, TypeSpecificationError>
-ITypeSpecification::Create(llvm::LLVMContext &llvm_context,
-                           llvm::StringRef spec) {
-  try {
-    return Ptr(new TypeSpecification(llvm_context, spec));
-
-  } catch (const std::bad_alloc &) {
-    TypeSpecificationError error;
-    error.error_code =
-        TypeSpecificationError::ErrorCode::MemoryAllocationFailure;
-
-    return error;
-
-  } catch (const TypeSpecificationError &error) {
-    return error;
-  }
-}
-
-std::string ITypeSpecification::TypeToString(const llvm::Type &type,
-                                             const llvm::DataLayout &dl,
-                                             bool alphanum) {
-
-  std::stringstream ss;
-  std::unordered_map<llvm::StructType *, size_t> ids = {};
-  TranslateTypeInternal(const_cast<llvm::Type &>(type), ss, ids, dl, alphanum);
-
-  return ss.str();
+  impl->id_to_type.clear();
+  return impl->ParseType(size_checked, spec, i);
 }
 
 }  // namespace anvill

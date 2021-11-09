@@ -18,6 +18,7 @@
 #include "RecoverStackFrameInformation.h"
 
 #include <anvill/ABI.h>
+#include <anvill/Program.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -63,13 +64,11 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
           REQUIRE(arch != nullptr);
 
-          auto ctrl_flow_provider_res =
-              anvill::IControlFlowProvider::Create(program);
-
-          REQUIRE(ctrl_flow_provider_res.Succeeded());
+          auto ctrl_flow_provider =
+              anvill::ControlFlowProvider::Create(program);
 
           anvill::LifterOptions lift_options(
-              arch.get(), *module, ctrl_flow_provider_res.TakeValue());
+              arch.get(), *module, std::move(ctrl_flow_provider));
 
           lift_options.stack_frame_struct_init_procedure = init_strategy;
           lift_options.stack_frame_lower_padding =

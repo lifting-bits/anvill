@@ -31,6 +31,9 @@ class FunctionType;
 class LLVMContext;
 class Type;
 }  // namespace llvm
+namespace remill {
+class Instruction;
+}  // namespace remill
 namespace anvill {
 
 class Program;
@@ -43,6 +46,12 @@ class TypeProvider {
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
   virtual std::optional<FunctionDecl> TryGetFunctionType(uint64_t address) = 0;
+
+  // Try to return the type of a function starting at address `address`. This
+  // type is the prototype of the function. The type can be call site specific,
+  // where the call site is `from_inst`.
+  virtual std::optional<FunctionDecl> TryGetFunctionType(
+      const remill::Instruction &from_inst, uint64_t address);
 
   // Try to return the variable at given address or containing the address
   virtual std::optional<GlobalVarDecl>
