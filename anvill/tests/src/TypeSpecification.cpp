@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "TypeSpecification.h"
+#include <anvill/TypeSpecification.h>
 
 #include <doctest.h>
 #include <llvm/IR/Module.h>
@@ -24,45 +24,49 @@
 
 namespace anvill {
 
-TEST_SUITE("TypeSpecification") {
+TEST_SUITE("TypeSpecifier") {
   TEST_CASE("Basic string to type conversions") {
     struct TestEntry final {
       std::string spec;
       std::string expected_description;
       bool expected_outcome{false};
-      bool expected_sized_attribute{false};
     };
 
     // clang-format off
     const std::vector<TestEntry> kTestEntryList = {
-      { "broken specification!", "", false, false },
-      { "l", "i64", true, true },
-      { "L", "i64", true, true },
-      { "i", "i32", true, true },
-      { "**b", "i8**", true, true },
+      { "broken specification!", "", false },
+      { "l", "i64", true },
+      { "L", "i64", true },
+      { "i", "i32", true },
+      { "**b", "i8**", true },
 
       // __libc_start_main
-      { "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true, false },
+      { "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
     };
 
     // clang-format on
 
     for (const auto &test_entry : kTestEntryList) {
       llvm::LLVMContext llvm_context;
+      llvm::DataLayout dl("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
+      anvill::TypeSpecifier specifier(llvm_context, dl);
 
-      auto context_res =
-          TypeSpecification::ParseSpec(llvm_context, test_entry.spec);
+      auto context_res = specifier.DecodeFromString(test_entry.spec);
 
-      CHECK(context_res.Succeeded() == test_entry.expected_outcome);
+      CHECK_EQ(context_res.Succeeded(), test_entry.expected_outcome);
       if (!context_res.Succeeded()) {
         continue;
       }
 
-      auto context = context_res.TakeValue();
-      CHECK(context.type != nullptr);
-      CHECK(context.sized == test_entry.expected_sized_attribute);
-      CHECK(context.spec == test_entry.spec);
-      CHECK(context.description == test_entry.expected_description);
+      llvm::Type *type = context_res.TakeValue();
+      CHECK(type != nullptr);
+      CHECK_EQ(test_entry.spec, specifier.EncodeToString(type));
+
+      std::string str;
+      llvm::raw_string_ostream os(str);
+      type->print(os);
+      os.flush();
+      CHECK_EQ(str, test_entry.expected_description);
     }
   }
 
@@ -74,7 +78,7 @@ TEST_SUITE("TypeSpecification") {
     };
 
     llvm::LLVMContext llvm_context;
-    llvm::Module module("ITypeSpecificationTests", llvm_context);
+    llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
 
@@ -128,15 +132,14 @@ TEST_SUITE("TypeSpecification") {
         {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
          "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
+    anvill::TypeSpecifier specifier(llvm_context, data_layout);
+
     for (const auto &test_entry : kTestEntryList) {
-      auto without_alphanum = ITypeSpecification::TypeToString(
-          *test_entry.type, data_layout, false);
+      auto without_alphanum = specifier.EncodeToString(test_entry.type, false);
+      auto with_alphanum = specifier.EncodeToString(test_entry.type, true);
 
-      auto with_alphanum =
-          ITypeSpecification::TypeToString(*test_entry.type, data_layout, true);
-
-      CHECK(without_alphanum == test_entry.expected_non_alphanum_output);
-      WARN(with_alphanum == test_entry.expected_alphanum_output);
+      CHECK_EQ(without_alphanum, test_entry.expected_non_alphanum_output);
+      WARN_EQ(with_alphanum, test_entry.expected_alphanum_output);
     }
 
     //
@@ -144,22 +147,23 @@ TEST_SUITE("TypeSpecification") {
     //
 
     // variadic function vs non-variadic
-    auto variadic_func_description = ITypeSpecification::TypeToString(
-        *variadic_function_type, data_layout, false);
+
+    auto variadic_func_description =
+        specifier.EncodeToString(variadic_function_type, false);
 
     auto non_variadic_func_description =
-        ITypeSpecification::TypeToString(*function_type, data_layout, false);
+        specifier.EncodeToString(function_type, false);
 
-    WARN(variadic_func_description != non_variadic_func_description);
+    WARN_NE(variadic_func_description, non_variadic_func_description);
 
-    auto variadic_alphanum_func_description = ITypeSpecification::TypeToString(
-        *variadic_function_type, data_layout, true);
+    auto variadic_alphanum_func_description =
+        specifier.EncodeToString(variadic_function_type, true);
 
     auto non_variadic_alphanum_func_description =
-        ITypeSpecification::TypeToString(*function_type, data_layout, true);
+        specifier.EncodeToString(function_type, true);
 
-    WARN(variadic_alphanum_func_description !=
-         non_variadic_alphanum_func_description);
+    WARN_NE(variadic_alphanum_func_description,
+            non_variadic_alphanum_func_description);
 
     // packed struct vs non-packed
     std::vector<llvm::Type *> struct_part_list3 = {array_type, struct_type,
@@ -171,21 +175,19 @@ TEST_SUITE("TypeSpecification") {
     auto packed_struct_type =
         llvm::StructType::create(struct_part_list3, "", true);
 
-    auto non_packed_struct = ITypeSpecification::TypeToString(
-        *non_packed_struct_type, data_layout, false);
+    auto non_packed_struct =
+        specifier.EncodeToString(non_packed_struct_type, false);
+    auto packed_struct = specifier.EncodeToString(packed_struct_type, false);
 
-    auto packed_struct = ITypeSpecification::TypeToString(*packed_struct_type,
-                                                          data_layout, false);
+    WARN_NE(non_packed_struct, packed_struct);
 
-    WARN(non_packed_struct != packed_struct);
+    auto alphanum_non_packed_struct =
+        specifier.EncodeToString(non_packed_struct_type, true);
 
-    auto alphanum_non_packed_struct = ITypeSpecification::TypeToString(
-        *non_packed_struct_type, data_layout, true);
+    auto alphanum_packed_struct =
+        specifier.EncodeToString(packed_struct_type, true);
 
-    auto alphanum_packed_struct = ITypeSpecification::TypeToString(
-        *packed_struct_type, data_layout, true);
-
-    WARN(alphanum_non_packed_struct != alphanum_packed_struct);
+    WARN_NE(alphanum_non_packed_struct, alphanum_packed_struct);
   }
 
   TEST_CASE("Simple spec -> type -> spec roundtrip") {
@@ -213,22 +215,19 @@ TEST_SUITE("TypeSpecification") {
     // clang-format on
 
     llvm::LLVMContext llvm_context;
-    llvm::Module module("ITypeSpecificationTests", llvm_context);
+    llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
+    TypeSpecifier specifier(llvm_context, data_layout);
 
     for (const auto &test_spec : kTestSpecList) {
-      auto context_res = TypeSpecification::ParseSpec(llvm_context, test_spec);
+      auto context_res = specifier.DecodeFromString(test_spec);
       REQUIRE(context_res.Succeeded());
 
-      auto context = context_res.TakeValue();
+      llvm::Type *type = context_res.TakeValue();
 
-      REQUIRE(context.type != nullptr);
-      REQUIRE(context.spec == test_spec);
-
-      auto generated_spec =
-          ITypeSpecification::TypeToString(*context.type, data_layout, false);
-      WARN(generated_spec == test_spec);
+      REQUIRE(type != nullptr);
+      REQUIRE(specifier.EncodeToString(type) == test_spec);
     }
   }
 }

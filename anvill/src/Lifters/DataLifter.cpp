@@ -20,7 +20,7 @@
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Decl.h>
-#include <anvill/ITypeSpecification.h>
+#include <anvill/TypeSpecification.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
@@ -42,6 +42,8 @@ DataLifter::DataLifter(const LifterOptions &options_,
     : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
+      type_specifier(options.module->getContext(),
+                     options.module->getDataLayout()),
       context(options.module->getContext()) {}
 
 // Declare a lifted a variable. Will not return `nullptr`.
@@ -85,7 +87,7 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-       << ITypeSpecification::TypeToString(*type, dl, true);
+       << type_specifier.EncodeToString(type, true);
     const auto name = ss.str();
     const auto ga = llvm::GlobalAlias::create(
         type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
@@ -153,7 +155,7 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
   std::stringstream ss2;
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
-      << ITypeSpecification::TypeToString(*type, dl, true);
+      << type_specifier.EncodeToString(type, true);
 
   const auto var_name = ss2.str();
   auto var = options.module->getGlobalVariable(var_name);

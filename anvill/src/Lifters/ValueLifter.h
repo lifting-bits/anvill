@@ -19,6 +19,7 @@
 
 #include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
+#include <anvill/TypeSpecification.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
 
@@ -90,6 +91,7 @@ class ValueLifterImpl {
   const LifterOptions &options;
   const llvm::DataLayout &dl;
   llvm::LLVMContext &context;
+  TypeSpecifier type_specifier;
 };
 
 }  // namespace anvill

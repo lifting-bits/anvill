@@ -19,6 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
+#include <anvill/TypeSpecification.h>
 
 #include <cstdint>
 #include <map>
@@ -62,6 +63,7 @@ class DataLifter {
   const LifterOptions &options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
+  TypeSpecifier type_specifier;
 
   // Context associated with `module`.
   llvm::LLVMContext &context;

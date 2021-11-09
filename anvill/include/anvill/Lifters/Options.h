@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <anvill/Providers/IControlFlowProvider.h>
+#include <anvill/Providers/ControlFlowProvider.h>
 
 #include <cstddef>
 
@@ -86,7 +86,7 @@ class LifterOptions {
  public:
   inline explicit LifterOptions(const remill::Arch *arch_,
                                 llvm::Module &module_,
-                                IControlFlowProvider::Ptr ctrl_flow_provider_)
+                                ControlFlowProvider::Ptr ctrl_flow_provider_)
       : arch(arch_),
         module(&module_),
         ctrl_flow_provider(std::move(ctrl_flow_provider_)),
@@ -115,7 +115,7 @@ class LifterOptions {
   llvm::Module *const module;
 
   // The control flow provider, used for thunk redirections
-  IControlFlowProvider::Ptr ctrl_flow_provider;
+  std::unique_ptr<ControlFlowProvider> ctrl_flow_provider;
 
   // The function lifter produces functions with Remill's state structure
   // allocated on the stack. This configuration option determines how the

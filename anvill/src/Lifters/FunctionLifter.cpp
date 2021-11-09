@@ -18,7 +18,7 @@
 #include "FunctionLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/ITypeSpecification.h>
+#include <anvill/TypeSpecification.h>
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -124,7 +124,6 @@ static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
     return func;
   }
 
-  auto &context = module.getContext();
   llvm::Type *func_parameters[] = {type};
 
   auto func_type = llvm::FunctionType::get(type, func_parameters, true);
@@ -167,6 +166,7 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
     : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
+      type_specifier(*(options.arch->context), options.arch->DataLayout()),
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
@@ -199,28 +199,31 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t addr) {
-  const auto from_pc = curr_inst ? curr_inst->pc : 0;
-  auto &block = edge_to_dest_block[{from_pc, addr}];
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t from_addr,
+                                                   uint64_t to_addr) {
+  auto &block = edge_to_dest_block[{from_addr, to_addr}];
   if (block) {
     return block;
   }
 
   std::stringstream ss;
-  ss << "inst_" << std::hex << addr;
+  ss << "inst_" << std::hex << to_addr;
   block = llvm::BasicBlock::Create(llvm_context, ss.str(), lifted_func);
 
   // NOTE(pag): We always add to the work list without consulting/updating
   //            `addr_to_block` so that we can observe self-tail-calls and
   //            lift them as such, rather than as jumps back into the first
   //            lifted block.
-  edge_work_list.emplace(addr, from_pc);
+  edge_work_list.emplace(to_addr, from_addr);
 
   return block;
 }
 
-llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(uint64_t addr) {
-  return GetOrCreateBlock(options.ctrl_flow_provider->GetRedirection(addr));
+llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(
+    const remill::Instruction &from_inst, uint64_t to_addr) {
+  return GetOrCreateBlock(
+      from_inst.pc,
+      options.ctrl_flow_provider->GetRedirection(from_inst, to_addr));
 }
 
 // Try to decode an instruction at address `addr` into `*inst_out`. Returns
@@ -292,7 +295,7 @@ void FunctionLifter::VisitError(const remill::Instruction &inst,
 // to the next instruction (`inst.next_pc`).
 void FunctionLifter::VisitNormal(const remill::Instruction &inst,
                                  llvm::BasicBlock *block) {
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.next_pc), block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, inst.next_pc), block);
 }
 
 // Visit a no-op instruction. These behave identically to normal instructions
@@ -310,7 +313,8 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                                      remill::Instruction *delayed_inst,
                                      llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc), block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, inst.branch_taken_pc),
+                           block);
 }
 
 // Visit an indirect jump control-flow instruction. This may be register- or
@@ -327,7 +331,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   // Attempt to get the target list for this control flow instruction
   // so that we can handle this jump in a less generic way
   auto maybe_target_list =
-      options.ctrl_flow_provider->TryGetControlFlowTargets(inst.pc);
+      options.ctrl_flow_provider->TryGetControlFlowTargets(inst);
 
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
@@ -349,7 +353,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       add_remill_jump = false;
 
       auto destination = target_list.destination_list.front();
-      llvm::BranchInst::Create(GetOrCreateTargetBlock(destination), block);
+      llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination),
+                               block);
 
       // We have multiple destinations. Handle this with a switch. If the target
       // list is not marked as complete, then we'll still add __remill_jump
@@ -401,7 +406,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
 
       for (std::size_t dest_id{0U}; dest_id < dest_count; ++dest_id) {
         auto dest = target_list.destination_list.at(dest_id);
-        auto dest_block = GetOrCreateTargetBlock(dest);
+        auto dest_block = GetOrCreateTargetBlock(inst, dest);
 
         auto dest_id_as_value = llvm::ConstantInt::get(address_type, dest_id);
         switch_inst->addCase(dest_id_as_value, dest_block);
@@ -433,8 +438,8 @@ void FunctionLifter::VisitConditionalIndirectJump(
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
 // Visit a function return control-flow instruction, which is a form of
@@ -466,21 +471,34 @@ void FunctionLifter::VisitConditionalFunctionReturn(
   MuteStateEscape(
       remill::AddTerminatingTailCall(taken_block, intrinsics.function_return));
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
 std::optional<FunctionDecl>
-FunctionLifter::TryGetTargetFunctionType(std::uint64_t address) {
-  auto redirected_addr = options.ctrl_flow_provider->GetRedirection(address);
+FunctionLifter::TryGetTargetFunctionType(
+    const remill::Instruction &from_inst, std::uint64_t address) {
 
-  // In case we get redirected but still fail, try once more with the original
-  // address
-  auto opt_function_decl = type_provider.TryGetFunctionType(redirected_addr);
+  std::uint64_t redirected_addr = address;
+  std::optional<FunctionDecl> opt_function_decl;
+
+  if (from_inst.IsValid()) {
+    redirected_addr = options.ctrl_flow_provider->GetRedirection(
+        from_inst, address);
+
+    // In case we get redirected but still fail, try once more with the original
+    // address
+    opt_function_decl = type_provider.TryGetFunctionType(
+        from_inst, redirected_addr);
+
+  // This isn't a redirection.
+  } else {
+    opt_function_decl = type_provider.TryGetFunctionType(address);
+  }
+
+  // When we retry using the original address, still keep the (possibly)
+  // redirected value
   if (!opt_function_decl.has_value() && redirected_addr != address) {
-
-    // When we retry using the original address, still keep the (possibly)
-    // redirected value
     opt_function_decl = type_provider.TryGetFunctionType(address);
   }
 
@@ -504,7 +522,8 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
 
   // First, try to see if it's actually related to another function. This is
   // equivalent to a tail-call in the original code.
-  const auto maybe_other_decl = TryGetTargetFunctionType(inst.branch_taken_pc);
+  const auto maybe_other_decl = TryGetTargetFunctionType(
+      inst, inst.branch_taken_pc);
 
   if (maybe_other_decl.has_value()) {
     auto other_decl = maybe_other_decl.value();
@@ -575,8 +594,8 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
   CallFunction(inst, taken_block);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
 // Visit an indirect function call control-flow instruction. Similar to
@@ -610,8 +629,8 @@ void FunctionLifter::VisitConditionalIndirectFunctionCall(
   remill::AddCall(taken_block, intrinsics.function_call);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
 // Helper to figure out the address where execution will resume after a
@@ -718,7 +737,7 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
   llvm::IRBuilder<> ir(block);
   ir.CreateStore(ret_pc_val, pc_ptr, false);
   ir.CreateStore(ret_pc_val, next_pc_ptr, false);
-  ir.CreateBr(GetOrCreateTargetBlock(ret_pc));
+  ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc));
 }
 
 // Visit a conditional control-flow branch. Both the taken and not taken
@@ -747,10 +766,10 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_taken_pc),
-                           taken_block);
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_taken_pc), taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
 // Visit an asynchronous hyper call control-flow instruction. These are non-
@@ -780,8 +799,9 @@ void FunctionLifter::VisitConditionalAsyncHyperCall(
 
   remill::AddTerminatingTailCall(taken_block, intrinsics.async_hyper_call);
 
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst.branch_not_taken_pc),
-                           not_taken_block);
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc),
+      not_taken_block);
 }
 
 // Visit (and thus lift) a delayed instruction. When lifting a delayed
@@ -821,13 +841,12 @@ llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
     llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
 
   const auto &dl = semantics_module->getDataLayout();
-
+  TypeSpecifier specifier(semantics_module->getContext(), dl);
   // Consider adding in:
   // std::hex << pc << "_" << reg->name
 
   std::stringstream ss;
-  ss << kTypeHintFunctionPrefix
-     << ITypeSpecification::TypeToString(*goal_type, dl, true);
+  ss << kTypeHintFunctionPrefix << specifier.EncodeToString(goal_type, true);
   const auto func_name = ss.str();
 
   llvm::Type *return_type = goal_type;
@@ -1151,7 +1170,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     edge_work_list.erase(edge_work_list.begin());
 
     llvm::BasicBlock *const block = edge_to_dest_block[{from_addr, inst_addr}];
-    DCHECK_NOTNULL(block);
+    CHECK_NOTNULL(block);
     if (!block->empty()) {
       continue;  // Already handled.
     }
@@ -1170,7 +1189,17 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     //            like a tail-call.
     if (inst_addr != func_address || from_addr) {
 
-      auto maybe_decl = TryGetTargetFunctionType(inst_addr);
+      std::optional<anvill::FunctionDecl> maybe_decl;
+      if (inst_addr == func_address) {
+        maybe_decl = *curr_decl;
+
+      // Decode the predecessor instruction as the call site.
+      } else if (from_addr) {
+        (void) DecodeInstructionInto(from_addr, false /* is_delayed */, &inst);
+        maybe_decl = TryGetTargetFunctionType(inst, inst_addr);
+        inst.Reset();
+      }
+
       if (maybe_decl.has_value()) {
         auto decl = maybe_decl.value();
         llvm::Function *const other_decl = DeclareFunction(decl);
@@ -1255,8 +1284,7 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   // starting address, its type, and its calling convention.
   std::stringstream ss;
   ss << "sub_" << std::hex << decl.address << '_'
-     << ITypeSpecification::TypeToString(
-            *func_type, semantics_module->getDataLayout(), true)
+     << type_specifier.EncodeToString(func_type, true)
      << '_' << std::dec << decl.calling_convention;
 
   const auto base_name = ss.str();
@@ -1762,6 +1790,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   edge_to_dest_block.clear();
   addr_to_block.clear();
   inst_lifter.ClearCache();
+  curr_decl = &decl;
   curr_inst = nullptr;
   state_ptr = nullptr;
   mem_ptr_ref = nullptr;
@@ -1835,7 +1864,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  ir.CreateBr(GetOrCreateBlock(func_address));
+  ir.CreateBr(GetOrCreateBlock(0u, func_address));
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));

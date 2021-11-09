@@ -25,6 +25,8 @@
 #include <optional>
 #include <string_view>
 
+#include <anvill/Providers/ControlFlowProvider.h>
+
 // Forward declare
 namespace llvm {
 class Type;
@@ -161,21 +163,6 @@ struct ByteSequence {
   Byte::Data *first_data{nullptr};
   Byte::Meta *first_meta{nullptr};  // Inclusive.
   size_t size{0};
-};
-
-// Describes a list of targets reachable from a given source address
-struct ControlFlowTargetList final {
-
-  // Source address
-  std::uint64_t source{};
-
-  // Destination list
-  std::vector<std::uint64_t> destination_list;
-
-  // True if this destination list appears to be complete. As a
-  // general rule, this is set to true when the target recovery has
-  // been completely performed by the disassembler tool
-  bool complete{false};
 };
 
 struct FunctionDecl;

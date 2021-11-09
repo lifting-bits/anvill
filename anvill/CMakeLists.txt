@@ -26,8 +26,7 @@ add_library(anvill STATIC
   src/Arch/Arch.h
   src/Arch/Arch.cpp
 
-  include/anvill/ITypeSpecification.h
-  src/TypeSpecification.h
+  include/anvill/TypeSpecification.h
   src/TypeSpecification.cpp
 
   include/anvill/Program.h
@@ -77,8 +76,7 @@ add_library(anvill STATIC
   include/anvill/Providers/TypeProvider.h
   src/Providers/TypeProvider.cpp
 
-  include/anvill/Providers/IControlFlowProvider.h
-  src/Providers/ControlFlowProvider.h
+  include/anvill/Providers/ControlFlowProvider.h
   src/Providers/ControlFlowProvider.cpp
 )
 
@@ -106,7 +104,7 @@ target_public_headers(anvill
   include/anvill/Program.h
   include/anvill/Result.h
   include/anvill/Type.h
-  include/anvill/ITypeSpecification.h
+  include/anvill/TypeSpecification.h
   include/anvill/Util.h
   include/anvill/ABI.h
 )
