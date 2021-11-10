@@ -137,12 +137,6 @@ static bool IsValidRelType(llvm::FunctionType *ty) {
   return ty->params().size() == 1 && ty->params()[0]->isIntegerTy() &&
          ty->getReturnType()->isIntegerTy();
 }
-}  // namespace
-
-llvm::Value *IndexRel::getIndex() {
-  return this->index;
-}
-
 
 namespace pats = llvm::PatternMatch;
 
@@ -280,8 +274,9 @@ class ExprSolve {
   }
 };
 
-class LocalConstraintExtractor
-    : public ConstraintExtractor<LocalConstraintExtractor> {
+
+class JTAConstraintExtractor
+    : public ConstraintExtractor<JTAConstraintExtractor> {
  private:
   const llvm::Value *index;
   const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternative_indeces;
@@ -302,7 +297,7 @@ class LocalConstraintExtractor
   std::optional<llvm::Instruction *> substituded_index;
 
 
-  LocalConstraintExtractor(
+  JTAConstraintExtractor(
       const llvm::Value *index,
       const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces)
       : index(index),
@@ -403,10 +398,9 @@ class JumpTableDiscovery {
           this->index_rel_slice->begin(), this->index_rel_slice->end());
 
 
-      LocalConstraintExtractor extractor(*this->index, index_slice_values);
+      JTAConstraintExtractor extractor(*this->index, index_slice_values);
       std::optional<std::unique_ptr<Expr>> index_constraints =
           extractor.ExpectInsnOrStopCondition(cond);
-
       if (index_constraints) {
         if (extractor.substituded_index.has_value()) {
           this->ReplaceIndexWith(*extractor.substituded_index);
@@ -423,7 +417,6 @@ class JumpTableDiscovery {
         return this->bounds.has_value();
       }
     }
-
     return false;
   }
 
@@ -494,6 +487,12 @@ class JumpTableDiscovery {
   }
 };
 
+
+}  // namespace
+
+llvm::Value *IndexRel::getIndex() {
+  return this->index;
+}
 
 llvm::IntegerType *PcRel::getExpectedType(SliceManager &slm) {
   auto slc = slm.getSlice(this->slice);
