@@ -31,25 +31,6 @@ const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"sign", ArithFlags::SIGN},
     {"carry", ArithFlags::CARRY}};
 
-}  // namespace
-
-std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value) {
-  if (auto *call = llvm::dyn_cast<llvm::CallInst>(value)) {
-    auto called = call->getCalledFunction();
-    if (called != nullptr &&
-        called->getName().startswith(kFlagIntrinsicPrefix)) {
-      auto suffix = call->getCalledFunction()->getName().rsplit('_');
-      auto flag_repr = FlagPredMap.find(suffix.second.str());
-      if (flag_repr != FlagPredMap.end()) {
-        // the arithmetic result that the flag was computed over is the last operand
-        auto value = call->getArgOperand(call->getNumArgOperands() - 1);
-        return {{flag_repr->second, value}};
-      }
-    }
-  }
-  return std::nullopt;
-}
-
 
 struct FlagDefinition {
   llvm::Value *lhs;
@@ -293,6 +274,26 @@ class LocalConstraintExtractor
     }
   }
 };
+
+
+}  // namespace
+
+std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value) {
+  if (auto *call = llvm::dyn_cast<llvm::CallInst>(value)) {
+    auto called = call->getCalledFunction();
+    if (called != nullptr &&
+        called->getName().startswith(kFlagIntrinsicPrefix)) {
+      auto suffix = call->getCalledFunction()->getName().rsplit('_');
+      auto flag_repr = FlagPredMap.find(suffix.second.str());
+      if (flag_repr != FlagPredMap.end()) {
+        // the arithmetic result that the flag was computed over is the last operand
+        auto value = call->getArgOperand(call->getNumArgOperands() - 1);
+        return {{flag_repr->second, value}};
+      }
+    }
+  }
+  return std::nullopt;
+}
 
 
 // (declare-fun value1 () (_ BitVec 64))

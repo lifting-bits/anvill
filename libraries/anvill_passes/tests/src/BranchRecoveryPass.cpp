@@ -56,6 +56,7 @@ TEST_SUITE("BranchRecoveryPass") {
     fpm.run(*target_function, fam);
     auto res = fam.getResult<BranchAnalysis>(*target_function);
 
+
     lam.clear();
     fam.clear();
     cgam.clear();
