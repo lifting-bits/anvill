@@ -10,6 +10,7 @@
 
 #include <iostream>
 
+#include "BranchRecovery.h"
 #include "Utils.h"
 namespace anvill {
 
@@ -26,7 +27,7 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 }  // namespace
 
 TEST_SUITE("BranchRecoveryPass") {
-  TEST_CASE("Run on sliced function sub") {
+  TEST_CASE("Run analysis sliced function sub") {
     llvm::LLVMContext context;
     SliceManager slc;
     auto mod = LoadTestData(context, "RecoverSubBranch.ll");
@@ -77,6 +78,30 @@ TEST_SUITE("BranchRecoveryPass") {
     CHECK(branch_analysis.compare == llvm::CmpInst::Predicate::ICMP_SLE);
     CHECK(branch_analysis.compared.first == target_function->getArg(2));
     CHECK(branch_analysis.compared.second == target_function->getArg(1));
+
+    fpm.addPass(BranchRecovery());
+
+    fpm.run(*target_function, fam);
+
+
+    llvm::Value *fixed_condition = nullptr;
+    for (auto &insn : llvm::instructions(target_function)) {
+      if (auto *br = llvm::dyn_cast<llvm::BranchInst>(&insn)) {
+        if (br->isConditional()) {
+          fixed_condition = br->getCondition();
+        }
+      }
+    }
+
+
+    REQUIRE(llvm::isa_and_nonnull<llvm::ICmpInst>(fixed_condition));
+
+    llvm::ICmpInst *icmp = llvm::cast<llvm::ICmpInst>(fixed_condition);
+
+    CHECK(icmp->getPredicate() == llvm::CmpInst::Predicate::ICMP_SLE);
+    CHECK(icmp->getOperand(0) == target_function->getArg(2));
+    CHECK(icmp->getOperand(1) == target_function->getArg(1));
+
 
     lam.clear();
     fam.clear();
