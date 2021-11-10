@@ -377,7 +377,6 @@ bool Guess::AttemptToProve(z3::expr flagRes, z3::solver &solv,
 
 std::optional<BranchResult>
 BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
-  intrinsic_call->getFunction()->dump();
   auto pred =
       ParseComparisonIntrinsic(intrinsic_call->getCalledFunction()->getName());
   EnvironmentBuilder envbuilder;
