@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <anvill/ABI.h>
 #include <anvill/ConstraintExtractor.h>
 #include <anvill/Constraints.h>
@@ -95,7 +112,8 @@ namespace anvill {
 namespace {
 
 
-const std::string IndexVarName = "index";
+static constexpr auto IndexVarName = "index";
+
 template <unsigned N>
 static llvm::SmallSet<const llvm::BranchInst *, N>
 GetTaintedBranches(const llvm::Value *byVal) {
@@ -407,7 +425,19 @@ class JumpTableDiscovery {
 
   // Definition a jump table bounds compare is a compare that uses the index and is used by a break that jumps to a block that may reach the indirect jump block or *must* not. the comparing block should dominate the indirect jump
 
+  // NOTE(ian): This method attempts to handle cases like this:
+  //  %19 = call i64 @_atoi()
+  //  %20 = trunc i64 %19 to i32
+  //  %21 = add i32 %20, 4
 
+  // Where the index is immediately truncated. If we leave the index as is, we will never be able to
+  // get a sensible bound on it. This is because any garbage value can exist in the high bits, which introduces discontinuities
+  // in the bounds on %19. To avoid this we attempt to select the last unique cast as the index to avoid having to represent
+  // this truncation. It is important that there only be 1 use otherwise this is not safe because both the cast and it's operand could be used in the
+  // index rel or branch condition slice.
+
+  // TODO(ian): It may be possible that the uncasted index is used outside the slices so it would still be safe to replace the index with the cast even though the index is used
+  // elsewhere. Instead of checking if there is a single use of the index, we could check if within the slices there is a single use and that use is a cast.
   void attemptForwardIndexPastCast() {
     auto ind = *this->index;
     if (ind->getNumUses() == 1) {
