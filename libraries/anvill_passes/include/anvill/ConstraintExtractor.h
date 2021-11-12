@@ -68,11 +68,13 @@ class ConstraintExtractor
   }
 
   std::optional<std::unique_ptr<Expr>> visitTrunc(llvm::TruncInst &I) {
+    I.dump();
     if (auto repr0 = this->ExpectInsnOrStopCondition(I.getOperand(0))) {
       auto diff = I.getSrcTy()->getIntegerBitWidth() -
                   I.getDestTy()->getIntegerBitWidth();
+
       // hi lo are [hi,lo] inclusive
-      auto old_hi = I.getDestTy()->getIntegerBitWidth() - 1;
+      auto old_hi = I.getSrcTy()->getIntegerBitWidth() - 1;
       auto new_hi = old_hi - diff;
       return Trunc::Create(std::move(*repr0), new_hi, 0);
     }
