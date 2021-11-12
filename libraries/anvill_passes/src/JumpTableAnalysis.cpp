@@ -342,16 +342,18 @@ class JumpTableDiscovery {
     return std::nullopt;
   }
 
-  void ReplaceIndexWith(llvm::Instruction *newIndex) {
-    this->index = newIndex;
-
+  bool ReplaceIndexWith(llvm::Instruction *newIndex) {
     auto target = std::find(this->index_rel_slice->begin(),
                             this->index_rel_slice->end(), newIndex);
 
-    assert(target != this->index_rel_slice->end());
+    if (target == this->index_rel_slice->end()) {
+      return false;
+    }
     llvm::SmallVector<llvm::Instruction *> new_insn(
         std::next(target), this->index_rel_slice->end());
     this->index_rel_slice = {new_insn};
+    this->index = newIndex;
+    return true;
   }
 
   // Runs after the index has been selected. Determines the bounds on the index that are enforced by
@@ -411,8 +413,9 @@ class JumpTableDiscovery {
     if (ind->getNumUses() == 1) {
       auto u = ind->use_begin()->getUser();
       if (auto *cinst = llvm::dyn_cast<llvm::CastInst>(u)) {
-        this->ReplaceIndexWith(cinst);
-        this->attemptForwardIndexPastCast();
+        if (this->ReplaceIndexWith(cinst)) {
+          this->attemptForwardIndexPastCast();
+        }
       }
     }
   }
@@ -431,6 +434,7 @@ class JumpTableDiscovery {
         this->loaded_expression = integer_load_expr;
         this->index = index_rel_slicer.checkInstruction(integer_load_expr);
         this->index_rel_slice = index_rel_slicer.getSlice();
+
         this->attemptForwardIndexPastCast();
         return true;
       }

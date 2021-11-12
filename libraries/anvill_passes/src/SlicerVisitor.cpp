@@ -36,9 +36,27 @@ llvm::Value *Slicer::visitUnaryOperator(llvm::UnaryOperator &I) {
   return this->checkInstruction(I.getOperand(0));
 }
 
+std::optional<llvm::PtrToIntInst *> Slicer::getConstantCast(llvm::Value *v) {
+
+  if (auto cst = llvm::dyn_cast<llvm::PtrToIntInst>(v)) {
+    if (llvm::isa<llvm::Constant>(cst->getOperand(0))) {
+      return {cst};
+    }
+  }
+
+  return std::nullopt;
+}
+
+
 // if RHS is constant then continue, otherwise stop.
 llvm::Value *Slicer::visitBinaryOperator(llvm::BinaryOperator &I) {
   assert(I.getNumOperands() == 2);
+
+  if (auto constant_cst = this->getConstantCast(I.getOperand(1))) {
+    this->resultingSlice.push_back(&I);
+    this->resultingSlice.push_back(*constant_cst);
+    return this->checkInstruction(I.getOperand(0));
+  }
   if (!llvm::isa<llvm::Constant>(I.getOperand(1))) {
     return &I;
   }

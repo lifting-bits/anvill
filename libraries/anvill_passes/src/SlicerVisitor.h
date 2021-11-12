@@ -13,6 +13,9 @@ class Slicer : public llvm::InstVisitor<Slicer, llvm::Value *> {
  private:
   llvm::SmallVector<llvm::Instruction *> resultingSlice;
 
+
+  std::optional<llvm::PtrToIntInst *> getConstantCast(llvm::Value *v);
+
  public:
   llvm::Value *checkInstruction(llvm::Value *targetValue);
   llvm::SmallVector<llvm::Instruction *> getSlice();
