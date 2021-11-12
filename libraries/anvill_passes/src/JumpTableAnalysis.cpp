@@ -197,6 +197,7 @@ class ExprSolve {
     Environment env;
     env.insert(IndexVarName, index_bv);
     z3::expr constraints = exp->BuildExpression(c, env);
+
     auto ub = this->GetBound(
         c, index_bv, constraints,
         [](z3::optimize o, z3::expr toopt) -> z3::optimize::handle {
@@ -405,6 +406,17 @@ class JumpTableDiscovery {
   // Definition a jump table bounds compare is a compare that uses the index and is used by a break that jumps to a block that may reach the indirect jump block or *must* not. the comparing block should dominate the indirect jump
 
 
+  void attemptForwardIndexPastCast() {
+    auto ind = *this->index;
+    if (ind->getNumUses() == 1) {
+      auto u = ind->use_begin()->getUser();
+      if (auto *cinst = llvm::dyn_cast<llvm::CastInst>(u)) {
+        this->ReplaceIndexWith(cinst);
+        this->attemptForwardIndexPastCast();
+      }
+    }
+  }
+
   bool RunIndexPattern(llvm::Value *pcarg) {
     Slicer pcrel_slicer;
 
@@ -419,6 +431,7 @@ class JumpTableDiscovery {
         this->loaded_expression = integer_load_expr;
         this->index = index_rel_slicer.checkInstruction(integer_load_expr);
         this->index_rel_slice = index_rel_slicer.getSlice();
+        this->attemptForwardIndexPastCast();
         return true;
       }
     }
