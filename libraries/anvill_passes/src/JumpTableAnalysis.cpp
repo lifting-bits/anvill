@@ -173,7 +173,6 @@ class ExprSolve {
 
 
     auto h = gethandle(s, tooptimize);
-
     if (z3::sat == s.check()) {
       z3::expr res = s.lower(h);
       auto resint = llvm::APInt(index_bv.get_sort().bv_size(), res.as_uint64());
@@ -250,7 +249,6 @@ class ExprSolve {
     auto unsigned_bounds = this->OptomizeExpr(exp, index, false);
     auto signed_bounds = this->OptomizeExpr(exp, index, true);
 
-
     if (!signed_bounds.has_value()) {
       return unsigned_bounds;
     }
@@ -279,33 +277,9 @@ class JTAConstraintExtractor
     : public ConstraintExtractor<JTAConstraintExtractor> {
  private:
   const llvm::Value *index;
-  const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternative_indeces;
-
-  std::optional<std::unique_ptr<Expr>>
-  DieOrSubstitute(llvm::Instruction *maybealt) {
-    if (this->alternative_indeces.contains(maybealt) &&
-        (!this->substituded_index.has_value() ||
-         *this->substituded_index == maybealt)) {
-      this->substituded_index = {maybealt};
-      return {AtomVariable::Create(IndexVarName)};
-    }
-
-    return std::nullopt;
-  }
 
  public:
-  std::optional<llvm::Instruction *> substituded_index;
-
-
-  JTAConstraintExtractor(
-      const llvm::Value *index,
-      const llvm::SmallPtrSetImpl<llvm::Instruction *> &alternativeIndeces)
-      : index(index),
-        alternative_indeces(alternativeIndeces) {}
-
-  std::optional<std::unique_ptr<Expr>> visitCastInst(llvm::CastInst &I) {
-    return this->DieOrSubstitute(&I);
-  }
+  JTAConstraintExtractor(const llvm::Value *index) : index(index) {}
 
   std::optional<std::unique_ptr<Expr>> attemptStop(llvm::Value *value) {
     if (value == this->index) {
@@ -398,13 +372,10 @@ class JumpTableDiscovery {
           this->index_rel_slice->begin(), this->index_rel_slice->end());
 
 
-      JTAConstraintExtractor extractor(*this->index, index_slice_values);
+      JTAConstraintExtractor extractor(*this->index);
       std::optional<std::unique_ptr<Expr>> index_constraints =
           extractor.ExpectInsnOrStopCondition(cond);
       if (index_constraints) {
-        if (extractor.substituded_index.has_value()) {
-          this->ReplaceIndexWith(*extractor.substituded_index);
-        }
         std::unique_ptr<Expr> cons = std::move(*index_constraints);
         if (!bcheck.passes_check_on_true) {
           // we want the conditions s.t. the check passes
@@ -513,6 +484,7 @@ llvm::DenseMap<llvm::CallInst *, JumpTableResult>
 JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *indirectJump,
                                      llvm::FunctionAnalysisManager &am,
                                      Result agg) {
+
   auto const &dt =
       am.getResult<llvm::DominatorTreeAnalysis>(*indirectJump->getFunction());
 

@@ -112,6 +112,8 @@ z3::expr BinopExpr::BuildExpression(z3::context &c,
         e2);
   }
 
+  assert(!e1.is_bv() || e1.get_sort().bv_size() == e2.get_sort().bv_size());
+
 
   return BinopExpr::ExpressionFromLhsRhs(this->opcode, e1, e2);
 }
@@ -130,5 +132,37 @@ z3::expr UnopExpr::BuildExpression(z3::context &c,
     default: throw std::invalid_argument("unknown opcode unop");
   }
 }
+
+z3::expr Sext::BuildExpression(z3::context &c, const Environment &env) const {
+  auto texpr = this->target->BuildExpression(c, env);
+  return z3::sext(texpr, this->target_size);
+}
+
+std::unique_ptr<Expr> Sext::Create(std::unique_ptr<Expr> target,
+                                   unsigned size) {
+  return std::make_unique<Sext>(std::move(target), size);
+}
+
+z3::expr Zext::BuildExpression(z3::context &c, const Environment &env) const {
+  auto texpr = this->target->BuildExpression(c, env);
+  return z3::zext(texpr, this->target_size);
+}
+
+std::unique_ptr<Expr> Zext::Create(std::unique_ptr<Expr> target,
+                                   unsigned size) {
+  return std::make_unique<Zext>(std::move(target), size);
+}
+
+
+z3::expr Trunc::BuildExpression(z3::context &c, const Environment &env) const {
+  auto texpr = this->target->BuildExpression(c, env);
+  return texpr.extract(this->hi, this->lo);
+}
+
+std::unique_ptr<Expr> Trunc::Create(std::unique_ptr<Expr> target, unsigned hi,
+                                    unsigned lo) {
+  return std::make_unique<Trunc>(std::move(target), hi, lo);
+}
+
 
 }  // namespace anvill
