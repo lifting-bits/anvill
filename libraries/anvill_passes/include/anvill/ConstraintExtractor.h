@@ -48,6 +48,38 @@ class ConstraintExtractor
     return std::nullopt;
   }
 
+
+  std::optional<std::unique_ptr<Expr>> visitSExt(llvm::SExtInst &I) {
+    if (auto repr0 = this->ExpectInsnOrStopCondition(I.getOperand(0))) {
+      auto diff = I.getDestTy()->getIntegerBitWidth() -
+                  I.getSrcTy()->getIntegerBitWidth();
+      return Sext::Create(std::move(*repr0), diff);
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::unique_ptr<Expr>> visitZExt(llvm::ZExtInst &I) {
+    if (auto repr0 = this->ExpectInsnOrStopCondition(I.getOperand(0))) {
+      auto diff = I.getDestTy()->getIntegerBitWidth() -
+                  I.getSrcTy()->getIntegerBitWidth();
+      return Zext::Create(std::move(*repr0), diff);
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::unique_ptr<Expr>> visitTrunc(llvm::TruncInst &I) {
+    if (auto repr0 = this->ExpectInsnOrStopCondition(I.getOperand(0))) {
+      auto diff = I.getSrcTy()->getIntegerBitWidth() -
+                  I.getDestTy()->getIntegerBitWidth();
+      // hi lo are [hi,lo] inclusive
+      auto old_hi = I.getDestTy()->getIntegerBitWidth() - 1;
+      auto new_hi = old_hi - diff;
+      return Trunc::Create(std::move(*repr0), new_hi, 0);
+    }
+    return std::nullopt;
+  }
+
+
   std::optional<std::unique_ptr<Expr>> visitICmpInst(llvm::ICmpInst &I) {
     auto conn = BinopExpr::TranslateIcmpOpToZ3(I.getPredicate());
 

@@ -27,6 +27,59 @@ class Expr {
                                    const Environment &env) const = 0;
 };
 
+class Sext final : public Expr {
+ private:
+  std::unique_ptr<Expr> target;
+  unsigned target_size;
+
+ public:
+  Sext(std::unique_ptr<Expr> target, unsigned target_size)
+      : target(std::move(target)),
+        target_size(target_size) {}
+
+  z3::expr BuildExpression(z3::context &c,
+                           const Environment &env) const override;
+
+  static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target,
+                                      unsigned size);
+};
+
+class Zext final : public Expr {
+ private:
+  std::unique_ptr<Expr> target;
+  unsigned target_size;
+
+ public:
+  Zext(std::unique_ptr<Expr> target, unsigned target_size)
+      : target(std::move(target)),
+        target_size(target_size) {}
+
+  z3::expr BuildExpression(z3::context &c,
+                           const Environment &env) const override;
+
+  static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target,
+                                      unsigned size);
+};
+
+class Trunc final : public Expr {
+ private:
+  std::unique_ptr<Expr> target;
+  unsigned hi;
+  unsigned lo;
+
+ public:
+  Trunc(std::unique_ptr<Expr> target, unsigned hi, unsigned lo)
+      : target(std::move(target)),
+        hi(hi),
+        lo(lo) {}
+
+  z3::expr BuildExpression(z3::context &c,
+                           const Environment &env) const override;
+
+  static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target, unsigned hi,
+                                      unsigned lo);
+};
+
 
 class AtomVariable final : public Expr {
  private:
