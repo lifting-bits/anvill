@@ -103,7 +103,8 @@ class LifterOptions {
         store_inferred_register_values(true),
         add_breakpoints(false),
         track_provenance(false),
-        stack_pointer_is_signed(true) {
+        //TODO(ian): This should be initialized by an OS + arch pair
+        stack_pointer_is_signed(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -216,7 +217,6 @@ class LifterOptions {
   bool track_provenance : 1;
 
   // Should we treat the stack pointer as signed when simplifying sign flags.
-  // NOTE(ian): following the style here but why are these bitfields?
   bool stack_pointer_is_signed : 1;
 
  private:

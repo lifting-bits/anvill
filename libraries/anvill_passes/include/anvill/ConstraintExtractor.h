@@ -68,7 +68,6 @@ class ConstraintExtractor
   }
 
   std::optional<std::unique_ptr<Expr>> visitTrunc(llvm::TruncInst &I) {
-    I.dump();
     if (auto repr0 = this->ExpectInsnOrStopCondition(I.getOperand(0))) {
       auto diff = I.getSrcTy()->getIntegerBitWidth() -
                   I.getDestTy()->getIntegerBitWidth();
