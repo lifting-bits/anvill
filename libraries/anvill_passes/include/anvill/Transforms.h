@@ -278,4 +278,7 @@ void AddSimplifyStackArithFlags(llvm::FunctionPassManager &fpm,
 
 
 void AddBranchRecovery(llvm::FunctionPassManager &fpm);
+
+void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm);
+
 }  // namespace anvill

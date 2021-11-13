@@ -1,5 +1,3 @@
-
-
 /*
  * Copyright (c) 2021 Trail of Bits, Inc.
  *
@@ -19,7 +17,6 @@
 
 #include "RemoveStackPointerCExprs.h"
 
-#include <anvill/Analysis/CrossReferenceResolver.h>
 #include <anvill/Analysis/Utils.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstIterator.h>
@@ -39,7 +36,7 @@ RemoveStackPointerCExprs::run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM) {
   bool did_see = false;
 
-  CrossReferenceResolver resolver(F.getParent()->getDataLayout());
+
   std::vector<llvm::Instruction *> worklist;
 
   for (auto &insn : llvm::instructions(F)) {
@@ -53,25 +50,15 @@ RemoveStackPointerCExprs::run(llvm::Function &F,
     for (auto &use : curr->operands()) {
       if (llvm::isa_and_nonnull<llvm::ConstantExpr>(use.get()) &&
           IsRelatedToStackPointer(F.getParent(), use.get())) {
-
+        did_see = true;
         auto cexpr = llvm::cast<llvm::ConstantExpr>(use.get());
-        auto maybe_resolved =
-            resolver.TryResolveReferenceWithClearedCache(cexpr);
+        // NOTE(ian): convertConstantExprsToInstructions in llvm 14 builds multiple replacement instructions for components of the cexpr so we wouldnt need to do this loop
+        // the method for doing this is much better. createReplacementInstr doesnt work because it tries to translate the whole instruction...
+        auto newi = cexpr->getAsInstruction();
+        newi->insertBefore(curr);
+        use.set(newi);
 
-        //NOTE(ian): Ok new idea we need to split constant expressions iff they are not resolvable to a stack reference with displacement
-        if (!maybe_resolved.is_valid ||
-            !maybe_resolved.references_stack_pointer) {
-
-          did_see = true;
-
-          // NOTE(ian): convertConstantExprsToInstructions in llvm 14 builds multiple replacement instructions for components of the cexpr so we wouldnt need to do this loop
-          // the method for doing this is much better. createReplacementInstr doesnt work because it tries to translate the whole instruction...
-          auto newi = cexpr->getAsInstruction();
-          newi->insertBefore(curr);
-          use.set(newi);
-
-          worklist.push_back(newi);
-        }
+        worklist.push_back(newi);
       }
     }
   }

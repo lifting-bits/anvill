@@ -65,6 +65,9 @@ add_library(anvill_passes STATIC
   src/SimplifyStackArithFlags.cpp
   src/SimplifyStackArithFlags.h
 
+  src/RemoveStackPointerCExprs.cpp
+  src/RemoveStackPointerCExprs.h
+
   src/Utils.h
   src/Utils.cpp
   src/SliceManager.cpp
