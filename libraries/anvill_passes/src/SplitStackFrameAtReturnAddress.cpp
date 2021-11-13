@@ -70,8 +70,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function,
       return false;
     }
 
-    EmitError(SeverityType::Error, analysis_res.TakeError(),
-              "The function analysis has failed");
+    EmitError(SeverityType::Error, error, "The function analysis has failed");
 
     return false;
   }
