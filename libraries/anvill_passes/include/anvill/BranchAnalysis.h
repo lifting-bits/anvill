@@ -36,10 +36,6 @@ struct BranchResult {
   llvm::CmpInst::Predicate compare;
 };
 
-
-extern const std::string kFlagIntrinsicPrefix;
-extern const std::string kCompareInstrinsicPrefix;
-
 // newtype of Predicate
 struct RemillComparison {
   llvm::CmpInst::Predicate pred;

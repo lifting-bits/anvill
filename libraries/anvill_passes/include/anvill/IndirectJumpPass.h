@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <anvill/ABI.h>
@@ -21,7 +38,7 @@ class IndirectJumpPass : public IntrinsicPass<UserFunctionPass, Result> {
   // there will be missing labels in the pcbinding mapping, therefore it is unlikely the switch lowering pass
   // should be run against the incomplete switches. Perhaps the best solution here is to run the jump table analysis
   // on its own against incomplete switches and allow it to call back into the lifter for more code.
-  bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
+  static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
     if (const auto *callee = callinsn->getCalledFunction()) {
       return callee->getName().equals(kAnvillSwitchCompleteFunc);
     }

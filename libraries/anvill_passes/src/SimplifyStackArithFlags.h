@@ -49,7 +49,7 @@ class SimplifyStackArithFlags
   static llvm::PreservedAnalyses INIT_RES;
 
 
-  bool isTargetInstrinsic(const llvm::CallInst *callinsn);
+  static bool isTargetInstrinsic(const llvm::CallInst *callinsn);
   static llvm::StringRef name();
 };
 
