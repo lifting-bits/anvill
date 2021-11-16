@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <llvm/ADT/APInt.h>
@@ -7,6 +24,7 @@
 
 #include <memory>
 #include <unordered_map>
+
 namespace anvill {
 class Environment {
  private:
@@ -109,8 +127,7 @@ class AtomIntExpr final : public Expr {
   static std::unique_ptr<Expr> Create(llvm::APInt value);
 };
 
-// might be able to combine complex formula with binop tbh
-// this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
+//NOTE(ian): this technically allows (x /\ y) + (a /\ b) should maybe prevent these from being constructed, currently relies on the visitor to check and not construct.
 enum Z3Binop {
   ADD,
   SUB,
