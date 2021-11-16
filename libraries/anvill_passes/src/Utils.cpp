@@ -100,7 +100,9 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
       const auto new_ptr_ty = ptr_ty->getElementType()->getPointerTo(
           dest_ptr_ty->getAddressSpace());
-      val_to_convert = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
+      auto dest = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
+      CopyMetadataTo(val_to_convert, dest);
+      val_to_convert = dest;
       ptr_ty = new_ptr_ty;
     }
 
@@ -108,7 +110,10 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
       return val_to_convert;
 
     } else {
-      return remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
+      auto dest = remill::BuildPointerToOffset(
+          ir, val_to_convert, 0, dest_ptr_ty);
+      CopyMetadataTo(val_to_convert, dest);
+      return dest;
     }
 
     // Cast an integer to a pointer type.
@@ -117,13 +122,19 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
     if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
       int_ty =
           llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
-      val_to_convert = ir.CreateZExt(val_to_convert, int_ty);
+      auto dest = ir.CreateZExt(val_to_convert, int_ty);
+      CopyMetadataTo(val_to_convert, dest);
+      val_to_convert = dest;
     }
 
-    return ir.CreateIntToPtr(val_to_convert, dest_ptr_ty);
+    auto dest = ir.CreateIntToPtr(val_to_convert, dest_ptr_ty);
+    CopyMetadataTo(val_to_convert, dest);
+    return dest;
 
   } else {
-    return ir.CreateBitOrPointerCast(val_to_convert, dest_ptr_ty);
+    auto dest = ir.CreateBitOrPointerCast(val_to_convert, dest_ptr_ty);
+    CopyMetadataTo(val_to_convert, dest);
+    return dest;
   }
 }
 
@@ -177,14 +188,6 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
     }
   }
   return true;
-}
-
-void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
-  llvm::Instruction *src_inst = llvm::dyn_cast_or_null<llvm::Instruction>(src),
-                    *dst_inst = llvm::dyn_cast_or_null<llvm::Instruction>(dst);
-  if (src_inst && dst_inst) {
-    dst_inst->copyMetadata(*src_inst);
-  }
 }
 
 

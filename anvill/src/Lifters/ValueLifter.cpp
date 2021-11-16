@@ -19,7 +19,7 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>

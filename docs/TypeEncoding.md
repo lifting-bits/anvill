@@ -19,8 +19,11 @@ The basic elements of the type encoding follows.
 | Representation | Size in bytes | C/C++-equivalent |
 |--|--|--|
 | `?` | 1 | `_Bool` or `bool` |
-| `b` | 1 | `int8_t` or `signed char` |
-| `B` | 1 | `uint8_t` or `unsigned char` |
+| `c` | 1 | `char` |
+| `s` | 1 | `signed char` |
+| `S` | 1 | `unsigned char` |
+| `b` | 1 | `int8_t` |
+| `B` | 1 | `uint8_t` |
 | `h` | 2 | `int16_t` or `short` |
 | `H` | 2 | `uint16_t` or `unsigned short` |
 | `i` | 4 | `int32_t` or `int` |
@@ -31,11 +34,13 @@ The basic elements of the type encoding follows.
 | `O` | 16 | `uint128_t` or `__uint128` |
 | `e` | 2 | `float16_t` (IEEE754 half-precision floating point, or `binary16`) |
 | `f` | 4 | `float` (IEEE754 single-precision floating point) |
-| `d` | 8 | `double` (IEEE754 double-precision floating point) |
-| `D` | 10 or 12 | `long double` (IEEE754 extended precision floating point) |
-| `M` | 8 | `uint64_t` (x86 MMX vector type) |
+| `F` | 8 | `double` (IEEE754 double-precision floating point) |
+| `D` | 10 | `long double` (IEEE754 extended precision floating point) |
+| `D` | 12 | `long double` (IEEE754 extended precision floating point) |
+| `M` | 8 | `__m64` (x86 MMX vector type) |
 | `Q` | 16 | `__float128` (IEEE754 quadruple-precision floating point) |
 | `v` | 0 | `void` |
+| `p` | 1 | Padding byte. |
 
 The `v` type is generally not usable (as it does not have a size). It can be
 used in function types and pointer types.

@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 
 #include <doctest.h>
 #include <llvm/IR/Module.h>
@@ -35,13 +35,14 @@ TEST_SUITE("TypeSpecifier") {
     // clang-format off
     const std::vector<TestEntry> kTestEntryList = {
       { "broken specification!", "", false },
-      { "l", "i64", true },
+      //{ "l", "i64", true },
       { "L", "i64", true },
-      { "i", "i32", true },
-      { "**b", "i8**", true },
+      { "I", "i32", true },
+      { "**B", "i8**", true },
 
       // __libc_start_main
-      { "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
+      //{ "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
+      { "(*(I**B**BI)I**B*(I**B**BI)*(vI)*(vI)*BI)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
     };
 
     // clang-format on
@@ -59,7 +60,6 @@ TEST_SUITE("TypeSpecifier") {
       }
 
       llvm::Type *type = context_res.TakeValue();
-      CHECK(type != nullptr);
       CHECK_EQ(test_entry.spec, specifier.EncodeToString(type));
 
       std::string str;
@@ -138,8 +138,18 @@ TEST_SUITE("TypeSpecifier") {
       auto without_alphanum = specifier.EncodeToString(test_entry.type, false);
       auto with_alphanum = specifier.EncodeToString(test_entry.type, true);
 
-      CHECK_EQ(without_alphanum, test_entry.expected_non_alphanum_output);
-      WARN_EQ(with_alphanum, test_entry.expected_alphanum_output);
+
+      auto decoded_without_alphanum = specifier.DecodeFromString(test_entry.expected_non_alphanum_output);
+      CHECK(decoded_without_alphanum.Succeeded());
+
+      auto decoded_with_alphanum = specifier.DecodeFromString(test_entry.expected_alphanum_output);
+      CHECK(decoded_with_alphanum.Succeeded());
+
+      auto encoded_without_alphanum = specifier.EncodeToString(decoded_without_alphanum.TakeValue(), false);
+      auto encoded_with_alphanum = specifier.EncodeToString(decoded_with_alphanum.TakeValue(), true);
+
+      CHECK_EQ(without_alphanum, encoded_without_alphanum);
+      WARN_EQ(with_alphanum, encoded_with_alphanum);
     }
 
     //
@@ -196,20 +206,21 @@ TEST_SUITE("TypeSpecifier") {
     // are not working
 
     // clang-format off
-    const std::vector<std::string> kTestSpecList = {
-      "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)",
-      "b",
-      "h",
-      "i",
-      "l",
-      "f",
-      "*b",
-      "*h",
-      "*i",
-      "*l",
-      "*f",
-      "=0{[=1{hhhhhhhhhh}x100]%1}",
-      "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
+    const std::vector<std::pair<const char *, const char *>> kTestSpecList = {
+      {"(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)",
+       "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)"},
+      {"b", "i8"},
+      {"h", "i16"},
+      {"i", "i32"},
+      {"l", "i64"},
+      {"f", "float"},
+      {"*b", "i8*"},
+      {"*h", "i16*"},
+      {"*i", "i32*"},
+      {"*l", "i64*"},
+      {"*f", "float*"},
+//      {"=0{[=1{hhhhhhhhhh}x100]%1}", ""},
+//      {"(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])", ""},
     };
 
     // clang-format on
@@ -220,14 +231,19 @@ TEST_SUITE("TypeSpecifier") {
     const auto &data_layout = module.getDataLayout();
     TypeSpecifier specifier(llvm_context, data_layout);
 
-    for (const auto &test_spec : kTestSpecList) {
+    for (auto [test_spec, ll_type] : kTestSpecList) {
       auto context_res = specifier.DecodeFromString(test_spec);
       REQUIRE(context_res.Succeeded());
 
       llvm::Type *type = context_res.TakeValue();
 
+      std::string out;
+      llvm::raw_string_ostream os(out);
+      type->print(os);
+      os.flush();
+
       REQUIRE(type != nullptr);
-      REQUIRE(specifier.EncodeToString(type) == test_spec);
+      REQUIRE(out == ll_type);
     }
   }
 }

@@ -12,17 +12,22 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+from typing import Dict
 
 import binaryninja as bn
 
-
 from .callingconvention import *
-
 
 from anvill.type import *
 from anvill.function import *
 from anvill.util import *
+
+CacheKey = str
+
+
+def _cache_key(tinfo: bn.types.Type) -> CacheKey:
+    """ Convert bn Type instance to cache key"""
+    return str(tinfo)
 
 
 class TypeCache:
@@ -31,7 +36,8 @@ class TypeCache:
     types to reduce lookup time.
     """
 
-    __slots__ = ("_bv", "_cache")
+    _bv: bn.BinaryView
+    _cache: Dict[CacheKey, bn.types.Type]
 
     # list of unhandled type classes which should log error
     _err_type_class = {
@@ -44,10 +50,6 @@ class TypeCache:
         self._bv = bv
         self._cache = dict()
 
-    def _cache_key(self, tinfo: bn.types.Type):
-        """ Convert bn Type instance to cache key"""
-        return str(tinfo)
-
     def _convert_struct(self, tinfo: bn.types.Type) -> Type:
         """Convert bn struct type into a `Type` instance"""
 
@@ -57,8 +59,8 @@ class TypeCache:
             return self._convert_union(tinfo)
 
         assert (
-            tinfo.structure.type == bn.StructureType.StructStructureType
-            or tinfo.structure.type == bn.StructureType.ClassStructureType
+                tinfo.structure.type == bn.StructureType.StructStructureType
+                or tinfo.structure.type == bn.StructureType.ClassStructureType
         )
 
         ret = StructureType()
@@ -66,10 +68,45 @@ class TypeCache:
         # If struct has no registered name, don't put it in the cache. It
         # is anonymous struct and can cause cache collision
         if tinfo.registered_name:
-            self._cache[self._cache_key(tinfo)] = ret
+            self._cache[_cache_key(tinfo)] = ret
 
+        at_offset = [1] * tinfo.width
+        num_bytes = len(at_offset)
+        at_offset.append(0)
+
+        # figure out what members at what offsets.
         for elem in tinfo.structure.members:
-            ret.add_element_type(self._convert_bn_type(elem.type))
+            for i in range(elem.offset, elem.offset + elem.width):
+                at_offset[i] = 0
+            at_offset[elem.offset] = self._convert_bn_type(elem.type)
+
+        # Introduce padding byte types
+        i = 0
+        while i < num_bytes:
+            if not isinstance(at_offset[i], int):
+                i += 1
+                continue
+
+            # Accumulate the number of bytes of padding.
+            j = i
+            num_padding_bytes = 0
+            while j <= num_bytes:
+                if isinstance(at_offset[j], int):
+                    num_padding_bytes += at_offset[j]
+                    j += 1
+                else:
+                    break
+
+            if num_padding_bytes:
+                pt = PaddingType()
+                pt.set_num_elements(num_padding_bytes)
+                at_offset[i] = pt
+
+            i = j
+
+        for elem in at_offset:
+            if isinstance(elem, Type):
+                ret.add_element_type(elem)
 
         return ret
 
@@ -83,7 +120,7 @@ class TypeCache:
         # If union has no registered name, don't put it in the cache. It
         # is anonymous union and can cause cache collision
         if tinfo.registered_name:
-            self._cache[self._cache_key(tinfo)] = ret
+            self._cache[_cache_key(tinfo)] = ret
         for elem in tinfo.structure.members:
             ret.add_element_type(self._convert_bn_type(elem.type))
 
@@ -100,7 +137,7 @@ class TypeCache:
         # is anonymous enum and can cause cache collision with other
         # anonymous enum
         if tinfo.registered_name:
-            self._cache[self._cache_key(tinfo)] = ret
+            self._cache[_cache_key(tinfo)] = ret
         # The underlying type of enum will be an Interger of size info.width
         ret.set_underlying_type(IntegerType(tinfo.width, False))
         return ret
@@ -108,10 +145,11 @@ class TypeCache:
     def _convert_typedef(self, tinfo: bn.types.Type) -> Type:
         """ Convert bn typedef into a `Type` instance"""
 
-        assert tinfo.type_class == bn.NamedTypeReferenceClass.TypedefNamedTypeClass
+        assert tinfo.type_class == \
+               bn.NamedTypeReferenceClass.TypedefNamedTypeClass
 
         ret = TypedefType()
-        self._cache[self._cache_key(tinfo)] = ret
+        self._cache[_cache_key(tinfo)] = ret
         ret.set_underlying_type(
             self._convert_bn_type(self._bv.get_type_by_name(tinfo.name))
         )
@@ -123,7 +161,7 @@ class TypeCache:
         assert tinfo.type_class == bn.TypeClass.ArrayTypeClass
 
         ret = ArrayType()
-        self._cache[self._cache_key(tinfo)] = ret
+        self._cache[_cache_key(tinfo)] = ret
         ret.set_element_type(self._convert_bn_type(tinfo.element_type))
         ret.set_num_elements(tinfo.count)
         return ret
@@ -134,7 +172,7 @@ class TypeCache:
         assert tinfo.type_class == bn.TypeClass.PointerTypeClass
 
         ret = PointerType()
-        self._cache[self._cache_key(tinfo)] = ret
+        self._cache[_cache_key(tinfo)] = ret
         ret.set_element_type(self._convert_bn_type(tinfo.target))
         return ret
 
@@ -144,7 +182,7 @@ class TypeCache:
         assert tinfo.type_class == bn.TypeClass.FunctionTypeClass
 
         ret = FunctionType()
-        self._cache[self._cache_key(tinfo)] = ret
+        self._cache[_cache_key(tinfo)] = ret
         ret.set_return_type(self._convert_bn_type(tinfo.return_value))
 
         for var in tinfo.parameters:
@@ -176,53 +214,41 @@ class TypeCache:
         """ Convert named type references into a `Type` instance"""
 
         assert tinfo.type_class == bn.TypeClass.NamedTypeReferenceClass
-
-        named_tinfo = tinfo.named_type_reference
-
-        ref_type = self._bv.get_type_by_name(named_tinfo.name)
+        ref_type = self._bv.get_type_by_id(tinfo.type_id)
         if ref_type is None:
-            # check if the reference is present with type_id
-            ref_type = self._bv.get_type_by_id(named_tinfo.type_id)
-
-            # A reference type for the named references could be None. Add warning
-            # log and return Interger of width tinfo.width or self._bv.address_size
+            ref_type = self._bv.get_type_by_name(tinfo.name)
             if ref_type is None:
-                DEBUG(
-                    "WARNING: failed to get reference type for named references {}".format(
-                        named_tinfo
-                    )
-                )
-                return (
-                    IntegerType(self._bv.address_size, False)
-                    if tinfo.width == 0
-                    else IntegerType(tinfo.width, False)
-                )
+                return VoidType()
 
-        if named_tinfo.type_class == bn.NamedTypeReferenceClass.StructNamedTypeClass:
+        print("!!! {ref_type.type_class}")
+        if tinfo.type_class == bn.NamedTypeReferenceClass.StructNamedTypeClass:
             return self._convert_struct(ref_type)
 
-        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.UnionNamedTypeClass:
+        elif tinfo.type_class == bn.NamedTypeReferenceClass.UnionNamedTypeClass:
             return self._convert_union(ref_type)
 
-        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.TypedefNamedTypeClass:
-            return self._convert_typedef(named_tinfo)
+        elif tinfo.type_class == \
+                bn.NamedTypeReferenceClass.TypedefNamedTypeClass:
+            return self._convert_typedef(ref_type)
 
-        elif named_tinfo.type_class == bn.NamedTypeReferenceClass.EnumNamedTypeClass:
+        elif tinfo.type_class == bn.NamedTypeReferenceClass.EnumNamedTypeClass:
             return self._convert_enum(ref_type)
 
+        elif tinfo.type_class == \
+                bn.NamedTypeReferenceClass.UnknownNamedTypeClass:
+            return VoidType()
+
         else:
-            WARN(f"WARNING: Unknown named type {named_tinfo} not handled")
-            return (
-                IntegerType(self._bv.address_size, False)
-                if tinfo.width == 0
-                else IntegerType(tinfo.width, False)
-            )
+            WARN(
+                f"WARNING: Unknown named type class {tinfo.type_class} not "
+                f"handled")
+            return VoidType()
 
     def _convert_bn_type(self, tinfo: bn.types.Type) -> Type:
         """Convert an bn `Type` instance into a `Type` instance."""
 
-        if self._cache_key(tinfo) in self._cache:
-            return self._cache[self._cache_key(tinfo)]
+        if _cache_key(tinfo) in self._cache:
+            return self._cache[_cache_key(tinfo)]
 
         # Void type
         if tinfo.type_class == bn.TypeClass.VoidTypeClass:
@@ -257,12 +283,14 @@ class TypeCache:
 
         elif tinfo.type_class in TypeCache._err_type_class.keys():
             WARN(
-                f"WARNING: Unhandled type class {TypeCache._err_type_class[tinfo.type_class]}"
+                f"WARNING: Unhandled type class "
+                f"{TypeCache._err_type_class[tinfo.type_class]}"
             )
             return VoidType()
 
         else:
-            raise UnhandledTypeException("Unhandled type: {}".format(str(tinfo)), tinfo)
+            raise UnhandledTypeException(
+                "Unhandled type: {}".format(str(tinfo)), tinfo)
 
     def get(self, ty) -> Type:
         """Type class that gives access to type sizes, printings, etc."""

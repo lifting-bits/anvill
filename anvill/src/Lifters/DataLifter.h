@@ -19,7 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 
 #include <cstdint>
 #include <map>

@@ -248,7 +248,10 @@ class PaddingType(SequentialType):
         self._num_elems = size
 
     def serialize(self, arch, ids):
-        return "[Bx{}]".format(self._num_elems)
+        if self._num_elems < 8:
+          return "p" * self._num_elems
+        else:
+          return "[px{}]".format(self._num_elems)
 
 
 class StructureType(Type):
@@ -408,10 +411,10 @@ class FloatingPointType(Type):
     _FORM = {
         2: "e",
         4: "f",
-        8: "d",
+        8: "F",
         # Depending on the ABI, the size of a `long double` may be 10 bytes, or it
         # may be 12 bytes.
-        10: "D",
+        10: "d",
         12: "D",
         # Quad-precision floating point.
         16: "Q",
@@ -540,6 +543,33 @@ class TypedefType(AliasType):
     pass
 
 
+class CharacterType(IntegerType):
+    def __init__(self, is_signed=None):
+        super(CharacterType, self).__init__(1, is_signed)
+
+    def size(self, arch):
+        return 1
+
+    def serialize(self, arch, ids):
+        if self._is_signed is None:
+          return "c"  # `char`
+        elif self._is_signed:
+          return "s"  # `signed char`
+        else:
+          return "S"  # `unsigned char`
+
+
+class MMXType(IntegerType):
+    def __init__(self, is_signed=None):
+        super(CharacterType, self).__init__(8, False)
+
+    def serialize(self, arch, ids):
+        return "M"
+
+    def size(self, arch):
+      return 8
+
+
 class BoolType(AliasType):
 
     _INSTANCE = None
@@ -553,3 +583,6 @@ class BoolType(AliasType):
     def __init__(self):
         super(BoolType, self).__init__()
         self.set_underlying_type(IntegerType(1, False))
+
+    def serialize(self, arch, ids):
+        return "?"

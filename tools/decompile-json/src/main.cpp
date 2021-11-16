@@ -48,7 +48,7 @@
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>

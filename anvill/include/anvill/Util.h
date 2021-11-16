@@ -21,7 +21,9 @@
 
 namespace llvm {
 
+class BasicBlock;
 class Instruction;
+class Value;
 
 }  // namespace llvm
 namespace anvill {
@@ -35,5 +37,8 @@ std::string CreateVariableName(uint64_t addr);
 // Looks for any constant expressions in the operands of `inst` and unfolds
 // them into other instructions in the same block.
 void UnfoldConstantExpressions(llvm::Instruction *inst);
+
+// Copies metadata from the source to destination if both values are instructions.
+void CopyMetadataTo(llvm::Value *src, llvm::Value *dst);
 
 }  // namespace anvill

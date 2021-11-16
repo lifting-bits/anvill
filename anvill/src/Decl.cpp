@@ -18,7 +18,7 @@
 #include "anvill/Decl.h"
 
 #include <anvill/Lifters/DeclLifter.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
@@ -120,6 +120,8 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   }
 
   auto module = block->getModule();
+  TypeDictionary types(module->getContext());
+
   auto func = DeclareInModule(name, *module, allow_unowned);
   llvm::IRBuilder<> ir(block);
 
@@ -144,13 +146,13 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr =
-      LoadLiftedValue(return_address, intrinsics, block, state_ptr, mem_ptr);
+  auto ret_addr = LoadLiftedValue(
+      return_address, types, intrinsics, block, state_ptr, mem_ptr);
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val =
-        LoadLiftedValue(param_decl, intrinsics, block, state_ptr, mem_ptr);
+    const auto val = LoadLiftedValue(
+        param_decl, types, intrinsics, block, state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }
@@ -162,8 +164,8 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
 
   // There is a single return value, store it to the lifted state.
   if (returns.size() == 1) {
-    mem_ptr = StoreNativeValue(ret_val, returns.front(), intrinsics, block,
-                               state_ptr, mem_ptr);
+    mem_ptr = StoreNativeValue(
+        ret_val, returns.front(), types, intrinsics, block, state_ptr, mem_ptr);
 
   // There are possibly multiple return values (or zero). Unpack the
   // return value (it will be a struct type) into its components and
@@ -173,7 +175,7 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
     for (const auto &ret_decl : returns) {
       unsigned indexes[] = {index};
       auto elem_val = ir.CreateExtractValue(ret_val, indexes);
-      mem_ptr = StoreNativeValue(elem_val, ret_decl, intrinsics, block,
+      mem_ptr = StoreNativeValue(elem_val, ret_decl, types, intrinsics, block,
                                  state_ptr, mem_ptr);
       index += 1;
     }

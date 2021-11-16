@@ -18,7 +18,7 @@
 #include "FunctionLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
@@ -1530,8 +1530,8 @@ FunctionLifter::InitializeSymbolicReturnAddress(llvm::BasicBlock *block,
       options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
   auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
 
-  return StoreNativeValue(ret_addr, ret_address, intrinsics, block, state_ptr,
-                          mem_ptr);
+  return StoreNativeValue(ret_addr, ret_address, type_specifier.Dictionary(),
+                          intrinsics, block, state_ptr, mem_ptr);
 }
 
 // Initialize a concrete return address. This is an intrinsic function call.
@@ -1553,8 +1553,8 @@ FunctionLifter::InitializeConcreteReturnAddress(llvm::BasicBlock *block,
   llvm::IRBuilder<> ir(block);
   ret_addr =
       ir.CreatePtrToInt(ret_addr, pc_reg->type, llvm::Twine::createNull());
-  return StoreNativeValue(ret_addr, ret_address, intrinsics, block, state_ptr,
-                          mem_ptr);
+  return StoreNativeValue(ret_addr, ret_address, type_specifier.Dictionary(),
+                          intrinsics, block, state_ptr, mem_ptr);
 }
 
 // Set up `native_func` to be able to call `lifted_func`. This means
@@ -1623,13 +1623,15 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
     }
   }
 
+  auto &types = type_specifier.Dictionary();
+
   // Store the function parameters either into the state struct
   // or into memory (likely the stack).
   auto arg_index = 0u;
   for (auto &arg : native_func->args()) {
     const auto &param_decl = native_decl.params[arg_index++];
-    mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
-                               mem_ptr);
+    mem_ptr = StoreNativeValue(&arg, param_decl, types,
+                               intrinsics, block, state_ptr, mem_ptr);
   }
 
   llvm::IRBuilder<> ir(block);
@@ -1653,16 +1655,16 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::Value *ret_val = nullptr;
 
   if (native_decl.returns.size() == 1) {
-    ret_val = LoadLiftedValue(native_decl.returns.front(), intrinsics, block,
-                              state_ptr, mem_ptr);
+    ret_val = LoadLiftedValue(native_decl.returns.front(), types,
+                              intrinsics, block, state_ptr, mem_ptr);
     ir.SetInsertPoint(block);
 
   } else if (1 < native_decl.returns.size()) {
     ret_val = llvm::UndefValue::get(native_func->getReturnType());
     auto index = 0u;
     for (auto &ret_decl : native_decl.returns) {
-      auto partial_ret_val =
-          LoadLiftedValue(ret_decl, intrinsics, block, state_ptr, mem_ptr);
+      auto partial_ret_val = LoadLiftedValue(
+          ret_decl, types, intrinsics, block, state_ptr, mem_ptr);
       ir.SetInsertPoint(block);
       unsigned indexes[] = {index};
       ret_val = ir.CreateInsertValue(ret_val, partial_ret_val, indexes);
