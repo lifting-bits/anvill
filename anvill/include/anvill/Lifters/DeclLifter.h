@@ -30,10 +30,12 @@ class IntrinsicTable;
 namespace anvill {
 
 struct ValueDecl;
+class TypeDictionary;
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
 llvm::Value *LoadLiftedValue(const ValueDecl &decl,
+                             const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
@@ -42,6 +44,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
 // native value `native_val` into the lifted state associated
 // with `decl`.
 llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const TypeDictionary &types,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);

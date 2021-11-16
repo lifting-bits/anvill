@@ -220,11 +220,11 @@ PointerLifter::visitInstruction(llvm::Instruction &inst) {
 }
 
 void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
+  CopyMetadataTo(old_val, new_val);
   if (auto old_inst = llvm::dyn_cast<llvm::Instruction>(old_val)) {
     to_remove.insert(old_inst);
     rep_map[old_inst] = new_val;
     made_progress = true;
-    CopyMetadataTo(old_val, new_val);
   } else {
     LOG(ERROR) << "Cannot replace " << remill::LLVMThingToString(old_val)
                << " with " << remill::LLVMThingToString(new_val) << " in "
@@ -897,6 +897,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       // We don't have a L/RHS instruction, just create a pointer
       llvm::IRBuilder ir(inst->getNextNode());
       llvm::Value *add_ptr = ir.CreateIntToPtr(inst, inferred_type);
+      CopyMetadataTo(inst, add_ptr);
       return {add_ptr, true};
     }
   }

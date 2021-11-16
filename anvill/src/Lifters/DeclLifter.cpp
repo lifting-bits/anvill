@@ -16,8 +16,9 @@
  */
 
 #include <anvill/Decl.h>
-#include <anvill/Lifters/DeclLifter.h>
+
 #include <glog/logging.h>
+
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -26,118 +27,15 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+
+#include <anvill/Lifters/DeclLifter.h>
+#include <anvill/Type.h>
+#include <anvill/Util.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
 namespace anvill {
 namespace {
-
-
-// Adapt `src` to another type (likely an integer type) that is `dest_type`.
-static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
-                                llvm::Type *dest_type) {
-  const auto src_type = src->getType();
-  if (src_type == dest_type) {
-    return src;
-  }
-
-  if (src_type->isIntegerTy()) {
-    if (dest_type->isIntegerTy()) {
-      auto src_size = src_type->getPrimitiveSizeInBits();
-      auto dest_size = dest_type->getPrimitiveSizeInBits();
-      if (src_size < dest_size) {
-        return ir.CreateZExt(src, dest_type);
-      } else {
-        return ir.CreateTrunc(src, dest_type);
-      }
-
-    } else if (auto dest_ptr_type =
-                   llvm::dyn_cast<llvm::PointerType>(dest_type);
-               dest_ptr_type) {
-      auto inter_type =
-          llvm::PointerType::get(dest_ptr_type->getElementType(), 0);
-
-      llvm::Value *inter_val = nullptr;
-      if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(src); pti) {
-        src = llvm::cast<llvm::Constant>(pti->getOperand(0));
-        if (src->getType() == dest_type) {
-          return src;
-        } else {
-          inter_val = ir.CreateBitCast(src, inter_type);
-        }
-
-      } else {
-        inter_val = ir.CreateIntToPtr(src, inter_type);
-      }
-
-      if (inter_type == dest_ptr_type) {
-        return inter_val;
-      } else {
-        return ir.CreateAddrSpaceCast(inter_val, dest_ptr_type);
-      }
-    }
-
-  } else if (auto src_ptr_type = llvm::dyn_cast<llvm::PointerType>(src_type);
-             src_ptr_type) {
-
-    // Cast the pointer to the other pointer type.
-    if (auto dest_ptr_type = llvm::dyn_cast<llvm::PointerType>(dest_type);
-        dest_ptr_type) {
-
-      if (src_ptr_type->getAddressSpace() != dest_ptr_type->getAddressSpace()) {
-        src_ptr_type = llvm::PointerType::get(src_ptr_type->getElementType(),
-                                              dest_ptr_type->getAddressSpace());
-        src = ir.CreateAddrSpaceCast(src, src_ptr_type);
-      }
-
-      if (src_ptr_type == dest_ptr_type) {
-        return src;
-      } else {
-        return ir.CreateBitCast(src, dest_ptr_type);
-      }
-
-    // Convert the pointer to an integer.
-    } else if (auto dest_int_type =
-                   llvm::dyn_cast<llvm::IntegerType>(dest_type);
-               dest_int_type) {
-      if (src_ptr_type->getAddressSpace()) {
-        src_ptr_type =
-            llvm::PointerType::get(src_ptr_type->getElementType(), 0);
-        src = ir.CreateAddrSpaceCast(src, src_ptr_type);
-      }
-
-      const auto block = ir.GetInsertBlock();
-      const auto func = block->getParent();
-      const auto module = func->getParent();
-      const auto &dl = module->getDataLayout();
-      auto &context = module->getContext();
-      src = ir.CreatePtrToInt(
-          src, llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0)));
-      return AdaptToType(ir, src, dest_type);
-    }
-
-  } else if (src_type->isFloatTy()) {
-    if (dest_type->isDoubleTy()) {
-      return ir.CreateFPExt(src, dest_type);
-
-    } else if (dest_type->isIntegerTy()) {
-      const auto i32_type = llvm::Type::getInt32Ty(dest_type->getContext());
-      return AdaptToType(ir, ir.CreateBitCast(src, i32_type), dest_type);
-    }
-
-  } else if (src_type->isDoubleTy()) {
-    if (dest_type->isFloatTy()) {
-      return ir.CreateFPTrunc(src, dest_type);
-
-    } else if (dest_type->isIntegerTy()) {
-      const auto i64_type = llvm::Type::getInt64Ty(dest_type->getContext());
-      return AdaptToType(ir, ir.CreateBitCast(src, i64_type), dest_type);
-    }
-  }
-
-  // Fall-through, we don't have a supported adaptor.
-  return nullptr;
-}
 
 }  // namespace
 
@@ -145,6 +43,7 @@ static llvm::Value *AdaptToType(llvm::IRBuilder<> &ir, llvm::Value *src,
 // native value `native_val` into the lifted state associated
 // with `decl`.
 llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const TypeDictionary &types,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr) {
@@ -163,15 +62,23 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
       ir.CreateStore(llvm::Constant::getNullValue(decl.reg->type), ptr_to_reg);
     }
 
-    if (auto adapted_val = AdaptToType(ir, native_val, decl.reg->type);
-        adapted_val) {
-      ir.CreateStore(adapted_val, ptr_to_reg);
+    llvm::StoreInst *store = nullptr;
+
+    auto ipoint = ir.GetInsertPoint();
+    auto iblock = ir.GetInsertBlock();
+    auto adapted_val = types.ConvertValueToType(ir, native_val, decl.reg->type);
+    ir.SetInsertPoint(iblock, ipoint);
+
+    if (adapted_val) {
+      store = ir.CreateStore(adapted_val, ptr_to_reg);
 
     } else {
-      ir.CreateStore(
-          native_val,
-          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
+      auto ptr = ir.CreateBitCast(ptr_to_reg,
+                                  llvm::PointerType::get(decl.type, 0));
+      CopyMetadataTo(native_val, ptr);
+      store = ir.CreateStore(native_val, ptr);
     }
+    CopyMetadataTo(native_val, store);
 
     return mem_ptr;
 
@@ -180,13 +87,16 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
     llvm::IRBuilder<> ir(in_block);
-    llvm::Value *addr = ir.CreateLoad(ptr_to_reg);
+    llvm::Value *addr = ir.CreateLoad(decl.mem_reg->type, ptr_to_reg);
+    CopyMetadataTo(native_val, addr);
+
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
           addr,
           llvm::ConstantInt::get(
               decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
               false));
+      CopyMetadataTo(native_val, addr);
 
     } else if (0ll > decl.mem_offset) {
       addr = ir.CreateSub(
@@ -194,7 +104,9 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
         llvm::ConstantInt::get(
             decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
             false));
+      CopyMetadataTo(native_val, addr);
     }
+
     return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
                                  addr);
 
@@ -213,6 +125,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 }
 
 llvm::Value *LoadLiftedValue(const ValueDecl &decl,
+                             const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr) {
@@ -226,25 +139,36 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
   if (decl.reg) {
     auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    auto reg = ir.CreateLoad(ptr_to_reg);
-    if (auto adapted_val = AdaptToType(ir, reg, decl.type)) {
+    auto reg = ir.CreateLoad(decl.reg->type, ptr_to_reg);
+    CopyMetadataTo(mem_ptr, reg);
+    auto ipoint = ir.GetInsertPoint();
+    auto iblock = ir.GetInsertBlock();
+    auto adapted_val = types.ConvertValueToType(ir, reg, decl.type);
+    ir.SetInsertPoint(iblock, ipoint);
+
+    if (adapted_val) {
       return adapted_val;
     } else {
-      return ir.CreateLoad(
-          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0)));
+      auto bc = ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0));
+      auto li = ir.CreateLoad(decl.type, bc);
+      CopyMetadataTo(mem_ptr, bc);
+      CopyMetadataTo(mem_ptr, li);
+      return li;
     }
 
   // Load it out of memory.
   } else if (decl.mem_reg) {
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    llvm::Value *addr = ir.CreateLoad(ptr_to_reg);
+    llvm::Value *addr = ir.CreateLoad(decl.mem_reg->type, ptr_to_reg);
+    CopyMetadataTo(mem_ptr, addr);
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
           addr,
           llvm::ConstantInt::get(
               decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
               false));
+      CopyMetadataTo(mem_ptr, addr);
 
     } else if (0ll > decl.mem_offset) {
       addr = ir.CreateSub(
@@ -252,6 +176,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
         llvm::ConstantInt::get(
             decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
             false));
+      CopyMetadataTo(mem_ptr, addr);
     }
     return llvm::dyn_cast<llvm::Instruction>(
         remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));

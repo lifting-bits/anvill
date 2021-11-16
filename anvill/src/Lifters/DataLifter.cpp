@@ -20,7 +20,7 @@
 #include <anvill/ABI.h>
 #include <anvill/Analysis/Utils.h>
 #include <anvill/Decl.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>

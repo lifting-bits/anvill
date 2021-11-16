@@ -437,6 +437,14 @@ def _convert_ida_type(tinfo, cache, depth, context):
     # Boolean type.
     elif tinfo.is_bool():
         return BoolType()
+    
+    # `char` type.
+    elif tinfo.is_char() or tinfo.is_decl_char():
+        return CharacterType()
+    
+    # `unsinged char` type.
+    elif tinfo.is_uchar() or tinfo.is_decl_uchar():
+        return CharacterType(False)
 
     # Integer type.
     elif tinfo.is_integral():

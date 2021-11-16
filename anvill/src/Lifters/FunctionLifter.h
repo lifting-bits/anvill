@@ -19,7 +19,7 @@
 
 #include <anvill/Decl.h>
 #include <anvill/Lifters/Options.h>
-#include <anvill/TypeSpecification.h>
+#include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>

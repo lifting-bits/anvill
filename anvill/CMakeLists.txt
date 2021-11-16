@@ -26,8 +26,8 @@ add_library(anvill STATIC
   src/Arch/Arch.h
   src/Arch/Arch.cpp
 
-  include/anvill/TypeSpecification.h
-  src/TypeSpecification.cpp
+  include/anvill/Type.h
+  src/Type.cpp
 
   include/anvill/Program.h
   src/Program.cpp
@@ -104,7 +104,6 @@ target_public_headers(anvill
   include/anvill/Program.h
   include/anvill/Result.h
   include/anvill/Type.h
-  include/anvill/TypeSpecification.h
   include/anvill/Util.h
   include/anvill/ABI.h
 )

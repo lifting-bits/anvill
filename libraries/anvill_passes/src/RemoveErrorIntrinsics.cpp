@@ -49,15 +49,10 @@ RemoveErrorIntrinsics::run(llvm::Function &func,
   std::unordered_set<llvm::Instruction *> removed;
   std::unordered_set<llvm::BasicBlock *> affected_blocks;
 
-  llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>, 16> mds;
-
   for (llvm::CallBase *call : calls) {
     if (removed.count(call)) {
       continue;
     }
-
-    mds.clear();
-    call->getAllMetadata(mds);
 
     // Work backward through the block, up until we can remove the instruction.
     llvm::BasicBlock *const block = call->getParent();
@@ -84,9 +79,7 @@ RemoveErrorIntrinsics::run(llvm::Function &func,
     auto unreachable_inst =
         new llvm::UnreachableInst(block->getContext(), block);
 
-    for (auto [md_id, md_node] : mds) {
-      unreachable_inst->setMetadata(md_id, md_node);
-    }
+    CopyMetadataTo(call, unreachable_inst);
   }
 
   std::vector<llvm::PHINode *> broken_phis;
