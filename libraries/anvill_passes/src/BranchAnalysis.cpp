@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2021 Trail of Bits, Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
 #include <anvill/BranchAnalysis.h>
 #include <anvill/ConstraintExtractor.h>
 #include <anvill/Constraints.h>
@@ -10,22 +28,21 @@
 #include <unordered_map>
 
 namespace anvill {
-// TODO:(ian) should replace this with a generic pass over a given set of intrinsics to merge with inidrect jump passes
 namespace {
 
-const std::unordered_map<std::string, llvm::CmpInst::Predicate> CompPredMap = {
-    {"sle", llvm::CmpInst::Predicate::ICMP_SLE},
-    {"slt", llvm::CmpInst::Predicate::ICMP_SLT},
-    {"ult", llvm::CmpInst::Predicate::ICMP_ULT},
-    {"ule", llvm::CmpInst::Predicate::ICMP_ULE},
-    {"sge", llvm::CmpInst::Predicate::ICMP_SGE},
-    {"sgt", llvm::CmpInst::Predicate::ICMP_SGT},
-    {"ugt", llvm::CmpInst::Predicate::ICMP_UGT},
-    {"uge", llvm::CmpInst::Predicate::ICMP_UGE},
-    {"eq", llvm::CmpInst::Predicate::ICMP_EQ},
-    {"neq", llvm::CmpInst::Predicate::ICMP_NE}};
+static const std::unordered_map<std::string, llvm::CmpInst::Predicate>
+    CompPredMap = {{"sle", llvm::CmpInst::Predicate::ICMP_SLE},
+                   {"slt", llvm::CmpInst::Predicate::ICMP_SLT},
+                   {"ult", llvm::CmpInst::Predicate::ICMP_ULT},
+                   {"ule", llvm::CmpInst::Predicate::ICMP_ULE},
+                   {"sge", llvm::CmpInst::Predicate::ICMP_SGE},
+                   {"sgt", llvm::CmpInst::Predicate::ICMP_SGT},
+                   {"ugt", llvm::CmpInst::Predicate::ICMP_UGT},
+                   {"uge", llvm::CmpInst::Predicate::ICMP_UGE},
+                   {"eq", llvm::CmpInst::Predicate::ICMP_EQ},
+                   {"neq", llvm::CmpInst::Predicate::ICMP_NE}};
 
-const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
+static const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"zero", ArithFlags::ZF},
     {"overflow", ArithFlags::OF},
     {"sign", ArithFlags::SIGN},
@@ -59,7 +76,7 @@ class EnvironmentBuilder {
   }
 
 
-  std::optional<FlagDefinition> parseFlagDefinition(RemillFlag rf) {
+  static std::optional<FlagDefinition> parseFlagDefinition(RemillFlag rf) {
     std::optional<Z3Binop> conn = std::nullopt;
     std::optional<llvm::Value *> lhs = std::nullopt;
     std::optional<llvm::Value *> rhs = std::nullopt;
@@ -88,7 +105,7 @@ class EnvironmentBuilder {
                                this->symbols->second == flagdef.rhs));
   }
 
-  bool areIntegerTypes(FlagDefinition flagdef) {
+  static bool areIntegerTypes(FlagDefinition flagdef) {
     return flagdef.lhs->getType()->isIntegerTy() &&
            flagdef.rhs->getType()->isIntegerTy();
   }
@@ -103,9 +120,9 @@ class EnvironmentBuilder {
 
 
   std::optional<std::unique_ptr<Expr>> addFlag(RemillFlag rf) {
-    auto flagdef = this->parseFlagDefinition(rf);
+    auto flagdef = parseFlagDefinition(rf);
     if (flagdef.has_value() && this->composedOfSameSymbols(*flagdef) &&
-        this->areIntegerTypes(*flagdef)) {
+        areIntegerTypes(*flagdef)) {
       this->symbols = {std::make_pair(flagdef->lhs, flagdef->rhs)};
       auto name = this->nextID();
       this->bindings.insert({name, *flagdef});
