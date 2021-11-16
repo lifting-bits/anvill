@@ -33,7 +33,10 @@
 
 namespace anvill {
 
-
+// Generates a z3 expression that represents a given llvm value, if this llvm value can be represented.
+// Relies on the client to produce a z3 expression for the value that the visitor stops at.
+// This visitor should be run after the instruction combiner since it relies on that pass in order
+// to follow the non-constant portion of expressions.
 template <typename UserVisitor>
 class ConstraintExtractor
     : public llvm::InstVisitor<UserVisitor,
