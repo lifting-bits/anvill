@@ -170,11 +170,49 @@ class EnvironmentBuilder {
     return cont.bv_val(ty->getIntegerBitWidth(), bits.get());
   }
 
+  // NOTE(ian): Overflow and Carry semantics are not clear at this point in llvm ie:
+  //   define %struct.Memory* @slice(%struct.Memory* %0, i64 %RAX, i64 %RDX, i64* nocapture %RIP_output) local_unnamed_addr #2 {
+  //   %2 = insertelement <2 x i64> poison, i64 %RDX, i32 0
+  //   %3 = insertelement <2 x i64> %2, i64 %RAX, i32 1
+  //   %4 = ashr <2 x i64> %3, <i64 63, i64 63>
+  //   %5 = zext <2 x i64> %4 to <2 x i128>
+  //   %6 = shl nuw <2 x i128> %5, <i128 64, i128 64>
+  //   %7 = zext <2 x i64> %3 to <2 x i128>
+  //   %8 = or <2 x i128> %6, %7
+  //   %shift = shufflevector <2 x i128> %8, <2 x i128> poison, <2 x i32> <i32 1, i32 undef>
+  //   %9 = mul nsw <2 x i128> %8, %shift
+  //   %10 = extractelement <2 x i128> %9, i32 0
+  //   %11 = trunc i128 %10 to i64
+  //   %12 = lshr i128 %10, 64
+  //   %13 = trunc i128 %12 to i64
+  //   %14 = sext i64 %11 to i128
+  //   %15 = icmp ne i128 %10, %14
+  //   %16 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_overflow(i1 zeroext %15, i64 %RAX, i64 %RDX, i64 %11, i64 %13) #3
+  //   br i1 %16, label %17, label %19
 
+  // 17:                                               ; preds = %1
+  //   %18 = tail call %struct.Memory* @__remill_missing_block(%struct.State* undef, i64 7, %struct.Memory* %0) #4, !noalias !0
+  //   br label %sub_0.exit
+
+  // 19:                                               ; preds = %1
+  //   %20 = tail call i64 @__remill_read_memory_64(%struct.Memory* %0, i64 undef) #3
+  //   %21 = tail call %struct.Memory* @__remill_function_return(%struct.State* undef, i64 %20, %struct.Memory* %0) #4, !noalias !0
+  //   br label %sub_0.exit
+
+  // sub_0.exit:                                       ; preds = %19, %17
+  //   %.sroa.13.0 = phi i64 [ 7, %17 ], [ %20, %19 ]
+  //   %22 = phi %struct.Memory* [ %18, %17 ], [ %21, %19 ]
+  //   store i64 %.sroa.13.0, i64* %RIP_output, align 8
+  //   ret %struct.Memory* %22
+  // }
+
+  // This is the llvm for an imul RAX, RDX; jo. The relation between the multiplication and the overflow flag is not apparent at this point
+  // We have lost too much of the original semantic unit. Fortunately, mul OF and CF tend not to lead to clean icmp branches
+  // anyways. Perhaps if this becomes an issue we can add a custom pass that better handles these overflow checks and replaces them with
+  // the llvm intrinsic: https://llvm.org/docs/LangRef.html#llvm-smul-with-overflow-intrinsics/
   static std::optional<z3::expr>
   get_overflow_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
                     z3::expr rhs, FlagDefinition flagdef) {
-
 
     z3::expr zero =
         EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0);
@@ -185,7 +223,6 @@ class EnvironmentBuilder {
     z3::expr binop_sign = z3::slt(
         binop_res,
         EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0));
-    // TODO(ian): need overflow semantics for mul
     switch (flagdef.binop) {
       case Z3Binop::ADD:
         return (sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign);

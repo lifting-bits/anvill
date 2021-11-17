@@ -86,6 +86,7 @@ z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
     case SGE: return z3::sge(e1, e2);
     case SLT: return z3::slt(e1, e2);
     case SLE: return z3::sle(e1, e2);
+    case MUL: return e1 * e2;
     case EQ: return z3::operator==(e1, e2);
     case NEQ: return z3::operator!=(e1, e2);
     case AND:
