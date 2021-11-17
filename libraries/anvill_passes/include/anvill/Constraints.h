@@ -135,6 +135,7 @@ enum Z3Binop {
   ULT,
   UGT,
   UGE,
+  MUL,
   AND,
   OR,
   EQ,
