@@ -32,11 +32,15 @@ def _cache_key(tinfo: bn.Type) -> CacheKey:
     return str(tinfo)
 
 
-_80_PERCENT_CONFIDENCE = bn.core.max_confidence.__class__(bn.core.max_confidence * 0.8)
+try:
+    _80_PERCENT_CONFIDENCE = bn.core.max_confidence.__class__(bn.core.max_confidence * 0.8)
+except:
+    _80_PERCENT_CONFIDENCE = int(255 * 0.8)
 
 
 def _bool(b: bn.BoolWithConfidence, default_val: bool = False) -> bool:
     """Convert a Binary Ninja confidence boolean to a normal boolean."""
+    global _80_PERCENT_CONFIDENCE
     if b.confidence >= _80_PERCENT_CONFIDENCE:
         return b.value
     else:
