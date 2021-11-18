@@ -50,6 +50,9 @@ class ControlFlowProvider {
 
   static Ptr Create(const Program &program);
 
+  // Create a dummy control-flow provider.
+  static Ptr CreateNull(void);
+
   virtual ~ControlFlowProvider(void) = default;
 
   // Returns a possible redirection for the given target. If there is no

@@ -34,6 +34,7 @@ enum class StackAnalysisErrorCode {
   InvalidParameter,
   StackInitializationError,
   FunctionTransformationFailed,
+  StackFrameTooBig
 };
 
 // Describes an instruction that accesses the stack pointer through the
@@ -113,6 +114,7 @@ class RecoverStackFrameInformation final
   // function
   static Result<llvm::StructType *, StackAnalysisErrorCode>
   GenerateStackFrameType(const llvm::Function &function,
+                         const LifterOptions &options,
                          const StackFrameAnalysis &stack_frame_analysis,
                          std::size_t padding_bytes);
 
@@ -123,11 +125,8 @@ class RecoverStackFrameInformation final
   // Patches the function, replacing the load/store instructions so that
   // they operate on the new stack frame type we generated
   static Result<std::monostate, StackAnalysisErrorCode>
-  UpdateFunction(llvm::Function &function,
-                 const StackFrameAnalysis &stack_frame_analysis,
-                 StackFrameStructureInitializationProcedure init_strategy,
-                 std::size_t stack_frame_lower_padding = 0U,
-                 std::size_t stack_frame_higher_padding = 0U);
+  UpdateFunction(llvm::Function &function, const LifterOptions &options,
+                 const StackFrameAnalysis &stack_frame_analysis);
 
   RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
                                const LifterOptions &options);
