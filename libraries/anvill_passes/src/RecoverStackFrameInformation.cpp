@@ -58,8 +58,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function,
   // analysis and use it to generate a stack frame type and update all the
   // instructions
   auto update_func_res = UpdateFunction(
-      function, stack_frame_analysis, options.stack_frame_struct_init_procedure,
-      options.stack_frame_lower_padding, options.stack_frame_higher_padding);
+      function, options, stack_frame_analysis);
 
   if (!update_func_res.Succeeded()) {
     EmitError(
@@ -200,7 +199,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
 
 Result<llvm::StructType *, StackAnalysisErrorCode>
 RecoverStackFrameInformation::GenerateStackFrameType(
-    const llvm::Function &function,
+    const llvm::Function &function, const LifterOptions &options,
     const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
   if (stack_frame_analysis.instruction_uses.empty()) {
     return StackAnalysisErrorCode::InvalidParameter;
@@ -223,6 +222,10 @@ RecoverStackFrameInformation::GenerateStackFrameType(
   // accessed right now, we just add to the total size of the final
   // stack frame
   auto stack_frame_size = padding_bytes + stack_frame_analysis.size;
+
+  if (stack_frame_size > options.max_stack_frame_size) {
+    return StackAnalysisErrorCode::StackFrameTooBig;
+  }
 
   // Generate the stack frame using a byte array
   auto array_elem_type = llvm::Type::getInt8Ty(context);
@@ -269,10 +272,17 @@ RecoverStackFrameInformation::GetStackSymbolicByteValue(llvm::Module &module,
 
 Result<std::monostate, StackAnalysisErrorCode>
 RecoverStackFrameInformation::UpdateFunction(
-    llvm::Function &function, const StackFrameAnalysis &stack_frame_analysis,
-    StackFrameStructureInitializationProcedure init_strategy,
-    std::size_t stack_frame_lower_padding,
-    std::size_t stack_frame_higher_padding) {
+    llvm::Function &function, const LifterOptions &options,
+    const StackFrameAnalysis &stack_frame_analysis) {
+
+  StackFrameStructureInitializationProcedure init_strategy =
+      options.stack_frame_struct_init_procedure;
+
+  std::size_t stack_frame_lower_padding =
+      options.stack_frame_lower_padding;
+
+  std::size_t stack_frame_higher_padding =
+      options.stack_frame_higher_padding;
 
   if (function.isDeclaration() ||
       stack_frame_analysis.instruction_uses.empty()) {
@@ -283,8 +293,8 @@ RecoverStackFrameInformation::UpdateFunction(
   // StructType
   auto padding_bytes = stack_frame_lower_padding + stack_frame_higher_padding;
 
-  auto stack_frame_type_res =
-      GenerateStackFrameType(function, stack_frame_analysis, padding_bytes);
+  auto stack_frame_type_res = GenerateStackFrameType(
+      function, options, stack_frame_analysis, padding_bytes);
 
   if (!stack_frame_type_res.Succeeded()) {
     return stack_frame_type_res.TakeError();

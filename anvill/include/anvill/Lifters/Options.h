@@ -109,12 +109,17 @@ class LifterOptions {
   }
 
   // What is the architecture being used for lifting?
+  //
+  // TODO(pag): Remove this; decls have architectures.
   const remill::Arch *const arch;
 
   // Target module into which code will be lifted.
   llvm::Module *const module;
 
-  // The control flow provider, used for thunk redirections
+  // The control flow provider, used for thunk redirections.
+  //
+  // TODO(pag): Remove this, and move it to be an argument to the entity
+  //            lifter.
   std::unique_ptr<ControlFlowProvider> ctrl_flow_provider;
 
   // The function lifter produces functions with Remill's state structure
@@ -141,6 +146,9 @@ class LifterOptions {
 
   // How many bytes of padding should be added before recovered stack frames
   std::size_t stack_frame_higher_padding;
+
+  // What is the maximum stack frame size to consider?
+  std::size_t max_stack_frame_size{8192u};
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:

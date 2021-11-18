@@ -164,10 +164,18 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
+        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
+                                        remill::kArchAMD64);
+        auto ctrl_flow_provider =
+            anvill::ControlFlowProvider::CreateNull();
+
+        anvill::LifterOptions lift_options(
+            arch.get(), *module, std::move(ctrl_flow_provider));
+
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
         auto stack_frame_type_res =
             RecoverStackFrameInformation::GenerateStackFrameType(
-                function, stack_frame_analysis, 0);
+                function, lift_options, stack_frame_analysis, 0);
         REQUIRE(stack_frame_type_res.Succeeded());
 
         THEN("a StructType containing a byte array is returned") {
@@ -203,10 +211,18 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
+        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
+                                        remill::kArchAMD64);
+        auto ctrl_flow_provider =
+            anvill::ControlFlowProvider::CreateNull();
+
+        anvill::LifterOptions lift_options(
+            arch.get(), *module, std::move(ctrl_flow_provider));
+
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
         auto stack_frame_type_res =
             RecoverStackFrameInformation::GenerateStackFrameType(
-                function, stack_frame_analysis, 128U);
+                function, lift_options, stack_frame_analysis, 128U);
         REQUIRE(stack_frame_type_res.Succeeded());
 
         THEN(
@@ -264,9 +280,19 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
 
+        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
+                                        remill::kArchAMD64);
+        auto ctrl_flow_provider =
+            anvill::ControlFlowProvider::CreateNull();
+
+        anvill::LifterOptions lift_options(
+            arch.get(), *module, std::move(ctrl_flow_provider));
+
+        lift_options.stack_frame_struct_init_procedure =
+            StackFrameStructureInitializationProcedure::kZeroes;
+
         auto update_res = RecoverStackFrameInformation::UpdateFunction(
-            function, stack_frame_analysis,
-            StackFrameStructureInitializationProcedure::kZeroes);
+            function, lift_options, stack_frame_analysis);
         REQUIRE(update_res.Succeeded());
 
         THEN("the function is updated to use the new stack frame structure") {
