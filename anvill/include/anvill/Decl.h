@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -32,16 +33,17 @@
 #  define ANVILL_WITH_JSON(...)
 #endif
 
-#include <remill/Arch/Arch.h>
 #include <remill/BC/Compat/Error.h>
 
 namespace llvm {
 class BasicBlock;
+class DataLayout;
 class Function;
+class FunctionType;
 class GlobalVariable;
 class Module;
 class Type;
-
+class Value;
 }  // namespace llvm
 namespace remill {
 class Arch;
@@ -51,6 +53,7 @@ struct Register;
 namespace anvill {
 
 class Program;
+class TypeDictionary;
 
 // A value, such as a parameter or a return value. Values are resident
 // in one of two locations: either in a register, represented by a non-
@@ -157,9 +160,6 @@ struct FunctionDecl {
   //            parameter (number of varargs).
   std::vector<ParameterDecl> params;
 
-  // Map program addresses to remill registers and type information.
-  std::unordered_map<uint64_t, std::vector<TypedRegisterDecl>> reg_info;
-
   // Return values.
   //
   // NOTE(pag): In the case of the AMD64 Itanium ABI, we expect the
@@ -182,16 +182,15 @@ struct FunctionDecl {
   uint64_t num_bytes_in_redzone{0};
 
   // Declare this function in an LLVM module.
-  llvm::Function *DeclareInModule(const std::string &name, llvm::Module &,
-                                  bool allow_unowned = false) const;
+  llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 
-  // Create a call to this function with name `name` from within a basic block
-  // in a lifted bitcode function. Returns the new value of the memory pointer.
-  llvm::Value *CallFromLiftedBlock(const std::string &name,
-                                   const remill::IntrinsicTable &intrinsics,
-                                   llvm::BasicBlock *block,
-                                   llvm::Value *state_ptr, llvm::Value *mem_ptr,
-                                   bool allow_unowned = false) const;
+  // Interpret `target` as being the function to call, and call it from within
+  // a basic block in a lifted bitcode function. Returns the new value of the
+  // memory pointer.
+  llvm::Value *CallFromLiftedBlock(
+      llvm::Value *target, const anvill::TypeDictionary &types,
+      const remill::IntrinsicTable &intrinsics,
+      llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const;
 
   // Serialize this function decl to JSON.
   ANVILL_WITH_JSON(
@@ -199,19 +198,13 @@ struct FunctionDecl {
 
   // Create a function declaration from an LLVM function.
   inline static llvm::Expected<FunctionDecl>
-  Create(llvm::Function &func, const remill::Arch::ArchPtr &arch) {
+  Create(llvm::Function &func, const std::unique_ptr<const remill::Arch> &arch) {
     return Create(func, arch.get());
   }
 
   // Create a function declaration from an LLVM function.
   static llvm::Expected<FunctionDecl> Create(llvm::Function &func,
                                              const remill::Arch *arch);
-
- private:
-  friend class Program;
-
-  // The owner of this decl. Only set if this is valid.
-  void *owner{nullptr};
 };
 
 }  // namespace anvill

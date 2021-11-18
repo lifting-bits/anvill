@@ -43,15 +43,6 @@ class ProgramTypeProvider final : public TypeProvider {
   std::optional<GlobalVarDecl>
   TryGetVariableType(uint64_t address, const llvm::DataLayout &layout) final;
 
-  // Try to get the type of the register named `reg_name` on entry to the
-  // instruction at `inst_address` inside the function beginning at
-  // `func_address`.
-  void QueryRegisterStateAtInstruction(
-      uint64_t func_address, uint64_t inst_address,
-      std::function<void(const std::string &, llvm::Type *,
-                         std::optional<uint64_t>)>
-          typed_reg_cb) final;
-
  private:
   ProgramTypeProvider(void) = delete;
 
@@ -95,30 +86,6 @@ ProgramTypeProvider::TryGetVariableType(uint64_t address,
   return std::nullopt;
 }
 
-// Try to get the type of the register named `reg_name` on entry to the
-// instruction at `inst_address` inside the function beginning at
-// `func_address`.
-void ProgramTypeProvider::QueryRegisterStateAtInstruction(
-    uint64_t func_address, uint64_t inst_address,
-    std::function<void(const std::string &, llvm::Type *,
-                       std::optional<uint64_t>)>
-        typed_reg_cb) {
-
-  auto decl = program.FindFunction(func_address);
-  if (!decl) {
-    return;
-  }
-
-  auto types_it = decl->reg_info.find(inst_address);
-  if (types_it == decl->reg_info.end()) {
-    return;
-  }
-
-  for (const auto &decl : types_it->second) {
-    typed_reg_cb(decl.reg->name, decl.type, decl.value);
-  }
-}
-
 class NullTypeProvider final : public TypeProvider {
  public:
   NullTypeProvider(llvm::LLVMContext &context_) : TypeProvider(context_) {}
@@ -134,14 +101,6 @@ class NullTypeProvider final : public TypeProvider {
     return std::nullopt;
   }
 
-  // Try to get the type of the register named `reg_name` on entry to the
-  // instruction at `inst_address` inside the function beginning at
-  // `func_address`.
-  void QueryRegisterStateAtInstruction(
-      uint64_t, uint64_t,
-      std::function<void(const std::string &, llvm::Type *,
-                         std::optional<uint64_t>)>) final {}
-
  private:
   NullTypeProvider(void) = delete;
 };
@@ -151,12 +110,23 @@ class NullTypeProvider final : public TypeProvider {
 
 TypeProvider::~TypeProvider(void) {}
 
-// Try to return the type of a function starting at address `address`. This
+// Try to return the type of a function starting at address `to_address`. This
 // type is the prototype of the function. The type can be call site specific,
 // where the call site is `from_inst`.
-std::optional<FunctionDecl> TypeProvider::TryGetFunctionType(
-    const remill::Instruction &, uint64_t address) {
-  return TryGetFunctionType(address);
+std::optional<FunctionDecl> TypeProvider::TryGetCalledFunctionType(
+    const remill::Instruction &from_inst, uint64_t to_address) {
+  auto decl = TryGetCalledFunctionType(from_inst);
+  if (!decl) {
+    return TryGetFunctionType(to_address);
+  } else {
+    return decl;
+  }
+}
+
+// Try to return the type of a function that has been called from `from_isnt`.
+std::optional<FunctionDecl> TypeProvider::TryGetCalledFunctionType(
+    const remill::Instruction &) {
+  return std::nullopt;
 }
 
 TypeProvider::TypeProvider(llvm::LLVMContext &context_) : context(context_) {}

@@ -15,7 +15,7 @@
 
 import binaryninja as bn
 
-from anvill.util import *
+from ..util import *
 
 _FLOAT_ARGS_REGS = {
     "x86": ["st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7"],

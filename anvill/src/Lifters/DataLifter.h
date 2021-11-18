@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include <anvill/Decl.h>
-#include <anvill/Lifters/Options.h>
 #include <anvill/Type.h>
 
 #include <cstdint>
@@ -28,6 +26,7 @@
 #include <unordered_map>
 
 namespace llvm {
+class Constant;
 class GlobalAlias;
 class LLVMContext;
 class Module;
@@ -40,6 +39,8 @@ class EntityLifterImpl;
 class LifterOptions;
 class MemoryProvider;
 class TypeProvider;
+
+struct GlobalVarDecl;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class DataLifter {

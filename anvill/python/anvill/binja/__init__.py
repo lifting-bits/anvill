@@ -23,8 +23,8 @@ import binaryninja as bn
 from .bnprogram import *
 
 
-from anvill.util import *
-from anvill.program import *
+from ..util import *
+from ..program import *
 
 
 def get_program(

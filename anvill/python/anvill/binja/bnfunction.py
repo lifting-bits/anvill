@@ -14,8 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from typing import Tuple, Optional
-
+from typing import Tuple, Optional, Iterator, Set, Union
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -25,8 +24,10 @@ from .bninstruction import *
 from .table import *
 from .xreftype import *
 
-from anvill.function import *
-from anvill.type import *
+from ..arch import Arch
+from ..loc import Location
+from ..function import Function
+from ..type import *
 
 
 def should_ignore_register(bv, reg_name):
@@ -40,34 +41,34 @@ def should_ignore_register(bv, reg_name):
 class BNFunction(Function):
     def __init__(
         self,
-        bn_func_or_var,
-        arch,
-        address,
-        param_list,
-        ret_list,
-        func_type,
+        bn_func_or_var: Union[bn.Function, bn.Variable],
+        arch: Arch,
+        address: int,
+        param_list: List[Location],
+        ret_list: List[Location],
+        func_type: Type,
         is_entrypoint=False,
         is_external=False,
     ):
-        super(BNFunction, self).__init__(arch, address,
-                                         param_list, ret_list, func_type, is_entrypoint)
-        self._bn_func = None
-        self._is_external = is_external
+        super(BNFunction, self).__init__(arch, address, param_list, ret_list,
+                                         func_type, is_entrypoint)
+        self._bn_func: Optional[bn.Function] = None
+        self._is_external: bool = is_external
 
         # initialize bn_func if the binja object is of type `Function`
-        self._bn_func_or_var = bn_func_or_var
+        self._bn_func_or_var: Union[bn.Function, bn.Variable] = bn_func_or_var
         if isinstance(bn_func_or_var, bn.Function):
             self._bn_func = bn_func_or_var
 
-    def name(self):
+    def name(self) -> str:
         return self._bn_func_or_var.name
 
-    def is_external(self):
+    def is_external(self) -> bool:
         return self._is_external
 
-    def is_noreturn(self):
-        if self._bn_func != None:
-            return self._bn_func.can_return.value == False
+    def is_noreturn(self) -> bool:
+        if self._bn_func is not None:
+            return not self._bn_func.can_return.value
         return False
 
     def visit(self, program, is_definition, add_refs_as_defs):
@@ -108,13 +109,14 @@ class BNFunction(Function):
                         # print(f"inst_addr: {hex(inst.address)}, reg_info[2]: {reg_info[2]}, ref_eas: {ref_eas}")
                         # assert reg_info[2] in ref_eas
                         # assert reg_info 1 is a pointer, then reg2 should be in ea
-                        loc.set_value(reg_info[2])
-                    loc.set_address(inst.address)
-                    self._register_info.append(loc)
-        # ea = effective_address
-        # there is a distinction between declaration and definition
-        # if the function is a declaration, then Anvill only needs to know its symbols and prototypes
-        # if its a definition, then Anvill will perform analysis of the function and produce information for the func
+                        # loc.set_value(reg_info[2])
+                    #loc.set_address(inst.address)
+                    #self._register_info.append(loc)
+
+        # There is a distinction between declaration and definition. If the
+        # function is a declaration, then Anvill only needs to know its symbols
+        # and prototypes if its a definition, then Anvill will perform analysis
+        # of the function and produce information for the function.
         for ref_ea in ref_eas:
             # If ref_ea is an invalid address
             seg = program.bv.get_segment_at(ref_ea)
@@ -124,30 +126,26 @@ class BNFunction(Function):
 
     def _extract_types_mlil(
         self, program, item_or_list, initial_inst: mlinst
-    ) -> List[Tuple[str, Type, Optional[int]]]:
+    ) -> Iterator[Tuple[str, Type, Optional[int]]]:
         """
         This function decomposes a list of MLIL instructions and variables into a list of tuples
         that associate registers with pointer information if it exists.
         """
-        results = []
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types_mlil(
-                    program, item, initial_inst))
+                yield from self._extract_types_mlil(program, item, initial_inst)
         elif isinstance(item_or_list, mlinst):
-            results.extend(
-                self._extract_types_mlil(
-                    program, item_or_list.operands, initial_inst)
-            )
+            yield from self._extract_types_mlil(program, item_or_list.operands,
+                                                initial_inst)
         elif isinstance(item_or_list, bn.Variable):
             if item_or_list.type is None:
-                return results
+                return
             # Sometimes the backing storage is a `temp` register, and not a real
             # register. If so, ignore it.
             # The use of LLIL_REG_IS_TEMP is correct here, as there is no MLIL equivalent
             # and it seem to use the same underlying data
             if bn.LLIL_REG_IS_TEMP(item_or_list.storage):
-                return results
+                return
             # We only care about registers that represent pointers.
             if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
                 if (
@@ -156,42 +154,40 @@ class BNFunction(Function):
                 ):
                     reg_name = program.bv.arch.get_reg_name(
                         item_or_list.storage)
-                    results.append(
-                        (reg_name, program.type_cache.get(item_or_list.type), None)
-                    )
-        return results
+                    yield reg_name, program.type_cache.get(item_or_list.type), None
 
     def _extract_types(
         self, program, item_or_list, initial_inst: llinst
-    ) -> List[Tuple[str, Type, Optional[int]]]:
+    ) -> Iterator[Tuple[str, Type, Optional[int]]]:
         """
-        This function decomposes a list of LLIL instructions and associates registers with pointer values
-        if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
-        information about otherwise implicit operands and their types if available. (ex, a call instruction has
-        rdi, rsi as operands in the MLIL, we should check if they have pointer information)
+        This function decomposes a list of LLIL instructions and associates
+        registers with pointer values if they exist. If an MLIL instruction
+        exists for the current instruction, it uses the MLIL to get more
+        information about otherwise implicit operands and their types if
+        available. (ex, a call instruction has rdi, rsi as operands in the
+        MLIL, we should check if they have pointer information)
         """
-        results = []
 
-        # item_or_list could be empty string, return early in such cases. The unimplemented
-        # operand shows up as empty string.
-        if not (item_or_list and str(item_or_list)):
-            return results
+        # `item_or_list` could be empty string, return early in such cases. The
+        # unimplemented operand shows up as empty string.
+        try:
+            if not (item_or_list and str(item_or_list)):
+                return
+        except:
+            return  # Tokenizing the LLIL can raise exceptions.
 
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types(
-                    program, item, initial_inst))
+                yield from self._extract_types(program, item, initial_inst)
         elif isinstance(item_or_list, llinst):
-            results.extend(
-                self._extract_types(
-                    program, item_or_list.operands, initial_inst)
-            )
+            yield from self._extract_types(program, item_or_list.operands,
+                                           initial_inst)
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # Check if the register is not temp. Need to check if the temp register is
             # associated to pointer?? Look into MLIL to get more information
-            if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and (
-                item_or_list.name not in ["x87control", "x87status"]
-            ):
+            if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and \
+                item_or_list.name != "x87control" and \
+                item_or_list.name != "x87status":
                 try:
                     # For every register, is it a pointer?
                     possible_pointer: bn.function.RegisterValue = (
@@ -208,18 +204,15 @@ class BNFunction(Function):
                         val_type = _convert_bn_llil_type(
                             possible_pointer, item_or_list.info.size
                         )
-                        results.append(
-                            (item_or_list.name, val_type, possible_pointer.value)
-                        )
+                        yield item_or_list.name, val_type, possible_pointer.value
+
                 except KeyError:
                     DEBUG(f"Unsupported register {item_or_list.name}")
 
                 if initial_inst.mlil is not None:
-                    mlil_results = self._extract_types_mlil(
+                    yield from self._extract_types_mlil(
                         program, initial_inst.mlil, initial_inst.mlil
                     )
-                    results.extend(mlil_results)
-        return results
 
     def _fill_bytes(self, program, memory, start, end, ref_eas):
         br = bn.BinaryReader(program.bv)

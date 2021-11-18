@@ -17,8 +17,9 @@
 from abc import ABC, abstractmethod
 import collections
 from dataclasses import dataclass, field
-from typing import List, DefaultDict, Dict, Iterator, Optional, Set
+from typing import List, DefaultDict, Dict, Iterator, Optional, Set, Final
 
+from .os import *
 from .function import *
 from .var import *
 from .mem import *
@@ -37,10 +38,10 @@ class ControlFlowTargetList:
 class Program(ABC):
     """Represents a program."""
 
-    def __init__(self, arch, os):
-        self._arch = arch
-        self._os = os
-        self._memory = Memory()
+    def __init__(self, arch: Arch, os: OS):
+        self._arch: Final[Arch] = arch
+        self._os: Final[OS] = os
+        self._memory: Memory = Memory()
         self._var_defs: Dict[int, Variable] = {}
         self._var_decls: Dict[int, Variable] = {}
         self._func_defs: Dict[int, Function] = {}
@@ -49,11 +50,12 @@ class Program(ABC):
         self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
         self._symbols: DefaultDict[int, Set[str]] = collections.defaultdict(set)
 
-    def get_symbols(self, ea) -> Iterator[str]:
-        syms = self._symbols[ea]
+    def get_symbols(self, ea: int) -> Iterator[str]:
         if ea in self._symbols:
-            yield from iter(syms)
+            for sym in self._symbols[ea]:
+                yield sym
         else:
+            syms: Set[str] = self._symbols[ea]
             for name in self.get_symbols_impl(ea):
                 old_len = len(syms)
                 syms.add(name)

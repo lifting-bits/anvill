@@ -17,8 +17,8 @@
 from .utils import *
 
 
-from anvill.util import *
-from anvill.var import *
+from ..util import *
+from ..var import *
 
 
 class IDAVariable(Variable):

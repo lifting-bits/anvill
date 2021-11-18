@@ -31,6 +31,7 @@
 #include <unordered_map>
 
 namespace llvm {
+class Constant;
 class Function;
 class FunctionType;
 class LLVMContext;
@@ -376,13 +377,6 @@ class FunctionLifter {
   // are nifty to spot checking bitcode.
   void InstrumentCallBreakpointFunction(llvm::BasicBlock *block);
 
-  // Visit a type hinted register at the current instruction. We use this
-  // information to try to improve lifting of possible pointers later on
-  // in the optimization process.
-  void VisitTypedHintedRegister(llvm::BasicBlock *block,
-                                const std::string &reg_name, llvm::Type *type,
-                                std::optional<uint64_t> maybe_value);
-
   // Visit an instruction, and lift it into a basic block. Then, based off of
   // the category of the instruction, invoke one of the category-specific
   // lifters to enact a change in control-flow.
@@ -403,13 +397,6 @@ class FunctionLifter {
 
   // Visit all instructions. This runs the work list and lifts instructions.
   void VisitInstructions(uint64_t address);
-
-  // Creates a type hint taint value that we can hook into downstream in the
-  // optimization process.
-  llvm::Function *
-  GetOrCreateTaintedFunction(llvm::Type *curr_type, llvm::Type *goal_type,
-                             llvm::BasicBlock *curr_block,
-                             const remill::Register *reg, uint64_t pc);
 
   // Try to decode an instruction at address `addr` into `*inst_out`. Returns
   // `true` is successful and `false` otherwise. `is_delayed` tells the decoder

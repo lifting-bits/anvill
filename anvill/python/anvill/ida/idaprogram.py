@@ -29,17 +29,17 @@ import ida_auto
 import ida_ida
 import ida_name
 import ida_segment
-
+from ..arch import Arch, Register
 
 from .utils import *
 from .idafunction import *
 from .idavariable import *
 
 
-from anvill.program import *
-from anvill.type import *
-from anvill.imageparser import *
-from anvill.util import *
+from ..program import *
+from ..type import *
+from ..imageparser import *
+from ..util import *
 
 
 TYPE_CONTEXT_NESTED = 0
@@ -52,7 +52,7 @@ _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 
 class IDAProgram(Program):
-    def __init__(self, arch: str, os: str, maybe_base_address: Optional[int] = None):
+    def __init__(self, arch: Arch, os: OS, maybe_base_address: Optional[int] = None):
         if maybe_base_address is not None:
             delta = abs(ida_nalt.get_imagebase() - maybe_base_address)
             if maybe_base_address < ida_nalt.get_imagebase():
@@ -519,19 +519,20 @@ def _get_type(ty, context):
     raise UnhandledTypeException("Unrecognized type passed to `Type`.", ty)
 
 
-def _get_address_sized_reg(arch, reg_name):
+def _get_address_sized_reg(arch: Arch, reg_name: str) -> Optional[Register]:
     """Given the regiseter name `reg_name`, find the name of the register in the
     same family whose size is the pointer size of this architecture."""
+    reg: Optional[Register] = arch.register_name(reg_name)
+    if reg is None:
+        return None
 
-    try:
-        family = arch.register_family(reg_name)
-        addr_size = arch.pointer_size()
-        for f_reg_name, f_reg_offset, f_reg_size in family:
-            if 0 == f_reg_offset and addr_size == f_reg_size:
-                return f_reg_name
-    except:
-        pass
-    return arch.register_name(reg_name)
+    family = arch.register_family(reg)
+    addr_size = arch.pointer_size()
+    for f_reg_name, f_reg_offset, f_reg_size in family:
+        if 0 == f_reg_offset and addr_size == f_reg_size:
+            return f_reg_name
+
+    return None
 
 
 def _expand_locations(arch, pfn, ty, argloc, out_locs):
@@ -561,91 +562,89 @@ def _expand_locations(arch, pfn, ty, argloc, out_locs):
     elif where == ida_typeinf.ALOC_REG1:
         ty_size = ty.size(arch)
         reg_name = reg_names[argloc.reg1()].upper()
-        try:
-            reg_offset = argloc.regoff()
-            family = arch.register_family(reg_name)
+        reg = arch.register_name(reg_name)
+        if reg is None:
+            reg_name = ida_idp.get_reg_name(argloc.reg1(), ty_size)
+            reg = arch.register_name(reg_name)
+            if reg is None:
+                raise InvalidLocationException(f"Unable to map register {reg_name} to an architecture register")
 
-            # Try to guess the right name for the register based on the size of the
-            # type that it will contain. For example, IDA will tell us register `ax`
-            # is used, not specify if it's `al`, `ah`, `eax`, or `rax`.
-            #
-            # NOTE: The registers in the family tuple are sorted in descending
-            #       order of size.
-            found = False
-            for f_reg_name, f_reg_offset, f_reg_size in family:
-                if f_reg_offset != reg_offset:
-                    continue
+        reg_offset = argloc.regoff()
+        family = arch.register_family(reg)
 
-                if ty_size == f_reg_size:
-                    found = True
-                    reg_name = f_reg_name
-                    break
+        # Try to guess the right name for the register based on the size of the
+        # type that it will contain. For example, IDA will tell us register `ax`
+        # is used, not specify if it's `al`, `ah`, `eax`, or `rax`.
+        #
+        # NOTE: The registers in the family tuple are sorted in descending
+        #       order of size.
+        found = False
+        for f_reg_name, f_reg_offset, f_reg_size in family:
+            if f_reg_offset != reg_offset:
+                continue
 
-            if not found:
-                raise Exception()
+            if ty_size == f_reg_size:
+                found = True
+                reg = f_reg_name
+                break
 
-        except:
-            reg_name = (
-                ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name
-            ).upper()
+        if not found:
+            raise InvalidLocationException(f"Could not extract offset {reg_offset} from register {reg}")
 
         loc = Location()
-        loc.set_register(arch.register_name(reg_name))
+        loc.set_register(reg)
         loc.set_type(ty)
         out_locs.append(loc)
 
     # Located in a pair of registers.
     elif where == ida_typeinf.ALOC_REG2:
         ty_size = ty.size(arch)
-        reg_name1 = reg_names[argloc.reg1()].upper()
-        reg_name2 = reg_names[argloc.reg2()].upper()
+        reg_name1 = reg_names[argloc.reg1()]
+        reg_name2 = reg_names[argloc.reg2()]
+        reg1 = arch.register_name(reg_name1)
+        reg2 = arch.register_name(reg_name2)
+
+        if reg1 is None or reg2 is None:
+            raise InvalidLocationException(f"Unable to map both of {reg_name1}:{reg_name2} to architecture registers")
+
         ty1 = ty.extract(arch, 0, ty_size / 2)
         ty2 = ty.extract(arch, ty_size / 2, ty_size / 2)
 
-        try:
-            found = False
-            family1 = arch.register_family(reg_name1)
-            family2 = arch.register_family(reg_name2)
+        found = False
+        family1 = arch.register_family(reg1)
+        family2 = arch.register_family(reg2)
 
-            # Try to guess which registers IDA actually meant. For example, for
-            # an `EDX:EAX` return value, our `ty_size` will be 8 bytes, but IDA will
-            # report the registers as `ax` and `dx` (due to those being the names in
-            # `ph_get_regnames`). So, we have to scan through the associated family
-            # and try to see if we can guess the right version of those registers.
-            for r1_info, r2_info in itertools.product(family1, family2):
-                f_reg_name1, f_reg_offset1, f_reg_size1 = r1_info
-                f_reg_name2, f_reg_offset2, f_reg_size2 = r2_info
+        # Try to guess which registers IDA actually meant. For example, for
+        # an `EDX:EAX` return value, our `ty_size` will be 8 bytes, but IDA will
+        # report the registers as `ax` and `dx` (due to those being the names in
+        # `ph_get_regnames`). So, we have to scan through the associated family
+        # and try to see if we can guess the right version of those registers.
+        for r1_info, r2_info in itertools.product(family1, family2):
+            f_reg_name1, f_reg_offset1, f_reg_size1 = r1_info
+            f_reg_name2, f_reg_offset2, f_reg_size2 = r2_info
 
-                if f_reg_offset1 or f_reg_offset2:
-                    continue
+            if f_reg_offset1 or f_reg_offset2:
+                continue
 
-                if ty_size == (f_reg_size1 + f_reg_size2):
-                    found = True
-                    reg_name1 = f_reg_name1
-                    reg_name2 = f_reg_name2
+            if ty_size == (f_reg_size1 + f_reg_size2):
+                found = True
+                reg1 = f_reg_name1
+                reg2 = f_reg_name2
 
-                    ty1 = ty.extract(arch, 0, f_reg_size1)
-                    ty2 = ty.extract(arch, f_reg_size1, f_reg_size2)
-                    break
+                ty1 = ty.extract(arch, 0, f_reg_size1)
+                ty2 = ty.extract(arch, f_reg_size1, f_reg_size2)
+                break
 
-            if not found:
-                raise Exception()
-
-        except Exception as e:
-            reg_name1 = (
-                ida_idp.get_reg_name(argloc.reg1(), ty_size) or reg_name1
-            ).upper()
-            reg_name2 = (
-                ida_idp.get_reg_name(argloc.reg2(), ty_size) or reg_name2
-            ).upper()
+        if not found:
+            raise InvalidLocationException(f"Unable to find appropriate location for {reg1}:{reg2}")
 
         loc1 = Location()
-        loc1.set_register(arch.register_name(reg_name1))
+        loc1.set_register(reg1)
         loc1.set_type(ty1)
         out_locs.append(loc1)
 
         loc2 = Location()
-        loc2.set_register(arch.register_name(reg_name2))
+        loc2.set_register(reg2)
         loc2.set_type(ty2)
         out_locs.append(loc2)
 
@@ -666,7 +665,7 @@ def _expand_locations(arch, pfn, ty, argloc, out_locs):
     # as computing a PC-relative memory address.
     elif where == ida_typeinf.ALOC_STATIC:
         loc = Location()
-        loc.set_memory(arch.program_counter_name(), argloc.get_ea() - ea)
+        loc.set_absolute_memory(argloc.get_ea())
         loc.set_type(ty)
         out_locs.append(loc)
 

@@ -31,6 +31,7 @@
 #include <anvill/Lifters/DeclLifter.h>
 #include <anvill/Type.h>
 #include <anvill/Util.h>
+#include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
@@ -50,23 +51,27 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
   auto func = in_block->getParent();
   auto module = func->getParent();
+  auto &context = module->getContext();
+
+  llvm::Type *decl_type = remill::RecontextualizeType(decl.type, context);
 
   CHECK_EQ(module, intrinsics.read_memory_8->getParent());
-  CHECK_EQ(native_val->getType(), decl.type);
+  CHECK_EQ(native_val->getType(), decl_type);
 
   // Store it to a register.
   if (decl.reg) {
+    auto reg_type = remill::RecontextualizeType(decl.reg->type, context);
     auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    if (decl.type != decl.reg->type) {
-      ir.CreateStore(llvm::Constant::getNullValue(decl.reg->type), ptr_to_reg);
+    if (decl_type != reg_type) {
+      ir.CreateStore(llvm::Constant::getNullValue(reg_type), ptr_to_reg);
     }
 
     llvm::StoreInst *store = nullptr;
 
     auto ipoint = ir.GetInsertPoint();
     auto iblock = ir.GetInsertBlock();
-    auto adapted_val = types.ConvertValueToType(ir, native_val, decl.reg->type);
+    auto adapted_val = types.ConvertValueToType(ir, native_val, reg_type);
     ir.SetInsertPoint(iblock, ipoint);
 
     if (adapted_val) {
@@ -74,7 +79,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     } else {
       auto ptr = ir.CreateBitCast(ptr_to_reg,
-                                  llvm::PointerType::get(decl.type, 0));
+                                  llvm::PointerType::get(decl_type, 0));
       CopyMetadataTo(native_val, ptr);
       store = ir.CreateStore(native_val, ptr);
     }
@@ -84,17 +89,18 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
   // Store it to memory.
   } else if (decl.mem_reg) {
+    auto mem_reg_type = remill::RecontextualizeType(decl.mem_reg->type, context);
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
     llvm::IRBuilder<> ir(in_block);
-    llvm::Value *addr = ir.CreateLoad(decl.mem_reg->type, ptr_to_reg);
+    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(native_val, addr);
 
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
           addr,
           llvm::ConstantInt::get(
-              decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
+              mem_reg_type, static_cast<uint64_t>(decl.mem_offset),
               false));
       CopyMetadataTo(native_val, addr);
 
@@ -102,7 +108,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
       addr = ir.CreateSub(
         addr,
         llvm::ConstantInt::get(
-            decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
+            mem_reg_type, static_cast<uint64_t>(-decl.mem_offset),
             false));
       CopyMetadataTo(native_val, addr);
     }
@@ -124,33 +130,36 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
   }
 }
 
-llvm::Value *LoadLiftedValue(const ValueDecl &decl,
-                             const TypeDictionary &types,
+llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr) {
 
   auto func = in_block->getParent();
   auto module = func->getParent();
-
+  auto &context = module->getContext();
   CHECK_EQ(module, intrinsics.read_memory_8->getParent());
+
+  llvm::Type *decl_type = remill::RecontextualizeType(decl.type, context);
 
   // Load it out of a register.
   if (decl.reg) {
+    auto reg_type = remill::RecontextualizeType(decl.reg->type, context);
     auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    auto reg = ir.CreateLoad(decl.reg->type, ptr_to_reg);
+    auto reg = ir.CreateLoad(reg_type, ptr_to_reg);
     CopyMetadataTo(mem_ptr, reg);
     auto ipoint = ir.GetInsertPoint();
     auto iblock = ir.GetInsertBlock();
-    auto adapted_val = types.ConvertValueToType(ir, reg, decl.type);
+    auto adapted_val = types.ConvertValueToType(ir, reg, decl_type);
     ir.SetInsertPoint(iblock, ipoint);
 
     if (adapted_val) {
       return adapted_val;
     } else {
-      auto bc = ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(decl.type, 0));
-      auto li = ir.CreateLoad(decl.type, bc);
+      auto bc = ir.CreateBitCast(ptr_to_reg,
+                                 llvm::PointerType::get(decl_type, 0));
+      auto li = ir.CreateLoad(decl_type, bc);
       CopyMetadataTo(mem_ptr, bc);
       CopyMetadataTo(mem_ptr, li);
       return li;
@@ -158,15 +167,16 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
 
   // Load it out of memory.
   } else if (decl.mem_reg) {
+    auto mem_reg_type = remill::RecontextualizeType(decl.mem_reg->type, context);
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
-    llvm::Value *addr = ir.CreateLoad(decl.mem_reg->type, ptr_to_reg);
+    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(mem_ptr, addr);
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
           addr,
           llvm::ConstantInt::get(
-              decl.mem_reg->type, static_cast<uint64_t>(decl.mem_offset),
+              mem_reg_type, static_cast<uint64_t>(decl.mem_offset),
               false));
       CopyMetadataTo(mem_ptr, addr);
 
@@ -174,12 +184,12 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
       addr = ir.CreateSub(
         addr,
         llvm::ConstantInt::get(
-            decl.mem_reg->type, static_cast<uint64_t>(-decl.mem_offset),
+            mem_reg_type, static_cast<uint64_t>(-decl.mem_offset),
             false));
       CopyMetadataTo(mem_ptr, addr);
     }
     return llvm::dyn_cast<llvm::Instruction>(
-        remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
+        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr));
 
   // Store to memory at an absolute offset.
   } else if (decl.mem_offset) {
@@ -188,10 +198,10 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl,
         remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
         static_cast<uint64_t>(decl.mem_offset), false);
     return llvm::dyn_cast<llvm::Instruction>(
-        remill::LoadFromMemory(intrinsics, in_block, decl.type, mem_ptr, addr));
+        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr));
 
   } else {
-    return llvm::UndefValue::get(decl.type);
+    return llvm::UndefValue::get(decl_type);
   }
 }
 

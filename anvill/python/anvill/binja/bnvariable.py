@@ -17,8 +17,8 @@
 import binaryninja as bn
 
 
-from anvill.var import *
-from anvill.type import *
+from ..var import *
+from ..type import *
 
 
 class BNVariable(Variable):

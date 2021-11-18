@@ -24,7 +24,7 @@ import ida_name
 from .utils import *
 
 
-from anvill.function import *
+from ..function import *
 
 
 _OPERANDS_NUMS = (0, 1, 2)

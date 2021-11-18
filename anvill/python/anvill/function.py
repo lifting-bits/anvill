@@ -14,12 +14,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from abc import ABC, abstractmethod
+
+from .arch import Arch
 from .type import Type, FunctionType, StructureType
 from .loc import Location
-from typing import List
+from typing import List, Dict, Any
 
 
-class Function(object):
+class Function(ABC):
     """Represents a generic function."""
 
     __slots__ = (
@@ -34,21 +37,23 @@ class Function(object):
     )
 
     def __init__(
-        self, arch, address, parameters, return_values, func_type, is_entrypoint, cc=0
+        self, arch: Arch, address: int, parameters: List[Location],
+        return_values: List[Location], func_type: Type,
+        is_entrypoint: bool, cc: int = 0
     ):
         assert isinstance(func_type, FunctionType)
-        self._arch = arch
-        self._address = address
-        self._parameters = parameters
-        self._return_values = return_values
-        self._type = func_type
-        self._cc = cc
+        self._arch: Arch = arch
+        self._address: int = address
+        self._parameters: List[Location] = parameters
+        self._return_values: List[Location] = return_values
+        self._type: Type = func_type
+        self._cc: int = cc
         self._register_info: List[Location] = []
-        self._is_entrypoint = is_entrypoint
+        self._is_entrypoint: bool = is_entrypoint
 
         for param in self._parameters:
             assert isinstance(param, Location)
-            param_type = param.type()
+            param_type: Type = param.type()
             assert isinstance(param_type, Type)
 
         if len(self._return_values) == 1:
@@ -65,33 +70,30 @@ class Function(object):
                 assert isinstance(ret_type, Type)
                 str_type.add_element_type(ret_type)
 
-    def address(self):
+    def address(self) -> int:
         return self._address
 
-    def type(self):
+    def type(self) -> Type:
         return self._type
 
-    def calling_convention(self):
+    def calling_convention(self) -> int:
         return self._cc
 
+    @abstractmethod
     def visit(self, program, is_definition: bool, add_refs_as_defs: bool):
-        raise NotImplementedError()
+        ...
 
-    def is_declaration(self):
-        raise NotImplementedError()
-
-    def is_variadic(self):
+    def is_variadic(self) -> bool:
         return self._type.is_variadic()
 
-    def is_noreturn(self):
+    def is_noreturn(self) -> bool:
         return False
 
-    def is_external(self):
+    def is_external(self) -> bool:
         return False
 
-    def proto(self):
-        proto = {}
-        proto["address"] = self.address()
+    def proto(self) -> Dict[str, Any]:
+        proto: Dict[str, Any] = {"address": self.address()}
         if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()
         proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(

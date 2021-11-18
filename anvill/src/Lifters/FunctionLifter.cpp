@@ -488,7 +488,7 @@ FunctionLifter::TryGetTargetFunctionType(
 
     // In case we get redirected but still fail, try once more with the original
     // address
-    opt_function_decl = type_provider.TryGetFunctionType(
+    opt_function_decl = type_provider.TryGetCalledFunctionType(
         from_inst, redirected_addr);
 
   // This isn't a redirection.
@@ -609,6 +609,12 @@ void FunctionLifter::VisitIndirectFunctionCall(
     llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
+
+  // See if we can get a callsite-specific function type.
+  auto opt_function_decl = type_provider.TryGetCalledFunctionType(inst);
+  if (opt_function_decl) {
+
+  }
   remill::AddCall(block, intrinsics.function_call);
   VisitAfterFunctionCall(inst, block);
 }
@@ -823,53 +829,6 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
   }
 }
 
-// Creates a type hint taint value that we can hook into downstream in the
-// optimization process.
-//
-// This function encodes type information within symbolic functions so the type
-// information can survive optimization. It should turn some instruction like
-//
-//    %1 = add %4, 1
-//
-// into:
-//
-//    %1 = add %4, 1
-//    %2 = __anvill_type_<uid>(<%4's type> %4)
-//    %3 = ptrtoint %2 goal_type
-llvm::Function *FunctionLifter::GetOrCreateTaintedFunction(
-    llvm::Type *current_type, llvm::Type *goal_type,
-    llvm::BasicBlock *curr_block, const remill::Register *reg, uint64_t pc) {
-
-  const auto &dl = semantics_module->getDataLayout();
-  TypeSpecifier specifier(semantics_module->getContext(), dl);
-  // Consider adding in:
-  // std::hex << pc << "_" << reg->name
-
-  std::stringstream ss;
-  ss << kTypeHintFunctionPrefix << specifier.EncodeToString(goal_type, true);
-  const auto func_name = ss.str();
-
-  llvm::Type *return_type = goal_type;
-
-  auto anvill_type_fn_ty =
-      llvm::FunctionType::get(return_type, {current_type}, false);
-
-  // Return the function if it exists.
-  auto func = semantics_module->getFunction(func_name);
-  if (func) {
-    return func;
-  }
-
-  // Create the function if not, and make LLVM treat it like an uninterpreted
-  // function that doesn't read memory. This improves LLVM's ability to optimize
-  // uses of the function.
-  func = llvm::Function::Create(anvill_type_fn_ty,
-                                llvm::GlobalValue::ExternalLinkage, func_name,
-                                semantics_module.get());
-  func->addFnAttr(llvm::Attribute::ReadNone);
-  return func;
-}
-
 // Instrument an instruction. This inject a `printf`-like function call just
 // before a lifted instruction to aid in tracking the provenance of register
 // values, and relating them back to original instructions.
@@ -952,53 +911,6 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
   ir.CreateCall(func, args);
 }
 
-// Visit a type hinted register at the current instruction. We use this
-// information to try to improve lifting of possible pointers later on
-// in the optimization process.
-void FunctionLifter::VisitTypedHintedRegister(
-    llvm::BasicBlock *block, const std::string &reg_name, llvm::Type *type,
-    std::optional<uint64_t> maybe_value) {
-
-  // Only operate on pointer-sized integer registers that are not sub-registers.
-  const auto reg = options.arch->RegisterByName(reg_name);
-  if (reg->EnclosingRegister() != reg ||
-      !reg->type->isIntegerTy(options.arch->address_size)) {
-    return;
-  }
-
-  llvm::IRBuilder irb(block);
-  auto reg_pointer = inst_lifter.LoadRegAddress(block, state_ptr, reg_name);
-  llvm::Value *reg_value = nullptr;
-
-  // If we have a concrete value that is being provided for this value, then
-  // save it into the `State` structure. This improves our ability to optimize.
-  if (options.store_inferred_register_values && maybe_value) {
-    reg_value = irb.CreateLoad(reg->type, reg_pointer);
-    reg_value = llvm::ConstantInt::get(reg->type, *maybe_value);
-    irb.CreateStore(reg_value, reg_pointer);
-  }
-
-  if (!type->isPointerTy()) {
-    return;
-  }
-
-  if (!reg_value) {
-    reg_value = irb.CreateLoad(reg->type, reg_pointer);
-  }
-
-  // Creates a function that returns a higher-level type, as provided by a
-  // `TypeProider`and takes an argument of (reg_type)
-  const auto taint_func =
-      GetOrCreateTaintedFunction(reg->type, type, block, reg, curr_inst->pc);
-  llvm::Value *tainted_call = irb.CreateCall(taint_func, reg_value);
-
-  // Cast the result of this call to the goal type.
-  llvm::Value *replacement_reg = irb.CreatePtrToInt(tainted_call, reg->type);
-
-  // Store the value back, this keeps the replacement_reg cast around.
-  irb.CreateStore(replacement_reg, reg_pointer);
-}
-
 // Visit an instruction, and lift it into a basic block. Then, based off of
 // the category of the instruction, invoke one of the category-specific
 // lifters to enact a change in control-flow.
@@ -1018,17 +930,6 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
                        alignof(remill::Instruction)>::type delayed_inst_storage;
 
   remill::Instruction *delayed_inst = nullptr;
-
-  // Try to find any register type hints that we can use later to improve
-  // pointer lifting.
-  if (options.symbolic_register_types) {
-    type_provider.QueryRegisterStateAtInstruction(
-        func_address, inst.pc,
-        [=](const std::string &reg_name, llvm::Type *type,
-            std::optional<uint64_t> maybe_value) {
-          VisitTypedHintedRegister(block, reg_name, type, maybe_value);
-        });
-  }
 
   if (options.track_provenance) {
     InstrumentDataflowProvenance(block);
@@ -1153,8 +1054,8 @@ llvm::Value *FunctionLifter::TryCallNativeFunction(uint64_t native_addr,
   llvm::IRBuilder<> irb(block);
 
   llvm::Value *mem_ptr = irb.CreateLoad(mem_ptr_type, mem_ptr_ref);
-  mem_ptr = decl.CallFromLiftedBlock(native_func->getName().str(), intrinsics,
-                                     block, state_ptr, mem_ptr, true);
+  mem_ptr = decl.CallFromLiftedBlock(native_func, type_specifier.Dictionary(),
+                                     intrinsics, block, state_ptr, mem_ptr);
   irb.SetInsertPoint(block);
   irb.CreateStore(mem_ptr, mem_ptr_ref);
   return mem_ptr;
@@ -1473,7 +1374,6 @@ llvm::Value *
 FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
   auto pc = GenerateSymbolicProgramCounter(block, func_address);
   UpdateProgramCounter(block, pc);
-
   return pc;
 }
 

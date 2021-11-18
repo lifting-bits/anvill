@@ -350,8 +350,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
   llvm::StructType *struct_type = nullptr;
   const auto spec_size = spec.size();
   while (i < spec_size) {
-    auto ch = spec[i];
-    switch (ch) {
+    switch (auto ch = spec[i]; ch) {
 
       // Parse a structure type.
       case '{': {
@@ -523,19 +522,43 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
 
       // Parse a function type.
       case '(': {
-        llvm::SmallVector<llvm::Type *, 4> elem_types;
+        llvm::SmallVector<std::pair<unsigned, llvm::Type *>, 4> elem_types;
         for (i += 1; i < spec_size && spec[i] != ')';) {
+          const auto prev_i = i;
           auto maybe_elem_type = ParseType(size_checked, spec, i);
           if (!maybe_elem_type.Succeeded()) {
             return maybe_elem_type.TakeError();
           }
 
           if (auto elem_type = maybe_elem_type.TakeValue()) {
-            elem_types.push_back(elem_type);
+            elem_types.emplace_back(prev_i, elem_type);
           } else {
-            break;
+            std::stringstream ss;
+            ss << "Failed to parse argument/return type: "
+               << spec.substr(prev_i).str();
+            return TypeSpecificationError{
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+                ss.str()};
           }
         }
+
+        if (i >= spec.size()) {
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing closing ')' in type specification; "
+              "fell off end before function type was finished"};
+
+        } else if (')' != spec[i]) {
+          std::stringstream ss;
+          ss << "Expected ')' for end of function type, but got this: "
+             << spec.substr(i).str();
+          return TypeSpecificationError{
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              ss.str()};
+        }
+
+        // Skip over the `)`.
+        i += 1;
 
         // There always needs to be at least one parameter type and one
         // return type. Here are some examples:
@@ -554,7 +577,12 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
               "Function types must have at least two internal types. E.g. '(vv)' for a function taking nothing and returning nothing, in type specification"};
         }
 
-        llvm::Type *ret_type = elem_types.pop_back_val();
+        llvm::Type *ret_type = elem_types.pop_back_val().second;
+#if ANVILL_USE_WRAPPED_TYPES
+        if (ret_type == type_dict.u.named.void_) {
+          ret_type = llvm::Type::getVoidTy(context);
+        }
+#endif
         if (ret_type->isTokenTy()) {
           return TypeSpecificationError{
               TypeSpecificationError::ErrorCode::InvalidSpecFormat,
@@ -564,43 +592,52 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
         // Second-to-last type can optionally be a token type, which is
         // a stand in for varargs.
         auto is_var_arg = false;
-        if (elem_types.back()->isTokenTy()) {
+        if (elem_types.back().second->isTokenTy()) {
           is_var_arg = true;
           elem_types.pop_back();
 
         // If second-to-last is a void type, then it must be the first.
-        } else if (elem_types.back()->isVoidTy() ||
-                   elem_types.back() == type_dict.u.named.void_) {
+        } else if (elem_types.back().second->isVoidTy() ||
+                   elem_types.back().second == type_dict.u.named.void_) {
           if (1 == elem_types.size()) {
             elem_types.pop_back();
           } else {
+            std::stringstream ss;
+            ss << "Invalid placement of void parameter type in type "
+               << "specification: "
+               << spec.substr(elem_types.back().first).str();
             return TypeSpecificationError{
                 TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                "Invalid placement of void parameter type in type specification"};
+                ss.str()};
           }
         }
+
+        llvm::SmallVector<llvm::Type *, 4> param_types;
 
         // Minor sanity checking on the param types.
-        for (auto param_type : elem_types) {
+        for (auto [param_i, param_type] : elem_types) {
           if (param_type->isVoidTy() || param_type == type_dict.u.named.void_ ||
-              param_type->isTokenTy() || param_type->isFunctionTy()) {
+              param_type->isFunctionTy()) {
+            std::stringstream ss;
+            ss << "Invalid parameter type in type specification: "
+               << spec.substr(param_i).str();
             return TypeSpecificationError{
                 TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                "Invalid parameter type in type specification"};
+                ss.str()};
+
+          } else if (param_type->isTokenTy()) {
+            std::stringstream ss;
+            ss << "Unexpected variadic argument type in type specification: "
+               << spec.substr(param_i).str();
+            return TypeSpecificationError{
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+                ss.str()};
+          } else {
+            param_types.push_back(param_type);
           }
         }
 
-        if (i >= spec.size() || ')' != spec[i]) {
-          return TypeSpecificationError{
-              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing closing ')' in type specification"};
-        }
-
-        i += 1;
-        if (ret_type == type_dict.u.named.void_) {
-          ret_type = llvm::Type::getVoidTy(context);
-        }
-        return llvm::FunctionType::get(ret_type, elem_types, is_var_arg);
+        return llvm::FunctionType::get(ret_type, param_types, is_var_arg);
       }
 
       // Parse a varargs type, and represent it as a token type.

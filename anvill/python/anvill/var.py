@@ -33,13 +33,9 @@ class Variable(object):
     def type(self) -> Type:
         return self._type
 
-    # @abstractmethod
+    @abstractmethod
     def visit(self, program: "Program", is_definition: bool, add_refs_as_defs: bool):
-        raise NotImplementedError()
-
-    #  @abstractmethod
-    def is_declaration(self):
-        raise NotImplementedError()
+        ...
 
     def proto(self):
         proto = {}

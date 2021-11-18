@@ -18,7 +18,7 @@ from typing import Optional
 
 from .bninstruction import *
 
-from anvill.util import *
+from ..util import *
 
 _BADADDR = 0xFFFFFFFFFFFFFFFF
 
