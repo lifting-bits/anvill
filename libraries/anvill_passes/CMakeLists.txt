@@ -83,6 +83,9 @@ add_library(anvill_passes STATIC
 
   src/ConvertXorToCmp.cpp
   src/ConvertXorToCmp.h
+
+  include/anvill/CodeQualityStatCollector.h
+  src/CodeQualityStatCollector.cpp
 )
 
 target_include_directories(anvill_passes PUBLIC
