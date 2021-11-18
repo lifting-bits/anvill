@@ -26,9 +26,9 @@ import ida_nalt
 from .idaprogram import *
 
 
-from anvill.arch import *
-from anvill.os import *
-from anvill.program import *
+from ..arch import *
+from ..os import *
+from ..program import *
 
 
 def _guess_os():

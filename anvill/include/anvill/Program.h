@@ -192,9 +192,6 @@ class Program {
   Program &operator=(const Program &) = default;
   Program &operator=(Program &&) noexcept = default;
 
-  static llvm::Expected<Program> Containing(const FunctionDecl *decl);
-  static llvm::Expected<Program> Containing(const GlobalVarDecl *decl);
-
   // Map a range of bytes into the program.
   //
   // This expects that none of the bytes already in that range

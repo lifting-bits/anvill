@@ -544,7 +544,6 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
   std::unique_ptr<FunctionDecl> decl(new FunctionDecl(std::move(tpl)));
   const auto decl_ptr = decl.get();
   decl_ptr->return_address = return_address;
-  decl_ptr->owner = this;
   decl_ptr->type = func_type;
 
   if (funcs_are_sorted && !funcs.empty() &&
@@ -1204,27 +1203,5 @@ llvm::Error Program::MapRange(const ByteRange &range) {
 
 Program::Program(void *opaque)
     : impl(reinterpret_cast<Program::Impl *>(opaque)->shared_from_this()) {}
-
-llvm::Expected<Program> Program::Containing(const FunctionDecl *decl) {
-  if (!decl->owner) {
-    return llvm::createStringError(
-        std::errc::invalid_argument,
-        "The function at '%08x'is not valid or does not have an owner.",
-        decl->address);
-  } else {
-    return Program(decl->owner);
-  }
-}
-
-llvm::Expected<Program> Program::Containing(const GlobalVarDecl *decl) {
-  if (!decl->owner) {
-    return llvm::createStringError(
-        std::errc::invalid_argument,
-        "The variable at '%08x' is not valid or does not have an owner.",
-        decl->address);
-  } else {
-    return Program(decl->owner);
-  }
-}
 
 }  //  namespace anvill

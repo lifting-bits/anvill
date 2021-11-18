@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import List
 
 
-from anvill.imageparser import *
+from ..imageparser import *
 
 
 MAX_STRING_LENGTH = 2048

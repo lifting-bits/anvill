@@ -12,21 +12,23 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from typing import Tuple, Dict, Any, List
 
 
 class Memory(object):
     def __init__(self):
-        self._bytes = {}
+        self._bytes: Dict[int, Tuple[int, bool, bool]] = {}
 
-    def map_byte(self, ea, val, can_write, can_exec):
+    def map_byte(self, ea: int, val: int, can_write: bool, can_exec: bool):
         self._bytes[ea] = (int(val & 0xFF), can_write, can_exec)
 
-    def _extend_range(self, range_proto, ea, val, can_write, can_exec):
+    def _extend_range(self, range_proto: Dict[str, Any], ea: int, val: int,
+                      can_write: bool, can_exec: bool) -> bool:
         if not len(range_proto):
             range_proto["address"] = ea
             range_proto["is_writeable"] = can_write
             range_proto["is_executable"] = can_exec
-            range_proto["data"] = "{:02x}".format(val)
+            range_proto["data"] = "{:02x}".format(val & 0xFF)
             return True
 
         elif (
@@ -43,14 +45,13 @@ class Memory(object):
         else:
             return False
 
-    def proto(self):
-        proto = []
+    def proto(self) -> List[Dict[str, Any]]:
+        proto: List[Dict[str, Any]] = []
         if not len(self._bytes):
             return proto
 
         range_proto = {}
         for ea in sorted(self._bytes.keys()):
-
             val, can_write, can_exec = self._bytes[ea]
             if not self._extend_range(range_proto, ea, val, can_write, can_exec):
                 proto.append(range_proto)

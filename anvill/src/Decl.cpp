@@ -21,6 +21,7 @@
 #include <anvill/Type.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DataLayout.h>
@@ -32,6 +33,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -64,13 +66,8 @@ GlobalVarDecl::DeclareInModule(const std::string &name,
 }
 
 // Declare this function in an LLVM module.
-llvm::Function *FunctionDecl::DeclareInModule(const std::string &name,
-                                              llvm::Module &target_module,
-                                              bool allow_unowned) const {
-  if (!allow_unowned && !owner) {
-    return nullptr;
-  }
-
+llvm::Function *FunctionDecl::DeclareInModule(
+    std::string_view name, llvm::Module &target_module) const {
   auto &context = target_module.getContext();
   auto func_type = llvm::dyn_cast<llvm::FunctionType>(
       remill::RecontextualizeType(type, context));
@@ -86,8 +83,9 @@ llvm::Function *FunctionDecl::DeclareInModule(const std::string &name,
       << " whereas new version has type "
       << remill::LLVMThingToString(func_type);
 
+  llvm::StringRef name_(name.data(), name.size());
   llvm::Function *func = llvm::Function::Create(
-      func_type, llvm::GlobalValue::ExternalLinkage, name, &target_module);
+      func_type, llvm::GlobalValue::ExternalLinkage, name_, &target_module);
   DCHECK_EQ(func->getName().str(), name);
 
   func->addFnAttr(llvm::Attribute::NoInline);
@@ -107,22 +105,21 @@ llvm::Function *FunctionDecl::DeclareInModule(const std::string &name,
   return func;
 }
 
-// Create a call to this function from within a basic block in a
-// lifted bitcode function. Returns the new value of the memory
-// pointer.
+// Interpret `target` as being the function to call, and call it from within
+// a basic block in a lifted bitcode function. Returns the new value of the
+// memory pointer.
 llvm::Value *FunctionDecl::CallFromLiftedBlock(
-    const std::string &name, const remill::IntrinsicTable &intrinsics,
-    llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr,
-    bool allow_unowned) const {
-
-  if (!allow_unowned && !owner) {
-    return llvm::UndefValue::get(mem_ptr->getType());
-  }
+    llvm::Value *target, const anvill::TypeDictionary &types,
+    const remill::IntrinsicTable &intrinsics,
+    llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
 
   auto module = block->getModule();
-  TypeDictionary types(module->getContext());
+  auto &context = module->getContext();
+  CHECK_EQ(&context, &(target->getContext()));
+  CHECK_EQ(&context, &(state_ptr->getContext()));
+  CHECK_EQ(&context, &(mem_ptr->getContext()));
+  CHECK_EQ(&context, &(types.u.named.void_->getContext()));
 
-  auto func = DeclareInModule(name, *module, allow_unowned);
   llvm::IRBuilder<> ir(block);
 
   // Go and get a pointer to the stack pointer register, so that we can
@@ -159,7 +156,14 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
     param_vals.push_back(val);
   }
 
-  auto ret_val = ir.CreateCall(func, param_vals);
+  llvm::Value *ret_val = nullptr;
+  if (auto func = llvm::dyn_cast<llvm::Function>(target)) {
+    ret_val = ir.CreateCall(func, param_vals);
+  } else {
+    auto func_type = llvm::dyn_cast<llvm::FunctionType>(
+        remill::RecontextualizeType(type, context));
+    ret_val = ir.CreateCall(func_type, target, param_vals);
+  }
   (void) ret_val;
 
   // There is a single return value, store it to the lifted state.

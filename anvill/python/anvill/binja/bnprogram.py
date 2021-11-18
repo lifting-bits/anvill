@@ -15,7 +15,7 @@
 
 
 import binaryninja as bn
-from typing import Optional
+from typing import Optional, Final, Iterable
 
 import struct
 
@@ -26,12 +26,12 @@ from .bnvariable import *
 
 from .table import *
 
-from anvill.program import *
-from anvill.arch import *
-from anvill.os import *
-from anvill.imageparser import *
-from anvill.util import *
-from anvill.type import *
+from ..program import Program
+from ..arch import *
+from ..os import *
+from ..imageparser import *
+from ..util import *
+from ..type import *
 
 
 def _is_function_pointer(bn_var):
@@ -49,12 +49,12 @@ class BNProgram(Program):
         Program.__init__(self, _get_arch(bv), _get_os(bv))
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
-        self._type_cache: Final[TypeCache] = TypeCache(self._bv)
+        self._type_cache: Final[TypeCache] = TypeCache(self._arch, self._bv)
 
         try:
             self._init_func_thunk_ctrl_flow()
         except:
-            WARN("Failed to initialize the control flow information for functin thunks")
+            WARN("Failed to initialize the control flow information for function thunks")
 
     @property
     def bv(self):
@@ -71,7 +71,7 @@ class BNProgram(Program):
 
         self.add_symbol(ea, sym.full_name)
 
-    def get_variable_impl(self, address: int):
+    def get_variable_impl(self, address: int) -> Variable:
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
 
@@ -101,83 +101,83 @@ class BNProgram(Program):
 
         return BNVariable(bn_var, arch, address, var_type)
 
-    def _get_function_from_bnvariable(self, address, bn_var):
-        """Get the `Function` instance from the data variable of function
-        pointer type. Raise an `InvalidFunctionException` exception if
-        the data variable is not of function pointer type.
-        """
-        if bn_var is None:
-            return None
+    # def _get_function_from_bnvariable(self, address: int, bn_var: bn.Variable) -> Optional[Function]:
+    #     """Get the `Function` instance from the data variable of function
+    #     pointer type. Raise an `InvalidFunctionException` exception if
+    #     the data variable is not of function pointer type.
+    #     """
+    #     if bn_var is None:
+    #         return None
+    #
+    #     # if the bn_var is an external symbol; discard it It will not get
+    #     # recovered as function or variables
+    #     symbol: Optional[bn.CoreSymbol] = self._bv.get_symbol_at(address)
+    #     if symbol is not None and symbol.type == bn.SymbolType.ExternalSymbol:
+    #         return None
+    #
+    #     if symbol is not None and symbol.type != bn.SymbolType.ImportAddressSymbol:
+    #         raise InvalidFunctionException(
+    #             "Not an imported address symbol defined at address {:x}".format(
+    #                 address)
+    #         )
+    #
+    #     if not _is_function_pointer(bn_var):
+    #         raise InvalidFunctionException(
+    #             "No function pointer is defined at address {:x}".format(
+    #                 address)
+    #         )
+    #
+    #     arch = self._arch
+    #     func_tinfo = bn_var.type.element_type
+    #
+    #     # TODO(akshayk): The type information may not have calling convention
+    #     # information. It does not recover the parameters and get the function
+    #     # in such case. A working solution could be handing the default calling
+    #     # convention for each architecture. This is in todo list.
+    #     # cc = func_tinfo.calling_convention
+    #     # if cc is None:
+    #     #     cc = self._bv.arch.calling_conventions[0]
+    #
+    #     # calling_conv = CallingConvention(arch, func_tinfo, cc)
+    #
+    #     func_type = self.type_cache.get(func_tinfo)
+    #
+    #     # Get the start address of function which is assigned to global variable
+    #     is_64bit = self._bv.arch.address_size == 8
+    #     binary_reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
+    #     binary_reader.seek(address)
+    #     function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
+    #
+    #     variable = self._bv.get_data_var_at(function_start)
+    #     func = BNFunction(variable, arch, function_start,
+    #                       [], [], func_type, True, True)
+    #     DEBUG(
+    #         f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
+    #     )
+    #     return func
 
-        # if the bn_var is an external symbol; discard it It will not get
-        # recovered as function or variables
-        symbol = self._bv.get_symbol_at(address)
-        if symbol != None and symbol.type == bn.SymbolType.ExternalSymbol:
-            return None
-
-        if symbol != None and symbol.type != bn.SymbolType.ImportAddressSymbol:
-            raise InvalidFunctionException(
-                "Not an imported address symbol defined at address {:x}".format(
-                    address)
-            )
-
-        if not _is_function_pointer(bn_var):
-            raise InvalidFunctionException(
-                "No function pointer is defined at address {:x}".format(
-                    address)
-            )
-
-        arch = self._arch
-        func_tinfo = bn_var.type.element_type
-
-        # TODO(akshayk): The type information may not have calling convention
-        # information. It does not recover the parameters and get the function
-        # in such case. A working solution could be handing the default calling
-        # convention for each architecture. This is in todo list.
-        # cc = func_tinfo.calling_convention
-        # if cc is None:
-        #     cc = self._bv.arch.calling_conventions[0]
-
-        # calling_conv = CallingConvention(arch, func_tinfo, cc)
-
-        func_type = self.type_cache.get(func_tinfo)
-
-        # Get the start address of function which is assigned to global variable
-        is_64bit = self._bv.arch.address_size == 8
-        binary_reader = bn.BinaryReader(self._bv, bn.Endianness.LittleEndian)
-        binary_reader.seek(address)
-        function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
-
-        variable = self._bv.get_data_var_at(function_start)
-        func = BNFunction(variable, arch, function_start,
-                          [], [], func_type, True, True)
-        DEBUG(
-            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
-        )
-        return func
-
-    def _get_function_parameters(self, bn_func):
+    def _get_function_parameters(self, bn_func: bn.Function) -> List[Location]:
         """Get the list of function parameters from the function type. If
         the function type is incorrect or violate the calling conv, return
         the empty list
         """
-        param_list = []
+        param_list: List[Location] = []
 
         if not isinstance(bn_func, bn.Function):
             return param_list
 
         index = 0
-        calling_conv = CallingConvention(
-            self._arch, bn_func, bn_func.calling_convention
-        )
+        # calling_conv = CallingConvention(
+        #     self._arch, bn_func, bn_func.calling_convention
+        # )
 
         DEBUG(
             f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters."
         )
         try:
             for var in bn_func.parameter_vars:
-                source_type = var.source_type
-                var_type = var.type
+                source_type: bn.VariableSourceType = var.source_type
+                var_type: Optional[bn.Type] = var.type
 
                 # Fails to recover var_type for some function which may fail at later stage
                 # e.g: int32_t __dlmopen(int32_t arg1, int32_t @ r9, int32_t @ r11)
@@ -199,23 +199,28 @@ class BNProgram(Program):
                     # e.g: int32_t main(int32_t arg1, void* arg2, int128_t arg3 @ q1, int64_t arg4 @ q2)
                     #
                     storage_reg_name = self._bv.arch.get_reg_name(var.storage)
-                    if not (
-                        storage_reg_name in calling_conv.int_arg_reg
-                        or storage_reg_name in calling_conv.float_arg_reg
-                    ):
-                        raise InvalidParameterException(
-                            f"Invalid parameters for function at {bn_func.start:x}: {bn_func.name}. "
-                            f"The bad storage register was: {storage_reg_name}."
-                        )
+                    # if not (
+                    #     storage_reg_name in calling_conv.int_arg_reg
+                    #     or storage_reg_name in calling_conv.float_arg_reg
+                    # ):
+                    #     raise InvalidParameterException(
+                    #         f"Invalid parameters for function at {bn_func.start:x}: {bn_func.name}. "
+                    #         f"The bad storage register was: {storage_reg_name}."
+                    #     )
 
                     if isinstance(arg_type, VoidType):
                         raise InvalidParameterException(
-                            f"Void type parameter for function at {fn_func.start:x}: {bn_func.name}"
+                            f"Void type parameter for function at {bn_func.start:x}: {bn_func.name}"
+                        )
+
+                    param_reg: Optional[Register] = self._arch.register_name(storage_reg_name)
+                    if param_reg is None:
+                        raise InvalidParameterException(
+                            f"Unrecognized parameter register name {storage_reg_name} in {bn_func.start:x}: {bn_func.name}"
                         )
 
                     loc = Location()
-                    loc.set_register(
-                        self._arch.register_name(storage_reg_name))
+                    loc.set_register(param_reg)
                     loc.set_type(arg_type)
                     param_list.append(loc)
 
@@ -234,7 +239,8 @@ class BNProgram(Program):
             DEBUG(e)
             return []
 
-    def function_from_addr(self, address):
+    def function_from_addr(self, address: int) -> Optional[bn.Function]:
+        """Return the Binary Ninja function associated with some address."""
         bn_func = self._bv.get_function_at(address)
         if not bn_func:
             func_contains = self._bv.get_functions_containing(address)
@@ -243,15 +249,14 @@ class BNProgram(Program):
 
         return bn_func
 
-    def get_function_impl(self, address):
+    def get_function_impl(self, address: int) -> Function:
         """Given an architecture and an address, return a `Function` instance or
         raise an `InvalidFunctionException` exception."""
-        arch = self._arch
-
-        bn_func = self.function_from_addr(address)
+        arch: Arch = self._arch
+        bn_func: Optional[bn.Function] = self.function_from_addr(address)
 
         # A function symbol may be identified as variable by binja.
-        if not bn_func:
+        if bn_func is None:
             # bn_var = self._bv.get_data_var_at(address)
             # if bn_var is not None:
             #    return self._get_function_from_bnvariable(address, bn_var)
@@ -261,19 +266,26 @@ class BNProgram(Program):
                     address)
             )
 
-        func_type = self.type_cache.get(bn_func.function_type)
+        func_type: Type = self.type_cache.get(bn_func.function_type)
         calling_conv = CallingConvention(
             arch, bn_func, bn_func.calling_convention)
         param_list = self._get_function_parameters(bn_func)
 
         ret_list = []
         ret_ty = self.type_cache.get(bn_func.return_type)
+
+        # TODO(pag): This code seems fundamentally broken. This seems like
+        #            it's replicating the return type across each of the
+        #            return registers, whereas if anything it should flatten
+        #            the return type, then match up return regs with the
+        #            flattened type...
         if not isinstance(ret_ty, VoidType):
             for reg in calling_conv.return_regs:
                 loc = Location()
                 loc.set_register(self._arch.register_name(reg))
                 loc.set_type(ret_ty)
                 ret_list.append(loc)
+                break  # TODO(pag): Fix this!
 
         is_entrypoint = self._bv.entry_function == bn_func
         func = BNFunction(
@@ -284,22 +296,22 @@ class BNProgram(Program):
         )
         return func
 
-    def get_symbols_impl(self, address):
+    def get_symbols_impl(self, address: int) -> Iterable[str]:
         for s in self._bv.get_symbols(address, 1):
             yield s.name
 
     @property
-    def functions(self):
+    def functions(self) -> Iterable[int]:
         for f in self._bv.functions:
             yield f.start
 
     @property
-    def symbols(self):
+    def symbols(self) -> Iterable[Tuple[int, str]]:
         for s in self._bv.get_symbols():
-            yield (s.address, s.name)
+            yield s.address, s.name
 
-    def _is_callsite(self, func, addr):
-        inst_il = func.get_low_level_il_at(addr)
+    def _is_callsite(self, func: bn.Function, ea: int) -> bool:
+        inst_il = func.get_low_level_il_at(ea)
         if is_function_call(self._bv, inst_il):
             return True
         return False
@@ -419,7 +431,7 @@ class BNProgram(Program):
                 )
 
 
-def _get_os(bv):
+def _get_os(bv: bn.BinaryView) -> OS:
     """OS class that gives access to OS-specific functionality."""
     platform = str(bv.platform)
     if "linux" in platform:
