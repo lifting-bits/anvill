@@ -162,6 +162,15 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddInstructionFolderPass(fpm, err_man);
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SROA());
+
+  // Sometimes we observe patterns where PC- and SP-related offsets are
+  // accidentally truncated, and thus displacement-based analyses make them
+  // look like really big 32-bit values, when really they are small negative
+  // numbers that have been truncated and should have always been small 64-bit
+  // negative numbers. Thus, we want to fixup such cases prior to any kind of
+  // stack analysis.
+  AddConvertMasksToCasts(fpm);
+
   AddSwitchLoweringPass(fpm, memprov, slc);
   AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);

@@ -35,6 +35,8 @@
 
 #include "Utils.h"
 
+#define ANVILL_RECORD_FUNCTION_IR 0
+
 namespace anvill {
 
 // BaseFunctionPass error codes
@@ -61,10 +63,10 @@ class BaseFunctionPass : public llvm::PassInfoMixin<UserFunctionPass> {
 
   // Module name
   std::string original_module_name;
-
+#if ANVILL_RECORD_FUNCTION_IR
   // Module IR, before the function pass
   std::string original_function_ir;
-
+#endif
   // Current function name
   std::string original_function_name;
 
@@ -133,7 +135,9 @@ BaseFunctionPass<UserFunctionPass>::run(llvm::Function &function_,
                                         llvm::FunctionAnalysisManager &fam) {
   function = &function_;
   module = function->getParent();
+#if ANVILL_RECORD_FUNCTION_IR
   original_function_ir = GetFunctionIR(*function);
+#endif
   original_module_name = module->getName().str();
   original_function_name = function->getName().str();
 
@@ -224,12 +228,14 @@ void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
   error.message = message;
   error.module_name = original_module_name;
   error.function_name = original_function_name;
-  error.func_before = original_function_ir;
 
+#if ANVILL_RECORD_FUNCTION_IR
+  error.func_before = original_function_ir;
   auto current_func_ir = GetFunctionIR(*function);
   if (current_func_ir != error.func_before) {
     error.func_after = current_func_ir;
   }
+#endif
 
   std::stringstream buffer;
   buffer << "severity:";

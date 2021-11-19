@@ -244,20 +244,49 @@ void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
                                       const EntityLifter &lifter);
 
 // Finds values in the form of:
-// %cmp = icmp eq val1, val2
-// %n = xor %cmp, 1
-// (optional):
-// %br %cmp, d1, d2
-// and converts it to :
-// %cmp = icmp ne val1, val2
-// %n = %cmp
-// %br %cmp, d2, d1
+//
+//      %cmp = icmp eq val1, val2
+//      %n = xor %cmp, 1
+//
+//      %br %cmp, d1, d2      (optional)
+//
+// and converts it to:
+//
+//      %cmp = icmp ne val1, val2
+//      %n = %cmp
+//      %br %cmp, d2, d1
 //
 // This happens often enough in lifted code due to bit shift ops, and the code
-// with xors is more difficult to analyze and for a human to read
-// This pass should only work on boolean values, and handle when those are used
-// in Branches and Selects
+// with xors is more difficult to analyze and for a human to read. This pass
+// should only work on boolean values, and handle when those are used in
+// branches and selects.
 void AddConvertXorToCmp(llvm::FunctionPassManager &fpm);
+
+// Looks for the following patterns that can be converted into casts, where
+// we focus on high-level casting patterns, i.e. truncations, zero-extensions,
+// and sign-extensions.
+//
+//      and i64 %val, 0xff          -> %down_casted_val = trunc %val to i8
+//                                     %new_val = zext %down_casted_val to i64
+//      and i64 %val, 0xffff        -> %down_casted_val = trunc %val to i16
+//                                     %new_val = zext %down_casted_val to i64
+//      and i64 %val, 0xffffffff    -> %down_casted_val = trunc %val to i32
+//                                     %new_val = zext %down_casted_val to i64
+//
+// We also look for patterns of the form:
+//
+//      %low_val = shl i64 %val, 32
+//      %signed_val = ashr i64 %low_val, 32
+//
+// And convert it into:
+//
+//      %low_val = trunc i64 %val to i32
+//      %signed_val = sext i32 %low_val to i64
+//
+// In general, these types of patterns are easier to lift into a combination
+// of one down cast, followed by one implicit upcast in decompiled code, and
+// thus look simpler than the shifting/masking variants.
+void AddConvertMasksToCasts(llvm::FunctionPassManager &fpm);
 
 // Removes calls to `__remill_delay_slot_begin` and `__remill_delay_slot_end`.
 // These calls surround the lifted versions of delayed instructions, to signal

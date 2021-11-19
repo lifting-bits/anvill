@@ -254,10 +254,7 @@ class PaddingType(SequentialType):
         self._num_elems = size
 
     def serialize(self, arch: Arch, ids: Dict[Type, int]) -> str:
-        if self._num_elems < 8:
-          return "p" * self._num_elems
-        else:
-          return "[px{}]".format(self._num_elems)
+        return "p" * self._num_elems
 
 
 class StructureType(Type):

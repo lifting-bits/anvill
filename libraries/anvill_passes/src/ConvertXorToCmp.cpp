@@ -31,13 +31,13 @@
 #include <vector>
 
 #include "Utils.h"
+
 namespace anvill {
 namespace {
 
-// If the operator (op) is between an ICmpInst and a ConstantInt,
-// return a tuple representing the ICmpInst and ConstantInt
-// with tuple[0] holding the ICmpInst.
-// otherwise return nullopt
+// If the operator (op) is between an ICmpInst and a ConstantInt, return a
+// tuple representing the ICmpInst and ConstantInt with tuple[0] holding the
+// ICmpInst. Otherwise return `nullopt`.
 static std::optional<std::tuple<llvm::ICmpInst *, llvm::ConstantInt *>>
 getComparisonOperands(llvm::BinaryOperator *op) {
 
@@ -66,7 +66,7 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   llvm::IRBuilder<> ir(cmp);
   llvm::ICmpInst::Predicate new_pred = llvm::CmpInst::getInversePredicate(pred);
 
-  // create a new compare with negated predicate
+  // Create a new compare with negated predicate.
   return ir.CreateICmp(new_pred, cmp->getOperand(0), cmp->getOperand(1));
 }
 
@@ -85,8 +85,8 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
       // binary op is a xor
       if (binop->getOpcode() == llvm::Instruction::Xor) {
 
-        // get comparison operands of the xor
-        // the caller ensures that one is a compare and the other is a constant int
+        // Get comparison operands of the xor. The caller ensures that one is a
+        // compare and the other is a constant integer.
         auto cmp_ops = getComparisonOperands(binop);
         if (cmp_ops.has_value()) {
           auto [_, cnst_int] = cmp_ops.value();
@@ -124,14 +124,16 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
     //   %c = icmp PREDICATE v1, v2
     //   %x = xor i1 %c, true
     //
-    // We want to to fold this cmp/xor pair into a cmp with an inverse predicate, like so:
+    // We want to to fold this cmp/xor pair into a cmp with an inverse
+    // predicate, like so:
     //
     //   %c = icmp !PREDICATE v1, v2
     //   %x = %c
     //
     // BUT! Depending on how %c is used we may or may not be able to do that.
     //
-    // We need to know if the result of the comparison (%c) is used elsewhere, and how.
+    // We need to know if the result of the comparison (%c) is used elsewhere,
+    // and how.
     //
     // We *can* still invert the cmp/xor pair if:
     // * All uses of this `cmp` are either a SelectInst or a BranchInst
@@ -172,7 +174,8 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
 
       llvm::SelectInst *si = llvm::dyn_cast<llvm::SelectInst>(inst);
 
-      // A user of this compare is a SelectInst, and the compare is the condition and not an operand
+      // A user of this compare is a SelectInst, and the compare is the
+      // condition and not an operand.
       if (si && llvm::dyn_cast<llvm::ICmpInst>(si->getCondition()) == cmp) {
         selects_to_invert.emplace_back(si);
         continue;
@@ -231,11 +234,12 @@ llvm::StringRef ConvertXorToCmp::name(void) {
 }
 
 // Convert operations in the form of:
-// (left OP right) ^ 1
+//      (left OP right) ^ 1
 // into:
-// (left !OP right)
+//      (left !OP right)
 // this makes the output more natural for humans and computers to reason about
-// This problem comes up a fair bit due to how some instruction semantics compute carry/parity/etc bits
+// This problem comes up a fair bit due to how some instruction semantics
+// compute carry/parity/etc bits.
 void AddConvertXorToCmp(llvm::FunctionPassManager &fpm) {
   fpm.addPass(ConvertXorToCmp());
 }

@@ -95,6 +95,8 @@ add_library(anvill_passes STATIC
   src/CodeQualityStatCollector.cpp
   src/BranchRecovery.h
   src/BranchRecovery.cpp
+  src/ConvertMasksToCasts.cpp
+  src/ConvertMasksToCasts.h
 )
 
 target_include_directories(anvill_passes PUBLIC
