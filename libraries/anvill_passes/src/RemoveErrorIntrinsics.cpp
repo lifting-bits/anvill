@@ -46,11 +46,11 @@ RemoveErrorIntrinsics::run(llvm::Function &func,
     return call->getCalledFunction() == error;
   });
 
-  std::unordered_set<llvm::Instruction *> removed;
+  std::unordered_set<llvm::Instruction *> to_remove;
   std::unordered_set<llvm::BasicBlock *> affected_blocks;
 
   for (llvm::CallBase *call : calls) {
-    if (removed.count(call)) {
+    if (to_remove.count(call)) {
       continue;
     }
 
@@ -62,16 +62,15 @@ RemoveErrorIntrinsics::run(llvm::Function &func,
     for (auto inst = block->getTerminator(); inst != pred_inst;) {
       const auto next_inst = inst->getPrevNode();
       CHECK_EQ(inst->getParent(), block);
+      CHECK(!to_remove.count(inst));
 
       if (auto itype = inst->getType(); itype && !itype->isVoidTy()) {
-        auto *undef_val = llvm::UndefValue::get(itype);
-        CopyMetadataTo(inst, undef_val);
-        inst->replaceAllUsesWith(undef_val);
+        inst->replaceAllUsesWith(llvm::UndefValue::get(itype));
       }
 
       inst->dropAllReferences();
-      inst->eraseFromParent();
-      removed.insert(inst);
+      inst->removeFromParent();
+      to_remove.insert(inst);
       inst = next_inst;
     }
 
@@ -120,51 +119,57 @@ RemoveErrorIntrinsics::run(llvm::Function &func,
       const auto num_incoming_vals = phi->getNumIncomingValues();
       for (auto i = 0u; i < num_incoming_vals; ++i) {
         auto incoming_block = phi->getIncomingBlock(i);
-        if (affected_blocks.count(incoming_block)) {
+        auto incoming_val = phi->getIncomingValue(i);
+        if (affected_blocks.count(incoming_block) ||
+            to_remove.count(llvm::dyn_cast<llvm::Instruction>(incoming_val))) {
           continue;
         } else {
-          new_incoming_vals.push_back(phi->getIncomingValue(i));
+          new_incoming_vals.push_back(incoming_val);
           new_incoming_blocks.push_back(incoming_block);
         }
       }
+
+      llvm::Value *phi_replacement = nullptr;
 
       // This block is technically unreachable.
       if (new_incoming_vals.empty()) {
         llvm::BasicBlock *phi_block = phi->getParent();
         unreachable_blocks.insert(phi_block);
         affected_blocks.insert(phi_block);
-        auto *undef_val = llvm::UndefValue::get(phi->getType());
-        CopyMetadataTo(phi, undef_val);
-        phi->replaceAllUsesWith(undef_val);
-        phi->dropAllReferences();
-        phi->eraseFromParent();
+        phi_replacement = llvm::UndefValue::get(phi->getType());
 
+      // Only one incoming value; forward it along.
       } else if (new_incoming_vals.size() == 1u) {
-        auto *new_val = new_incoming_vals[0];
-        CopyMetadataTo(phi, new_val);
-        phi->replaceAllUsesWith(new_val);
-        phi->dropAllReferences();
-        phi->eraseFromParent();
+        phi_replacement = new_incoming_vals[0];
 
-        // Create a new PHI node.
+      // Create a new PHI node.
       } else {
         auto new_phi = llvm::PHINode::Create(
             phi->getType(), static_cast<unsigned>(new_incoming_vals.size()),
             llvm::Twine::createNull(), phi);
-        new_phi->copyMetadata(*phi);
+        CopyMetadataTo(phi, new_phi);
 
         auto i = 0u;
         for (auto val : new_incoming_vals) {
           new_phi->addIncoming(val, new_incoming_blocks[i++]);
         }
 
-        phi->replaceAllUsesWith(new_phi);
-        phi->eraseFromParent();
+        phi_replacement = new_phi;
       }
+
+      phi->replaceAllUsesWith(phi_replacement);
+      phi->dropAllReferences();
+      phi->removeFromParent();
+      to_remove.insert(phi);
     }
   }
 
-  return ConvertBoolToPreserved(!removed.empty());
+  // Get rid of any instructions that we removed from the basic blocks.
+  for (llvm::Instruction *inst : to_remove) {
+    inst->deleteValue();
+  }
+
+  return ConvertBoolToPreserved(!to_remove.empty());
 }
 // Removes calls to `__remill_error`.
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm) {

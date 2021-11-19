@@ -83,6 +83,9 @@ EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
       for (auto i = 0u, num_ops = instr.getNumOperands(); i < num_ops; ++i) {
         auto &use = instr.getOperandUse(i);
         auto val = use.get();
+        if (!val) {
+          continue;  // Can happen as a result of `dropAllReferences`.
+        }
 
         // If we see something related to Remill's `Memory *` or `State *` then
         // ignore those as being possible cross-references.

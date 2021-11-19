@@ -153,11 +153,9 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
       continue;
     }
 
-    // The offset from the stack pointer.
-    const auto stack_offset = reference.Displacement(data_layout);
-
-    // LOG(ERROR) << std::hex << "stack offset " << stack_offset;
-
+    // The offset from the stack pointer. Force to a 32-bit, then sign-extend.
+    const int64_t stack_offset = static_cast<int32_t>(
+        reference.Displacement(data_layout));
 
     // Update the boundaries, based on the offset we have found
     std::uint64_t type_size =
