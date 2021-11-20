@@ -125,7 +125,8 @@ do
         --output-dir "$(pwd)/results/${dir}" \
         --run-name "anvill-live-ci-amp-bins" \
         --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json" \
-        --dump-stats
+        --dump-stats \
+        --dump-benchmark
 
 
     if ! check_test "$(pwd)/results/${dir}/python/stats.json"
