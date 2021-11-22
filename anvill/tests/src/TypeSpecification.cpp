@@ -1,18 +1,9 @@
 /*
- * Copyright (c) 2020 Trail of Bits, Inc.
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
  */
 
 #include <anvill/Type.h>
@@ -50,7 +41,7 @@ TEST_SUITE("TypeSpecifier") {
     for (const auto &test_entry : kTestEntryList) {
       llvm::LLVMContext llvm_context;
       llvm::DataLayout dl("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
-      anvill::TypeSpecifier specifier(llvm_context, dl);
+      anvill::TypeTranslator specifier(llvm_context, dl);
 
       auto context_res = specifier.DecodeFromString(test_entry.spec);
 
@@ -132,7 +123,7 @@ TEST_SUITE("TypeSpecifier") {
         {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
          "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
-    anvill::TypeSpecifier specifier(llvm_context, data_layout);
+    anvill::TypeTranslator specifier(llvm_context, data_layout);
 
     for (const auto &test_entry : kTestEntryList) {
       auto without_alphanum = specifier.EncodeToString(test_entry.type, false);
@@ -229,7 +220,7 @@ TEST_SUITE("TypeSpecifier") {
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
-    TypeSpecifier specifier(llvm_context, data_layout);
+    TypeTranslator specifier(llvm_context, data_layout);
 
     for (auto [test_spec, ll_type] : kTestSpecList) {
       auto context_res = specifier.DecodeFromString(test_spec);
