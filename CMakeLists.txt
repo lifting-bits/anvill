@@ -51,9 +51,35 @@ else()
 endif()
 
 add_subdirectory("libraries")
-add_subdirectory("tools")
-add_subdirectory("anvill")
+add_subdirectory("lib")
+add_subdirectory("bin")
 
 if(ANVILL_ENABLE_SANITIZERS)
   configureSanitizers("remill_settings")
-endif()
+endif(ANVILL_ENABLE_SANITIZERS)
+
+if(ANVILL_ENABLE_INSTALL_TARGET)
+
+  set(anvill_cmake_config
+    "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
+  )
+
+  configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
+    "${anvill_cmake_config}"
+    @ONLY
+  )
+  
+  install(FILES "${anvill_cmake_config}"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
+  )
+  
+  install(EXPORT anvillTargets
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
+  )
+
+  install(DIRECTORY "${CMAKE_SOURCE_DIR}/anvill/include/anvill/"
+    DESTINATION "include/anvill" FILES_MATCHING PATTERN "*.h"
+   )
+
+endif(ANVILL_ENABLE_INSTALL_TARGET)

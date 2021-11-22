@@ -8,5 +8,3 @@
 
 add_subdirectory("version")
 add_subdirectory("doctest")
-add_subdirectory("magic_enum")
-add_subdirectory("anvill_passes")

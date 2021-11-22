@@ -1,7 +1,7 @@
 #include "SwitchLoweringPass.h"
 
 #include <anvill/JumpTableAnalysis.h>
-#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/ADT/SmallSet.h>

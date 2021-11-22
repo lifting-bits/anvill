@@ -367,7 +367,10 @@ class TypeCache:
         try:
             if tinfo.altname in self._core_types:
                 return self._core_types[tinfo.altname]
+        except AttributeError:
+            pass
 
+        try:
             if tinfo.name in self._core_types:
                 return self._core_types[tinfo.name]
         except NotImplementedError:
