@@ -122,7 +122,7 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
   auto module = function.getParent();
   auto data_layout = module->getDataLayout();
 
-  CrossReferenceResolver resolver(data_layout);
+  CrossReferenceFolder resolver(data_layout);
 
   // Pre-initialize the stack limits
   StackFrameAnalysis output;

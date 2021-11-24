@@ -17,7 +17,7 @@
 #include <string>
 #include <utility>
 
-#include "Decl.h"
+#include "Specification.h"
 #include "Type.h"
 
 namespace llvm {
@@ -34,16 +34,19 @@ namespace anvill {
 class TypeProvider {
  protected:
   llvm::LLVMContext &context;
-  llvm::DataLayout dl;
+  llvm::DataLayout data_layout;
   const TypeDictionary type_dictionary;
 
-  explicit TypeProvider(const TypeDictionary &type_dictionary_,
+  explicit TypeProvider(const ::anvill::TypeDictionary &type_dictionary_,
                         const llvm::DataLayout &dl_);
+
+  inline explicit TypeProvider(const TypeTranslator &tt)
+      : TypeProvider(tt.Dictionary(), tt.DataLayout()) {}
 
  public:
   using Ptr = std::shared_ptr<TypeProvider>;
 
-  inline const ::anvill::TypeDictionary &TypeDictionary(void) const {
+  inline const ::anvill::TypeDictionary &Dictionary(void) const {
     return type_dictionary;
   }
 
@@ -79,7 +82,7 @@ class TypeProvider {
           typed_reg_cb) const;
 
   // Creates a type provider that always fails to provide type information.
-  static Ptr CreateNull(const TypeDictionary &type_dictionary_,
+  static Ptr CreateNull(const ::anvill::TypeDictionary &type_dictionary_,
                         const llvm::DataLayout &dl_);
 
  private:

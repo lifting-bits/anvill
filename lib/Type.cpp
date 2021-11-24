@@ -21,6 +21,7 @@
 
 #include <glog/logging.h>
 
+#include <remill/Arch/Arch.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
@@ -938,9 +939,28 @@ TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
                              const llvm::DataLayout &dl)
     : impl(std::make_unique<TypeSpecifierImpl>(type_dict, dl)) {}
 
+// Delegating constructor using a module's data layout.
+TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
+                               const llvm::Module &module)
+    : TypeTranslator(type_dict, module.getDataLayout()) {}
+
+// Delegating constructor using an architecture's data layout.
+TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
+                               const remill::Arch *arch)
+    : TypeTranslator(type_dict, arch->DataLayout()) {}
+
+TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
+                               const std::unique_ptr<const remill::Arch> &arch)
+    : TypeTranslator(type_dict, arch->DataLayout()) {}
+
 // Return the type dictionary for this type specifier.
 const TypeDictionary &TypeTranslator::Dictionary(void) const noexcept {
   return impl->type_dict;
+}
+
+// Return a reference to the data layout used by this type translator.
+const llvm::DataLayout &TypeTranslator::DataLayout(void) const noexcept {
+  return impl->dl;
 }
 
 // Convert the type `type` to a string encoding. If `alpha_num` is `true`

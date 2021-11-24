@@ -22,7 +22,7 @@
 #include <llvm/IR/Type.h>
 
 #include <anvill/ABI.h>
-#include <anvill/Decl.h>
+#include <anvill/Specification.h>
 #include <anvill/Type.h>
 #include <anvill/Util.h>
 #include <remill/Arch/Arch.h>

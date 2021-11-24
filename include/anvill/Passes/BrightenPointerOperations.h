@@ -34,7 +34,7 @@ class Value;
 }  // namespace llvm
 namespace anvill {
 
-class CrossReferenceResolver;
+class CrossReferenceFolder;
 
 class PointerLifterPass final : public llvm::PassInfoMixin<PointerLifterPass> {
  public:

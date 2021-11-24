@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "anvill/Program.h"
+#include "Program.h"
 
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
@@ -25,9 +25,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "anvill/Decl.h"
+#include "anvill/Specification.h"
 
-namespace anvill {
+namespace decompile {
 
 // A byte's associated metadata. The metadata is updated throughout the
 // lifting/decompiling process.
@@ -91,28 +91,29 @@ enum ProgramEvent {
 class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
  public:
   llvm::Expected<FunctionDecl *>
-  DeclareFunction(const FunctionDecl &decl_template, bool force);
+  DeclareFunction(const anvill::FunctionDecl &decl_template, bool force);
 
-  FunctionDecl *FindFunction(uint64_t address);
+  anvill::FunctionDecl *FindFunction(uint64_t address);
 
   bool TryGetControlFlowRedirection(std::uint64_t &destination,
                                     std::uint64_t address) const;
 
   void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
 
-  std::optional<ControlFlowTargetList>
+  std::optional<anvill::ControlFlowTargetList>
   TryGetControlFlowTargets(std::uint64_t address) const;
 
-  bool TrySetControlFlowTargets(const ControlFlowTargetList &target_list);
+  bool TrySetControlFlowTargets(
+      const anvill::ControlFlowTargetList &target_list);
 
-  llvm::Error DeclareVariable(const GlobalVarDecl &decl_template);
+  llvm::Error DeclareVariable(const anvill::GlobalVarDecl &decl_template);
 
-  GlobalVarDecl *FindVariable(uint64_t address);
+  anvill::GlobalVarDecl *FindVariable(uint64_t address);
 
-  GlobalVarDecl *FindVariable(const std::string &name);
+  anvill::GlobalVarDecl *FindVariable(const std::string &name);
 
-  GlobalVarDecl *FindInVariable(uint64_t address,
-                                const llvm::DataLayout &layout);
+  anvill::GlobalVarDecl *FindInVariable(
+      uint64_t address, const llvm::DataLayout &layout);
 
   std::pair<Byte::Data *, Byte::Meta *> FindByte(uint64_t address);
 
@@ -132,19 +133,20 @@ class Program::Impl : public std::enable_shared_from_this<Program::Impl> {
 
   // Declarations for the functions.
   bool funcs_are_sorted{true};
-  std::vector<std::unique_ptr<FunctionDecl>> funcs;
-  std::unordered_map<uint64_t, FunctionDecl *> ea_to_func;
+  std::vector<std::unique_ptr<anvill::FunctionDecl>> funcs;
+  std::unordered_map<uint64_t, anvill::FunctionDecl *> ea_to_func;
 
   // Control flow redirections
   std::unordered_map<std::uint64_t, std::uint64_t> ctrl_flow_redirections;
 
   // Control flow targets
-  std::unordered_map<std::uint64_t, ControlFlowTargetList> ctrl_flow_targets;
+  std::unordered_map<std::uint64_t, anvill::ControlFlowTargetList>
+      ctrl_flow_targets;
 
   // Declarations for the variables.
   bool vars_are_sorted{true};
-  std::vector<std::unique_ptr<GlobalVarDecl>> vars;
-  std::map<uint64_t, GlobalVarDecl *> ea_to_var;
+  std::vector<std::unique_ptr<anvill::GlobalVarDecl>> vars;
+  std::map<uint64_t, anvill::GlobalVarDecl *> ea_to_var;
 
   // Values of all bytes mapped in memory, including additional
   // bits of metadata, and the address at which each byte is
@@ -224,7 +226,7 @@ static size_t EstimateSize(const remill::Arch *arch, llvm::Type *type) {
 
 template <typename T>
 static llvm::Error CheckValueDecl(const T &decl, llvm::LLVMContext &context,
-                                  const char *desc, const FunctionDecl &tpl) {
+                                  const char *desc, const anvill::FunctionDecl &tpl) {
   if (!decl.type) {
     return llvm::createStringError(
         std::make_error_code(std::errc::invalid_argument),
@@ -367,7 +369,7 @@ Byte ByteSequence::operator[](uint64_t ea) const {
 
 // Declare a function in this view.
 llvm::Expected<FunctionDecl *>
-Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
+Program::Impl::DeclareFunction(const anvill::FunctionDecl &tpl, bool force) {
 
   const auto [data, meta] = FindByte(tpl.address);
   if (meta) {
@@ -393,7 +395,7 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
 
   auto &context = *(tpl.arch->context);
 
-  ValueDecl return_address = tpl.return_address;
+  anvill::ValueDecl return_address = tpl.return_address;
   const auto pc_reg_name = tpl.arch->ProgramCounterRegisterName();
   if (auto pc_reg = tpl.arch->RegisterByName(pc_reg_name)) {
     if (!return_address.type) {
@@ -532,7 +534,8 @@ Program::Impl::DeclareFunction(const FunctionDecl &tpl, bool force) {
         tpl.address);
   }
 
-  std::unique_ptr<FunctionDecl> decl(new FunctionDecl(std::move(tpl)));
+  std::unique_ptr<anvill::FunctionDecl> decl(
+      new anvill::FunctionDecl(std::move(tpl)));
   const auto decl_ptr = decl.get();
   decl_ptr->return_address = return_address;
   decl_ptr->type = func_type;
@@ -584,7 +587,7 @@ void Program::Impl::AddControlFlowRedirection(std::uint64_t from,
   ctrl_flow_redirections.insert({from, to});
 }
 
-std::optional<ControlFlowTargetList>
+std::optional<anvill::ControlFlowTargetList>
 Program::Impl::TryGetControlFlowTargets(std::uint64_t address) const {
   auto it = ctrl_flow_targets.find(address);
   if (it == ctrl_flow_targets.end()) {
@@ -595,7 +598,7 @@ Program::Impl::TryGetControlFlowTargets(std::uint64_t address) const {
 }
 
 bool Program::Impl::TrySetControlFlowTargets(
-    const ControlFlowTargetList &target_list) {
+    const anvill::ControlFlowTargetList &target_list) {
   if (ctrl_flow_targets.count(target_list.source) != 0U) {
     return false;
   }
@@ -605,7 +608,7 @@ bool Program::Impl::TrySetControlFlowTargets(
 }
 
 // Declare a variable in this view.
-llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
+llvm::Error Program::Impl::DeclareVariable(const anvill::GlobalVarDecl &tpl) {
 
 
   if (auto existing_decl = FindVariable(tpl.address); existing_decl) {
@@ -629,10 +632,9 @@ llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
   }
 
   auto [data, meta] = FindByte(tpl.address);
-  std::unique_ptr<GlobalVarDecl> decl(new GlobalVarDecl(tpl));
+  std::unique_ptr<anvill::GlobalVarDecl> decl(new anvill::GlobalVarDecl(tpl));
 
   const auto decl_ptr = decl.get();
-  decl_ptr->owner = this;
 
   if (vars_are_sorted && !vars.empty() &&
       vars.back()->address > decl->address) {
@@ -654,7 +656,7 @@ llvm::Error Program::Impl::DeclareVariable(const GlobalVarDecl &tpl) {
 }
 
 // Search for a specific variable.
-GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
+anvill::GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
   const auto it = ea_to_var.find(address);
   if (it != ea_to_var.end()) {
     return it->second;
@@ -663,10 +665,10 @@ GlobalVarDecl *Program::Impl::FindVariable(uint64_t address) {
   }
 }
 
-GlobalVarDecl *Program::Impl::FindInVariable(uint64_t address,
-                                             const llvm::DataLayout &layout) {
+anvill::GlobalVarDecl *Program::Impl::FindInVariable(
+    uint64_t address, const llvm::DataLayout &layout) {
 
-  GlobalVarDecl *closest_match = nullptr;
+  anvill::GlobalVarDecl *closest_match = nullptr;
   for (auto [var_address, var] : ea_to_var) {
     if (var_address <= address) {
       closest_match = var;
@@ -968,18 +970,18 @@ Program::~Program(void) {}
 // Declare a function in this view. This takes in a function
 // declaration that will act as a sort of "template" for the
 // declaration that we will make and will be owned by `Program`.
-llvm::Expected<FunctionDecl *>
-Program::DeclareFunction(const FunctionDecl &decl, bool force) const {
+llvm::Expected<anvill::FunctionDecl *>
+Program::DeclareFunction(const anvill::FunctionDecl &decl, bool force) const {
   return impl->DeclareFunction(decl, force);
 }
 
 // Internal iterator over all functions.
 void Program::ForEachFunction(
-    std::function<bool(const FunctionDecl *)> callback) const {
+    std::function<bool(const anvill::FunctionDecl *)> callback) const {
   if (!impl->funcs_are_sorted) {
     std::sort(impl->vars.begin(), impl->vars.end(),
-              [](const std::unique_ptr<GlobalVarDecl> &a,
-                 const std::unique_ptr<GlobalVarDecl> &b) {
+              [](const std::unique_ptr<anvill::GlobalVarDecl> &a,
+                 const std::unique_ptr<anvill::GlobalVarDecl> &b) {
                 return a->address < b->address;
               });
     impl->funcs_are_sorted = true;
@@ -994,7 +996,7 @@ void Program::ForEachFunction(
 }
 
 // Search for a specific function by its address.
-const FunctionDecl *Program::FindFunction(uint64_t address) const {
+const anvill::FunctionDecl *Program::FindFunction(uint64_t address) const {
   return impl->FindFunction(address);
 }
 
@@ -1002,7 +1004,7 @@ const FunctionDecl *Program::FindFunction(uint64_t address) const {
 // Call `callback` on each function with the given name.
 void Program::ForEachFunctionWithName(
     const std::string &name,
-    std::function<bool(const FunctionDecl *)> callback) const {
+    std::function<bool(const anvill::FunctionDecl *)> callback) const {
   const auto func_it_end = impl->ea_to_func.end();
   for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
        it != it_end && it->first == name; ++it) {
@@ -1024,20 +1026,20 @@ void Program::AddControlFlowRedirection(std::uint64_t from, std::uint64_t to) {
   return impl->AddControlFlowRedirection(from, to);
 }
 
-std::optional<ControlFlowTargetList>
+std::optional<anvill::ControlFlowTargetList>
 Program::TryGetControlFlowTargets(std::uint64_t address) const {
   return impl->TryGetControlFlowTargets(address);
 }
 
 bool Program::TrySetControlFlowTargets(
-    const ControlFlowTargetList &target_list) {
+    const anvill::ControlFlowTargetList &target_list) {
   return impl->TrySetControlFlowTargets(target_list);
 }
 
 // Apply a function `cb` to each name of the address `address`.
 void Program::ForEachNameOfAddress(
-    uint64_t ea, std::function<bool(const std::string &, const FunctionDecl *,
-                                    const GlobalVarDecl *)>
+    uint64_t ea, std::function<bool(const std::string &, const anvill::FunctionDecl *,
+                                    const anvill::GlobalVarDecl *)>
                      callback) const {
 
   const auto func = FindFunction(ea);
@@ -1054,7 +1056,7 @@ void Program::ForEachNameOfAddress(
 // Apply a function `cb` to each name of the address `address`.
 void Program::ForEachAddressOfName(
     const std::string &name,
-    std::function<bool(uint64_t, const FunctionDecl *, const GlobalVarDecl *)>
+    std::function<bool(uint64_t, const anvill::FunctionDecl *, const anvill::GlobalVarDecl *)>
         callback) const {
 
   for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
@@ -1070,8 +1072,8 @@ void Program::ForEachAddressOfName(
 
 // Apply a function `cb` to each address/name pair.
 void Program::ForEachNamedAddress(
-    std::function<bool(uint64_t, const std::string &, const FunctionDecl *,
-                       const GlobalVarDecl *)>
+    std::function<bool(uint64_t, const std::string &, const anvill::FunctionDecl *,
+                       const anvill::GlobalVarDecl *)>
         callback) const {
   for (auto it = impl->ea_to_name.begin(), it_end = impl->ea_to_name.end();
        it != it_end; ++it) {
@@ -1096,17 +1098,17 @@ void Program::AddNameToAddress(const std::string &name,
 // Declare a variable in this view. This takes in a variable
 // declaration that will act as a sort of "template" for the
 // declaration that we will make and will be owned by `Program`.
-llvm::Error Program::DeclareVariable(const GlobalVarDecl &decl) const {
+llvm::Error Program::DeclareVariable(const anvill::GlobalVarDecl &decl) const {
   return impl->DeclareVariable(decl);
 }
 
 // Internal iterator over all vars.
 void Program::ForEachVariable(
-    std::function<bool(const GlobalVarDecl *)> callback) const {
+    std::function<bool(const anvill::GlobalVarDecl *)> callback) const {
   if (!impl->vars_are_sorted) {
     std::sort(impl->vars.begin(), impl->vars.end(),
-              [](const std::unique_ptr<GlobalVarDecl> &a,
-                 const std::unique_ptr<GlobalVarDecl> &b) {
+              [](const std::unique_ptr<anvill::GlobalVarDecl> &a,
+                 const std::unique_ptr<anvill::GlobalVarDecl> &b) {
                 return a->address < b->address;
               });
     impl->vars_are_sorted = true;
@@ -1123,11 +1125,11 @@ void Program::ForEachVariable(
 }
 
 // Search for a specific variable by its address.
-const GlobalVarDecl *Program::FindVariable(uint64_t address) const {
+const anvill::GlobalVarDecl *Program::FindVariable(uint64_t address) const {
   return impl->FindVariable(address);
 }
 
-const GlobalVarDecl *
+const anvill::GlobalVarDecl *
 Program::FindInVariable(uint64_t address,
                         const llvm::DataLayout &layout) const {
   return impl->FindInVariable(address, layout);
@@ -1136,7 +1138,7 @@ Program::FindInVariable(uint64_t address,
 // Search for a specific variable by its name.
 void Program::ForEachVariableWithName(
     const std::string &name,
-    std::function<bool(const GlobalVarDecl *)> callback) const {
+    std::function<bool(const anvill::GlobalVarDecl *)> callback) const {
   const auto var_it_end = impl->ea_to_var.end();
   for (auto it = impl->name_to_ea.find(name), it_end = impl->name_to_ea.end();
        it != it_end && it->first == name; ++it) {
@@ -1195,4 +1197,4 @@ llvm::Error Program::MapRange(const ByteRange &range) {
 Program::Program(void *opaque)
     : impl(reinterpret_cast<Program::Impl *>(opaque)->shared_from_this()) {}
 
-}  //  namespace anvill
+}  //  namespace decompile

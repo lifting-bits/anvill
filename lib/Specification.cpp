@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "anvill/Decl.h"
+#include <anvill/Specification.h>
 
 #include <anvill/Util.h>
 #include <anvill/Type.h>
@@ -181,119 +181,6 @@ llvm::Value *FunctionDecl::CallFromLiftedBlock(
   } else {
     return mem_ptr;
   }
-}
-
-// Serialize a FunctionDecl to JSON
-llvm::json::Object
-FunctionDecl::SerializeToJSON(const TypeTranslator &translator) const {
-  llvm::json::Object json;
-
-  if (address) {
-    json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
-                                       static_cast<int64_t>(this->address)});
-  }
-
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
-                                     this->is_variadic});
-
-  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_noreturn"),
-                                     this->is_noreturn});
-
-  llvm::json::Array params_json;
-  for (const auto &pdecl : params) {
-    llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON(translator));
-    params_json.push_back(v);
-  }
-  json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("parameters"),
-                             llvm::json::Value(std::move(params_json))});
-
-  llvm::json::Array returns_json;
-  for (const auto &rdecl : returns) {
-    returns_json.push_back(
-        llvm::json::Value(rdecl.SerializeToJSON(translator)));
-  }
-  json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("return_values"),
-                             llvm::json::Value(std::move(returns_json))});
-
-  if (return_stack_pointer) {
-    llvm::json::Object return_stack_pointer_json;
-    return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("register"), return_stack_pointer->name});
-    return_stack_pointer_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("offset"), return_stack_pointer_offset});
-    return_stack_pointer_json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-    translator.EncodeToString(return_stack_pointer->type)});
-
-    json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("return_stack_pointer"),
-        llvm::json::Value(std::move(return_stack_pointer_json))});
-  }
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("return_address"),
-      llvm::json::Value(return_address.SerializeToJSON(translator))});
-
-  json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("calling_convention"),
-                             llvm::json::Value(calling_convention)});
-
-  return json;
-}
-
-// Serialize a ParameterDecl to JSON
-llvm::json::Object
-ParameterDecl::SerializeToJSON(const TypeTranslator &translator) const {
-
-  // Get the serialization for the ValueDecl
-  llvm::json::Object param_json = this->ValueDecl::SerializeToJSON(translator);
-
-  // Insert "name"
-  param_json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("name"), this->name});
-
-  return param_json;
-}
-
-// Serialize a ValueDecl to JSON
-llvm::json::Object
-ValueDecl::SerializeToJSON(const TypeTranslator &translator) const {
-  llvm::json::Object value_json;
-
-  if (reg) {
-
-    // The value is in a register
-    value_json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("register"), reg->name});
-  } else if (mem_reg || mem_offset) {
-
-    // The value is in memory
-    llvm::json::Object memory_json;
-    if (mem_reg) {
-      memory_json.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("register"), mem_reg->name});
-    }
-    if (mem_offset) {
-      memory_json.insert(
-          llvm::json::Object::KV{llvm::json::ObjectKey("offset"), mem_offset});
-    }
-
-    // Wrap the memory_json structure in a memory block
-    value_json.insert(
-        llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
-                               llvm::json::Value(std::move(memory_json))});
-
-  } else {
-    LOG(FATAL) << "Trying to serialize a value that has not been allocated";
-  }
-
-  value_json.insert(
-      llvm::json::Object::KV{llvm::json::ObjectKey("type"),
-      translator.EncodeToString(type)});
-
-  return value_json;
 }
 
 // Create a Function Declaration from an `llvm::Function`.

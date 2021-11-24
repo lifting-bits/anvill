@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/LifterOptions.h>
+#include <anvill/Lifter.h>
 
 #include <unordered_map>
 

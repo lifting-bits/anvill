@@ -31,7 +31,8 @@
 // clang-format on
 
 #include <anvill/ABI.h>
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
+#include <anvill/JSON.h>
 #include <anvill/MemoryProvider.h>
 #include <anvill/TypeProvider.h>
 #include <anvill/Type.h>
@@ -43,7 +44,7 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
-#include "anvill/Decl.h"
+#include "anvill/Specification.h"
 #include "anvill/Optimize.h"
 #include "anvill/Util.h"
 
@@ -93,385 +94,29 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-namespace {
+namespace decompile {
 
-// Parse the location of a value. This applies to both parameters and
-// return values.
-static bool ParseValue(const remill::Arch *arch, anvill::ValueDecl &decl,
-                       llvm::json::Object *obj, const char *desc) {
+class JSONParser {
+ private:
+  const remill::Arch * const arch;
 
-  auto maybe_reg = obj->getString("register");
-  if (maybe_reg) {
-    decl.reg = arch->RegisterByName(maybe_reg->str());
-    if (!decl.reg) {
-      LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
-                 << "' used for storing " << desc << ".";
-      return false;
-    }
-  }
+  // Type translator, which can encode/decode types.
+  const anvill::TypeTranslator &type_translator;
 
-  if (auto mem_obj = obj->getObject("memory")) {
-    maybe_reg = mem_obj->getString("register");
-    if (maybe_reg) {
-      auto reg_name = maybe_reg->str();
-      if (reg_name == "MEMORY") {
-        // Absolute offset.
-      } else {
-        decl.mem_reg = arch->RegisterByName(reg_name);
-        if (!decl.mem_reg) {
-          LOG(ERROR) << "Unable to locate memory base register '"
-                     << maybe_reg->str() << "' used for storing " << desc << ".";
-          return false;
-        }
-      }
-    }
+  // Context associated with the architecture.
+  llvm::LLVMContext &context;
 
-    auto maybe_offset = mem_obj->getInteger("offset");
-    if (maybe_offset) {
-      decl.mem_offset = *maybe_offset;
-    }
-  }
+  // Parses JSON declarations.
+  anvill::JSONTranslator json_translator;
 
-  if (decl.reg && decl.mem_reg) {
-    LOG(ERROR) << "A " << desc << " cannot be resident in both a register "
-               << "and a memory location.";
-    return false;
-  } else if (!decl.reg && !(decl.mem_reg || decl.mem_offset)) {
-    LOG(ERROR)
-        << "A " << desc << " must be resident in either a register or "
-        << "a memory location (defined in terms of a register and offset).";
-    return false;
-  }
-
-  return true;
-}
-
-// Parse a parameter from the JSON spec. Parameters should have names,
-// as that makes the bitcode slightly easier to read, but names are
-// not required. They must have types, and these types should be mostly
-// reflective of what you would see if you compiled C/C++ source code to
-// LLVM bitcode, and inspected the type of the corresponding parameter in
-// the bitcode.
-static bool ParseParameter(const remill::Arch *arch, llvm::LLVMContext &context,
-                           anvill::ParameterDecl &decl,
-                           llvm::json::Object *obj) {
-
-  auto maybe_name = obj->getString("name");
-  if (maybe_name) {
-    decl.name = maybe_name->str();
-  } else {
-    LOG(WARNING) << "Missing function parameter name.";
-  }
-
-  auto maybe_type_str = obj->getString("type");
-  if (!maybe_type_str) {
-    LOG(ERROR) << "Missing 'type' field in function parameter.";
-    return false;
-  }
-
-  anvill::TypeTranslator type_specifier(context, arch->DataLayout());
-
-  std::string spec = maybe_type_str->str();
-  auto type_spec_res = type_specifier.DecodeFromString(spec);
-  if (!type_spec_res.Succeeded()) {
-    auto error = type_spec_res.TakeError();
-
-    LOG(ERROR) << error.message << " in spec " << spec;
-    return false;
-  }
-
-  decl.type = type_spec_res.TakeValue();
-  if (!decl.type->isSized()) {
-    LOG(ERROR) << "The following type is not sized: " << spec;
-    return false;
-  }
-
-  return ParseValue(arch, decl, obj, "function parameter");
-}
-
-//static bool ParseTypedRegister(
-//    const remill::Arch *arch, llvm::LLVMContext &context,
-//    std::unordered_map<uint64_t, std::vector<anvill::TypedRegisterDecl>>
-//        &reg_map,
-//    llvm::json::Object *obj) {
-//
-//  auto maybe_address = obj->getInteger("address");
-//  if (!maybe_address) {
-//    LOG(ERROR) << "Missing 'address' field in typed register.";
-//    return false;
-//  }
-//  anvill::TypedRegisterDecl decl;
-//  auto maybe_value = obj->getInteger("value");
-//  if (maybe_value) {
-//    decl.value = *maybe_value;
-//  }
-//
-//  auto maybe_type_str = obj->getString("type");
-//  if (!maybe_type_str) {
-//    LOG(ERROR) << "Missing 'type' field in typed register.";
-//    return false;
-//  }
-//
-//  anvill::TypeSpecifier type_specifier(context, arch->DataLayout());
-//  std::string spec = maybe_type_str->str();
-//  auto type_spec_res = type_specifier.DecodeFromString(spec);
-//  if (!type_spec_res.Succeeded()) {
-//    auto error = type_spec_res.TakeError();
-//
-//    LOG(ERROR) << error.message << " in spec " << spec;
-//    return false;
-//  }
-//
-//  decl.type = type_spec_res.TakeValue();
-//  if (!decl.type->isSized()) {
-//    LOG(ERROR) << "The following type is not sized: " << spec;
-//    return false;
-//  }
-//
-//  auto register_name = obj->getString("register");
-//  if (!register_name) {
-//    LOG(ERROR) << "Missing 'register' field in typed register";
-//    return false;
-//  }
-//
-//  auto maybe_reg = arch->RegisterByName(register_name->str());
-//  if (!maybe_reg) {
-//    LOG(ERROR) << "Unable to locate register '" << register_name->str()
-//               << "' for typed register information:"
-//               << " at '" << std::hex << *maybe_address << std::dec << "'";
-//    return false;
-//  }
-//
-//  decl.reg = maybe_reg;
-//  reg_map[*maybe_address].emplace_back(std::move(decl));
-//  return true;
-//}
-
-// Parse a return value from the JSON spec.
-static bool ParseReturnValue(const remill::Arch *arch,
-                             llvm::LLVMContext &context,
-                             anvill::ValueDecl &decl, llvm::json::Object *obj) {
-
-  auto maybe_type_str = obj->getString("type");
-  if (!maybe_type_str) {
-    LOG(ERROR) << "Missing 'type' field in function return value.";
-    return false;
-  }
-
-  anvill::TypeTranslator type_specifier(context, arch->DataLayout());
-  std::string spec = maybe_type_str->str();
-  auto type_spec_res = type_specifier.DecodeFromString(spec);
-  if (!type_spec_res.Succeeded()) {
-    auto error = type_spec_res.TakeError();
-    LOG(ERROR) << error.message << " in spec " << spec;
-    return false;
-  }
-
-  decl.type = type_spec_res.TakeValue();
-  if (!decl.type->isSized()) {
-    LOG(ERROR) << "The following type is not sized: " << spec;
-    return false;
-  }
-
-  return ParseValue(arch, decl, obj, "function return value");
-}
-
-// Try to unserialize function info from a JSON specification. These
-// are really function prototypes / declarations, and not any isntruction
-// data (that is separate, if present).
-static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
-                          anvill::Program &program, llvm::json::Object *obj,
-                          llvm::Module &module) {
-
-  anvill::FunctionDecl decl;
-
-  auto maybe_ea = obj->getInteger("address");
-  if (!maybe_ea) {
-    LOG(ERROR) << "Missing function address in specification";
-    return false;
-  }
-
-  auto address = static_cast<uint64_t>(*maybe_ea);
-
-  decl.arch = arch;
-  decl.address = address;
-
-  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
-    decl.is_noreturn = *maybe_is_noreturn;
-  }
-
-  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
-    decl.is_variadic = *maybe_is_variadic;
-  }
-
-  if (auto maybe_cc = obj->getInteger("calling_convention")) {
-    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
-  }
-
-  // NOTE (akshayk): An external function can have function type in the spec. If
-  //                 the function type is available, it will have precedence over
-  //                 the parameter variables and return values. If the function
-  //                 type is not available it will fallback to processing params
-  //                 and return values
-
-  auto maybe_type = obj->getString("type");
-  if (maybe_type) {
-    anvill::TypeTranslator type_specifier(context, arch->DataLayout());
-    std::string spec = maybe_type->str();
-    auto type_spec_result = type_specifier.DecodeFromString(spec);
-    if (!type_spec_result.Succeeded()) {
-      auto error = type_spec_result.TakeError();
-      LOG(ERROR) << error.message << " in spec " << spec;
-      return false;
-    }
-
-    auto func_type = llvm::dyn_cast<llvm::FunctionType>(type_spec_result.TakeValue());
-    if (!func_type) {
-      LOG(ERROR) << "Type associated with function at address " << std::hex
-                 << address << std::dec << " is incorrect! " << spec;
-      return false;
-    }
-
-    if (decl.is_variadic != func_type->isVarArg()) {
-      LOG(ERROR) << "Type associated with function at address " << std::hex
-                 << address << std::dec << " does not match variadic nature of "
-                 << "specification: " << spec;
-      return false;
-    }
-
-    std::stringstream ss;
-    ss << "dummy_" << std::hex << address;
-    llvm::Function *dummy_function = llvm::Function::Create(
-        func_type, llvm::Function::ExternalLinkage, ss.str().c_str(), module);
-
-    dummy_function->setCallingConv(decl.calling_convention);
-    if (decl.is_noreturn) {
-      dummy_function->addFnAttr(llvm::Attribute::NoReturn);
-    }
-
-    // Create a FunctionDecl object from the dummy function. This will set
-    // the correct function types, bind the parameters & return values
-    // with the architectural registers, and set the calling convention
-
-    llvm::Expected<anvill::FunctionDecl> maybe_decl =
-        anvill::FunctionDecl::Create(*dummy_function, arch);
-    dummy_function->eraseFromParent();
-
-    if (remill::IsError(maybe_decl)) {
-      LOG(ERROR) << "Failed to create FunctionDecl of type "
-                 << remill::LLVMThingToString(func_type)
-                 << " defined at address " << std::hex << address;
-      return false;
-    }
-
-    maybe_decl->address = address;
-    decl = std::move(remill::GetReference(maybe_decl));
-
-  // The function is not external and does not have associated type
-  // in the spec. Fallback to processing parameters and return values
-  } else {
-
-    if (auto params = obj->getArray("parameters")) {
-      for (llvm::json::Value &maybe_param : *params) {
-        if (auto param_obj = maybe_param.getAsObject()) {
-          auto &pv = decl.params.emplace_back();
-          if (!ParseParameter(arch, context, pv, param_obj)) {
-            return false;
-          }
-        } else {
-          LOG(ERROR) << "Non-object value in 'parameters' array of "
-                     << "function at address '" << std::hex << decl.address
-                     << std::dec << "'";
-          return false;
-        }
-      }
-    }
-
-    // Get the return address location.
-    if (auto ret_addr = obj->getObject("return_address")) {
-      if (!ParseValue(arch, decl.return_address, ret_addr, "return address")) {
-        return false;
-      }
-    } else {
-      decl.return_address.type = llvm::Type::getVoidTy(context);
-    }
-
-    // Parse the value of the stack pointer on exit from the function, which is
-    // defined in terms of `reg + offset` for a value of a register `reg`
-    // on entry to the function.
-    if (auto ret_sp = obj->getObject("return_stack_pointer")) {
-      auto maybe_reg = ret_sp->getString("register");
-      if (maybe_reg) {
-        decl.return_stack_pointer = arch->RegisterByName(maybe_reg->str());
-        if (!decl.return_stack_pointer) {
-          LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
-                     << "' used computing the exit value of the "
-                     << "stack pointer in function specification at '"
-                     << std::hex << decl.address << std::dec << "'";
-          return false;
-        }
-      } else {
-        LOG(ERROR)
-            << "Non-present or non-string 'register' in 'return_stack_pointer' "
-            << "object of function specification at '" << std::hex
-            << decl.address << std::dec << "'";
-        return false;
-      }
-
-      auto maybe_offset = ret_sp->getInteger("offset");
-      if (maybe_offset) {
-        decl.return_stack_pointer_offset = *maybe_offset;
-      }
-    } else {
-      LOG(ERROR)
-          << "Non-present or non-object 'return_stack_pointer' in function "
-          << "specification at '" << std::hex << decl.address << std::dec
-          << "'";
-      return false;
-    }
-
-    if (auto returns = obj->getArray("return_values")) {
-      for (llvm::json::Value &maybe_ret : *returns) {
-        if (auto ret_obj = maybe_ret.getAsObject()) {
-          auto &rv = decl.returns.emplace_back();
-          if (!ParseReturnValue(arch, context, rv, ret_obj)) {
-            return false;
-          }
-        } else {
-          LOG(ERROR) << "Non-object value in 'return_values' array of "
-                     << "function at address '" << std::hex << decl.address
-                     << std::dec << "'";
-          return false;
-        }
-      }
-    }
-  }
-
-//  if (auto register_info = obj->getArray("register_info")) {
-//    for (llvm::json::Value &maybe_reg : *register_info) {
-//      if (auto reg_obj = maybe_reg.getAsObject()) {
-//
-//        // decl.register_info.emplace_back();
-//        // Parse the register info!
-//        if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
-//          return false;
-//        }
-//      } else {
-//        LOG(ERROR) << "Non-object value in 'register_info' array of "
-//                   << "function at address '" << decl.address << std::dec
-//                   << "'";
-//      }
-//    }
-//  }
-
-  auto err = program.DeclareFunction(decl);
-  if (remill::IsError(err)) {
-    LOG(ERROR) << remill::GetErrorString(err);
-    return false;
-  }
-
-  return true;
-}
+ public:
+  JSONParser(Program &program, const remill::Arch *arch_,
+             const anvill::TypeTranslator &type_translator_)
+      : arch(arch_),
+        type_translator(type_translator_),
+        context(*(arch->context)),
+        json_translator(arch, type_translator) {}
+};
 
 // Try to unserialize variable information.
 static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,
@@ -832,6 +477,14 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
                       anvill::Program &program, llvm::json::Object *spec,
                       llvm::Module &module) {
 
+
+
+//  auto err = program.DeclareFunction(decl);
+//  if (remill::IsError(err)) {
+//    LOG(ERROR) << remill::GetErrorString(err);
+//    return false;
+//  }
+
   auto num_funcs = 0;
   if (auto funcs = spec->getArray("functions")) {
     for (llvm::json::Value &func : *funcs) {
@@ -964,7 +617,7 @@ static bool ParseSpec(const remill::Arch *arch, llvm::LLVMContext &context,
   return true;
 }
 
-}  // namespace
+}  // namespace decompile
 
 int main(int argc, char *argv[]) {
 
@@ -1034,13 +687,17 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  anvill::Program program;
-  auto memory = anvill::MemoryProvider::CreateProgramMemoryProvider(program);
-  auto types =
-      anvill::TypeProvider::CreateProgramTypeProvider(context, program);
+  arch->PrepareModule(&module);
 
-  anvill::LifterOptions options(arch.get(), module,
-                                anvill::ControlFlowProvider::Create(program));
+  anvill::TypeDictionary td(context);
+  anvill::TypeTranslator tt(td, arch);
+
+  decompile::Program program;
+  decompile::ProgramMemoryProvider mp(program);
+  decompile::ProgramControlFlowProvider cfp(program);
+  decompile::ProgramTypeProvider tp(program, tt);
+
+  anvill::LifterOptions options(arch.get(), module, tp, cfp, mp);
 
   if (FLAGS_add_breakpoints) {
     options.add_breakpoints = true;

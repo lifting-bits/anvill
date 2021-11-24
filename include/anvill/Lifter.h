@@ -9,19 +9,35 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
 
 namespace llvm {
+class Constant;
+class DataLayout;
+class Function;
+class GlobalValue;
 class Module;
+class PointerType;
 }  // namespace llvm
 namespace remill {
 class Arch;
 }  // namespace remill
 namespace anvill {
 
+struct FunctionDecl;
+struct GlobalVarDecl;
+
 class ControlFlowProvider;
+class EntityLifterImpl;
+class FunctionLifter;
+class LifterOptions;
 class MemoryProvider;
 class TypeDictionary;
 class TypeProvider;
+class ValueLifter;
+class ValueLifterImpl;
 
 enum class StateStructureInitializationProcedure : char {
 
@@ -88,7 +104,6 @@ class LifterOptions {
         type_provider(type_provider_),
         control_flow_provider(control_flow_provider_),
         memory_provider(memory_provider_),
-        type_dictionary(type_provider.TypeDictionary()),
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
         stack_frame_struct_init_procedure(
@@ -113,6 +128,9 @@ class LifterOptions {
   // Target module into which code will be lifted.
   llvm::Module *const module;
 
+  // Return the data layout associated with the lifter options.
+  const llvm::DataLayout &DataLayout(void) const;
+
   const TypeProvider &type_provider;
   const ControlFlowProvider &control_flow_provider;
   const MemoryProvider &memory_provider;
@@ -122,7 +140,7 @@ class LifterOptions {
   // a structure wrapping an `i32`, signalling that we're actually dealing with
   // a signed integer. To know what is what, we need to know the dictionary of
   // interpretable types.
-  const TypeDictionary &type_dictionary;
+  const ::anvill::TypeDictionary &TypeDictionary(void) const;
 
   // The function lifter produces functions with Remill's state structure
   // allocated on the stack. This configuration option determines how the
@@ -230,6 +248,86 @@ class LifterOptions {
   LifterOptions(void) = delete;
 
   void CheckModuleContextMatchesArch(void) const;
+};
+
+// Lifting context for ANVILL. The lifting context keeps track of the options
+// used for lifting, the module into which lifted objects are placed, and
+// a the mapping between lifted objects and their original addresses in the
+// binary.
+class EntityLifter {
+ public:
+  ~EntityLifter(void);
+
+  explicit EntityLifter(const LifterOptions &options);
+
+  // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
+  // then return the address of that entity in the binary being lifted.
+  std::optional<uint64_t> AddressOfEntity(llvm::Constant *entity) const;
+
+  // Return the options being used by this entity lifter.
+  const LifterOptions &Options(void) const;
+
+  // Return the data layout associated with this entity lifter.
+  const llvm::DataLayout &DataLayout(void) const;
+
+  // Return a reference to the memory provider used by this entity lifter.
+  MemoryProvider &MemoryProvider(void) const;
+
+  // Return a reference to the type provider for this entity lifter.
+  TypeProvider &TypeProvider(void) const;
+
+  // Lift a function and return it. Returns `nullptr` if there was a failure.
+  llvm::Function *LiftEntity(const FunctionDecl &decl) const;
+
+  // Lift a function and return it. Returns `nullptr` if there was a failure.
+  llvm::Function *DeclareEntity(const FunctionDecl &decl) const;
+
+  // Lift a variable and return it. Returns `nullptr` if there was a failure.
+  llvm::Constant *LiftEntity(const GlobalVarDecl &decl) const;
+
+  // Lift a variable and return it. Returns `nullptr` if there was a failure.
+  llvm::Constant *DeclareEntity(const GlobalVarDecl &decl) const;
+
+  EntityLifter(const EntityLifter &) = default;
+  EntityLifter(EntityLifter &&) noexcept = default;
+  EntityLifter &operator=(const EntityLifter &) = default;
+  EntityLifter &operator=(EntityLifter &&) noexcept = default;
+
+ private:
+  friend class DataLifter;
+  friend class FunctionLifter;
+  friend class ValueLifter;
+  friend class ValueLifterImpl;
+
+  inline EntityLifter(const std::shared_ptr<EntityLifterImpl> &impl_)
+      : impl(impl_) {}
+
+  EntityLifter(void) = default;
+
+  std::shared_ptr<EntityLifterImpl> impl;
+};
+
+class ValueLifter {
+ public:
+  ~ValueLifter(void);
+
+  ValueLifter(const EntityLifter &entity_lifter_);
+
+  // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
+  // of type `type_of_data`. `loc_ea`, if non-null, is the address at which
+  // `data` appears.
+  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data) const;
+
+  // Interpret `ea` as being a pointer to a value of type `value_type` in the
+  // address space `address_space`.
+  //
+  // Returns an `llvm::Constant *` if the pointer is associated with a
+  // known or plausible entity, and an `nullptr` otherwise.
+  llvm::Constant *Lift(uint64_t ea, llvm::Type *value_type,
+                       unsigned address_space=0u) const;
+
+ private:
+  std::shared_ptr<EntityLifterImpl> impl;
 };
 
 }  // namespace anvill

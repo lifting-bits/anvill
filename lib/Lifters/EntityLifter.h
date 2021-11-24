@@ -8,8 +8,7 @@
 
 #pragma once
 
-#include <anvill/EntityLifter.h>
-#include <anvill/LifterOptions.h>
+#include <anvill/Lifter.h>
 #include <anvill/MemoryProvider.h>
 #include <anvill/TypeProvider.h>
 #include <llvm/ADT/SmallSet.h>
@@ -40,10 +39,7 @@ class EntityLifterImpl {
  public:
   ~EntityLifterImpl(void);
 
-  explicit EntityLifterImpl(
-      const LifterOptions &options_,
-      const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<TypeProvider> &type_provider_);
+  explicit EntityLifterImpl(const LifterOptions &options_);
 
   // Tells the entity lifter that `entity` is the lifted function/data at
   // `address`. There is some collusion between the `Context`, the
@@ -74,10 +70,10 @@ class EntityLifterImpl {
   const LifterOptions &options;
 
   // Provider of memory when asking for bytes for instructions or data.
-  const std::shared_ptr<MemoryProvider> memory_provider;
+  const MemoryProvider *memory_provider;
 
   // Provider of type information when asking for function prototypes.
-  const std::shared_ptr<TypeProvider> type_provider;
+  const TypeProvider *type_provider;
 
   // Lifts initializers of global variables. Talks with the `data_lifter`
   // and the `function_lifter` when its trying to resolve cross-references

@@ -21,10 +21,14 @@ class DataLayout;
 class IntegerType;
 class IRBuilderBase;
 class LLVMContext;
+class Module;
 class StringRef;
 class Type;
 class Value;
 }  // namespace llvm
+namespace remill {
+class Arch;
+}  // namespace remill
 namespace anvill {
 
 struct TypeSpecificationError final {
@@ -144,9 +148,16 @@ class TypeTranslator {
 
   // Initialize a type specifier with a type dictionary.
   TypeTranslator(const TypeDictionary &type_dict, const llvm::DataLayout &dl);
+  TypeTranslator(const TypeDictionary &type_dict, const llvm::Module &module);
+  TypeTranslator(const TypeDictionary &type_dict, const remill::Arch *arch);
+  TypeTranslator(const TypeDictionary &type_dict,
+                 const std::unique_ptr<const remill::Arch> &arch);
 
   // Return the type dictionary for this type specifier.
   const TypeDictionary &Dictionary(void) const noexcept;
+
+  // Return a reference to the data layout used by this type translator.
+  const llvm::DataLayout &DataLayout(void) const noexcept;
 
   // Convert the type `type` to a string encoding. If `alphanum` is `true`
   // then only alphanumeric characters (and underscores) are used. The

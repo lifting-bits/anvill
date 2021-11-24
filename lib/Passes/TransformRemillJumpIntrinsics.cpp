@@ -10,7 +10,7 @@
 
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/Analysis/Utils.h>
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>

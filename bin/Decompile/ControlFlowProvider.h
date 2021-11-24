@@ -10,11 +10,11 @@
 
 #include <anvill/ControlFlowProvider.h>
 
-namespace anvill {
+namespace decompile {
 
 class Program;
 
-class ProgramControlFlowProvider final : public ControlFlowProvider {
+class ProgramControlFlowProvider final : public anvill::ControlFlowProvider {
  private:
   const Program &program;
 
@@ -27,8 +27,8 @@ class ProgramControlFlowProvider final : public ControlFlowProvider {
       const remill::Instruction &from_inst,
       std::uint64_t address) const final;
 
-  std::optional<ControlFlowTargetList>
+  std::optional<anvill::ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
 };
 
-}  // namespace anvill
+}  // namespace decompile

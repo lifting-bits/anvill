@@ -22,7 +22,7 @@
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
@@ -46,12 +46,13 @@
 #include <llvm/Transforms/IPO/GlobalOpt.h>
 
 #include <anvill/MemoryProvider.h>
-#include <anvill/JumpTableAnalysis.h>
+#include <anvill/Passes/JumpTableAnalysis.h>
 // clang-format on
 
 #include <anvill/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <remill/BC/ABI.h>
+#include <remill/BC/Compat/Error.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Optimizer.h>
 #include <remill/BC/Util.h>
@@ -60,8 +61,8 @@
 #include <vector>
 
 #include "anvill/ABI.h"
-#include "anvill/Decl.h"
-#include "anvill/Program.h"
+#include "anvill/Specification.h"
+#include "anvill/Lifter.h"
 #include "anvill/Util.h"
 
 DEFINE_uint32(
@@ -162,7 +163,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddConvertMasksToCasts(fpm);
 
   AddSwitchLoweringPass(fpm, mem_provider, slc);
-  AddRecoverEntityUseInformation(fpm, err_man, lifter_context);
+  AddRecoverEntityUseInformation(fpm, lifter_context);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveTrivialPhisAndSelects(fpm);
 

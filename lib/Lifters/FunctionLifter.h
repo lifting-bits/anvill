@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include <anvill/Decl.h>
-#include <anvill/LifterOptions.h>
+#include <anvill/Specification.h>
+#include <anvill/Lifter.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
@@ -46,9 +46,7 @@ class FunctionLifter {
  public:
   ~FunctionLifter(void);
 
-  FunctionLifter(const LifterOptions &options_,
-                 MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_);
+  FunctionLifter(const LifterOptions &options_);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.

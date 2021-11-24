@@ -9,21 +9,15 @@
 #pragma once
 
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/EntityLifter.h>
-#include <anvill/ValueLifter.h>
-#include <anvill/Result.h>
+#include <llvm/IR/PassManager.h>
+#include <vector>
 
-#include <unordered_map>
-
-#include "BaseFunctionPass.h"
-
+namespace llvm {
+class Use;
+}  // namespace llvm
 namespace anvill {
 
 class TypeProvider;
-
-enum class EntityReferenceErrorCode {
-  UnknownError,
-};
 
 // Describes an instruction that appears to reference some entity.
 struct EntityUse final {
@@ -47,22 +41,12 @@ using EntityUsages = std::vector<EntityUse>;
 // This function pass recovers stack information by analyzing the usage
 // of the `__anvill_sp` symbol
 class RecoverEntityUseInformation final
-    : public BaseFunctionPass<RecoverEntityUseInformation> {
+    : public llvm::PassInfoMixin<RecoverEntityUseInformation> {
 
-  // Entity lifter, used for lifting entities by declaration.
-  const EntityLifter entity_lifter;
-
-  // Address lifter, usef for lifting entities by address/type.
-  const ValueLifter address_lifter;
-
-  // Used for summarizing/folding values into possible referenced addresses.
-  const CrossReferenceResolver xref_resolver;
+  // Resolve addresses to entities and vice versa.
+  const CrossReferenceResolver &xref_resolver;
 
  public:
-  // Creates a new RecoverStackFrameInformation object
-  static RecoverEntityUseInformation *
-  Create(ITransformationErrorManager &error_manager,
-         const EntityLifter &lifter);
 
   // Function pass entry point
   bool Run(llvm::Function &function, llvm::FunctionAnalysisManager &fam);
@@ -75,11 +59,9 @@ class RecoverEntityUseInformation final
   EntityUsages EnumeratePossibleEntityUsages(llvm::Function &function);
 
   // Patches the function, replacing the uses known to the entity lifter.
-  Result<std::monostate, EntityReferenceErrorCode>
-  UpdateFunction(llvm::Function &function, const EntityUsages &uses);
+  void UpdateFunction(llvm::Function &function, const EntityUsages &uses);
 
-  RecoverEntityUseInformation(ITransformationErrorManager &error_manager,
-                              const EntityLifter &lifter);
+  RecoverEntityUseInformation(const CrossReferenceResolver &xref_resolver_);
 
   virtual ~RecoverEntityUseInformation() override = default;
 };

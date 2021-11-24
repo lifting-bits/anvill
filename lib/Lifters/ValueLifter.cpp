@@ -9,8 +9,8 @@
 #include "ValueLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Analysis/Utils.h>
 #include <anvill/Type.h>
+#include <anvill/Util.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
@@ -164,17 +164,17 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     }
   });
 
-  auto unrwap_zero_indices = [](llvm::Constant *ret) {
+  auto unwrap_zero_indices = [](llvm::Constant *ret) {
     const auto ret_type = ret->getType();
     return UnwrapZeroIndices(ret, ret_type);
   };
 
   // We've found the entity we wanted.
   if (found_entity_at_type) {
-    return unrwap_zero_indices(found_entity_at_type);
+    return unwrap_zero_indices(found_entity_at_type);
 
   } else if (found_entity_at) {
-    return unrwap_zero_indices(found_entity_at);
+    return unwrap_zero_indices(found_entity_at);
   }
 
   auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
@@ -191,15 +191,14 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
                                  ".anvill.value_lifter.temp", options.module);
       auto maybe_inv_decl = FunctionDecl::Create(*func, options.arch);
       func->eraseFromParent();
-      if (!remill::IsError(maybe_inv_decl)) {
+      if (maybe_inv_decl.Succeeded()) {
         maybe_inv_decl->address = ea;  // Force the address in.
-        return GetFunctionPointer(remill::GetReference(maybe_inv_decl),
-                                  ent_lifter);
+        return GetFunctionPointer(maybe_inv_decl.TakeValue(), ent_lifter);
       } else {
         LOG(ERROR) << "Cannot create function declaration for function at "
                    << std::hex << ea << std::dec << " with type "
                    << remill::LLVMThingToString(func_type) << ": "
-                   << remill::GetErrorString(maybe_inv_decl);
+                   << maybe_inv_decl.TakeError();
       }
     }
   }
@@ -212,18 +211,17 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     ret = GetVarPointer(ea, ea - 1u, ent_lifter);
   }
 
-  return ret ? unrwap_zero_indices(ret) : nullptr;
+  return ret ? unwrap_zero_indices(ret) : nullptr;
 }
 
 // Lift the pointer at address `ea` which is getting referenced by the
 // variable at `loc_ea`. It checks the type and lift them as function
 // or variable pointer
-llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
-                                            llvm::PointerType *ptr_type,
-                                            EntityLifterImpl &ent_lifter,
-                                            uint64_t loc_ea) const {
+llvm::Constant *ValueLifterImpl::GetPointer(
+    uint64_t ea, llvm::Type *value_type, EntityLifterImpl &ent_lifter,
+    uint64_t loc_ea, unsigned address_space) const {
 
-  const auto addr_space = ptr_type->getAddressSpace();
+  auto ptr_type = llvm::PointerType::get(value_type, address_space);
   auto ret = TryGetPointerForAddress(ea, ent_lifter, ptr_type);
   if (!ret) {
     if (!ea) {
@@ -256,14 +254,15 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea,
 
   std::stringstream ss;
   ss << kGlobalAliasNamePrefix << std::hex << ea << '_'
-     << type_specifier.EncodeToString(type, true);
+     << type_specifier.EncodeToString(
+            type, EncodingFormat::kValidSymbolCharsOnly);
 
   const auto name = ss.str();
-  auto alias_ret = llvm::GlobalAlias::create(type, addr_space,
+  auto alias_ret = llvm::GlobalAlias::create(value_type, address_space,
                                              llvm::GlobalValue::ExternalLinkage,
                                              name, options.module);
 
-  if (ret->getType()->getPointerAddressSpace() != addr_space) {
+  if (ret->getType()->getPointerAddressSpace() != address_space) {
     ret = llvm::ConstantExpr::getAddrSpaceCast(ret, ptr_type);
   }
 
@@ -295,6 +294,7 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
     // Get the address of pointer type and look for it into the entity map.
     case llvm::Type::PointerTyID: {
       const auto pointer_type = llvm::dyn_cast<llvm::PointerType>(type);
+      const auto addr_space = pointer_type->getAddressSpace();
       const auto size = dl.getTypeAllocSize(pointer_type);
       auto value = ConsumeBytesAsInt(data, size);
       auto address = value.getZExtValue();
@@ -308,7 +308,8 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       }
 
       // If we successfully lift it as a reference then we're in good shape.
-      if (auto val = GetPointer(address, pointer_type, ent_lifter, loc_ea)) {
+      if (auto val = GetPointer(address, pointer_type->getElementType(),
+                                ent_lifter, loc_ea, addr_space)) {
         return val;
       }
 
@@ -400,7 +401,7 @@ ValueLifterImpl::ValueLifterImpl(const LifterOptions &options_)
     : options(options_),
       dl(options.module->getDataLayout()),
       context(options.module->getContext()),
-      type_specifier(context, dl) {}
+      type_specifier(options.TypeDictionary(), options.arch) {}
 
 ValueLifter::~ValueLifter(void) {}
 
@@ -415,14 +416,13 @@ llvm::Constant *ValueLifter::Lift(std::string_view data,
   return impl->value_lifter.Lift(data, type_of_data, *impl, 0);
 }
 
-// Interpret `ea` as being a pointer of type `pointer_type`. `loc_ea`,
-// if non-null, is the address at which `ea` appears.
+// Interpret `ea` as being a pointer of type `pointer_type`.
 //
 // Returns an `llvm::Constant *` if the pointer is associated with a
 // known or plausible entity, and a `nullptr` otherwise.
-llvm::Constant *ValueLifter::Lift(uint64_t ea,
-                                  llvm::PointerType *pointer_type) const {
-  return impl->value_lifter.GetPointer(ea, pointer_type, *impl, 0);
+llvm::Constant *ValueLifter::Lift(uint64_t ea, llvm::Type *value_type,
+                                  unsigned address_space) const {
+  return impl->value_lifter.GetPointer(ea, value_type, *impl, address_space);
 }
 
 }  // namespace anvill

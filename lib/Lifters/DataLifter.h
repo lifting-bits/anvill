@@ -11,10 +11,7 @@
 #include <anvill/Type.h>
 
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <set>
-#include <unordered_map>
 
 namespace llvm {
 class Constant;
@@ -38,8 +35,7 @@ class DataLifter {
  public:
   ~DataLifter(void);
 
-  DataLifter(const LifterOptions &options_, MemoryProvider &memory_provider_,
-             TypeProvider &type_provider_);
+  DataLifter(const LifterOptions &options_);
 
   // Lift a function. Will return `nullptr` if the memory is not accessible.
   llvm::Constant *LiftData(const GlobalVarDecl &decl,
