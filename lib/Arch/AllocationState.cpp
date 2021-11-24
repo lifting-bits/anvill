@@ -15,7 +15,7 @@
 
 #include <algorithm>
 
-#include "anvill/Decl.h"
+#include "anvill/Specification.h"
 
 namespace anvill {
 namespace {

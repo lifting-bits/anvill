@@ -10,18 +10,18 @@
 
 #include <anvill/MemoryProvider.h>
 
-namespace anvill {
+namespace decompile {
 
 class Program;
 
-// Provider of memory wrapping around an `anvill::Program`.
-class ProgramMemoryProvider final : public MemoryProvider {
+// Provider of memory wrapping around an `Program`.
+class ProgramMemoryProvider final : public anvill::MemoryProvider {
  public:
   virtual ~ProgramMemoryProvider(void);
 
   explicit ProgramMemoryProvider(const Program &program_);
 
-  std::tuple<uint8_t, ByteAvailability, BytePermission>
+  std::tuple<uint8_t, anvill::ByteAvailability, anvill::BytePermission>
   Query(uint64_t address) const final;
 
  private:
@@ -30,5 +30,4 @@ class ProgramMemoryProvider final : public MemoryProvider {
   const Program &program;
 };
 
-
-}  // namespace anvill
+}  // namespace decompile

@@ -10,7 +10,6 @@
 
 #include <glog/logging.h>
 
-#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -148,11 +147,6 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
 // clang-format on
 
 }  // namespace
-
-InstructionFolderPass::InstructionFolderPass(
-    ITransformationErrorManager &error_manager)
-    : BaseFunctionPass(error_manager) {}
-
 
 bool InstructionFolderPass::Run(llvm::Function &function,
                                 llvm::FunctionAnalysisManager &fam) {
@@ -784,7 +778,7 @@ bool InstructionFolderPass::PassFunctionState::FoldSelectInstruction(
   InstructionReplacementList inst_replacement_list;
 
   // Go through all the users of this `select` instruction
-  for (auto user : instr->users()) {
+  for (llvm::User *user : instr->users()) {
     InstructionReplacement repl;
     repl.original_instr = llvm::dyn_cast<llvm::Instruction>(user);
 
@@ -814,8 +808,7 @@ bool InstructionFolderPass::PassFunctionState::FoldSelectInstruction(
   return function_changed;
 }
 
-void AddInstructionFolderPass(llvm::FunctionPassManager &fpm,
-                              ITransformationErrorManager &error_manager) {
-  fpm.addPass(InstructionFolderPass(error_manager));
+void AddInstructionFolderPass(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(InstructionFolderPass());
 }
 }  // namespace anvill

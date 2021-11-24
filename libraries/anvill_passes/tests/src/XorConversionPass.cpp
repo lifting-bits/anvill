@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/InstIterator.h>

@@ -12,7 +12,7 @@
 
 #include "Program.h"
 
-namespace anvill {
+namespace decompile {
 
 ProgramControlFlowProvider::~ProgramControlFlowProvider(void) {}
 
@@ -29,10 +29,10 @@ std::uint64_t ProgramControlFlowProvider::GetRedirection(
   }
 }
 
-std::optional<ControlFlowTargetList>
+std::optional<anvill::ControlFlowTargetList>
 ProgramControlFlowProvider::TryGetControlFlowTargets(
     const remill::Instruction &from_inst) const {
   return program.TryGetControlFlowTargets(from_inst.pc);
 }
 
-}  // namespace anvill
+}  // namespace decompile

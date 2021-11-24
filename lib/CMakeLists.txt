@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-present, Trail of Bits, Inc.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
@@ -94,18 +94,18 @@ set(anvill_PUBLIC_HEADERS
   "${anvill_PUBLIC_HEADER_DIR}/ABI.h"
   "${anvill_PUBLIC_HEADER_DIR}/ControlFlowProvider.h"
   "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceFolder.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Decl.h"
-  "${anvill_PUBLIC_HEADER_DIR}/EntityLifter.h"
-  "${anvill_PUBLIC_HEADER_DIR}/LifterOptions.h"
+  "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceResolver.h"
+  "${anvill_PUBLIC_HEADER_DIR}/Lifter.h"
+  "${anvill_PUBLIC_HEADER_DIR}/JSON.h"
   "${anvill_PUBLIC_HEADER_DIR}/MemoryProvider.h"
   "${anvill_PUBLIC_HEADER_DIR}/Optimize.h"
   "${anvill_PUBLIC_HEADER_DIR}/Result.h"
+  "${anvill_PUBLIC_HEADER_DIR}/Specification.h"
   "${anvill_PUBLIC_HEADER_DIR}/Transforms.h"
   "${anvill_PUBLIC_HEADER_DIR}/Type.h"
   "${anvill_PUBLIC_HEADER_DIR}/TypeProvider.h"
   "${anvill_PUBLIC_HEADER_DIR}/Util.h"
   "${anvill_PUBLIC_HEADER_DIR}/Version.h"
-  "${anvill_PUBLIC_HEADER_DIR}/ValueLifter.h"
   ${anvill_passes_HEADERS}
 )
 
@@ -117,7 +117,9 @@ set(anvill_PRIVATE_HEADERS
 set(anvill_SOURCES
   "ABI.cpp"
   "CrossReferenceFolder.cpp"
-  "Decl.cpp"
+  "CrossReferenceResolver.cpp"
+  "JSON.cpp"
+  "Specification.cpp"
   "Optimize.cpp"
   "Transforms.cpp"
   "Type.cpp"

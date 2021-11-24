@@ -18,13 +18,15 @@
 
 #include <anvill/ControlFlowProvider.h>
 
-// Forward declare
+namespace anvill {
+struct FunctionDecl;
+struct GlobalVarDecl;
+}  // namespace anvill
 namespace llvm {
 class Type;
 class DataLayout;
 }  // namespace llvm
-
-namespace anvill {
+namespace decompile {
 
 // Represents a range of bytes, whose data is found in the range
 // `[begin, end)`.
@@ -156,9 +158,6 @@ struct ByteSequence {
   size_t size{0};
 };
 
-struct FunctionDecl;
-struct GlobalVarDecl;
-
 // A view into a program binary and its data.
 //
 // NOTE(pag): A variable and a function can be co-located,
@@ -208,18 +207,19 @@ class Program {
   //
   // This function will check for error conditions and report them
   // as appropriate.
-  llvm::Expected<FunctionDecl *>
-  DeclareFunction(const FunctionDecl &decl_template, bool force = false) const;
+  llvm::Expected<anvill::FunctionDecl *>
+  DeclareFunction(const anvill::FunctionDecl &decl_template,
+                  bool force = false) const;
 
   // Internal iterator over all functions.
   //
   // NOTE(pag): New functions *can* be declared while this method
   //            is actively iterating.
-  void
-  ForEachFunction(std::function<bool(const FunctionDecl *)> callback) const;
+  void ForEachFunction(
+      std::function<bool(const anvill::FunctionDecl *)> callback) const;
 
   // Search for a specific function by its address.
-  const FunctionDecl *FindFunction(uint64_t address) const;
+  const anvill::FunctionDecl *FindFunction(uint64_t address) const;
 
   // Call `callback` on each function with the given name.
   //
@@ -228,7 +228,7 @@ class Program {
   //            execution.
   void ForEachFunctionWithName(
       const std::string &name,
-      std::function<bool(const FunctionDecl *)> callback) const;
+      std::function<bool(const anvill::FunctionDecl *)> callback) const;
 
   // Returns a possible control flow redirection for the given address
   // or the input address itself if nothing is found
@@ -239,12 +239,13 @@ class Program {
   void AddControlFlowRedirection(std::uint64_t from, std::uint64_t to);
 
   // Returns a list of targets reachable from the given address
-  std::optional<ControlFlowTargetList>
+  std::optional<anvill::ControlFlowTargetList>
   TryGetControlFlowTargets(std::uint64_t address) const;
 
   // Sets a list of targets reachable from the given address; fails if the
   // specified source address already has an existing target list
-  bool TrySetControlFlowTargets(const ControlFlowTargetList &target_list);
+  bool TrySetControlFlowTargets(
+      const anvill::ControlFlowTargetList &target_list);
 
   // Add a name to an address.
   void AddNameToAddress(const std::string &name, uint64_t address) const;
@@ -252,20 +253,22 @@ class Program {
   // Apply a function `cb` to each name of the address `address`.
   void ForEachNameOfAddress(
       uint64_t address,
-      std::function<bool(const std::string &, const FunctionDecl *,
-                         const GlobalVarDecl *)>
+      std::function<bool(const std::string &, const anvill::FunctionDecl *,
+                         const anvill::GlobalVarDecl *)>
           cb) const;
 
   // Apply a function `cb` to each address of the named symbol `name`.
   void ForEachAddressOfName(
       const std::string &name,
-      std::function<bool(uint64_t, const FunctionDecl *, const GlobalVarDecl *)>
+      std::function<bool(uint64_t, const anvill::FunctionDecl *,
+                         const anvill::GlobalVarDecl *)>
           cb) const;
 
   // Apply a function `cb` to each address/name pair.
   void ForEachNamedAddress(
-      std::function<bool(uint64_t, const std::string &, const FunctionDecl *,
-                         const GlobalVarDecl *)>
+      std::function<bool(uint64_t, const std::string &,
+                         const anvill::FunctionDecl *,
+                         const anvill::GlobalVarDecl *)>
           cb) const;
 
   // Declare a variable in this view. This takes in a variable
@@ -282,21 +285,21 @@ class Program {
   //
   // This function will check for error conditions and report them
   // as appropriate.
-  llvm::Error DeclareVariable(const GlobalVarDecl &decl_template) const;
+  llvm::Error DeclareVariable(const anvill::GlobalVarDecl &decl_template) const;
 
   // Internal iterator over all vars.
   //
   // NOTE(pag): New variables *can* be declared while this method
   //            is actively iterating.
-  void
-  ForEachVariable(std::function<bool(const GlobalVarDecl *)> callback) const;
+  void ForEachVariable(
+      std::function<bool(const anvill::GlobalVarDecl *)> callback) const;
 
   // Search for a specific variable by its address.
-  const GlobalVarDecl *FindVariable(uint64_t address) const;
+  const anvill::GlobalVarDecl *FindVariable(uint64_t address) const;
 
   // Determine if an address lies somewhere within a known variable
-  const GlobalVarDecl *FindInVariable(uint64_t address,
-                                      const llvm::DataLayout &layout) const;
+  const anvill::GlobalVarDecl *FindInVariable(
+      uint64_t address, const llvm::DataLayout &layout) const;
 
   // Call `callback` on each variable with the given name.
   //
@@ -305,11 +308,10 @@ class Program {
   //            execution.
   void ForEachVariableWithName(
       const std::string &name,
-      std::function<bool(const GlobalVarDecl *)> callback) const;
+      std::function<bool(const anvill::GlobalVarDecl *)> callback) const;
 
   // Access memory, looking for a specific byte. Returns the byte found, if any.
   Byte FindByte(uint64_t address) const;
-
 
   // Find which byte sequence (defined in the spec) has the provided `address`
   ByteSequence FindBytesContaining(uint64_t address) const;
@@ -330,4 +332,4 @@ class Program {
   std::shared_ptr<Impl> impl;
 };
 
-}  // namespace anvill
+}  // namespace decompile

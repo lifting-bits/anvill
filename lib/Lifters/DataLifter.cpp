@@ -9,7 +9,7 @@
 #include "DataLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Decl.h>
+#include <anvill/Specification.h>
 #include <anvill/MemoryProvider.h>
 #include <anvill/Type.h>
 #include <anvill/Util.h>
@@ -27,14 +27,11 @@ namespace anvill {
 
 DataLifter::~DataLifter(void) {}
 
-DataLifter::DataLifter(const LifterOptions &options_,
-                       MemoryProvider &memory_provider_,
-                       TypeProvider &type_provider_)
+DataLifter::DataLifter(const LifterOptions &options_)
     : options(options_),
-      memory_provider(memory_provider_),
-      type_provider(type_provider_),
-      type_specifier(options.module->getContext(),
-                     options.module->getDataLayout()),
+      memory_provider(options.memory_provider),
+      type_provider(options.type_provider),
+      type_specifier(options.TypeDictionary(), options.arch),
       context(options.module->getContext()) {}
 
 // Declare a lifted a variable. Will not return `nullptr`.
@@ -78,7 +75,8 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
 
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-       << type_specifier.EncodeToString(type, true);
+       << type_specifier.EncodeToString(
+              type, EncodingFormat::kValidSymbolCharsOnly);
     const auto name = ss.str();
     const auto ga = llvm::GlobalAlias::create(
         type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
@@ -146,7 +144,8 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
   std::stringstream ss2;
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
-      << type_specifier.EncodeToString(type, true);
+      << type_specifier.EncodeToString(
+             type, EncodingFormat::kValidSymbolCharsOnly);
 
   const auto var_name = ss2.str();
   auto var = options.module->getGlobalVariable(var_name);

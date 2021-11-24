@@ -19,11 +19,13 @@
 #pragma once
 
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 namespace anvill {
+
+class CrossReferenceResolver;
 
 enum ReturnAddressResult {
 
@@ -50,8 +52,9 @@ enum ReturnAddressResult {
 class RemoveRemillFunctionReturns final
     : public llvm::PassInfoMixin<RemoveRemillFunctionReturns> {
  public:
-  RemoveRemillFunctionReturns(const EntityLifter &lifter_)
-      : xref_resolver(lifter_) {}
+  RemoveRemillFunctionReturns(
+      const CrossReferenceResolver &xref_resolver_)
+      : xref_resolver(xref_resolver_) {}
 
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);
@@ -60,6 +63,6 @@ class RemoveRemillFunctionReturns final
   ReturnAddressResult QueryReturnAddress(llvm::Module *module,
                                          llvm::Value *val) const;
 
-  const CrossReferenceResolver xref_resolver;
+  const CrossReferenceFolder xref_resolver;
 };
 }  // namespace anvill

@@ -10,23 +10,22 @@
 
 #include <glog/logging.h>
 
-#include <anvill/Decl.h>
+#include <anvill/Specification.h>
 
 #include "Program.h"
 
-namespace anvill {
+namespace decompile {
 
 ProgramTypeProvider::~ProgramTypeProvider(void) {}
 
-ProgramTypeProvider::ProgramTypeProvider(llvm::LLVMContext &context_,
-                                         const llvm::DataLayout &dl_,
-                                         const Program &program_)
-    : TypeProvider(context_, dl_),
+ProgramTypeProvider::ProgramTypeProvider(
+    const Program &program_, const ::anvill::TypeTranslator &tt)
+    : anvill::TypeProvider(tt),
       program(program_) {}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
-std::optional<FunctionDecl>
+std::optional<anvill::FunctionDecl>
 ProgramTypeProvider::TryGetFunctionType(uint64_t address) const {
   const auto decl = program.FindFunction(address);
   if (!decl) {
@@ -39,7 +38,7 @@ ProgramTypeProvider::TryGetFunctionType(uint64_t address) const {
   return *decl;
 }
 
-std::optional<GlobalVarDecl>
+std::optional<anvill::GlobalVarDecl>
 ProgramTypeProvider::TryGetVariableType(uint64_t address) const {
   if (auto var_decl = program.FindVariable(address); var_decl) {
 
@@ -50,7 +49,7 @@ ProgramTypeProvider::TryGetVariableType(uint64_t address) const {
 
   // if FindVariable fails to get the variable at address; get the variable
   // containing the address
-  } else if (auto var_decl = program.FindInVariable(address);
+  } else if (auto var_decl = program.FindInVariable(address, data_layout);
              var_decl) {
     CHECK_NOTNULL(var_decl->type);
     CHECK_LE(var_decl->address, address);
@@ -60,4 +59,4 @@ ProgramTypeProvider::TryGetVariableType(uint64_t address) const {
   return std::nullopt;
 }
 
-}  // namespace anvill
+}  // namespace decompile

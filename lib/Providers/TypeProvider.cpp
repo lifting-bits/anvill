@@ -6,9 +6,9 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Decl.h>
-#include <anvill/Program.h>
 #include <anvill/TypeProvider.h>
+
+#include <anvill/Specification.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -63,10 +63,10 @@ std::optional<FunctionDecl> TypeProvider::TryGetCalledFunctionType(
   return std::nullopt;
 }
 
-TypeProvider::TypeProvider(const TypeDictionary &type_dictionary_,
+TypeProvider::TypeProvider(const ::anvill::TypeDictionary &type_dictionary_,
                            const llvm::DataLayout &dl_)
     : context(type_dictionary_.u.named.bool_->getContext()),
-      dl(dl_),
+      data_layout(dl_),
       type_dictionary(type_dictionary_) {}
 
 // Try to get the type of the register named `reg_name` on entry to the
@@ -79,7 +79,7 @@ void TypeProvider::QueryRegisterStateAtInstruction(
 
 // Creates a type provider that always fails to provide type information.
 TypeProvider::Ptr TypeProvider::CreateNull(
-    const TypeDictionary &type_dictionary_,
+    const ::anvill::TypeDictionary &type_dictionary_,
     const llvm::DataLayout &dl_) {
   return std::make_shared<NullTypeProvider>(type_dictionary_, dl_);
 }

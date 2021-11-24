@@ -1,6 +1,6 @@
 #pragma once
 
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/LLVMContext.h>

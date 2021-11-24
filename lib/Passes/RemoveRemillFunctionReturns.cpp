@@ -280,9 +280,10 @@ RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-void AddRemoveRemillFunctionReturns(llvm::FunctionPassManager &fpm,
-                                    const EntityLifter &lifter) {
-  fpm.addPass(RemoveRemillFunctionReturns(lifter));
+void AddRemoveRemillFunctionReturns(
+    llvm::FunctionPassManager &fpm,
+    const CrossReferenceResolver &xref_resolver) {
+  fpm.addPass(RemoveRemillFunctionReturns(xref_resolver));
 }
 
 }  // namespace anvill

@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Decl.h>
+#include <anvill/Specification.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/DebugInfoMetadata.h>

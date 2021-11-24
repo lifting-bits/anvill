@@ -6,15 +6,19 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/ABI.h>
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/Analysis/Utils.h>
-#include <anvill/EntityLifter.h>
-#include <anvill/LifterOptions.h>
+
+#include <anvill/ABI.h>
+#include <anvill/CrossReferenceResolver.h>
+#include <anvill/Lifter.h>
+#include <anvill/TypeProvider.h>
+#include <anvill/Util.h>
 #include <glog/logging.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
@@ -24,11 +28,6 @@
 
 namespace anvill {
 namespace {
-
-using AddressResolverFuncType =
-    std::function<std::optional<uint64_t>(llvm::Constant *)>;
-
-using EntityResolverFuncType = std::function<llvm::Constant *(uint64_t)>;
 
 // Convert an unsigned value `val` of size `size` bits into a signed `int64_t`.
 static int64_t Signed(uint64_t val, uint64_t size) {
@@ -53,14 +52,12 @@ static int64_t Signed(uint64_t val, uint64_t size) {
 
 using ResolvedCrossReferenceCache = std::unordered_map<llvm::Value *, ResolvedCrossReference>;
 
-class CrossReferenceResolverImpl {
+class CrossReferenceFolderImpl {
  public:
-  CrossReferenceResolverImpl(const llvm::DataLayout &dl_,
-                             AddressResolverFuncType address_of_entity_,
-                             EntityResolverFuncType entity_at_address_)
-      : dl(dl_),
-        address_of_entity(address_of_entity_),
-        entity_at_address(entity_at_address_) {}
+  CrossReferenceFolderImpl(const CrossReferenceResolver &xref_resolver_,
+                           const llvm::DataLayout &dl_)
+      : xref_resolver(xref_resolver_),
+        dl(dl_) {}
 
   ResolvedCrossReference ResolveInstruction(llvm::Instruction *inst_val);
   ResolvedCrossReference ResolveConstant(llvm::Constant *const_val);
@@ -160,14 +157,10 @@ class CrossReferenceResolverImpl {
     }
   }
 
+  // Used to resolve constants to possible addresses.
+  const CrossReferenceResolver &xref_resolver;
+
   const llvm::DataLayout dl;
-
-  // Entity address resolver for figuring out the address of globals/functions.
-  const AddressResolverFuncType address_of_entity;
-
-  // Entity address resolver for figuring out the globals/functions associated
-  // with addresses.
-  const EntityResolverFuncType entity_at_address;
 
   // Cache of resolved values.
   ResolvedCrossReferenceCache xref_cache;
@@ -178,8 +171,8 @@ class CrossReferenceResolverImpl {
 // `lhs` or `rhs` to promote pointerness.
 template <typename Op>
 ResolvedCrossReference
-CrossReferenceResolverImpl::Merge(ResolvedCrossReference lhs,
-                                  ResolvedCrossReference rhs, Op &&merge_vals) {
+CrossReferenceFolderImpl::Merge(ResolvedCrossReference lhs,
+                                ResolvedCrossReference rhs, Op &&merge_vals) {
   ResolvedCrossReference xr = {};
   xr.u.address = merge_vals(lhs.u.address, rhs.u.address);
   xr.is_valid = lhs.is_valid & rhs.is_valid;
@@ -224,7 +217,7 @@ CrossReferenceResolverImpl::Merge(ResolvedCrossReference lhs,
 // Merge and pick the flags of `lhs` and `rhs`. It is acceptable for
 // `lhs` to promote pointerness, but not `rhs`.
 template <typename Op>
-ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
+ResolvedCrossReference CrossReferenceFolderImpl::MergeLeft(
     ResolvedCrossReference lhs, ResolvedCrossReference rhs, Op &&merge_vals) {
   ResolvedCrossReference xr = {};
   xr.u.address = merge_vals(lhs.u.address, rhs.u.address);
@@ -241,7 +234,7 @@ ResolvedCrossReference CrossReferenceResolverImpl::MergeLeft(
 }
 
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
+CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 
   auto it = xref_cache.find(inst_val);
   if (it != xref_cache.end()) {
@@ -351,7 +344,7 @@ CrossReferenceResolverImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 
 // Try to resolve a constant to a cross-reference.
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
+CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
 
   auto it = xref_cache.find(const_val);
   if (it != xref_cache.end()) {
@@ -395,7 +388,7 @@ CrossReferenceResolverImpl::ResolveConstant(llvm::Constant *const_val) {
 }
 
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
+CrossReferenceFolderImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
   ResolvedCrossReference xr = {};
 
@@ -421,7 +414,7 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
   xr.references_global_value = true;
 
-  if (auto maybe_addr = address_of_entity(gv); maybe_addr) {
+  if (auto maybe_addr = xref_resolver.AddressOfEntity(gv); maybe_addr) {
     xr.u.address = *maybe_addr;
     xr.references_entity = true;
     xr.is_valid = true;
@@ -441,9 +434,9 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 }
 
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
+CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
-  if (auto maybe_addr = address_of_entity(ce); maybe_addr) {
+  if (auto maybe_addr = xref_resolver.AddressOfEntity(ce); maybe_addr) {
     ResolvedCrossReference xr;
     xr.u.address = *maybe_addr;
     xr.size = dl.getPointerSizeInBits(0);
@@ -605,7 +598,7 @@ CrossReferenceResolverImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
 
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
+CrossReferenceFolderImpl::ResolveCall(llvm::CallInst *call) {
   switch (call->getIntrinsicID()) {
     case llvm::Intrinsic::ctlz: {
       auto xr = ResolveValue(call->getArgOperand(0));
@@ -650,7 +643,7 @@ CrossReferenceResolverImpl::ResolveCall(llvm::CallInst *call) {
 
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
-CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
+CrossReferenceFolderImpl::ResolveValue(llvm::Value *val) {
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
 
@@ -662,7 +655,7 @@ CrossReferenceResolverImpl::ResolveValue(llvm::Value *val) {
 }
 
 // Returns the "magic" value that represents the return address.
-uint64_t CrossReferenceResolverImpl::MagicReturnAddressValue(void) const {
+uint64_t CrossReferenceFolderImpl::MagicReturnAddressValue(void) const {
   uint64_t addr = 0x4141414141414141ull;
   switch (dl.getPointerSizeInBits(0)) {
     case 16: return static_cast<uint16_t>(addr); break;
@@ -671,42 +664,31 @@ uint64_t CrossReferenceResolverImpl::MagicReturnAddressValue(void) const {
   }
 }
 
-CrossReferenceResolver::~CrossReferenceResolver(void) {}
-
 // The primary way of using a cross-reference resolver is with an entity
 // lifter that can resolve global references on our behalf.
-CrossReferenceResolver::CrossReferenceResolver(const EntityLifter &lifter)
-    : impl(std::make_shared<CrossReferenceResolverImpl>(
-          lifter.Options().module->getDataLayout(),
-          [=](llvm::Constant *entity) {
-            return lifter.AddressOfEntity(entity);
-          },
-          [=](uint64_t addr) -> llvm::Constant * {
-            llvm::Constant *ret = nullptr;
-            return ret;
-          })) {}
+CrossReferenceFolder::CrossReferenceFolder(
+    const CrossReferenceResolver &resolver, const llvm::DataLayout &dl)
+    : impl(std::make_shared<CrossReferenceFolderImpl>(resolver, dl)) {}
 
-// In the absence of an entity lifter, we need a DataLayout to determine
-// offsets, etc.
-CrossReferenceResolver::CrossReferenceResolver(const llvm::DataLayout &dl)
-    : impl(std::make_shared<CrossReferenceResolverImpl>(
-          dl, [](llvm::Constant *) { return std::nullopt; },
-          [](uint64_t) -> llvm::Constant * { return nullptr; })) {}
+// Return a reference to the data layout used by the cross-reference folder.
+const llvm::DataLayout &CrossReferenceFolder::DataLayout(void) const {
+  return impl->dl;
+}
 
 // Clear the internal cache.
-void CrossReferenceResolver::ClearCache(void) const {
+void CrossReferenceFolder::ClearCache(void) const {
   impl->xref_cache.clear();
 }
 
 // Try to resolve `val` as a cross-reference. `uses_cache` flag is set to true
 // if the application is using the cache and does not want to invalidate it.
 ResolvedCrossReference
-CrossReferenceResolver::TryResolveReferenceWithCaching(llvm::Value *val) const {
+CrossReferenceFolder::TryResolveReferenceWithCaching(llvm::Value *val) const {
   return impl->ResolveValue(val);
 }
 
 ResolvedCrossReference
-CrossReferenceResolver::TryResolveReferenceWithClearedCache(llvm::Value *val) const {
+CrossReferenceFolder::TryResolveReferenceWithClearedCache(llvm::Value *val) const {
   // If the application is not using cache, invalidate it before resolving
   // the cross references. It is done to avoid stale `val` sitting in the
   // cache if it has been changed/deleted.
@@ -715,7 +697,7 @@ CrossReferenceResolver::TryResolveReferenceWithClearedCache(llvm::Value *val) co
 }
 
 // Returns the "magic" value that represents the return address.
-uint64_t CrossReferenceResolver::MagicReturnAddressValue(void) const {
+uint64_t CrossReferenceFolder::MagicReturnAddressValue(void) const {
   return impl->MagicReturnAddressValue();
 }
 

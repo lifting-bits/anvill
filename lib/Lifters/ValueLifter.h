@@ -8,8 +8,7 @@
 
 #pragma once
 
-#include <anvill/LifterOptions.h>
-#include <anvill/ValueLifter.h>
+#include <anvill/Lifter.h>
 #include <anvill/Type.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>
@@ -67,9 +66,10 @@ class ValueLifterImpl {
   //
   // Returns an `llvm::GlobalValue *` if the pointer is associated with a
   // known or plausible entity, and an `llvm::Constant *` otherwise.
-  llvm::Constant *GetPointer(uint64_t ea, llvm::PointerType *type,
-                             EntityLifterImpl &ent_lifter,
-                             uint64_t loc_ea) const;
+  llvm::Constant *GetPointer(
+      uint64_t ea, llvm::Type *value_type,
+      EntityLifterImpl &ent_lifter,
+      uint64_t loc_ea, unsigned address_space=0) const;
 
  private:
   llvm::Constant *GetFunctionPointer(const FunctionDecl &decl,

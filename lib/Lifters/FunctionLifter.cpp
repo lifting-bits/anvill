@@ -9,10 +9,11 @@
 #include "FunctionLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Type.h>
-#include <anvill/Lifters/DeclLifter.h>
+#include <anvill/ControlFlowProvider.h>
 #include <anvill/MemoryProvider.h>
+#include <anvill/Type.h>
 #include <anvill/TypeProvider.h>
+#include <anvill/Util.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>
@@ -151,13 +152,11 @@ static void AnnotateInstructions(llvm::BasicBlock *block, unsigned id,
 
 FunctionLifter::~FunctionLifter(void) {}
 
-FunctionLifter::FunctionLifter(const LifterOptions &options_,
-                               MemoryProvider &memory_provider_,
-                               TypeProvider &type_provider_)
+FunctionLifter::FunctionLifter(const LifterOptions &options_)
     : options(options_),
-      memory_provider(memory_provider_),
-      type_provider(type_provider_),
-      type_specifier(*(options.arch->context), options.arch->DataLayout()),
+      memory_provider(options.memory_provider),
+      type_provider(options.type_provider),
+      type_specifier(options.TypeDictionary(), options.arch),
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
@@ -214,7 +213,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(
     const remill::Instruction &from_inst, uint64_t to_addr) {
   return GetOrCreateBlock(
       from_inst.pc,
-      options.ctrl_flow_provider->GetRedirection(from_inst, to_addr));
+      options.control_flow_provider.GetRedirection(from_inst, to_addr));
 }
 
 // Try to decode an instruction at address `addr` into `*inst_out`. Returns
@@ -321,8 +320,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
 
   // Attempt to get the target list for this control flow instruction
   // so that we can handle this jump in a less generic way
-  auto maybe_target_list =
-      options.ctrl_flow_provider->TryGetControlFlowTargets(inst);
+  std::optional<ControlFlowTargetList> maybe_target_list =
+      options.control_flow_provider.TryGetControlFlowTargets(inst);
 
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
@@ -474,7 +473,7 @@ FunctionLifter::TryGetTargetFunctionType(
   std::optional<FunctionDecl> opt_function_decl;
 
   if (from_inst.IsValid()) {
-    redirected_addr = options.ctrl_flow_provider->GetRedirection(
+    redirected_addr = options.control_flow_provider.GetRedirection(
         from_inst, address);
 
     // In case we get redirected but still fail, try once more with the original
@@ -1035,14 +1034,16 @@ llvm::Value *FunctionLifter::TryCallNativeFunction(uint64_t native_addr,
     DCHECK(decl.params.empty());
     DCHECK(decl.returns.empty());
     auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
-    if (remill::IsError(maybe_decl)) {
+    if (maybe_decl.Succeeded()) {
+      decl = maybe_decl.TakeValue();
+
+    } else {
       LOG(ERROR) << "Unable to create FunctionDecl for "
                  << remill::LLVMThingToString(native_func->getFunctionType())
                  << " with calling convention " << native_func->getCallingConv()
-                 << ": " << remill::GetErrorString(maybe_decl);
+                 << ": " << maybe_decl.TakeError();
       return nullptr;
     }
-    decl = std::move(remill::GetReference(maybe_decl));
   }
 
   llvm::IRBuilder<> irb(block);
@@ -1179,7 +1180,8 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   // starting address, its type, and its calling convention.
   std::stringstream ss;
   ss << "sub_" << std::hex << decl.address << '_'
-     << type_specifier.EncodeToString(func_type, true)
+     << type_specifier.EncodeToString(
+            func_type, EncodingFormat::kValidSymbolCharsOnly)
      << '_' << std::dec << decl.calling_convention;
 
   const auto base_name = ss.str();
@@ -1470,16 +1472,16 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
     DCHECK(native_decl.params.empty());
     DCHECK(native_decl.returns.empty());
     auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
-    if (remill::IsError(maybe_decl)) {
+    if (maybe_decl.Succeeded()) {
+      native_decl = maybe_decl.TakeValue();
+      native_decl.address = func_address;
+    } else {
       LOG(ERROR) << "Unable to create FunctionDecl for "
                  << remill::LLVMThingToString(native_func->getFunctionType())
                  << " with calling convention " << native_func->getCallingConv()
-                 << ": " << remill::GetErrorString(maybe_decl);
+                 << ": " << maybe_decl.TakeError();
       return;
     }
-
-    native_decl = std::move(remill::GetReference(maybe_decl));
-    native_decl.address = func_address;
   }
 
   // Create a state structure and a stack frame in the native function

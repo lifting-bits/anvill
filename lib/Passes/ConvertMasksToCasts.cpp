@@ -9,7 +9,9 @@
 #include "ConvertMasksToCasts.h"
 
 #include <anvill/ABI.h>
+#include <anvill/Util.h>
 #include <glog/logging.h>
+#include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstIterator.h>
@@ -26,7 +28,6 @@
 #include "Utils.h"
 
 namespace anvill {
-
 
 llvm::PreservedAnalyses
 ConvertMasksToCasts::run(llvm::Function &func,

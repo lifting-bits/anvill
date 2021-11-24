@@ -18,10 +18,7 @@
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
-#include <iostream>
-
 #include "Utils.h"
-
 
 namespace anvill {
 

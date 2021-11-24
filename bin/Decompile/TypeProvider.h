@@ -10,34 +10,31 @@
 
 #include <anvill/TypeProvider.h>
 
-namespace anvill {
+namespace decompile {
 
 class Program;
 
-// Provider of memory wrapping around an `anvill::Program`.
-class ProgramTypeProvider final : public TypeProvider {
+// Provides the types of functions, called functions, and accessed data.
+class ProgramTypeProvider final : public anvill::TypeProvider {
  private:
   const Program &program;
 
  public:
   virtual ~ProgramTypeProvider(void);
 
-  explicit ProgramTypeProvider(llvm::LLVMContext &context_,
-                               const llvm::DataLayout &dl_,
-                               const Program &program_);
+  explicit ProgramTypeProvider(const Program &program_,
+                               const ::anvill::TypeTranslator &tt);
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  std::optional<FunctionDecl> TryGetFunctionType(
+  std::optional<anvill::FunctionDecl> TryGetFunctionType(
       uint64_t address) const final;
 
-  std::optional<GlobalVarDecl>
+  std::optional<anvill::GlobalVarDecl>
   TryGetVariableType(uint64_t address) const final;
 
  private:
   ProgramTypeProvider(void) = delete;
 };
 
-
-
-}  // namespace anvill
+}  // namespace decompile

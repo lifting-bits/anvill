@@ -9,23 +9,26 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <memory>
 
 namespace llvm {
+class Constant;
 class DataLayout;
 class Type;
 class Value;
 }  // namespace llvm
 namespace anvill {
 
-class CrossReferenceResolverImpl;
+class CrossReferenceFolderImpl;
+class CrossReferenceResolver;
 class EntityLifter;
 
 struct ResolvedCrossReference {
   union {
 
     // The interpreted version of the address.
-    uint64_t address;
+    std::uint64_t address;
 
     // In the case of a stack pointer reference, we're generally dealing with a
     // displacement and not a concrete address.
@@ -33,7 +36,7 @@ struct ResolvedCrossReference {
     // Prefer to use ResolvedCrossReference::Displacement instead of accessing
     // this field directly, since this value needs to be adjusted according
     // to the size of a pointer
-    int64_t displacement;
+    std::int64_t displacement;
   } u;
 
   // As we're visiting a constant/cross-reference, we may encounter a symbolic
@@ -55,7 +58,7 @@ struct ResolvedCrossReference {
   // If we have a `hinted_type`, then how "far away" are we from that hinted
   // type? I.e. we might be doing a `getelementptr` on a pointer that is type
   // hinted, and so this represents the displacement induced by the GEP indices.
-  int64_t displacement_from_hinted_value_type{0};
+  std::int64_t displacement_from_hinted_value_type{0};
 
   // Saturating facts about what we've encountered in the process of evaluating
   // and trying to resolve a cross-reference.
@@ -101,17 +104,16 @@ struct ResolvedCrossReference {
 // and accumulated into increasingly larger expressions. Thus, we expect that
 // multiple instructions/constant expressions will reference the same underlying
 // expressions.
-class CrossReferenceResolver {
+class CrossReferenceFolder {
  public:
-  ~CrossReferenceResolver(void);
+  ~CrossReferenceFolder(void);
 
-  // The primary way of using a cross-reference resolver is with an entity
-  // lifter that can resolve global references on our behalf.
-  explicit CrossReferenceResolver(const EntityLifter &lifter);
+  // Create a new
+  explicit CrossReferenceFolder(const CrossReferenceResolver &resolver,
+                                const llvm::DataLayout &dl);
 
-  // In the absence of an entity lifter, we need a DataLayout to determine
-  // offsets, etc.
-  explicit CrossReferenceResolver(const llvm::DataLayout &dl);
+  // Return a reference to the data layout used by the cross-reference folder.
+  const llvm::DataLayout &DataLayout(void) const;
 
   // Clear the internal cache.
   void ClearCache(void) const;
@@ -126,16 +128,16 @@ class CrossReferenceResolver {
   // Returns the "magic" value that represents the return address.
   uint64_t MagicReturnAddressValue(void) const;
 
-  CrossReferenceResolver(const CrossReferenceResolver &) = default;
-  CrossReferenceResolver(CrossReferenceResolver &&) noexcept = default;
-  CrossReferenceResolver &operator=(const CrossReferenceResolver &) = default;
-  CrossReferenceResolver &
-  operator=(CrossReferenceResolver &&) noexcept = default;
+  CrossReferenceFolder(const CrossReferenceFolder &) = default;
+  CrossReferenceFolder(CrossReferenceFolder &&) noexcept = default;
+  CrossReferenceFolder &operator=(const CrossReferenceFolder &) = default;
+  CrossReferenceFolder &
+  operator=(CrossReferenceFolder &&) noexcept = default;
 
  private:
-  CrossReferenceResolver(void) = delete;
+  CrossReferenceFolder(void) = delete;
 
-  std::shared_ptr<CrossReferenceResolverImpl> impl;
+  std::shared_ptr<CrossReferenceFolderImpl> impl;
 };
 
 }  // namespace anvill

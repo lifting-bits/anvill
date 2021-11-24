@@ -19,6 +19,7 @@ class FunctionPassManager;
 }  // namespace llvm
 namespace anvill {
 
+class CrossReferenceResolver;
 class EntityLifter;
 class LifterOptions;
 class MemoryProvider;
@@ -231,8 +232,9 @@ void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-void AddRemoveRemillFunctionReturns(llvm::FunctionPassManager &fpm,
-                                    const EntityLifter &lifter);
+void AddRemoveRemillFunctionReturns(
+    llvm::FunctionPassManager &fpm,
+    const CrossReferenceResolver &xref_resolver);
 
 // This function pass makes use of the `__anvill_sp` usages to create an
 // `llvm::StructType` that acts as a stack frame. This initial stack frame
@@ -258,8 +260,7 @@ void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
 void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
-                                    TransformationErrorManager &error_manager,
-                                    const EntityLifter &lifter);
+                                    const CrossReferenceResolver &resolver);
 
 // Some machine code instructions explicitly introduce undefined values /
 // behavior. Often, this is a result of the CPUs of different steppings of
@@ -281,8 +282,7 @@ void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm);
 // This function pass will attempt to fold the following instruction
 // combinations:
 // {SelectInst, PHINode}/{BinaryOperator, CastInst, GetElementPtrInst}
-void AddInstructionFolderPass(llvm::FunctionPassManager &fpm,
-                              TransformationErrorManager &error_manager);
+void AddInstructionFolderPass(llvm::FunctionPassManager &fpm);
 
 // Removes trivial PHI and select nodes. These are PHI and select nodes whose
 // incoming values or true/false values match. This can happen as a result of

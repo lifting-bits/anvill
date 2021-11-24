@@ -1,27 +1,23 @@
 #
-# Copyright (c) 2021-present, Trail of Bits, Inc.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
 # the LICENSE file found in the root directory of this source tree.
 #
 
-add_executable(pointer-lifter
+add_executable(anvill-specify-bitcode
   src/main.cpp
 )
 
-target_link_libraries(pointer-lifter PRIVATE
+target_link_libraries(anvill-specify-bitcode PRIVATE
   anvill
 )
-
-if(ANVILL_ENABLE_TESTS)
-  add_subdirectory("tests")
-endif()
 
 if(ANVILL_ENABLE_INSTALL_TARGET)
   install(
     TARGETS
-      pointer-lifter
+      anvill-specify-bitcode
 
     EXPORT
       anvillTargets

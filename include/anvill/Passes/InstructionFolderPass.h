@@ -9,17 +9,15 @@
 #pragma once
 
 #include <llvm/IR/Dominators.h>
+#include <llvm/IR/PassManager.h>
 
 #include "BaseFunctionPass.h"
 
 namespace anvill {
 
-
 class InstructionFolderPass final
-    : public BaseFunctionPass<InstructionFolderPass> {
+    : public llvm::PassInfoMixin<InstructionFolderPass> {
  public:
-  explicit InstructionFolderPass(ITransformationErrorManager &error_manager);
-
   ~InstructionFolderPass(void) override = default;
 
   // Function pass entry point
@@ -27,7 +25,6 @@ class InstructionFolderPass final
 
   // Returns the pass name
   static llvm::StringRef name(void);
-
 
   // A single incoming value + basic_block for a PHI node
   struct IncomingValue final {

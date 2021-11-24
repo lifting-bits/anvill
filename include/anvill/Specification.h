@@ -8,8 +8,6 @@
 
 #pragma once
 
-#include <llvm/Support/JSON.h>
-
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -38,7 +36,6 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
-class TypeTranslator;
 class TypeDictionary;
 
 // A value, such as a parameter or a return value. Values are resident
@@ -63,15 +60,13 @@ struct ValueDecl {
 
   // Type of this value.
   llvm::Type *type{nullptr};
-
-  llvm::json::Object SerializeToJSON(const TypeTranslator &translator) const;
 };
 
 // A value declaration corresponding with a named parameter.
 struct ParameterDecl : public ValueDecl {
-  std::string name;
 
-  llvm::json::Object SerializeToJSON(const TypeTranslator &translator) const;
+  // Name of the parameter.
+  std::string name;
 };
 
 // The type, and possibly a concrete value, associated with a specific register
@@ -89,10 +84,8 @@ struct TypedRegisterDecl {
 
   // Concrete value inhabiting this register at some specific point in time.
   //
-  // TODO(pag): Make this an `llvm::APVal`.
+  // TODO(pag): Make this an `llvm::APVal`, perhaps.
   std::optional<std::uint64_t> value;
-
-  llvm::json::Object SerializeToJSON(const TypeTranslator &translator) const;
 };
 
 // A typed location in memory, that isn't actually code. This roughly
@@ -192,9 +185,6 @@ struct FunctionDecl {
       llvm::Value *target, const anvill::TypeDictionary &types,
       const remill::IntrinsicTable &intrinsics, llvm::BasicBlock *block,
       llvm::Value *state_ptr, llvm::Value *mem_ptr) const;
-
-  // Serialize this function decl to JSON.
-  llvm::json::Object SerializeToJSON(const TypeTranslator &translator) const;
 
   // Create a function declaration from an LLVM function.
   inline static Result<FunctionDecl, std::string>

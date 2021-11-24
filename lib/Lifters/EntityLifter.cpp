@@ -25,16 +25,13 @@ namespace anvill {
 
 EntityLifterImpl::~EntityLifterImpl(void) {}
 
-EntityLifterImpl::EntityLifterImpl(
-    const LifterOptions &options_,
-    const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<TypeProvider> &type_provider_)
+EntityLifterImpl::EntityLifterImpl(const LifterOptions &options_)
     : options(options_),
-      memory_provider(mem_provider_),
-      type_provider(type_provider_),
+      memory_provider(&(options.memory_provider)),
+      type_provider(&(options.type_provider)),
       value_lifter(options),
-      function_lifter(options, *mem_provider_, *type_provider_),
-      data_lifter(options, *mem_provider_, *type_provider_) {
+      function_lifter(options),
+      data_lifter(options) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
 }
@@ -83,11 +80,8 @@ void EntityLifterImpl::ForEachEntityAtAddress(
 EntityLifter::~EntityLifter(void) {}
 
 EntityLifter::EntityLifter(
-    const LifterOptions &options_,
-    const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<::anvill::TypeProvider> &type_provider_)
-    : impl(std::make_shared<EntityLifterImpl>(options_, mem_provider_,
-                                              type_provider_)) {}
+    const LifterOptions &options_)
+    : impl(std::make_shared<EntityLifterImpl>(options_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
@@ -99,6 +93,11 @@ EntityLifter::AddressOfEntity(llvm::Constant *entity) const {
 // Return the options being used by this entity lifter.
 const LifterOptions &EntityLifter::Options(void) const {
   return impl->options;
+}
+
+// Return the data layout associated with this entity lifter.
+const llvm::DataLayout &EntityLifter::DataLayout(void) const {
+  return impl->options.DataLayout();
 }
 
 // Return a reference to the memory provider used by this entity lifter.

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/EntityLifter.h>
+#include <anvill/Lifter.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
@@ -37,6 +37,6 @@ class TransformRemillJumpIntrinsics final
 
   bool TransformJumpIntrinsic(llvm::CallBase *call);
 
-  const CrossReferenceResolver xref_resolver_;
+  const CrossReferenceFolder xref_resolver_;
 };
 }  // namespace anvill
