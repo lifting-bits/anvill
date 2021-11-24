@@ -17,7 +17,6 @@
 namespace anvill {
 namespace {
 
-
 // NOTE(ian): The jump table analysis could also be targeted towards
 //            incomplete switch intrinsics.
 //

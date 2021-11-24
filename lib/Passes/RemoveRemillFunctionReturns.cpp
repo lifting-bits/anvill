@@ -6,11 +6,11 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveRemillFunctionReturns.h"
+#include <anvill/Passes/RemoveRemillFunctionReturns.h>
 
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/Analysis/Utils.h>
 #include <anvill/Transforms.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/IR/Function.h>
@@ -55,12 +55,12 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
       ret_addr->eraseFromParent();
       ret_addr = next_ret_addr;
 
-      // Call to `llvm.returnaddress`.
+    // Call to `llvm.returnaddress`.
     } else if (IsReturnAddress(module, ret_addr)) {
       ret_addr->eraseFromParent();
       break;
 
-      // Who knows?!
+    // Who knows?!
     } else {
       LOG(ERROR)
           << "Encountered unexpected instruction when removing return address: "
@@ -143,9 +143,11 @@ static void OverwriteReturnAddress(
   }
 }
 
-
 }  // namespace
 
+llvm::StringRef RemoveRemillFunctionReturns::name(void) {
+  return "RemoveRemillFunctionReturns";
+}
 
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
@@ -154,6 +156,8 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
                                  llvm::FunctionAnalysisManager &AM) {
 
   const auto module = func.getParent();
+  CrossReferenceFolder xref_folder(xref_resolver, module->getDataLayout());
+
   std::vector<llvm::CallBase *> matches_pattern;
   std::vector<std::pair<llvm::CallBase *, llvm::Value *>> fixups;
 
@@ -163,7 +167,7 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
           func && func->getName() == "__remill_function_return") {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
-        switch (QueryReturnAddress(module, ret_addr)) {
+        switch (QueryReturnAddress(xref_folder, module, ret_addr)) {
           case kFoundReturnAddress: matches_pattern.push_back(call); break;
 
           // Do nothing if it's a symbolic stack pointer load; we're probably
@@ -201,8 +205,9 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
 
 // Returns `true` if `val` is a return address.
 ReturnAddressResult
-RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
-                                                llvm::Value *val) const {
+RemoveRemillFunctionReturns::QueryReturnAddress(
+    const CrossReferenceFolder &xref_folder, llvm::Module *module,
+    llvm::Value *val) const {
 
   if (IsReturnAddress(module, val)) {
     return kFoundReturnAddress;
@@ -229,10 +234,10 @@ RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
     }
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(module, pti->getOperand(0));
+    return QueryReturnAddress(xref_folder, module, pti->getOperand(0));
 
   } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
-    return QueryReturnAddress(module, cast->getOperand(0));
+    return QueryReturnAddress(xref_folder, module, cast->getOperand(0));
 
   } else if (IsRelatedToStackPointer(module, val)) {
     return kFoundSymbolicStackPointerLoad;
@@ -243,9 +248,9 @@ RemoveRemillFunctionReturns::QueryReturnAddress(llvm::Module *module,
     // `__anvill_ra`, and then if we find this magic value on something that
     // references `__anvill_ra`, then we conclude that all those manipulations
     // in the constant expression are actually not important.
-  } else if (auto xr = xref_resolver.TryResolveReferenceWithClearedCache(val);
+  } else if (auto xr = xref_folder.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
-             xr.u.address == xref_resolver.MagicReturnAddressValue()) {
+             xr.u.address == xref_folder.MagicReturnAddressValue()) {
     return kFoundReturnAddress;
 
   } else {

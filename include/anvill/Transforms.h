@@ -122,8 +122,7 @@ class TransformationErrorManager {
 //
 // When this happens, we're better able to fold cross-references at the targets
 // of conditional branches.
-void AddSinkSelectionsIntoBranchTargets(
-    llvm::FunctionPassManager &fpm, TransformationErrorManager &error_manager);
+void AddSinkSelectionsIntoBranchTargets(llvm::FunctionPassManager &fpm);
 
 // Remill semantics sometimes contain compiler barriers (empty inline assembly
 // statements), especially related to floating point code (i.e. preventing
@@ -279,10 +278,21 @@ void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
 // as late as possible.
 void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm);
 
-// This function pass will attempt to fold the following instruction
-// combinations:
-// {SelectInst, PHINode}/{BinaryOperator, CastInst, GetElementPtrInst}
-void AddInstructionFolderPass(llvm::FunctionPassManager &fpm);
+// This function pass will attempt to hoist uses of `select` and `phi` through
+// the `select` and `phi`s themselves. For example, if there is:
+//
+//      %b = select %cond, %x, %y
+//      %a = add %b, %c
+//
+// Then this pass produces the following:
+//
+//      %x_b = add %x, %c
+//      %y_b = add %y, %c
+//      %a = select %cond, %x_b, %y_b
+//
+// The idea is that we want to be able to make things like address calculations
+// unconditional.
+void AddHoistUsersOfSelectsAndPhis(llvm::FunctionPassManager &fpm);
 
 // Removes trivial PHI and select nodes. These are PHI and select nodes whose
 // incoming values or true/false values match. This can happen as a result of
@@ -359,8 +369,6 @@ void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 // Removes calls to `__remill_error`.
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
-
-void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
-                           const MemoryProvider &memprov,
-                           SliceManager &slc);
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
+                              SliceManager &slc, const MemoryProvider &memprov);
 }  // namespace anvill

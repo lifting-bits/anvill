@@ -6,11 +6,11 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "SwitchLoweringPass.h"
+#include <anvill/Passes/LowerSwitchIntrinsics.h>
 
 #include <anvill/ABI.h>
-#include <anvill/IndirectJumpPass.h>
-#include <anvill/JumpTableAnalysis.h>
+#include <anvill/Passes/IndirectJumpPass.h>
+#include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Transforms.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/ADT/SmallVector.h>
@@ -157,9 +157,9 @@ class SwitchBuilder {
 
 
 llvm::PreservedAnalyses
-SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall,
-                                      llvm::FunctionAnalysisManager &am,
-                                      llvm::PreservedAnalyses agg) {
+LowerSwitchIntrinsics::runOnIndirectJump(llvm::CallInst *targetCall,
+                                         llvm::FunctionAnalysisManager &am,
+                                         llvm::PreservedAnalyses agg) {
 
 
   const auto &jt_analysis =
@@ -194,19 +194,16 @@ SwitchLoweringPass::runOnIndirectJump(llvm::CallInst *targetCall,
   return agg;
 }
 
-
-llvm::StringRef SwitchLoweringPass::name() {
-  return "SwitchLoweringPass";
+llvm::StringRef LowerSwitchIntrinsics::name() {
+  return "LowerSwitchIntrinsics";
 }
 
-llvm::PreservedAnalyses SwitchLoweringPass::INIT_RES =
+llvm::PreservedAnalyses LowerSwitchIntrinsics::INIT_RES =
     llvm::PreservedAnalyses::all();
 
-void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
-                           const MemoryProvider &memprov,
-                           SliceManager &slc) {
-  fpm.addPass(SwitchLoweringPass(memprov, slc));
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
+                              SliceManager &slc, const MemoryProvider &memprov) {
+  fpm.addPass(LowerSwitchIntrinsics(memprov, slc));
 }
-
 
 }  // namespace anvill

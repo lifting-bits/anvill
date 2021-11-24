@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "LowerTypeHintIntrinsics.h"
+#include <anvill/Passes/LowerTypeHintIntrinsics.h>
 
 #include <anvill/ABI.h>
 #include <llvm/IR/IRBuilder.h>
@@ -21,6 +21,9 @@
 
 namespace anvill {
 
+llvm::StringRef LowerTypeHintIntrinsics::name(void) {
+  return "LowerTypeHintIntrinsics";
+}
 
 llvm::PreservedAnalyses
 LowerTypeHintIntrinsics::run(llvm::Function &func,

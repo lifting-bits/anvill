@@ -45,11 +45,11 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalOpt.h>
 
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 // clang-format on
 
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Compat/Error.h>
@@ -63,7 +63,7 @@
 #include "anvill/ABI.h"
 #include "anvill/Specification.h"
 #include "anvill/Lifter.h"
-#include "anvill/Util.h"
+#include "anvill/Utils.h"
 
 DEFINE_uint32(
     pointer_brighten_gas, 64u,
@@ -143,7 +143,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
-  AddSinkSelectionsIntoBranchTargets(fpm, err_man);
+  AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveUnusedFPClassificationCalls(fpm);
   AddRemoveDelaySlotIntrinsics(fpm);
   AddRemoveErrorIntrinsics(fpm);
@@ -162,9 +162,9 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // stack analysis.
   AddConvertMasksToCasts(fpm);
 
-  AddSwitchLoweringPass(fpm, mem_provider, slc);
+  AddLowerSwitchIntrinsics(fpm, slc, mem_provider);
   AddRecoverEntityUseInformation(fpm, lifter_context);
-  AddSinkSelectionsIntoBranchTargets(fpm, err_man);
+  AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveTrivialPhisAndSelects(fpm);
 
   fpm.addPass(llvm::DCEPass());

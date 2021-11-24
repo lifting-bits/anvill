@@ -11,7 +11,7 @@
 #include <glog/logging.h>
 
 #include <anvill/Lifter.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
 #include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Util.h>
 

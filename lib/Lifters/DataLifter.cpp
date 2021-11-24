@@ -10,9 +10,9 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Specification.h>
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Type.h>
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/GlobalAlias.h>

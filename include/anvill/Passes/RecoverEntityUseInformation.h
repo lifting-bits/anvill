@@ -42,6 +42,7 @@ using EntityUsages = std::vector<EntityUse>;
 // of the `__anvill_sp` symbol
 class RecoverEntityUseInformation final
     : public llvm::PassInfoMixin<RecoverEntityUseInformation> {
+ private:
 
   // Resolve addresses to entities and vice versa.
   const CrossReferenceResolver &xref_resolver;
@@ -49,7 +50,8 @@ class RecoverEntityUseInformation final
  public:
 
   // Function pass entry point
-  bool Run(llvm::Function &function, llvm::FunctionAnalysisManager &fam);
+  llvm::PreservedAnalyses run(llvm::Function &function,
+                              llvm::FunctionAnalysisManager &fam);
 
   // Returns the pass name
   static llvm::StringRef name(void);
@@ -58,12 +60,7 @@ class RecoverEntityUseInformation final
   // specific instruction operand uses.
   EntityUsages EnumeratePossibleEntityUsages(llvm::Function &function);
 
-  // Patches the function, replacing the uses known to the entity lifter.
-  void UpdateFunction(llvm::Function &function, const EntityUsages &uses);
-
   RecoverEntityUseInformation(const CrossReferenceResolver &xref_resolver_);
-
-  virtual ~RecoverEntityUseInformation() override = default;
 };
 
 }  // namespace anvill

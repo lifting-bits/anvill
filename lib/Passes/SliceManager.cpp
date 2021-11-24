@@ -1,4 +1,13 @@
-#include <anvill/SliceManager.h>
+/*
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
+ */
+
+#include <anvill/Passes/SliceManager.h>
+
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/Instructions.h>
@@ -9,7 +18,6 @@
 #include <iostream>
 
 namespace anvill {
-
 
 llvm::Function *SliceManager::createFunctionForCurrentID(
     SliceID id, llvm::ArrayRef<llvm::Value *> arguments,
@@ -25,7 +33,6 @@ llvm::Function *SliceManager::createFunctionForCurrentID(
       SliceManager::getFunctionName(id), *this->mod);
   return f;
 }
-
 
 llvm::SmallVector<llvm::Instruction *>
 SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
@@ -58,6 +65,7 @@ void SliceManager::insertClonedSliceIntoFunction(
                            bb);
   return;
 }
+
 bool SliceManager::handleGV(
     llvm::GlobalVariable *constant, llvm::User *user,
     llvm::DenseMap<llvm::Constant *, llvm::Constant *> &to_replace) {
@@ -192,4 +200,5 @@ SliceManager::Slice SliceManager::getSlice(SliceID id) {
 SliceInterpreter SliceManager::getInterp() {
   return SliceInterpreter(*this->mod.get());
 }
+
 }  // namespace anvill

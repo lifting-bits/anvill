@@ -11,7 +11,7 @@
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Specification.h>
 #include <anvill/Lifter.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <remill/Arch/Arch.h>
@@ -22,15 +22,15 @@
 
 namespace anvill {
 
-bool RecoverEntityUseInformation::Run(llvm::Function &function,
-                                      llvm::FunctionAnalysisManager &fam) {
+llvm::PreservedAnalyses RecoverEntityUseInformation::run(
+    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   EntityUsages uses = EnumeratePossibleEntityUsages(function);
   if (uses.empty()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   llvm::Module *const module = function.getParent();
@@ -94,11 +94,11 @@ bool RecoverEntityUseInformation::Run(llvm::Function &function,
     }
   }
 
-  return true;
+  return llvm::PreservedAnalyses::none();
 }
 
 llvm::StringRef RecoverEntityUseInformation::name(void) {
-  return llvm::StringRef("RecoverEntityUseInformation");
+  return "RecoverEntityUseInformation";
 }
 
 EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(

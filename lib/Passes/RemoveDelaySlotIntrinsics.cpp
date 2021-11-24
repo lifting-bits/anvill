@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveDelaySlotIntrinsics.h"
+#include <anvill/Passes/RemoveDelaySlotIntrinsics.h>
 
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
@@ -20,6 +20,9 @@
 
 namespace anvill {
 
+llvm::StringRef RemoveDelaySlotIntrinsics::name(void) {
+  return "RemoveDelaySlotIntrinsics";
+}
 
 // Try to lower remill memory access intrinsics.
 llvm::PreservedAnalyses

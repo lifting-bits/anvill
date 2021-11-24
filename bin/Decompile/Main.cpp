@@ -33,8 +33,8 @@
 #include <anvill/ABI.h>
 #include <anvill/Lifter.h>
 #include <anvill/JSON.h>
-#include <anvill/MemoryProvider.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -44,9 +44,9 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
-#include "anvill/Specification.h"
-#include "anvill/Optimize.h"
-#include "anvill/Util.h"
+#include <anvill/Specification.h>
+#include <anvill/Optimize.h>
+#include <anvill/Utils.h>
 
 #include "ControlFlowProvider.h"
 #include "MemoryProvider.h"

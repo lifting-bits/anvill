@@ -9,8 +9,8 @@
 #pragma once
 
 #include <anvill/Lifter.h>
-#include <anvill/MemoryProvider.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/ValueMap.h>
 

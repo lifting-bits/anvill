@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
 
 namespace decompile {
 

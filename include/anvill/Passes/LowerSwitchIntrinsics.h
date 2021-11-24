@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Passes/IndirectJumpPass.h>
 #include <anvill/Passes/SliceManager.h>
 #include <llvm/IR/Instructions.h>
@@ -26,16 +26,17 @@
 // This pass focuses on lowering switch statements where a jump table does exist
 
 namespace anvill {
-class SwitchLoweringPass
-    : public IndirectJumpPass<SwitchLoweringPass, llvm::PreservedAnalyses>,
-      public llvm::PassInfoMixin<SwitchLoweringPass> {
+
+class LowerSwitchIntrinsics
+    : public IndirectJumpPass<LowerSwitchIntrinsics, llvm::PreservedAnalyses>,
+      public llvm::PassInfoMixin<LowerSwitchIntrinsics> {
 
  private:
   const MemoryProvider &memProv;
   SliceManager &slm;
 
  public:
-  SwitchLoweringPass(const MemoryProvider &memProv, SliceManager &slm)
+  LowerSwitchIntrinsics(const MemoryProvider &memProv, SliceManager &slm)
       : memProv(memProv),
         slm(slm) {}
 

@@ -9,8 +9,8 @@
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/Lifter.h>
 #include <anvill/Lifter.h>
-#include <anvill/MemoryProvider.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>

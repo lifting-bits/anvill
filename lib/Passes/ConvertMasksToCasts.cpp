@@ -6,10 +6,10 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "ConvertMasksToCasts.h"
+#include <anvill/Passes/ConvertMasksToCasts.h>
 
 #include <anvill/ABI.h>
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>

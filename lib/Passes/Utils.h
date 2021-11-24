@@ -15,7 +15,7 @@
 #include <functional>
 #include <vector>
 
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 
 namespace llvm {
 class CallBase;
@@ -25,6 +25,25 @@ class PointerType;
 class Value;
 }  // namespace llvm
 namespace anvill {
+namespace {
+
+template <class... Types>
+static std::vector<llvm::Instruction *> SelectInstructions(
+    llvm::Function &function) {
+  std::vector<llvm::Instruction *> output;
+
+  for (auto &instruction : llvm::instructions(function)) {
+    bool selected = (llvm::dyn_cast<Types>(&instruction) || ...);
+    if (selected) {
+      output.push_back(&instruction);
+    }
+  }
+
+  return output;
+}
+
+
+}  // namespace
 
 // Returns `true` if it seems like a basic block is sane.
 bool BasicBlockIsSane(llvm::BasicBlock *block);

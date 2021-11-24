@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <anvill/ControlFlowProvider.h>
+#include <anvill/Providers.h>
 
 #include <remill/Arch/Instruction.h>
 

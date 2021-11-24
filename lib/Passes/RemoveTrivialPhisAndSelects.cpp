@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveTrivialPhisAndSelects.h"
+#include <anvill/Passes/RemoveTrivialPhisAndSelects.h>
 
 #include <anvill/Transforms.h>
 #include <llvm/IR/Dominators.h>
@@ -24,6 +24,10 @@
 #include "Utils.h"
 
 namespace anvill {
+
+llvm::StringRef RemoveTrivialPhisAndSelects::name(void) {
+  return "RemoveTrivialPhisAndSelects";
+}
 
 llvm::PreservedAnalyses
 RemoveTrivialPhisAndSelects::run(llvm::Function &func,

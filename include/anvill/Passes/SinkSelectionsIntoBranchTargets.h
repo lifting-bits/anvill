@@ -6,7 +6,12 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-//
+#pragma once
+
+#include <llvm/IR/PassManager.h>
+
+namespace anvill {
+
 // When lifting conditional control-flow, we end up with the following pattern:
 //
 //        %25 = icmp eq i8 %24, 0
@@ -32,53 +37,16 @@
 //
 // When this happens, we're better able to fold cross-references at the targets
 // of conditional branches.
-//
-
-#pragma once
-
-#include <unordered_map>
-
-#include "BaseFunctionPass.h"
-
-namespace anvill {
-
 class SinkSelectionsIntoBranchTargets final
-    : public BaseFunctionPass<SinkSelectionsIntoBranchTargets> {
-
+    : public llvm::PassInfoMixin<SinkSelectionsIntoBranchTargets> {
  public:
-  struct FunctionAnalysis final {
-    struct Replacement final {
-      llvm::Use *use_to_replace{nullptr};
-      llvm::Value *replace_with{nullptr};
-    };
-
-    using ReplacementList = std::vector<Replacement>;
-    using DisposableInstructionList = std::unordered_set<llvm::SelectInst *>;
-
-    ReplacementList replacement_list;
-    DisposableInstructionList disposable_instruction_list;
-  };
-
-  // Identifies all `select` instructions in `function`, where the `SelectInst`
-  // shares the same condition as a conditional branch.
-  static FunctionAnalysis AnalyzeFunction(llvm::Function &function);
-
-  // Applies the transformation that moves the `SelectInst` instructions
-  // inside each branch
-  static void SinkSelectInstructions(const FunctionAnalysis &analysis);
-
-  // Creates a new SinkSelectionsIntoBranchTargets object
-  static SinkSelectionsIntoBranchTargets *
-  Create(ITransformationErrorManager &error_manager);
 
   // Function pass entry point
-  bool Run(llvm::Function &function, llvm::FunctionAnalysisManager &fam);
+  llvm::PreservedAnalyses run(llvm::Function &function,
+                              llvm::FunctionAnalysisManager &fam);
 
   // Returns the pass name
   static llvm::StringRef name(void);
-
-  SinkSelectionsIntoBranchTargets(ITransformationErrorManager &error_manager);
-  ~SinkSelectionsIntoBranchTargets(void) override = default;
 };
 
 }  // namespace anvill

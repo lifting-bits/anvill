@@ -1,12 +1,18 @@
+/*
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
+ */
+
 #pragma once
 
-#include <anvill/CrossReferenceFolder.h>
-#include <anvill/Lifter.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/Pass.h>
 
 namespace anvill {
 
+class CrossReferenceFolder;
 class CrossReferenceResolver;
 
 enum ReturnAddressResult {
@@ -33,18 +39,22 @@ enum ReturnAddressResult {
 
 class RemoveRemillFunctionReturns final
     : public llvm::PassInfoMixin<RemoveRemillFunctionReturns> {
+ private:
+  const CrossReferenceResolver &xref_resolver;
+
  public:
-  RemoveRemillFunctionReturns(
+  inline explicit RemoveRemillFunctionReturns(
       const CrossReferenceResolver &xref_resolver_)
       : xref_resolver(xref_resolver_) {}
+
+  static llvm::StringRef name(void);
 
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);
 
  private:
-  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
-                                         llvm::Value *val) const;
-
-  const CrossReferenceFolder xref_resolver;
+  ReturnAddressResult QueryReturnAddress(
+      const CrossReferenceFolder &xref_folder, llvm::Module *module,
+      llvm::Value *val) const;
 };
 }  // namespace anvill
