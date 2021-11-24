@@ -35,8 +35,8 @@
 #include <anvill/ABI.h>
 #include <anvill/Lifter.h>
 #include <anvill/JSON.h>
-#include <anvill/MemoryProvider.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -46,9 +46,9 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
-#include "anvill/Specification.h"
-#include "anvill/Optimize.h"
-#include "anvill/Util.h"
+#include <anvill/Specification.h>
+#include <anvill/Optimize.h>
+#include <anvill/Utils.h>
 
 #include "ControlFlowProvider.h"
 #include "MemoryProvider.h"
@@ -112,197 +112,6 @@ class JSONParser {
   // Parses JSON declarations.
   anvill::JSONTranslator json_translator;
 
-<<<<<<< HEAD:bin/decompile-json/src/Main.cpp
-  anvill::FunctionDecl decl;
-
-  auto maybe_ea = obj->getInteger("address");
-  if (!maybe_ea) {
-    LOG(ERROR) << "Missing function address in specification";
-    return false;
-  }
-
-  auto address = static_cast<uint64_t>(*maybe_ea);
-
-  decl.arch = arch;
-  decl.address = address;
-
-  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
-    decl.is_noreturn = *maybe_is_noreturn;
-  }
-
-  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
-    decl.is_variadic = *maybe_is_variadic;
-  }
-
-  if (auto maybe_cc = obj->getInteger("calling_convention")) {
-    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
-  }
-
-  // NOTE (akshayk): An external function can have function type in the spec. If
-  //                 the function type is available, it will have precedence over
-  //                 the parameter variables and return values. If the function
-  //                 type is not available it will fallback to processing params
-  //                 and return values
-
-  auto maybe_type = obj->getString("type");
-  if (maybe_type) {
-    anvill::TypeTranslator type_specifier(context, arch->DataLayout());
-    std::string spec = maybe_type->str();
-    auto type_spec_result = type_specifier.DecodeFromString(spec);
-    if (!type_spec_result.Succeeded()) {
-      auto error = type_spec_result.TakeError();
-      LOG(ERROR) << error.message << " in spec " << spec;
-      return false;
-    }
-
-    auto func_type = llvm::dyn_cast<llvm::FunctionType>(type_spec_result.TakeValue());
-    if (!func_type) {
-      LOG(ERROR) << "Type associated with function at address " << std::hex
-                 << address << std::dec << " is incorrect! " << spec;
-      return false;
-    }
-
-    if (decl.is_variadic != func_type->isVarArg()) {
-      LOG(ERROR) << "Type associated with function at address " << std::hex
-                 << address << std::dec << " does not match variadic nature of "
-                 << "specification: " << spec;
-      return false;
-    }
-
-    std::stringstream ss;
-    ss << "dummy_" << std::hex << address;
-    llvm::Function *dummy_function = llvm::Function::Create(
-        func_type, llvm::Function::ExternalLinkage, ss.str().c_str(), module);
-
-    dummy_function->setCallingConv(decl.calling_convention);
-    if (decl.is_noreturn) {
-      dummy_function->addFnAttr(llvm::Attribute::NoReturn);
-    }
-
-    // Create a FunctionDecl object from the dummy function. This will set
-    // the correct function types, bind the parameters & return values
-    // with the architectural registers, and set the calling convention
-
-    llvm::Expected<anvill::FunctionDecl> maybe_decl =
-        anvill::FunctionDecl::Create(*dummy_function, arch);
-    dummy_function->eraseFromParent();
-
-    if (remill::IsError(maybe_decl)) {
-      LOG(ERROR) << "Failed to create FunctionDecl of type "
-                 << remill::LLVMThingToString(func_type)
-                 << " defined at address " << std::hex << address;
-      return false;
-    }
-
-    maybe_decl->address = address;
-    decl = std::move(remill::GetReference(maybe_decl));
-
-    // The function is not external and does not have associated type
-    // in the spec. Fallback to processing parameters and return values
-  } else {
-
-    if (auto params = obj->getArray("parameters")) {
-      for (llvm::json::Value &maybe_param : *params) {
-        if (auto param_obj = maybe_param.getAsObject()) {
-          auto &pv = decl.params.emplace_back();
-          if (!ParseParameter(arch, context, pv, param_obj)) {
-            return false;
-          }
-        } else {
-          LOG(ERROR) << "Non-object value in 'parameters' array of "
-                     << "function at address '" << std::hex << decl.address
-                     << std::dec << "'";
-          return false;
-        }
-      }
-    }
-
-    // Get the return address location.
-    if (auto ret_addr = obj->getObject("return_address")) {
-      if (!ParseValue(arch, decl.return_address, ret_addr, "return address")) {
-        return false;
-      }
-    } else {
-      decl.return_address.type = llvm::Type::getVoidTy(context);
-    }
-
-    // Parse the value of the stack pointer on exit from the function, which is
-    // defined in terms of `reg + offset` for a value of a register `reg`
-    // on entry to the function.
-    if (auto ret_sp = obj->getObject("return_stack_pointer")) {
-      auto maybe_reg = ret_sp->getString("register");
-      if (maybe_reg) {
-        decl.return_stack_pointer = arch->RegisterByName(maybe_reg->str());
-        if (!decl.return_stack_pointer) {
-          LOG(ERROR) << "Unable to locate register '" << maybe_reg->str()
-                     << "' used computing the exit value of the "
-                     << "stack pointer in function specification at '"
-                     << std::hex << decl.address << std::dec << "'";
-          return false;
-        }
-      } else {
-        LOG(ERROR)
-            << "Non-present or non-string 'register' in 'return_stack_pointer' "
-            << "object of function specification at '" << std::hex
-            << decl.address << std::dec << "'";
-        return false;
-      }
-
-      auto maybe_offset = ret_sp->getInteger("offset");
-      if (maybe_offset) {
-        decl.return_stack_pointer_offset = *maybe_offset;
-      }
-    } else {
-      LOG(ERROR)
-          << "Non-present or non-object 'return_stack_pointer' in function "
-          << "specification at '" << std::hex << decl.address << std::dec
-          << "'";
-      return false;
-    }
-
-    if (auto returns = obj->getArray("return_values")) {
-      for (llvm::json::Value &maybe_ret : *returns) {
-        if (auto ret_obj = maybe_ret.getAsObject()) {
-          auto &rv = decl.returns.emplace_back();
-          if (!ParseReturnValue(arch, context, rv, ret_obj)) {
-            return false;
-          }
-        } else {
-          LOG(ERROR) << "Non-object value in 'return_values' array of "
-                     << "function at address '" << std::hex << decl.address
-                     << std::dec << "'";
-          return false;
-        }
-      }
-    }
-  }
-
-//  if (auto register_info = obj->getArray("register_info")) {
-//    for (llvm::json::Value &maybe_reg : *register_info) {
-//      if (auto reg_obj = maybe_reg.getAsObject()) {
-//
-//        // decl.register_info.emplace_back();
-//        // Parse the register info!
-//        if (!ParseTypedRegister(arch, context, decl.reg_info, reg_obj)) {
-//          return false;
-//        }
-//      } else {
-//        LOG(ERROR) << "Non-object value in 'register_info' array of "
-//                   << "function at address '" << decl.address << std::dec
-//                   << "'";
-//      }
-//    }
-//  }
-
-  auto err = program.DeclareFunction(decl);
-  if (remill::IsError(err)) {
-    LOG(ERROR) << remill::GetErrorString(err);
-    return false;
-  }
-
-  return true;
-}
-=======
  public:
   JSONParser(Program &program, const remill::Arch *arch_,
              const anvill::TypeTranslator &type_translator_)
@@ -311,7 +120,6 @@ class JSONParser {
         context(*(arch->context)),
         json_translator(arch, type_translator) {}
 };
->>>>>>> 4822656 (In-progress refactors):bin/Decompile/Main.cpp
 
 // Try to unserialize variable information.
 static bool ParseVariable(const remill::Arch *arch, llvm::LLVMContext &context,

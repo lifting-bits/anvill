@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "ConvertXorToCmp.h"
+#include <anvill/Passes/ConvertXorToCmp.h>
 
 #include <anvill/ABI.h>
 #include <glog/logging.h>
@@ -221,7 +221,7 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
 
 
 llvm::StringRef ConvertXorToCmp::name(void) {
-  return llvm::StringRef("ConvertXorToCmp");
+  return "ConvertXorToCmp";
 }
 
 // Convert operations in the form of:

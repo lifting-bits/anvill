@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveCompilerBarriers.h"
+#include <anvill/Passes/RemoveCompilerBarriers.h>
 
 #include <anvill/Transforms.h>
 #include <llvm/IR/Function.h>
@@ -15,13 +15,12 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
-#include "RemoveCompilerBarriers.h"
 #include "Utils.h"
 
 namespace anvill {
 
 llvm::StringRef RemoveCompilerBarriers::name(void) {
-  return llvm::StringRef("RemoveCompilerBarriers");
+  return "RemoveCompilerBarriers";
 }
 
 // Try to lower remill memory access intrinsics.
@@ -76,11 +75,15 @@ RemoveCompilerBarriers::run(llvm::Function &func,
     }
   }
 
+  auto removed = false;
   for (auto call_inst : to_remove) {
-    call_inst->eraseFromParent();
+    if (call_inst->use_empty()) {
+      call_inst->eraseFromParent();
+      removed = true;
+    }
   }
 
-  return ConvertBoolToPreserved(!to_remove.empty());
+  return ConvertBoolToPreserved(removed);
 }
 
 // Remill semantics sometimes contain compiler barriers (empty inline assembly

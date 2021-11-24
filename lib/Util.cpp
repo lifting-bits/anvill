@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "anvill/Util.h"
+#include "anvill/Utils.h"
 
 #include <sstream>
 #include <glog/logging.h>
@@ -24,7 +24,7 @@
 #include <anvill/ABI.h>
 #include <anvill/Specification.h>
 #include <anvill/Type.h>
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>

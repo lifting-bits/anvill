@@ -47,8 +47,6 @@ namespace anvill {
 //        %257 = ashr exact i64 %256, 32, !pc !70
 class ConvertMasksToCasts final : llvm::PassInfoMixin<ConvertMasksToCasts> {
  public:
-  ConvertMasksToCasts(void) {}
-
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);
 

@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
 
 #include <anvill/Specification.h>
 #include <glog/logging.h>

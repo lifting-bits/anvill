@@ -86,8 +86,7 @@ class BaseFunctionPass : public llvm::PassInfoMixin<UserFunctionPass> {
                  const std::string &message,
                  llvm::Instruction *instr = nullptr);
 
-  // A list of llvm::Instruction pointers
-  using InstructionList = std::vector<llvm::Instruction *>;
+
 
   // A list of llvm::User pointers
   using UserList = std::vector<llvm::User *>;
@@ -201,23 +200,6 @@ void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
   error.description = buffer.str();
 
   error_manager.Insert(std::move(error));
-}
-
-template <typename UserFunctionPass>
-template <class... Types>
-typename BaseFunctionPass<UserFunctionPass>::InstructionList
-BaseFunctionPass<UserFunctionPass>::SelectInstructions(
-    llvm::Function &function) {
-  InstructionList output;
-
-  for (auto &instruction : llvm::instructions(function)) {
-    bool selected = (llvm::dyn_cast<Types>(&instruction) || ...);
-    if (selected) {
-      output.push_back(&instruction);
-    }
-  }
-
-  return output;
 }
 
 template <typename UserFunctionPass>

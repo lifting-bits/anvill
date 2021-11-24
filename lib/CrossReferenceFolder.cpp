@@ -11,8 +11,8 @@
 #include <anvill/ABI.h>
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Lifter.h>
-#include <anvill/TypeProvider.h>
-#include <anvill/Util.h>
+#include <anvill/Providers.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Constant.h>

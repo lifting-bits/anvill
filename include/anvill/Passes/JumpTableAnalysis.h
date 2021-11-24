@@ -1,8 +1,16 @@
+/*
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
+ */
+
 #pragma once
 
-#include <anvill/IndirectJumpPass.h>
-#include <anvill/SliceInterpreter.h>
-#include <anvill/SliceManager.h>
+#include <anvill/Passes/IndirectJumpPass.h>
+#include <anvill/Passes/SliceInterpreter.h>
+#include <anvill/Passes/SliceManager.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>

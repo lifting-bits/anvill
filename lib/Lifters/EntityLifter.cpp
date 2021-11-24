@@ -8,8 +8,8 @@
 
 #include "EntityLifter.h"
 
-#include <anvill/MemoryProvider.h>
-#include <anvill/TypeProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>

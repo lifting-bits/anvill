@@ -27,7 +27,7 @@
 #include <remill/BC/Util.h>
 
 #include <anvill/ABI.h>
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 
 #include <sstream>
 #include <unordered_map>

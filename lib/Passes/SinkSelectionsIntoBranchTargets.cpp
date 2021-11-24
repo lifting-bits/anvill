@@ -6,10 +6,10 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-
-#include "SinkSelectionsIntoBranchTargets.h"
+#include <anvill/Passes/SinkSelectionsIntoBranchTargets.h>
 
 #include <anvill/Transforms.h>
+#include <anvill/Utils.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InstIterator.h>
@@ -17,30 +17,35 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/Pass.h>
 
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "Utils.h"
 
-
 namespace anvill {
-
 namespace {
 
 using BranchList = std::vector<llvm::BranchInst *>;
 
 using SelectListMap = std::unordered_map<llvm::SelectInst *, BranchList>;
 
-}  // namespace
+struct FunctionAnalysis final {
+  struct Replacement final {
+    llvm::Use *use_to_replace{nullptr};
+    llvm::Value *replace_with{nullptr};
+  };
 
-SinkSelectionsIntoBranchTargets *SinkSelectionsIntoBranchTargets::Create(
-    ITransformationErrorManager &error_manager) {
-  return new SinkSelectionsIntoBranchTargets(error_manager);
-}
+  using ReplacementList = std::vector<Replacement>;
+  using DisposableInstructionList = std::unordered_set<llvm::SelectInst *>;
 
-SinkSelectionsIntoBranchTargets::FunctionAnalysis
-SinkSelectionsIntoBranchTargets::AnalyzeFunction(llvm::Function &function) {
+  ReplacementList replacement_list;
+  DisposableInstructionList disposable_instruction_list;
+};
+
+static FunctionAnalysis AnalyzeFunction(
+    const llvm::DominatorTreeAnalysis::Result &dt, llvm::Function &function) {
 
   // Collect all the applicable instructions
   SelectListMap select_list_map;
@@ -87,7 +92,6 @@ SinkSelectionsIntoBranchTargets::AnalyzeFunction(llvm::Function &function) {
   // Determine which replacements need to happen
   FunctionAnalysis output;
 
-  llvm::DominatorTree doms(function);
 
   for (auto &select_list_map_p : select_list_map) {
     auto select_inst = select_list_map_p.first;
@@ -107,10 +111,10 @@ SinkSelectionsIntoBranchTargets::AnalyzeFunction(llvm::Function &function) {
         FunctionAnalysis::Replacement replacement;
         replacement.use_to_replace = &select_inst_use;
 
-        if (doms.dominates(taken_edge, select_inst_use)) {
+        if (dt.dominates(taken_edge, select_inst_use)) {
           replacement.replace_with = true_val;
 
-        } else if (doms.dominates(not_taken_edge, select_inst_use)) {
+        } else if (dt.dominates(not_taken_edge, select_inst_use)) {
           replacement.replace_with = false_val;
         }
 
@@ -127,50 +131,49 @@ SinkSelectionsIntoBranchTargets::AnalyzeFunction(llvm::Function &function) {
   return output;
 }
 
-void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
-    const FunctionAnalysis &analysis) {
+static bool SinkSelectInstructions(const FunctionAnalysis &analysis) {
 
+  auto changed = false;
   for (const auto &replacement : analysis.replacement_list) {
     CopyMetadataTo(replacement.use_to_replace->get(), replacement.replace_with);
     replacement.use_to_replace->set(replacement.replace_with);
+    changed = true;
   }
 
   for (auto select_inst : analysis.disposable_instruction_list) {
-    if (!select_inst->use_empty()) {
-      continue;
+    if (select_inst->use_empty()) {
+      select_inst->eraseFromParent();
+      changed = true;
     }
-
-    select_inst->eraseFromParent();
   }
+
+  return changed;
 }
 
-bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function,
-                                          llvm::FunctionAnalysisManager &fam) {
+}  // namespace
+
+llvm::PreservedAnalyses SinkSelectionsIntoBranchTargets::run(
+    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
-  auto function_analysis = AnalyzeFunction(function);
+  const auto &dt = fam.getResult<llvm::DominatorTreeAnalysis>(function);
+  auto function_analysis = AnalyzeFunction(dt, function);
   if (function_analysis.replacement_list.empty()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
-  SinkSelectInstructions(function_analysis);
-  return true;
+  return ConvertBoolToPreserved(SinkSelectInstructions(function_analysis));
 }
 
 llvm::StringRef SinkSelectionsIntoBranchTargets::name(void) {
-  return llvm::StringRef("SinkSelectionsIntoBranchTargets");
+  return "SinkSelectionsIntoBranchTargets";
 }
 
-SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
-    ITransformationErrorManager &error_manager)
-    : BaseFunctionPass(error_manager) {}
-
 void AddSinkSelectionsIntoBranchTargets(
-    llvm::FunctionPassManager &fpm,
-    ITransformationErrorManager &error_manager) {
-  fpm.addPass(SinkSelectionsIntoBranchTargets(error_manager));
+    llvm::FunctionPassManager &fpm) {
+  fpm.addPass(SinkSelectionsIntoBranchTargets());
 }
 
 }  // namespace anvill

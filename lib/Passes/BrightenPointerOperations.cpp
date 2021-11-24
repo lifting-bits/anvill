@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "BrightenPointerOperations.h"
+#include <anvill/Passes/BrightenPointerOperations.h>
 
 #include <anvill/Transforms.h>
 #include <glog/logging.h>

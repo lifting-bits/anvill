@@ -1,7 +1,7 @@
 #include "SwitchLoweringPass.h"
 
 #include <anvill/JumpTableAnalysis.h>
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/ADT/SmallSet.h>
@@ -121,7 +121,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(-1153287);
     mem_prov->AddJumpTableOffset(-1153278);
 
-    fpm.addPass(SwitchLoweringPass(mem_prov, slc));
+    fpm.addPass(LowerSwitchIntrinsics(mem_prov, slc));
     fpm.run(*target_function, fam);
 
 
@@ -229,7 +229,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(0x30);
 
     fpm.addPass(llvm::InstCombinePass());
-    fpm.addPass(SwitchLoweringPass(mem_prov, slc));
+    fpm.addPass(LowerSwitchIntrinsics(mem_prov, slc));
 
     fpm.run(*target_function, fam);
 

@@ -9,11 +9,11 @@
 #include "FunctionLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/ControlFlowProvider.h>
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
+#include <anvill/Providers.h>
 #include <anvill/Type.h>
-#include <anvill/TypeProvider.h>
-#include <anvill/Util.h>
+#include <anvill/Providers.h>
+#include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>

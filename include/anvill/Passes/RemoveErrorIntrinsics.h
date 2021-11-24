@@ -1,33 +1,21 @@
 /*
- * Copyright (c) 2021 Trail of Bits, Inc.
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
  */
-
 
 #pragma once
 
 #include <llvm/IR/PassManager.h>
-#include <llvm/Pass.h>
-
 
 namespace anvill {
 
 class RemoveErrorIntrinsics final
     : public llvm::PassInfoMixin<RemoveErrorIntrinsics> {
  public:
-  RemoveErrorIntrinsics(void) {}
+  static llvm::StringRef name(void);
 
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);

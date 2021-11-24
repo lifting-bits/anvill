@@ -10,7 +10,7 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Type.h>
-#include <anvill/Util.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>

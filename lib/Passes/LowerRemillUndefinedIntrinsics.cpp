@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "LowerRemillUndefinedIntrinsics.h"
+#include <anvill/Passes/LowerRemillUndefinedIntrinsics.h>
 
 #include <anvill/ABI.h>
 #include <llvm/IR/Constants.h>
@@ -21,6 +21,9 @@
 
 namespace anvill {
 
+llvm::StringRef LowerRemillUndefinedIntrinsics::name(void) {
+  return "LowerRemillUndefinedIntrinsics";
+}
 
 llvm::PreservedAnalyses
 LowerRemillUndefinedIntrinsics::run(llvm::Function &func,

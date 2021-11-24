@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/MemoryProvider.h>
+#include <anvill/Providers.h>
 
 namespace decompile {
 

@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveErrorIntrinsics.h"
+#include <anvill/Passes/RemoveErrorIntrinsics.h>
 
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
@@ -21,6 +21,10 @@
 #include "Utils.h"
 
 namespace anvill {
+
+llvm::StringRef RemoveErrorIntrinsics::name(void) {
+  return "RemoveErrorIntrinsics";
+}
 
 // Try to lower remill error intrinsics.
 llvm::PreservedAnalyses

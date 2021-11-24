@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "LowerRemillMemoryAccessIntrinsics.h"
+#include <anvill/Passes/LowerRemillMemoryAccessIntrinsics.h>
 
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
@@ -172,6 +172,9 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 
 }  // namespace
 
+llvm::StringRef LowerRemillMemoryAccessIntrinsics::name(void) {
+  return "LowerRemillMemoryAccessIntrinsics";
+}
 
 // Try to lower remill memory access intrinsics.
 llvm::PreservedAnalyses
