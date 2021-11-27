@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Providers.h>
 #include <llvm/ADT/SmallSet.h>
@@ -70,10 +70,10 @@ class EntityLifterImpl {
   const LifterOptions &options;
 
   // Provider of memory when asking for bytes for instructions or data.
-  const MemoryProvider *memory_provider;
+  const MemoryProvider * const memory_provider;
 
   // Provider of type information when asking for function prototypes.
-  const TypeProvider *type_provider;
+  const TypeProvider * const type_provider;
 
   // Lifts initializers of global variables. Talks with the `data_lifter`
   // and the `function_lifter` when its trying to resolve cross-references

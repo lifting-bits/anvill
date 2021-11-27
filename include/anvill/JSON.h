@@ -20,7 +20,6 @@ class LLVMContext;
 class Type;
 namespace json {
 class Object;
-class Value;
 }  // namespace json
 }  // namespace llvm
 namespace remill {
@@ -28,10 +27,14 @@ class Arch;
 }  // namespace remill
 namespace anvill {
 
-class FunctionDecl;
-class ParameterDecl;
+class Specification;
+class SpecificationImpl;
 class TypeTranslator;
-class ValueDecl;
+
+struct FunctionDecl;
+struct GlobalVarDecl;
+struct ParameterDecl;
+struct ValueDecl;
 
 class JSONDecodeError {
  public:
@@ -71,12 +74,18 @@ class JSONTranslator {
 
   // Parse the location of a value. This applies to both parameters and
   // return values.
-  anvill::Result<anvill::ValueDecl, JSONDecodeError>
-  DecodeValue(const llvm::json::Object *obj, const char *desc) const;
+  anvill::Result<ValueDecl, JSONDecodeError>
+  DecodeValue(const llvm::json::Object *obj, const char *desc,
+              bool allow_void=false) const;
 
  public:
-  explicit JSONTranslator(const remill::Arch *arch_,
-                          const anvill::TypeTranslator &type_translator_);
+  explicit JSONTranslator(const anvill::TypeTranslator &type_translator_,
+                          const remill::Arch *arch_);
+
+  inline explicit JSONTranslator(
+      const anvill::TypeTranslator &type_translator_,
+      const std::unique_ptr<const remill::Arch> &arch_)
+      : JSONTranslator(type_translator_, arch_.get()) {}
 
   // Parse a parameter from the JSON spec. Parameters should have names,
   // as that makes the bitcode slightly easier to read, but names are
@@ -91,26 +100,24 @@ class JSONTranslator {
   Result<ValueDecl, JSONDecodeError>
   DecodeReturnValue(const llvm::json::Object *obj) const;
 
-  // Try to unserialize function info from a JSON specification. These
-  // are really function prototypes / declarations, and not any isntruction
+  // Try to decode function info from a JSON specification. These
+  // are really function prototypes / declarations, and not any instruction
   // data (that is separate, if present).
   Result<FunctionDecl, JSONDecodeError>
   DecodeFunction(const llvm::json::Object *obj) const;
 
-  // Variants of the above, but operating on strings.
-
-  Result<ParameterDecl, JSONDecodeError>
-  DecodeParameter(std::string_view data) const;
-
-  Result<ValueDecl, JSONDecodeError>
-  DecodeReturnValue(std::string_view data) const;
-
-  Result<FunctionDecl, JSONDecodeError>
-  DecodeFunction(std::string_view data) const;
+  // Try to decode global variable information from a JSON specification. These
+  // are really variable prototypes / declarations.
+  Result<GlobalVarDecl, JSONDecodeError>
+  DecodeGlobalVar(const llvm::json::Object *obj) const;
 
   // Encode a function declaration.
   Result<llvm::json::Object, JSONEncodeError>
   Encode(const FunctionDecl &decl) const;
+
+  // Encode a variable declaration.
+  Result<llvm::json::Object, JSONEncodeError>
+  Encode(const GlobalVarDecl &decl) const;
 };
 
 }  // namespace anvill

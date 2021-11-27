@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Support/TypeSize.h>

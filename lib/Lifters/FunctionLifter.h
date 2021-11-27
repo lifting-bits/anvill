@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include <anvill/Specification.h>
-#include <anvill/Lifter.h>
+#include <anvill/Decls.h>
+#include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
@@ -68,9 +68,9 @@ class FunctionLifter {
 
  private:
   const LifterOptions &options;
-  MemoryProvider &memory_provider;
-  TypeProvider &type_provider;
-  TypeTranslator type_specifier;
+  const MemoryProvider &memory_provider;
+  const TypeProvider &type_provider;
+  const TypeTranslator type_specifier;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
@@ -78,8 +78,10 @@ class FunctionLifter {
   // Context associated with `module`.
   llvm::LLVMContext &llvm_context;
 
-  // Remill instrinsics inside of `module`.
+  // Remill intrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
+
+  // TODO(pag): Consider passing in the `InstructionLifter` via `LifterOptions`?
   remill::InstructionLifter inst_lifter;
 
   // Program counter and stack pointer registers.

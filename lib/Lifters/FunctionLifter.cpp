@@ -339,10 +339,10 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
 
     // If the target list is complete and has only one destination, then we
     // can handle it as normal jump
-    if (target_list.destination_list.size() == 1U && target_list.complete) {
+    if (target_list.target_addresses.size() == 1U && target_list.is_complete) {
       add_remill_jump = false;
 
-      auto destination = target_list.destination_list.front();
+      auto destination = *(target_list.target_addresses.begin());
       llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination),
                                block);
 
@@ -353,7 +353,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       llvm::BasicBlock *default_case{nullptr};
 
       // Create a default case that is not reachable
-      if (target_list.complete) {
+      if (target_list.is_complete) {
         add_remill_jump = false;
         default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
 
@@ -376,7 +376,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       std::vector<llvm::Value *> switch_parameters;
       switch_parameters.push_back(pc);
 
-      for (auto destination : target_list.destination_list) {
+      for (auto destination : target_list.target_addresses) {
         auto dest_as_value = GenerateConcreteProgramCounter(block, destination);
         switch_parameters.push_back(dest_as_value);
       }
@@ -384,22 +384,21 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       // Invoke the anvill switch
       auto &module = *block->getModule();
       auto anvill_switch_func =
-          GetAnvillSwitchFunc(module, address_type, target_list.complete);
+          GetAnvillSwitchFunc(module, address_type, target_list.is_complete);
 
       llvm::IRBuilder<> ir(block);
       auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
 
       // Now use the anvill switch output with a SwitchInst, mapping cases
       // by index
-      auto dest_count = target_list.destination_list.size();
+      auto dest_count = target_list.target_addresses.size();
       auto switch_inst = ir.CreateSwitch(next_pc, default_case, dest_count);
+      auto dest_id{0u};
 
-      for (std::size_t dest_id{0U}; dest_id < dest_count; ++dest_id) {
-        auto dest = target_list.destination_list.at(dest_id);
+      for (auto dest : target_list.target_addresses) {
         auto dest_block = GetOrCreateTargetBlock(inst, dest);
-
-        auto dest_id_as_value = llvm::ConstantInt::get(address_type, dest_id);
-        switch_inst->addCase(dest_id_as_value, dest_block);
+        auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
+        switch_inst->addCase(dest_case, dest_block);
       }
     }
   }

@@ -9,8 +9,8 @@
 #include <anvill/Passes/RecoverEntityUseInformation.h>
 
 #include <anvill/CrossReferenceResolver.h>
-#include <anvill/Specification.h>
-#include <anvill/Lifter.h>
+#include <anvill/Decls.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>

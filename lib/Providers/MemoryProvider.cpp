@@ -9,23 +9,12 @@
 #include <anvill/Providers.h>
 
 namespace anvill {
-namespace {
 
-class NullMemoryProvider final : public MemoryProvider {
- public:
-  std::tuple<uint8_t, ByteAvailability, BytePermission>
-  Query(uint64_t address) const final {
-    return {0, ByteAvailability::kUnknown, BytePermission::kUnknown};
-  }
-};
-
-}  // namespace
+std::tuple<uint8_t, ByteAvailability, BytePermission>
+NullMemoryProvider::Query(uint64_t address) const {
+  return {0, ByteAvailability::kUnknown, BytePermission::kUnknown};
+}
 
 MemoryProvider::~MemoryProvider(void) {}
-
-// Creates a memory provider that gives access to no memory.
-std::shared_ptr<MemoryProvider> MemoryProvider::CreateNull(void) {
-  return std::make_shared<NullMemoryProvider>();
-}
 
 }  // namespace anvill

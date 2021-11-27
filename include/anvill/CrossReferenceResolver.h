@@ -37,16 +37,16 @@ class CrossReferenceResolver {
 };
 
 // Default cross-reference resolver. Never resolves anything.
-class NullCrossReferenceResolver {
+class NullCrossReferenceResolver : public CrossReferenceResolver {
  public:
   virtual ~NullCrossReferenceResolver(void) = default;
 
-  virtual std::optional<std::uint64_t> AddressOfEntity(
+  std::optional<std::uint64_t> AddressOfEntity(
       llvm::Constant *ent) const override;
 
-  virtual llvm::Constant *EntityAtAddress(
-      std::uint64_t addr, llvm::Type *value_type=nullptr,
-      unsigned address_space=0u) const override;
+  llvm::Constant *EntityAtAddress(
+      std::uint64_t addr, llvm::Type *value_type,
+      unsigned address_space) const override;
 };
 
 // Resolve cross-references with an entity lifter.
@@ -55,15 +55,15 @@ class EntityCrossReferenceResolver : public CrossReferenceResolver {
   std::unique_ptr<EntityCrossReferenceResolverImpl> impl;
 
  public:
-  virtual ~EntityCrossReferenceResolver(void) = default;
+  virtual ~EntityCrossReferenceResolver(void);
   explicit EntityCrossReferenceResolver(const EntityLifter &entity_lifter_);
 
   std::optional<std::uint64_t> AddressOfEntity(
       llvm::Constant *ent) const override;
 
   llvm::Constant *EntityAtAddress(
-      std::uint64_t addr, llvm::Type *value_type=nullptr,
-      unsigned address_space=0u) const override;
+      std::uint64_t addr, llvm::Type *value_type,
+      unsigned address_space) const override;
 };
 
 }  // namespace anvill

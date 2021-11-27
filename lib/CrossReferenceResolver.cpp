@@ -10,7 +10,7 @@
 
 #include <glog/logging.h>
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <llvm/IR/IRBuilder.h>
 #include <remill/BC/Util.h>
@@ -36,6 +36,8 @@ class EntityCrossReferenceResolverImpl {
       : entity_lifter(entity_lifter_),
         value_lifter(entity_lifter) {}
 };
+
+EntityCrossReferenceResolver::~EntityCrossReferenceResolver(void) {}
 
 EntityCrossReferenceResolver::EntityCrossReferenceResolver(
     const EntityLifter &entity_lifter_)

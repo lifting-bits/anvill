@@ -6,213 +6,729 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Specification.h>
+#include "Specification.h"
 
-#include <anvill/Utils.h>
-#include <anvill/Type.h>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <algorithm>
+#include <sstream>
 
+#include <anvill/JSON.h>
 #include <llvm/ADT/StringRef.h>
-#include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Type.h>
-
+#include <llvm/Support/JSON.h>
 #include <remill/Arch/Arch.h>
-#include <remill/BC/ABI.h>
-#include <remill/BC/IntrinsicTable.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
-
-#include "Arch/Arch.h"
+#include <remill/BC/Compat/Error.h>
+#include <remill/OS/OS.h>
 
 namespace anvill {
 
-// Declare this global variable in an LLVM module.
-llvm::GlobalVariable *
-GlobalVarDecl::DeclareInModule(const std::string &name,
-                               llvm::Module &target_module) const {
-  auto &context = target_module.getContext();
-  auto var_type = remill::RecontextualizeType(type, context);
+SpecificationImpl::~SpecificationImpl(void) {}
 
-  auto existing_var = target_module.getGlobalVariable(name);
-  if (existing_var && existing_var->getValueType() == var_type) {
-    return existing_var;
+SpecificationImpl::SpecificationImpl(
+    std::shared_ptr<llvm::LLVMContext> context_,
+    std::unique_ptr<const remill::Arch> arch_)
+    : context(std::move(context_)),
+      arch(std::move(arch_)),
+      type_dictionary(*context),
+      type_translator(type_dictionary, arch.get()) {}
+
+bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
+                                   std::stringstream &ss) {
+
+  auto maybe_ea = obj->getInteger("address");
+  if (!maybe_ea) {
+    ss << "Missing address in memory range specification";
+    return false;
   }
 
-  return new llvm::GlobalVariable(target_module, var_type, false,
-                                  llvm::GlobalValue::ExternalLinkage, nullptr,
-                                  name);
-}
+  uint64_t address = static_cast<uint64_t>(*maybe_ea);
+  bool is_writeable = false;
+  bool is_executable = false;
 
-// Declare this function in an LLVM module.
-llvm::Function *FunctionDecl::DeclareInModule(
-    std::string_view name, llvm::Module &target_module) const {
-  auto &context = target_module.getContext();
-  auto func_type = llvm::dyn_cast<llvm::FunctionType>(
-      remill::RecontextualizeType(type, context));
-
-  auto existing_func = target_module.getFunction(name);
-  if (existing_func && existing_func->getFunctionType() == func_type) {
-    return existing_func;
+  auto perm = obj->getBoolean("is_writeable");
+  if (perm) {
+    is_writeable = *perm;
   }
 
-  DLOG_IF(ERROR, existing_func)
-      << "Re-defining " << name << "; previous version has type "
-      << remill::LLVMThingToString(existing_func->getFunctionType())
-      << " whereas new version has type "
-      << remill::LLVMThingToString(func_type);
-
-  llvm::StringRef name_(name.data(), name.size());
-  llvm::Function *func = llvm::Function::Create(
-      func_type, llvm::GlobalValue::ExternalLinkage, name_, &target_module);
-  DCHECK_EQ(func->getName().str(), name);
-
-  func->addFnAttr(llvm::Attribute::NoInline);
-
-  if (is_noreturn) {
-    func->addFnAttr(llvm::Attribute::NoReturn);
+  perm = obj->getBoolean("is_executable");
+  if (perm) {
+    is_executable = *perm;
   }
 
-  func->setCallingConv(calling_convention);
-
-  // Give them all nice names :-D
-  auto arg_num = 0u;
-  for (auto &arg : func->args()) {
-    arg.setName(params[arg_num++].name);
+  auto byte_perms = BytePermission::kReadable;
+  if (is_writeable && is_executable) {
+    byte_perms = BytePermission::kReadableWritableExecutable;
+  } else if (is_writeable) {
+    byte_perms = BytePermission::kReadableWritable;
+  } else if (is_executable) {
+    byte_perms = BytePermission::kReadableExecutable;
   }
 
-  return func;
-}
+  auto maybe_bytes = obj->getString("data");
+  if (!maybe_bytes) {
+    ss << "Missing byte string in memory range starting at address "
+       << std::hex << address << " of program specification";
+    return false;
+  }
 
-// Interpret `target` as being the function to call, and call it from within
-// a basic block in a lifted bitcode function. Returns the new value of the
-// memory pointer.
-llvm::Value *FunctionDecl::CallFromLiftedBlock(
-    llvm::Value *target, const anvill::TypeDictionary &types,
-    const remill::IntrinsicTable &intrinsics,
-    llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
+  const llvm::StringRef &bytes = *maybe_bytes;
+  if (bytes.size() % 2) {
+    ss << "Length of byte string in memory range starting at address "
+       << std::hex << address << " must have an even number of characters";
+    return false;
+  }
 
-  auto module = block->getModule();
-  auto &context = module->getContext();
-  CHECK_EQ(&context, &(target->getContext()));
-  CHECK_EQ(&context, &(state_ptr->getContext()));
-  CHECK_EQ(&context, &(mem_ptr->getContext()));
-  CHECK_EQ(&context, &(types.u.named.void_->getContext()));
+  // Parse out the hex-encoded byte sequence.
+  for (auto i = 0ul; i < bytes.size(); i += 2) {
+    char nibbles[3] = {bytes[i], bytes[i + 1], '\0'};
+    char *parsed_to = nullptr;
+    auto byte_val = strtol(nibbles, &parsed_to, 16);
 
-  llvm::IRBuilder<> ir(block);
-
-  // Go and get a pointer to the stack pointer register, so that we can
-  // later store our computed return value stack pointer to it.
-  auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  const auto ptr_to_sp = sp_reg->AddressOf(state_ptr, block);
-  ir.SetInsertPoint(block);
-
-  // Go and compute the value of the stack pointer on exit from
-  // the function, which will be based off of the register state
-  // on entry to the function.
-  auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, block);
-  ir.SetInsertPoint(block);
-
-  const auto sp_val_on_exit = ir.CreateAdd(
-      ir.CreateLoad(new_sp_base),
-      llvm::ConstantInt::get(return_stack_pointer->type,
-                             static_cast<uint64_t>(return_stack_pointer_offset),
-                             true));
-
-  llvm::SmallVector<llvm::Value *, 4> param_vals;
-
-  // Get the return address.
-  auto ret_addr = LoadLiftedValue(
-      return_address, types, intrinsics, block, state_ptr, mem_ptr);
-
-  // Get the parameters.
-  for (const auto &param_decl : params) {
-    const auto val = LoadLiftedValue(
-        param_decl, types, intrinsics, block, state_ptr, mem_ptr);
-    if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
-      inst_val->setName(param_decl.name);
+    if (parsed_to != &(nibbles[2])) {
+      ss << "Invalid hex byte value '" << nibbles
+         << "' in memory range starting at address " << std::hex << address;
+      return false;
     }
-    param_vals.push_back(val);
+
+    auto byte_address = address + i;
+    auto &ent = memory[byte_address];
+    if (BytePermission::kUnknown != ent.second) {
+      ss << "Byte at address " << std::hex << byte_address
+         << " in memory range starting at address " << address
+         << " was previously mapped";
+      return false;
+    }
+
+    ent.first = byte_val;
+    ent.second = byte_perms;
   }
 
-  llvm::Value *ret_val = nullptr;
-  if (auto func = llvm::dyn_cast<llvm::Function>(target)) {
-    ret_val = ir.CreateCall(func, param_vals);
-  } else {
-    auto func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(type, context));
-    ret_val = ir.CreateCall(func_type, target, param_vals);
+  return true;
+}
+
+bool SpecificationImpl::ParseControlFlowRedirection(
+    const llvm::json::Array &redirection_list,
+    std::stringstream &ss) {
+
+  auto index{0u};
+
+  for (const llvm::json::Value &list_entry : redirection_list) {
+    auto address_pair = list_entry.getAsArray();
+    if (!address_pair) {
+      ss << "Non-list entry in 'control_flow_redirections' list of program "
+         << "specification";
+      return false;
+    }
+
+    if (address_pair->size() != 2U) {
+      ss << index << "th entry in 'control_flow_redirections' "
+         << "list of program specification must be a pair of integers";
+      return false;
+    }
+
+    const auto &source_address_obj = address_pair->operator[](0);
+    auto opt_source_address = source_address_obj.getAsInteger();
+    if (!opt_source_address) {
+      ss << "First value of " << index << "th entry in "
+         << "'control_flow_redirections' list of program specification "
+         << "must be an integer";
+      return false;
+    }
+
+    const auto &dest_address_obj = address_pair->operator[](1);
+    auto opt_dest_address = dest_address_obj.getAsInteger();
+    if (!opt_source_address) {
+      ss << "Second value of " << index << "th entry in "
+         << "'control_flow_redirections' list of program specification "
+         << "must be an integer";
+      return false;
+    }
+
+    auto source_address = static_cast<uint64_t>(opt_source_address.getValue());
+    auto dest_address = static_cast<uint64_t>(opt_dest_address.getValue());
+
+    if (source_address == dest_address) {
+      ss << index << "th entry in the 'control_flow_redirections' list of "
+         << "program specification cannot redirect and address (" << std::hex
+         << source_address << ") to itself";
+      return false;
+    }
+
+    if (redirections.count(source_address)) {
+      ss << "Cannot re-define a control-flow redirection on source address "
+         << std::hex << source_address << " in " << index
+         << "th entry of 'control_flow_redirections' list of program "
+         << "specification";
+      return false;
+    }
+
+    redirections.emplace(source_address, dest_address);
+
+    ++index;
   }
-  (void) ret_val;
 
-  // There is a single return value, store it to the lifted state.
-  if (returns.size() == 1) {
-    mem_ptr = StoreNativeValue(
-        ret_val, returns.front(), types, intrinsics, block, state_ptr, mem_ptr);
+  return true;
+}
 
-  // There are possibly multiple return values (or zero). Unpack the
-  // return value (it will be a struct type) into its components and
-  // write each one out into the lifted state.
+bool SpecificationImpl::ParseControlFlowTargets(
+    const llvm::json::Array &ctrl_flow_target_list, std::stringstream &ss) {
+
+  auto index{0u};
+
+  for (const llvm::json::Value &list_entry : ctrl_flow_target_list) {
+    auto entry_as_obj = list_entry.getAsObject();
+    if (!entry_as_obj) {
+      ss << "Non-object " << index << "th entry of 'control_flow_targets' "
+         << "list of program specification";
+      return false;
+    }
+
+    if (entry_as_obj->find("source") == entry_as_obj->end()) {
+      ss << "Missing 'source' value in " << index
+         << "th entry of 'control_flow_targets' list of program specification";
+      return false;
+    }
+
+    auto maybe_source = entry_as_obj->getInteger("source");
+    if (!maybe_source.hasValue()) {
+      ss << "Non-integer 'source' value in " << index
+         << "th entry of 'control_flow_targets' list of program specification";
+      return false;
+    }
+
+    const auto source_address = static_cast<uint64_t>(maybe_source.getValue());
+
+    ControlFlowTargetList target_list;
+    target_list.source_address = source_address;
+
+    if (targets.count(source_address)) {
+      ss << "Source address of " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address
+         << ") already has a corresponding entry in the program specification";
+      return false;
+    }
+
+    if (this->redirections.count(source_address)) {
+      ss << "Source address of " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address
+         << ") has an associated redirection address (redirected to: "
+         << this->redirections[source_address] << ")";
+      return false;
+    }
+
+    if (entry_as_obj->find("is_complete") == entry_as_obj->end()) {
+      ss << "Missing 'is_complete' value in " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address << ") of program specification";
+      return false;
+    }
+
+    auto maybe_complete = entry_as_obj->getBoolean("is_complete");
+    if (!maybe_complete.hasValue()) {
+      ss << "Non-Boolean 'is_complete' value in " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address << ") of program specification";
+      return false;
+    }
+
+    target_list.is_complete = maybe_complete.getValue();
+
+    if (entry_as_obj->find("destinations") == entry_as_obj->end()) {
+      ss << "Missing 'destinations' list in " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address << ") of program specification";
+      return false;
+    }
+
+    auto destination_list = entry_as_obj->getArray("destinations");
+    if (!destination_list) {
+      ss << "Non-array 'destinations' value in " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address << ") of program specification";
+      return false;
+    }
+
+    auto sub_index{0u};
+    for (const auto &destination_list_entry : *destination_list) {
+      auto maybe_destination = destination_list_entry.getAsInteger();
+      if (!maybe_destination.hasValue()) {
+        ss << "Non-integer value in " << sub_index
+           << "th entry of 'destinations' list of " << index
+           << "th entry of 'control_flow_targets' list (source address: "
+           << std::hex << source_address << ") of program specification";
+        return false;
+      }
+
+      auto destination = maybe_destination.getValue();
+      target_list.target_addresses.insert(destination);
+
+      ++sub_index;
+    }
+
+    if (!sub_index) {
+      ss << "Empty 'destinations' list in " << index
+         << "th entry of 'control_flow_targets' list (source address: "
+         << std::hex << source_address << ") of program specification";
+      return false;
+    }
+
+    targets.emplace(source_address, std::move(target_list));
+
+    ++index;
+  }
+
+  return true;
+}
+
+const llvm::json::Object *SpecificationImpl::ParseSpecification(
+    const llvm::json::Object *spec, std::stringstream &ss) {
+
+  JSONTranslator translator(type_translator, arch.get());
+
+  if (auto funcs = spec->getArray("functions")) {
+    auto index{0u};
+    for (const llvm::json::Value &func : *funcs) {
+      if (auto func_obj = func.getAsObject()) {
+        auto maybe_func = translator.DecodeFunction(func_obj);
+        if (maybe_func.Failed()) {
+          auto err = maybe_func.TakeError();
+          ss << "Unable to decode " << index
+             << "th function in 'functions' list of program specification: "
+             << err.message;
+
+          // Make sure we return non-`nullptr` on failure.
+          return err.object ? err.object : func_obj;
+
+        } else {
+          auto func = maybe_func.TakeValue();
+          auto func_address = func.address;
+          if (functions.count(func_address)) {
+            ss << "Duplicate function for address " << std::hex << func_address
+               << std::dec << " at " << index
+               << "th entry of 'functions' list of program specification";
+            return func_obj;
+          }
+
+          functions.emplace(func_address, std::move(func));
+        }
+      } else {
+        ss << index << "th entry of 'functions' list of program specification "
+           << "is not an object";
+        return spec;
+      }
+      ++index;
+    }
+  } else if (spec->find("functions") != spec->end()) {
+    ss << "Non-JSON array value for 'functions' in program specification";
+    return spec;
+  }
+
+  if (auto redirection_list = spec->getArray("control_flow_redirections")) {
+    if (!ParseControlFlowRedirection(*redirection_list, ss)) {
+      return spec;
+    }
+
+  } else if (spec->find("control_flow_redirections") != spec->end()) {
+    ss << "Non-JSON array value for 'control_flow_redirections' in "
+       << "program specification";
+    return spec;
+  }
+
+  if (auto ctrl_flow_targets = spec->getArray("control_flow_targets")) {
+    if (!ParseControlFlowTargets(*ctrl_flow_targets, ss)) {
+      return spec;
+    }
+
+  } else if (spec->find("control_flow_targets") != spec->end()) {
+    ss << "Non-JSON array value for 'control_flow_targets' in program "
+       << "specification";
+    return spec;
+  }
+
+  if (auto vars = spec->getArray("variables")) {
+    auto index{0u};
+    for (const llvm::json::Value &var : *vars) {
+      if (auto var_obj = var.getAsObject()) {
+        auto maybe_var = translator.DecodeGlobalVar(var_obj);
+        if (maybe_var.Failed()) {
+          auto err = maybe_var.TakeError();
+          ss << "Unable to decode " << index
+             << "th variable in 'variables' list of program specification: "
+             << err.message;
+
+          // Make sure we return non-`nullptr` on failure.
+          return err.object ? err.object : var_obj;
+
+        } else {
+          auto var = maybe_var.TakeValue();
+          auto var_address = var.address;
+          if (variables.count(var_address)) {
+            ss << "Duplicate variable for address " << std::hex << var_address
+               << std::dec << " at " << index
+               << "th entry of 'variables' list of program specification";
+            return var_obj;
+          }
+
+          variables.emplace(var_address, std::move(var));
+        }
+      } else {
+        ss << index << "th entry of 'variables' list of program specification "
+           << "is not an object";
+        return spec;
+      }
+      ++index;
+    }
+  } else if (spec->find("variables") != spec->end()) {
+    ss << "Non-JSON array value for 'variables' in program specification";
+    return spec;
+  }
+
+  // Map in the memory needed for this decompilation.
+  if (auto ranges = spec->getArray("memory")) {
+    auto index{0u};
+    for (const llvm::json::Value &range : *ranges) {
+      if (auto range_obj = range.getAsObject()) {
+        if (!ParseRange(range_obj, ss)) {
+          return range_obj;
+        }
+      } else {
+        ss << "Non-JSON object in " << index
+           << "th entry of 'memory' list of program specification";
+        return spec;
+      }
+      ++index;
+    }
+  } else if (spec->find("memory") != spec->end()) {
+    ss << "Non-JSON array value for 'memory' in program specification";
+    return spec;
+  }
+
+  // Map in the symbols.
+  if (auto symbols_array = spec->getArray("symbols")) {
+    auto index{0u};
+    for (const llvm::json::Value &maybe_ea_name : *symbols_array) {
+      if (auto ea_name = maybe_ea_name.getAsArray(); ea_name) {
+        if (ea_name->size() != 2u) {
+          ss << "Each entry in 'symbols' list of program specification "
+             << "must have exactly two values";
+          return spec;
+        }
+
+        auto &maybe_ea = ea_name->operator[](0u);
+        auto &maybe_name = ea_name->operator[](1u);
+
+        if (auto ea_ = maybe_ea.getAsInteger()) {
+          const auto ea = static_cast<uint64_t>(ea_.getValue());
+          if (auto name = maybe_name.getAsString(); name) {
+            if (name->empty()) {
+              ss << "Empty symbol name associated with address " << std::hex
+                 << ea << " in the " << index << "th entry of the 'symbols'"
+                 << " list of program specification";
+              return spec;
+            } else {
+              symbols.emplace(ea, name->str());
+            }
+          } else {
+            ss << "Second value, associated with address " << std::hex << ea
+               << " in the " << index << "th entry of the 'symbols' list of"
+               << " program specification must be a string";
+            return spec;
+          }
+        } else {
+          ss << "First value of every entry in the 'symbols' list of a "
+             << "program specification must be an integer; " << index
+             << "th entry's first vale is not an integer";
+          return spec;
+        }
+      } else {
+        ss << "Expected list entries (pairs) inside of 'symbols' list of "
+           << "program specification; " << index << "th entry is not a list";
+        return spec;
+      }
+
+      ++index;
+    }
+  } else if (spec->find("symbols") != spec->end()) {
+    ss << "Non-JSON array value for 'symbols' in program specification";
+    return spec;
+  }
+
+  return nullptr;
+}
+
+Specification::~Specification(void) {}
+
+Specification::Specification(std::shared_ptr<SpecificationImpl> impl_)
+    : impl(std::move(impl_)) {}
+
+// Try to create a program from a JSON specification. Returns a string error
+// if something went wrong.
+anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
+    const llvm::json::Value &json) {
+  const auto spec = json.getAsObject();
+  if (!spec) {
+    return JSONDecodeError("Could not interpret json value as an object");
+  }
+
+  std::stringstream ss;
+  remill::ArchName arch_name = remill::kArchInvalid;
+  remill::OSName os_name = remill::kOSInvalid;
+
+  // Take the architecture name out of the JSON spec.
+  if (auto maybe_arch = spec->getString("arch")) {
+    auto arch_str = maybe_arch->str();
+    arch_name = remill::GetArchName(arch_str);
+    if (arch_name == remill::kArchInvalid) {
+      ss << "Invalid/unrecognized architecture name: " << arch_str;
+      return JSONDecodeError(ss.str());
+    }
   } else {
-    unsigned index = 0;
-    for (const auto &ret_decl : returns) {
-      unsigned indexes[] = {index};
-      auto elem_val = ir.CreateExtractValue(ret_val, indexes);
-      mem_ptr = StoreNativeValue(elem_val, ret_decl, types, intrinsics, block,
-                                 state_ptr, mem_ptr);
-      index += 1;
+    return JSONDecodeError("Missing 'arch' field in program specification");
+  }
+
+  // Take the OS name out of the JSON spec.
+  if (auto maybe_os = spec->getString("os")) {
+    auto os_str = maybe_os->str();
+    os_name = remill::GetOSName(os_str);
+    if (os_name == remill::kOSInvalid) {
+      ss << "Invalid/unrecognized operating system name: " << os_str;
+      return JSONDecodeError(ss.str());
+    }
+  } else {
+    return JSONDecodeError("Missing 'os' field in program specification");
+  }
+
+  auto context = std::make_shared<llvm::LLVMContext>();
+
+  // Get a unique pointer to a remill architecture object. The architecture
+  // object knows how to deal with everything for this specific architecture,
+  // such as semantics, register,  etc.
+  auto arch = remill::Arch::Build(context.get(), os_name, arch_name);
+  if (!arch) {
+    ss << "Invalid architecture/operating system combination "
+       << remill::GetArchName(arch_name) << '/'
+       << remill::GetOSName(os_name) << " in program specification";
+    return JSONDecodeError(ss.str());
+  }
+
+  std::shared_ptr<SpecificationImpl> pimpl(
+      new SpecificationImpl(std::move(context), std::move(arch)));
+
+  if (auto err_obj = pimpl->ParseSpecification(spec, ss)) {
+    return JSONDecodeError(ss.str(), err_obj);
+  }
+
+  return Specification(std::move(pimpl));
+}
+
+// Try to encode the specification into JSON.
+anvill::Result<llvm::json::Object, JSONEncodeError>
+Specification::EncodeToJSON(void) {
+
+  JSONTranslator translator(impl->type_translator, impl->arch.get());
+
+  llvm::json::Array functions;
+  llvm::json::Array variables;
+  llvm::json::Array symbols;
+  llvm::json::Array memory;
+  llvm::json::Array redirects;
+  llvm::json::Array targets;
+
+  for (const auto &[addr, func_decl] : impl->functions) {
+    Result<llvm::json::Object, JSONEncodeError> maybe_func =
+        translator.Encode(func_decl);
+    if (maybe_func.Failed()) {
+      return maybe_func.TakeError();
+    } else {
+      functions.emplace_back(maybe_func.TakeValue());
     }
   }
 
-  // Store the return address, and computed return stack pointer.
-  ir.SetInsertPoint(block);
-  ir.CreateStore(ret_addr, remill::FindVarInFunction(block, "NEXT_PC"));
-  ir.CreateStore(sp_val_on_exit, ptr_to_sp);
-
-  if (is_noreturn) {
-    return llvm::UndefValue::get(mem_ptr->getType());
-  } else {
-    return mem_ptr;
-  }
-}
-
-// Create a Function Declaration from an `llvm::Function`.
-Result<FunctionDecl, std::string> FunctionDecl::Create(
-    llvm::Function &func, const remill::Arch *arch) {
-
-  // If the function calling convention is not the default llvm::CallingConv::C
-  // then use it. Otherwise, get the CallingConvention from the remill::Arch
-  std::unique_ptr<CallingConvention> cc;
-  llvm::CallingConv::ID cc_id = func.getCallingConv();
-
-  Result<CallingConvention::Ptr, std::string> maybe_cc;
-
-  // The value is not default so use it.
-  if (cc_id != llvm::CallingConv::C) {
-    maybe_cc = CallingConvention::CreateCCFromArchAndID(arch, cc_id);
-
-  // Figure out the default calling convention for this triple.
-  } else {
-    maybe_cc = CallingConvention::CreateCCFromArch(arch);
+  for (const auto &[addr, var_decl] : impl->variables) {
+    Result<llvm::json::Object, JSONEncodeError> maybe_var =
+        translator.Encode(var_decl);
+    if (maybe_var.Failed()) {
+      return maybe_var.TakeError();
+    } else {
+      variables.emplace_back(maybe_var.TakeValue());
+    }
   }
 
-  if (maybe_cc.Succeeded()) {
-    maybe_cc.TakeValue().swap(cc);
-  } else {
-    std::stringstream ss;
-    ss << "Calling convention of function '" << func.getName().str()
-       << "' is not supported: " << maybe_cc.TakeError();
-    return ss.str();
+  for (const auto &[address, name] : impl->symbols) {
+    if (name.empty()) {
+      std::stringstream ss;
+      ss << "Empty name for symbol at address " << std::hex << address;
+      return JSONEncodeError(ss.str());
+    }
+
+    llvm::json::Array entry;
+    entry.push_back(static_cast<int64_t>(address));
+    entry.push_back(name);
+    symbols.emplace_back(std::move(entry));
   }
 
-  return cc->AllocateSignature(func);
+  struct Range {
+    std::string hex_bytes;
+    uint64_t begin_address{};
+    bool is_writeable{false};
+    bool is_executable{false};
+  };
+
+  // Merge the byte-granularity memory representation into a range-based
+  // representation.
+  std::vector<Range> ranges;
+  for (const auto &[address, byte_entry] : impl->memory) {
+    auto is_writeable{false};
+    auto is_executable{false};
+    switch (byte_entry.second) {
+      case BytePermission::kUnknown: {
+        std::stringstream ss;
+        ss << "Unknown byte permissions for byte at address "
+           << std::hex << address;
+        return JSONEncodeError(ss.str());
+      }
+      case BytePermission::kReadable:
+        break;
+      case BytePermission::kReadableWritable:
+        is_writeable = true;
+        break;
+      case BytePermission::kReadableWritableExecutable:
+        is_writeable = true;
+        is_executable = true;
+        break;
+      case BytePermission::kReadableExecutable:
+        is_executable = true;
+        break;
+    }
+
+    // Need to introduce a new range.
+    if (ranges.empty() || (ranges.back().begin_address + 1u) != address ||
+        ranges.back().is_writeable != is_writeable ||
+        ranges.back().is_executable != is_executable) {
+      Range new_range;
+      new_range.begin_address = address;
+      new_range.is_writeable = is_writeable;
+      new_range.is_executable = is_executable;
+      ranges.emplace_back(std::move(new_range));
+    }
+
+    char lo_nibble = "012345678abcdef"[(byte_entry.first >> 0u) & 0xFu];
+    char hi_nibble = "012345678abcdef"[(byte_entry.first >> 4u) & 0xFu];
+
+    ranges.back().hex_bytes.push_back(hi_nibble);
+    ranges.back().hex_bytes.push_back(lo_nibble);
+  }
+
+  // Encode the range-based memory implementation to JSON.
+  for (Range &range : ranges) {
+    llvm::json::Object ro;
+    ro.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("address"),
+        static_cast<int64_t>(range.begin_address)});
+
+    ro.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("is_writeable"),
+        range.is_writeable});
+
+    ro.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("is_executable"),
+        range.is_executable});
+
+    ro.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("data"),
+        std::move(range.hex_bytes)});
+
+    memory.emplace_back(std::move(ro));
+  }
+
+  for (const auto &[from_address, to_address] : impl->redirections) {
+    if (from_address == to_address) {
+      std::stringstream ss;
+      ss << "Trivial control-flow redirection cycle on address "
+         << std::hex << from_address;
+      return JSONEncodeError(ss.str());
+    }
+
+    llvm::json::Array entry;
+    entry.push_back(static_cast<int64_t>(from_address));
+    entry.push_back(static_cast<int64_t>(to_address));
+    redirects.emplace_back(std::move(entry));
+  }
+
+  for (const auto &[from_address, to_list_] : impl->targets) {
+    const ControlFlowTargetList &to_list = to_list_;
+
+    if (to_list.source_address != from_address) {
+      std::stringstream ss;
+      ss << "Inconsistent control-flow source address for control-flow "
+         << "target list: " << std::hex << from_address << " vs. "
+         << to_list.source_address;
+      return JSONEncodeError(ss.str());
+
+    } else if (to_list.target_addresses.empty()) {
+      std::stringstream ss;
+      ss << "Empty destination address list for source address "
+         << std::hex << from_address;
+      return JSONEncodeError(ss.str());
+    }
+
+    llvm::json::Array destinations;
+    for (auto dest_address : to_list.target_addresses) {
+      destinations.push_back(static_cast<int64_t>(dest_address));
+    }
+
+    llvm::json::Object tl;
+    tl.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("source"),
+        static_cast<int64_t>(from_address)});
+
+    tl.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("is_complete"),
+        to_list.is_complete});
+
+    tl.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("destinations"),
+        std::move(destinations)});
+
+    targets.emplace_back(std::move(tl));
+  }
+
+  llvm::json::Object json;
+  llvm::StringRef arch(remill::GetArchName(impl->arch->arch_name));
+  llvm::StringRef os(remill::GetOSName(impl->arch->os_name));
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("arch"), arch});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("os"), os});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("functions"),
+      std::move(functions)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("variables"),
+      std::move(variables)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("symbols"),
+      std::move(symbols)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("memory"),
+      std::move(memory)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("control_flow_redirections"),
+      std::move(redirects)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("control_flow_targets"),
+      std::move(targets)});
+
+  return json;
 }
 
 }  // namespace anvill

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <llvm/IR/PassManager.h>
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,7 +17,6 @@
 namespace llvm {
 class Function;
 class FunctionPass;
-class FunctionPassManager;
 }  // namespace llvm
 namespace anvill {
 
@@ -313,8 +314,9 @@ void AddRemoveTrivialPhisAndSelects(llvm::FunctionPassManager &fpm);
 
 // NOTE: The pass should be run as late as possible in the list but before
 // `RemoveRemillFunctionReturns` transform
-void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
-                                      const EntityLifter &lifter);
+void AddTransformRemillJumpIntrinsics(
+    llvm::FunctionPassManager &fpm,
+    const CrossReferenceResolver &xref_resolver);
 
 // Finds values in the form of:
 //
@@ -333,7 +335,7 @@ void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
 // with xors is more difficult to analyze and for a human to read. This pass
 // should only work on boolean values, and handle when those are used in
 // branches and selects.
-void AddConvertXorToCmp(llvm::FunctionPassManager &fpm);
+void AddConvertXorsToCmps(llvm::FunctionPassManager &fpm);
 
 // Looks for the following patterns that can be converted into casts, where
 // we focus on high-level casting patterns, i.e. truncations, zero-extensions,

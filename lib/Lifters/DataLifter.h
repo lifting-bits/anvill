@@ -49,9 +49,9 @@ class DataLifter {
   friend class FunctionLifter;
 
   const LifterOptions &options;
-  MemoryProvider &memory_provider;
-  TypeProvider &type_provider;
-  TypeTranslator type_specifier;
+  const MemoryProvider &memory_provider;
+  const TypeProvider &type_provider;
+  const TypeTranslator type_specifier;
 
   // Context associated with `module`.
   llvm::LLVMContext &context;

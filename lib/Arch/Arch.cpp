@@ -8,7 +8,7 @@
 
 #include "Arch.h"
 
-#include <anvill/Specification.h>
+#include <anvill/Decls.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Instructions.h>

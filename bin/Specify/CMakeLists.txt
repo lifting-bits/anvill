@@ -7,7 +7,7 @@
 #
 
 add_executable(anvill-specify-bitcode
-  src/main.cpp
+  Main.cpp
 )
 
 target_link_libraries(anvill-specify-bitcode PRIVATE

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/LLVMContext.h>

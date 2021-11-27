@@ -10,7 +10,7 @@
 
 #include <anvill/ABI.h>
 #include <anvill/CrossReferenceResolver.h>
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>

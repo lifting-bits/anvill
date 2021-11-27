@@ -7,8 +7,8 @@
  */
 
 #include <anvill/CrossReferenceFolder.h>
-#include <anvill/Lifter.h>
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>

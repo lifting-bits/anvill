@@ -6,7 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
+#include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <glog/logging.h>
 #include <llvm/IR/Module.h>

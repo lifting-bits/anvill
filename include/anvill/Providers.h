@@ -12,14 +12,14 @@
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "Specification.h"
+#include "Decls.h"
 #include "Type.h"
 
 namespace llvm {
@@ -39,14 +39,12 @@ class TypeProvider {
   llvm::DataLayout data_layout;
   const TypeDictionary type_dictionary;
 
+ public:
   explicit TypeProvider(const ::anvill::TypeDictionary &type_dictionary_,
                         const llvm::DataLayout &dl_);
 
   inline explicit TypeProvider(const TypeTranslator &tt)
       : TypeProvider(tt.Dictionary(), tt.DataLayout()) {}
-
- public:
-  using Ptr = std::shared_ptr<TypeProvider>;
 
   inline const ::anvill::TypeDictionary &Dictionary(void) const {
     return type_dictionary;
@@ -83,10 +81,6 @@ class TypeProvider {
                          std::optional<uint64_t>)>
           typed_reg_cb) const;
 
-  // Creates a type provider that always fails to provide type information.
-  static Ptr CreateNull(const ::anvill::TypeDictionary &type_dictionary_,
-                        const llvm::DataLayout &dl_);
-
  private:
   TypeProvider(const TypeProvider &) = delete;
   TypeProvider(TypeProvider &&) noexcept = delete;
@@ -95,6 +89,15 @@ class TypeProvider {
   TypeProvider(void) = delete;
 };
 
+class NullTypeProvider : public TypeProvider {
+ public:
+  virtual ~NullTypeProvider(void) = default;
+
+  using TypeProvider::TypeProvider;
+
+  std::optional<FunctionDecl> TryGetFunctionType(uint64_t) const override;
+  std::optional<GlobalVarDecl> TryGetVariableType(uint64_t) const override;
+};
 
 enum class BytePermission : std::uint8_t {
   kUnknown,
@@ -146,9 +149,6 @@ class MemoryProvider {
   virtual std::tuple<std::uint8_t, ByteAvailability, BytePermission>
   Query(std::uint64_t address) const = 0;
 
-  // Creates a memory provider that gives access to no memory.
-  static std::shared_ptr<MemoryProvider> CreateNull(void);
-
  protected:
   MemoryProvider(void) = default;
 
@@ -159,29 +159,37 @@ class MemoryProvider {
   MemoryProvider &operator=(MemoryProvider &&) noexcept = delete;
 };
 
+class NullMemoryProvider : public MemoryProvider {
+ public:
+  virtual ~NullMemoryProvider(void) = default;
 
-// Describes a list of targets reachable from a given source address
+  std::tuple<uint8_t, ByteAvailability, BytePermission>
+  Query(uint64_t address) const override;
+};
+
+// Describes a list of targets reachable from a given source address. This tells
+// us where the flows go, not the mechanics of how they get there.
 struct ControlFlowTargetList final {
 
-  // Source address
-  std::uint64_t source{};
+  // Address of an indirect jump.
+  std::uint64_t source_address{};
 
-  // Destination list
-  std::vector<std::uint64_t> destination_list;
+  // List of addresses targeted by the indirect jump. This is a set, and thus
+  // does not track the multiplicity of those targets, nor the order that they
+  // appear in any kind of binary-specific structure (e.g. a jump table). That
+  // is, a given indirect jump may target the same address in multiple different
+  // ways (e.g. multiple `case` labels in a `switch` statement that share the
+  // same body).
+  std::set<std::uint64_t> target_addresses;
 
   // True if this destination list appears to be complete. As a
   // general rule, this is set to true when the target recovery has
-  // been completely performed by the disassembler tool
-  bool complete{false};
+  // been completely performed by the disassembler tool.
+  bool is_complete{false};
 };
 
 class ControlFlowProvider {
  public:
-  using Ptr = std::unique_ptr<ControlFlowProvider>;
-
-  // Create a dummy control-flow provider.
-  static Ptr CreateNull(void);
-
   virtual ~ControlFlowProvider(void) = default;
 
   // Returns a possible redirection for the given target. If there is no
@@ -202,6 +210,17 @@ class ControlFlowProvider {
 
   ControlFlowProvider &operator=(const ControlFlowProvider &) = delete;
   ControlFlowProvider &operator=(ControlFlowProvider &&) noexcept = delete;
+};
+
+class NullControlFlowProvider : public ControlFlowProvider {
+ public:
+  virtual ~NullControlFlowProvider(void) = default;
+
+  std::uint64_t GetRedirection(
+      const remill::Instruction &, std::uint64_t address) const override;
+
+  std::optional<ControlFlowTargetList>
+  TryGetControlFlowTargets(const remill::Instruction &) const override;
 };
 
 }  // namespace anvill
