@@ -30,7 +30,7 @@ namespace anvill {
 // with xors is more difficult to analyze and for a human to read. This pass
 // should only work on boolean values, and handle when those are used in
 // branches and selects.
-class ConvertXorToCmp final : llvm::PassInfoMixin<ConvertXorToCmp> {
+class ConvertXorsToCmps final : llvm::PassInfoMixin<ConvertXorsToCmps> {
  public:
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);

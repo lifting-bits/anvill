@@ -10,7 +10,7 @@
 
 #include <sstream>
 
-#include <anvill/Specification.h>
+#include <anvill/Decls.h>
 #include <anvill/Type.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/Support/JSON.h>
@@ -18,11 +18,12 @@
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Compat/Error.h>
+#include <remill/OS/OS.h>
 
 namespace anvill {
 
-JSONTranslator::JSONTranslator(const remill::Arch *arch_,
-                               const TypeTranslator &type_translator_)
+JSONTranslator::JSONTranslator(const TypeTranslator &type_translator_,
+                               const remill::Arch *arch_)
     : arch(arch_),
       type_translator(type_translator_),
       context(*(arch->context)),
@@ -34,8 +35,19 @@ JSONTranslator::JSONTranslator(const remill::Arch *arch_,
 // return values.
 Result<ValueDecl, JSONDecodeError>
 JSONTranslator::DecodeValue(const llvm::json::Object *obj,
-                            const char *desc) const {
+                            const char *desc, bool allow_void) const {
   ValueDecl decl;
+
+  auto has_reg = obj->find("register") != obj->end();
+  auto has_mem = obj->find("memory") != obj->end();
+
+  if (has_reg == has_mem && !allow_void) {
+    std::stringstream ss;
+    ss << "A " << desc << " declaration must specify its location with "
+       << "either a 'register' field or a 'memory' field";
+    return JSONDecodeError(ss.str(), obj);
+  }
+
   auto maybe_reg = obj->getString("register");
   if (maybe_reg) {
     decl.reg = arch->RegisterByName(maybe_reg->str());
@@ -45,6 +57,10 @@ JSONTranslator::DecodeValue(const llvm::json::Object *obj,
          << "' used for storing " << desc;
       return JSONDecodeError(ss.str(), obj);
     }
+  } else if (has_reg) {
+    std::stringstream ss;
+    ss << "The 'register' field of a " << desc << " must be a string";
+    return JSONDecodeError(ss.str(), obj);
   }
 
   if (auto mem_obj = obj->getObject("memory")) {
@@ -59,7 +75,7 @@ JSONTranslator::DecodeValue(const llvm::json::Object *obj,
           std::stringstream ss;
           ss << "Unable to locate memory base register '"
              << maybe_reg->str() << "' used for storing " << desc ;
-          return JSONDecodeError(ss.str(), obj);
+          return JSONDecodeError(ss.str(), mem_obj);
         }
       }
     }
@@ -68,19 +84,58 @@ JSONTranslator::DecodeValue(const llvm::json::Object *obj,
     if (maybe_offset) {
       decl.mem_offset = *maybe_offset;
     }
+  } else if (has_mem) {
+    std::stringstream ss;
+    ss << "The 'memory' field of a " << desc << " must be an object";
+    return JSONDecodeError(ss.str(), obj);
   }
 
-  if (decl.reg && decl.mem_reg) {
-    std::stringstream ss;
-    ss << "A " << desc << " cannot be resident in both a register "
-       << "and a memory location";
-    return JSONDecodeError(ss.str(), obj);
+  if (auto maybe_type_str = obj->getString("type")) {
+    std::string spec = maybe_type_str->str();
+    auto type_spec_res = type_translator.DecodeFromString(spec);
+    if (!type_spec_res.Succeeded()) {
+      std::stringstream ss;
+      ss << "Unable to parse " << desc << " specification '" << spec << "': "
+         << type_spec_res.TakeError().message;
+      return JSONDecodeError(ss.str(), obj);
+    }
 
-  } else if (!decl.reg && !(decl.mem_reg || decl.mem_offset)) {
+    decl.type = remill::RecontextualizeType(type_spec_res.TakeValue(), context);
+    if (decl.type == void_type || decl.type == dict_void_type) {
+      if (!allow_void) {
+        std::stringstream ss;
+        ss << "Type specification '" << spec << "' of " << desc
+           << " is not allowed to be the void type";
+        return JSONDecodeError(ss.str(), obj);
+      } else {
+        decl.type = void_type;
+      }
+    } else if (!decl.type->isSized()) {
+      std::stringstream ss;
+      ss << "Type specification '" << spec << "' of " << desc
+         << " is not sized";
+      return JSONDecodeError(ss.str(), obj);
+    }
+
+  } else if (obj->find("type") != obj->end()) {
     std::stringstream ss;
-    ss << "A " << desc << " must be resident in either a register or "
-       << "a memory location (defined in terms of a register and offset)";
+    ss << "A " << desc << " must specify a 'type' as a string";
     return JSONDecodeError(ss.str(), obj);
+  }
+
+  if (!allow_void) {
+    if (decl.reg && decl.mem_reg) {
+      std::stringstream ss;
+      ss << "A " << desc << " cannot be resident in both a register "
+         << "and a memory location";
+      return JSONDecodeError(ss.str(), obj);
+
+    } else if (!decl.reg && !(decl.mem_reg || decl.mem_offset)) {
+      std::stringstream ss;
+      ss << "A " << desc << " must be resident in either a register or "
+         << "a memory location (defined in terms of a register and offset)";
+      return JSONDecodeError(ss.str(), obj);
+    }
   }
 
   return decl;
@@ -94,30 +149,6 @@ JSONTranslator::DecodeValue(const llvm::json::Object *obj,
 // the bitcode.
 Result<ParameterDecl, JSONDecodeError>
 JSONTranslator::DecodeParameter(const llvm::json::Object *obj) const {
-
-  auto maybe_type_str = obj->getString("type");
-  if (!maybe_type_str) {
-    std::stringstream ss;
-    ss << "Missing 'type' field in function parameter.";
-    return JSONDecodeError(ss.str(), obj);
-  }
-
-  std::string spec = maybe_type_str->str();
-  auto type_spec_res = type_translator.DecodeFromString(spec);
-  if (!type_spec_res.Succeeded()) {
-    std::stringstream ss;
-    ss << "Unable to parse parameter type specification '" << spec << "': "
-       << type_spec_res.TakeError().message;
-    return JSONDecodeError(ss.str(), obj);
-  }
-
-  auto type = type_spec_res.TakeValue();
-  if (!type->isSized()) {
-    std::stringstream ss;
-    ss << "Parameter type with specification '" << spec << "' is not sized";
-    return JSONDecodeError(ss.str(), obj);
-  }
-
   auto maybe_decl = DecodeValue(obj, "function parameter");
   if (!maybe_decl.Succeeded()) {
     return maybe_decl.TakeError();
@@ -130,46 +161,13 @@ JSONTranslator::DecodeParameter(const llvm::json::Object *obj) const {
     decl.name = maybe_name->str();
   }
 
-  decl.type = remill::RecontextualizeType(type, context);
-
   return decl;
 }
 
 // Decode a return value from the JSON spec.
 Result<ValueDecl, JSONDecodeError>
 JSONTranslator::DecodeReturnValue(const llvm::json::Object *obj) const {
-
-  auto maybe_type_str = obj->getString("type");
-  if (!maybe_type_str) {
-    std::stringstream ss;
-    ss << "Missing 'type' field in function return value";
-    return JSONDecodeError(ss.str(), obj);
-  }
-
-  std::string spec = maybe_type_str->str();
-  auto type_spec_res = type_translator.DecodeFromString(spec);
-  if (!type_spec_res.Succeeded()) {
-    std::stringstream ss;
-    ss << "Unable to parse return value type specification '" << spec << "': "
-       << type_spec_res.TakeError().message;
-    return JSONDecodeError(ss.str(), obj);
-  }
-
-  auto type = type_spec_res.TakeValue();
-  if (!type->isSized()) {
-    std::stringstream ss;
-    ss << "Return value type with specification '" << spec << "' is not sized";
-    return JSONDecodeError(ss.str(), obj);
-  }
-
-  auto maybe_decl = DecodeValue(obj, "function return value");
-  if (!maybe_decl.Succeeded()) {
-    return maybe_decl.TakeError();
-  }
-
-  auto decl = maybe_decl.TakeValue();
-  decl.type = remill::RecontextualizeType(type, context);
-  return decl;
+  return DecodeValue(obj, "function return value");
 }
 
 // Try to unserialize function info from a JSON specification. These
@@ -271,7 +269,7 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
     if (auto params = obj->getArray("parameters")) {
       auto i = 0u;
-      for (llvm::json::Value &maybe_param : *params) {
+      for (const llvm::json::Value &maybe_param : *params) {
         if (auto param_obj = maybe_param.getAsObject()) {
           auto maybe_param = DecodeParameter(param_obj);
           if (maybe_param.Succeeded()) {
@@ -298,7 +296,8 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
     // Get the return address location.
     if (auto ret_addr = obj->getObject("return_address")) {
-      auto maybe_ret = DecodeValue(ret_addr, "return address");
+      auto maybe_ret = DecodeValue(ret_addr, "return address",
+                                   true  /* allow_void */);
       if (!maybe_ret.Succeeded()) {
         auto err = maybe_ret.TakeError();
         std::stringstream ss;
@@ -387,7 +386,7 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
     if (auto returns = obj->getArray("return_values")) {
       auto i = 0u;
-      for (llvm::json::Value &maybe_ret : *returns) {
+      for (const llvm::json::Value &maybe_ret : *returns) {
         if (auto ret_obj = maybe_ret.getAsObject()) {
           auto maybe_ret = DecodeReturnValue(ret_obj);
           if (maybe_ret.Succeeded()) {
@@ -410,92 +409,98 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
       }
     }
 
-    llvm::Module module("", context);
-    arch->PrepareModule(&module);
-    auto func = decl.DeclareInModule("dummy", module);
-    decl.type = func->getFunctionType();
+    // Figure out the return type of this function based off the return
+    // values.
+    llvm::Type *ret_type = nullptr;
+    if (decl.returns.empty()) {
+      ret_type = llvm::Type::getVoidTy(context);
+
+    } else if (decl.returns.size() == 1) {
+      ret_type = decl.returns[0].type;
+
+    // The multiple return value case is most interesting, and somewhere
+    // where we see some divergence between C and what we will decompile.
+    // For example, on 32-bit x86, a 64-bit return value might be spread
+    // across EAX:EDX. Instead of representing this by a single value, we
+    // represent it as a structure if two 32-bit ints, and make sure to say
+    // that one part is in EAX, and the other is in EDX.
+    } else {
+      llvm::SmallVector<llvm::Type *, 8> ret_types;
+      for (auto &ret_val : decl.returns) {
+        ret_types.push_back(ret_val.type);
+      }
+      ret_type = llvm::StructType::get(context, ret_types, false);
+    }
+
+    llvm::SmallVector<llvm::Type *, 8> param_types;
+    for (auto &param_val : decl.params) {
+      param_types.push_back(param_val.type);
+    }
+
+    decl.type = llvm::FunctionType::get(
+        ret_type, param_types, decl.is_variadic);
   }
 
   return decl;
 }
 
-
-Result<ParameterDecl, JSONDecodeError>
-JSONTranslator::DecodeParameter(std::string_view data) const {
-  llvm::Expected<llvm::json::Value> maybe_json = llvm::json::parse(data);
-  if (remill::IsError(maybe_json)) {
-    std::stringstream ss;
-    ss << "Unable to parse JSON string for parameter: "
-       << remill::GetErrorString(maybe_json);
-    return JSONDecodeError(ss.str(), nullptr);
-  }
-
-  const auto &json = remill::GetReference(maybe_json);
-  const llvm::json::Object *obj = json.getAsObject();
-  if (!obj) {
+// Try to decode global variable information from a JSON specification. These
+// are really variable prototypes / declarations.
+Result<GlobalVarDecl, JSONDecodeError>
+JSONTranslator::DecodeGlobalVar(const llvm::json::Object *obj) const {
+  auto maybe_ea = obj->getInteger("address");
+  if (!maybe_ea) {
     return JSONDecodeError(
-        "Unable to parse JSON string as object for parameter", nullptr);
+        "Missing 'address' field in global variable specification", obj);
   }
 
-  auto maybe_decl = DecodeParameter(obj);
-  if (maybe_decl.Succeeded()) {
-    return maybe_decl.TakeValue();
-  } else {
-    auto err = maybe_decl.TakeError();
-    return JSONDecodeError(err.message, nullptr);
-  }
-}
+  auto address = static_cast<uint64_t>(*maybe_ea);
 
-Result<ValueDecl, JSONDecodeError>
-JSONTranslator::DecodeReturnValue(std::string_view data) const {
-  llvm::Expected<llvm::json::Value> maybe_json = llvm::json::parse(data);
-  if (remill::IsError(maybe_json)) {
+  auto maybe_type_str = obj->getString("type");
+  if (!maybe_type_str) {
     std::stringstream ss;
-    ss << "Unable to parse JSON string for return value: "
-       << remill::GetErrorString(maybe_json);
-    return JSONDecodeError(ss.str(), nullptr);
+    ss << "Missing 'type' field in specification of global variable at address "
+       << std::hex << address;
+    return JSONDecodeError(ss.str(), obj);
   }
 
-  const auto &json = remill::GetReference(maybe_json);
-  auto obj = json.getAsObject();
-  if (!obj) {
-    return JSONDecodeError(
-        "Unable to parse JSON string as object for return value", nullptr);
-  }
-
-  auto maybe_decl = DecodeReturnValue(obj);
-  if (maybe_decl.Succeeded()) {
-    return maybe_decl.TakeValue();
-  } else {
-    auto err = maybe_decl.TakeError();
-    return JSONDecodeError(err.message, nullptr);
-  }
-}
-
-Result<FunctionDecl, JSONDecodeError>
-JSONTranslator::DecodeFunction(std::string_view data) const {
-  llvm::Expected<llvm::json::Value> maybe_json = llvm::json::parse(data);
-  if (remill::IsError(maybe_json)) {
+  std::string spec = maybe_type_str->str();
+  auto type_spec_res = type_translator.DecodeFromString(spec);
+  if (!type_spec_res.Succeeded()) {
+    auto error = type_spec_res.TakeError();
     std::stringstream ss;
-    ss << "Unable to parse JSON string for function: "
-       << remill::GetErrorString(maybe_json);
-    return JSONDecodeError(ss.str(), nullptr);
+    ss << "Unable to decode type '" << spec
+       << "' of global variable at address " << std::hex << address
+       << ": " << error.message;
+    return JSONDecodeError(ss.str(), obj);
   }
 
-  const auto &json = remill::GetReference(maybe_json);
-  auto obj = json.getAsObject();
-  if (!obj) {
-    return JSONDecodeError(
-        "Unable to parse JSON string as object for function", nullptr);
+  llvm::Type *type = type_spec_res.TakeValue();
+
+  if (type->isFunctionTy()) {
+    std::stringstream ss;
+    ss << "Global variable at address " << std::hex << address
+       << " declared with function type '" << spec
+       << "' should have been declared with a function specification";
+    return JSONDecodeError(ss.str(), obj);
+
+  } else if (type == void_type || type == dict_void_type) {
+    std::stringstream ss;
+    ss << "Global variable at address " << std::hex << address
+       << " cannot be declared with void type";
+    return JSONDecodeError(ss.str(), obj);
+
+  } else if (!type->isSized()) {
+    std::stringstream ss;
+    ss << "Global variable at address " << std::hex << address
+       << " cannot be declared with unsized type '" << spec << "'";
+    return JSONDecodeError(ss.str(), obj);
   }
 
-  auto maybe_decl = DecodeFunction(obj);
-  if (maybe_decl.Succeeded()) {
-    return maybe_decl.TakeValue();
-  } else {
-    auto err = maybe_decl.TakeError();
-    return JSONDecodeError(err.message, nullptr);
-  }
+  anvill::GlobalVarDecl decl;
+  decl.type = type;
+  decl.address = address;
+  return decl;
 }
 
 namespace {
@@ -665,6 +670,26 @@ JSONTranslator::Encode(const FunctionDecl &decl) const {
   json.insert(
       llvm::json::Object::KV{llvm::json::ObjectKey("calling_convention"),
                              llvm::json::Value(decl.calling_convention)});
+
+  return json;
+}
+
+// Encode a variable declaration.
+Result<llvm::json::Object, JSONEncodeError>
+JSONTranslator::Encode(const GlobalVarDecl &decl) const {
+  if (!decl.type) {
+    return JSONEncodeError(
+        "Cannot encode variable declaration with no type");
+  }
+
+  llvm::json::Object json;
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
+                                     static_cast<int64_t>(decl.address)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("type"),
+      type_translator.EncodeToString(decl.type)});
 
   return json;
 }

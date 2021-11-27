@@ -10,7 +10,7 @@
 
 #include <glog/logging.h>
 
-#include <anvill/Specification.h>
+#include <anvill/Decls.h>
 
 #include "Program.h"
 

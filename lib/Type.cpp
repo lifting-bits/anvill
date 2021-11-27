@@ -151,7 +151,7 @@ void TypeSpecifierImpl::EncodeType(
       ss << (alpha_num ? "_A" : "(");
 
       for (llvm::Type *param : func_ptr->params()) {
-        EncodeType(*param, ss, alpha_num);
+        EncodeType(*param, ss, format);
       }
 
       if (func_ptr->isVarArg()) {
@@ -160,7 +160,7 @@ void TypeSpecifierImpl::EncodeType(
         ss << 'v';
       }
 
-      EncodeType(*func_ptr->getReturnType(), ss, alpha_num);
+      EncodeType(*func_ptr->getReturnType(), ss, format);
       ss << (alpha_num ? "_B" : ")");
       break;
     }
@@ -256,10 +256,11 @@ void TypeSpecifierImpl::EncodeType(
             // TODO(pag): Investigate this possibility. Does this occur for
             //            bitfields?
             } else if (expected_offset > offset) {
+              LOG(FATAL) << "TODO?! Maybe bitfields? Structure field offset shenanigans";
             }
 
             const auto el_ty = struct_ptr->getElementType(i);
-            EncodeType(*el_ty, ss, alpha_num);
+            EncodeType(*el_ty, ss, format);
             expected_offset = offset + dl.getTypeStoreSize(el_ty);
           }
 
@@ -285,7 +286,7 @@ void TypeSpecifierImpl::EncodeType(
     case llvm::GetFixedVectorTypeId(): {
       const auto vec_ptr = llvm::cast<llvm::FixedVectorType>(&type);
       ss << (alpha_num ? "_G" : "<");
-      EncodeType(*vec_ptr->getElementType(), ss, alpha_num);
+      EncodeType(*vec_ptr->getElementType(), ss, format);
       ss << 'x' << vec_ptr->getNumElements() << (alpha_num ? "_H" : ">");
       break;
     }
@@ -293,7 +294,7 @@ void TypeSpecifierImpl::EncodeType(
     case llvm::Type::ArrayTyID: {
       const auto array_ptr = llvm::cast<llvm::ArrayType>(&type);
       ss << (alpha_num ? "_C" : "[");
-      EncodeType(*array_ptr->getElementType(), ss, alpha_num);
+      EncodeType(*array_ptr->getElementType(), ss, format);
       ss << 'x' << array_ptr->getNumElements() << (alpha_num ? "_D" : "]");
       break;
     }
@@ -308,7 +309,7 @@ void TypeSpecifierImpl::EncodeType(
 
       // Get the type of the pointee.
       } else if (elem_type->isFunctionTy() || elem_type->isSized()) {
-        EncodeType(*elem_type, ss, alpha_num);
+        EncodeType(*elem_type, ss, format);
 
       // It's an opaque type, e.g. a structure that is declared but not defined.
       } else {

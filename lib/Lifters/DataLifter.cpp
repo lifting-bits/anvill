@@ -9,7 +9,7 @@
 #include "DataLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Specification.h>
+#include <anvill/Decls.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <anvill/Utils.h>

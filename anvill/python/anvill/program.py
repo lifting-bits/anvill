@@ -198,46 +198,58 @@ class Program(ABC):
     def memory(self) -> Memory:
         return self._memory
 
-    def proto(self) -> Dict:
-        proto = {}
-        proto["arch"] = self._arch.name()
-        proto["os"] = self._os.name()
-        proto["functions"] = []
-        proto["control_flow_redirections"] = []
-        proto["control_flow_targets"] = []
-        proto["variables"] = []
-        proto["symbols"] = []
+    def proto(self) -> Dict[str, Any]:
+        funcs: List[Dict[str, Any]] = []
+        symbols: List[Tuple[int, str]] = []
+        variables: List[Dict[str, Any]] = []
+        redirects: List[Tuple[int, int]] = []
+        targets: List[Dict[str, Any]] = []
 
         for ea, names in self._symbols.items():
             for name in names:
-                proto["symbols"].append([ea, name])
+                if len(name):
+                    symbols.append((ea, name))
 
         for func in self._func_decls.values():
-            proto["functions"].append(func.proto())
+            funcs.append(func.proto())
 
         for func in self._func_defs.values():
-            proto["functions"].append(func.proto())
-
-        for source, target in self._control_flow_redirections.items():
-            # Use 2-entry lists so that we don't use 'source' as a key. That
-            # would turn it into a string in the final JSON forcing us to
-            # handle integers in two different ways
-            proto["control_flow_redirections"].append([source, target])
-
-        for entry in self._control_flow_targets.values():
-            obj = {}
-            obj["complete"] = entry.complete
-            obj["source"] = entry.source
-            obj["destination_list"] = entry.destination_list
-
-            proto["control_flow_targets"].append(obj)
+            funcs.append(func.proto())
 
         for var in self._var_decls.values():
-            proto["variables"].append(var.proto())
+            variables.append(var.proto())
 
         for var in self._var_defs.values():
-            proto["variables"].append(var.proto())
+            variables.append(var.proto())
 
-        proto["memory"] = self._memory.proto()
+        # Use two entry lists so that we don't use 'source' as a key. That
+        # would turn it into a string in the final JSON forcing us to
+        # handle integers in two different ways
+        for source, target in self._control_flow_redirections.items():
+            redirects.append((source, target))
 
-        return proto
+        for entry in self._control_flow_targets.values():
+            destinations = entry.destination_list[:]
+            destinations.sort()
+            targets.append({
+                "source": entry.source,
+                "is_complete": entry.complete,
+                "destinations": destinations
+            })
+
+        funcs.sort(key=lambda o: o["address"])
+        variables.sort(key=lambda o: o["address"])
+        symbols.sort(key=lambda t: t[0])  # Sort by symbol address.
+        redirects.sort(key=lambda t: t[0])  # Sort by source address.
+        targets.sort(key=lambda o: o["source"])
+
+        return {
+            "arch": self._arch.name(),
+            "os": self._os.name(),
+            "functions": funcs,
+            "variables": variables,
+            "symbols": symbols,
+            "memory": self._memory.proto(),
+            "control_flow_redirections": redirects,
+            "control_flow_targets": targets
+        }

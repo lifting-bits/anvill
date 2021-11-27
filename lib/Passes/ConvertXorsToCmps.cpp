@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/ConvertXorToCmp.h>
+#include <anvill/Passes/ConvertXorsToCmps.h>
 
 #include <anvill/ABI.h>
 #include <glog/logging.h>
@@ -65,7 +65,7 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
 
 
 llvm::PreservedAnalyses
-ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
+ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -173,7 +173,7 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
       }
 
       invertible_xor = false;
-      LOG(INFO) << "ConvertXorToCmp: found a non-invertible xor!\n";
+      LOG(INFO) << "ConvertXorsToCmps: found a non-invertible xor!\n";
 
       break;
     }
@@ -214,14 +214,14 @@ ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
     }
   }
 
-  LOG(INFO) << "ConvertXorToCmp: replaced " << replaced_items
+  LOG(INFO) << "ConvertXorsToCmps: replaced " << replaced_items
             << " xors with negated comparisons";
   return ConvertBoolToPreserved(changed);
 }
 
 
-llvm::StringRef ConvertXorToCmp::name(void) {
-  return "ConvertXorToCmp";
+llvm::StringRef ConvertXorsToCmps::name(void) {
+  return "ConvertXorsToCmps";
 }
 
 // Convert operations in the form of:
@@ -231,8 +231,8 @@ llvm::StringRef ConvertXorToCmp::name(void) {
 // this makes the output more natural for humans and computers to reason about
 // This problem comes up a fair bit due to how some instruction semantics
 // compute carry/parity/etc bits.
-void AddConvertXorToCmp(llvm::FunctionPassManager &fpm) {
-  fpm.addPass(ConvertXorToCmp());
+void AddConvertXorsToCmps(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(ConvertXorsToCmps());
 }
 
 }  // namespace anvill

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 namespace llvm {
 class Constant;
@@ -20,6 +21,7 @@ class Function;
 class GlobalValue;
 class Module;
 class PointerType;
+class Type;
 }  // namespace llvm
 namespace remill {
 class Arch;
@@ -271,10 +273,10 @@ class EntityLifter {
   const llvm::DataLayout &DataLayout(void) const;
 
   // Return a reference to the memory provider used by this entity lifter.
-  MemoryProvider &MemoryProvider(void) const;
+  const MemoryProvider &MemoryProvider(void) const;
 
   // Return a reference to the type provider for this entity lifter.
-  TypeProvider &TypeProvider(void) const;
+  const TypeProvider &TypeProvider(void) const;
 
   // Lift a function and return it. Returns `nullptr` if there was a failure.
   llvm::Function *LiftEntity(const FunctionDecl &decl) const;
@@ -323,7 +325,7 @@ class ValueLifter {
   //
   // Returns an `llvm::Constant *` if the pointer is associated with a
   // known or plausible entity, and an `nullptr` otherwise.
-  llvm::Constant *Lift(uint64_t ea, llvm::Type *value_type,
+  llvm::Constant *Lift(std::uint64_t ea, llvm::Type *value_type,
                        unsigned address_space=0u) const;
 
  private:

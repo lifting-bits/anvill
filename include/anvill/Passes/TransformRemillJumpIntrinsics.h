@@ -8,13 +8,15 @@
 
 #pragma once
 
-#include <anvill/CrossReferenceFolder.h>
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 
 namespace anvill {
+
+class CrossReferenceFolder;
+class CrossReferenceResolver;
 
 enum ReturnAddressResult {
 
@@ -32,19 +34,24 @@ enum ReturnAddressResult {
 
 class TransformRemillJumpIntrinsics final
     : public llvm::PassInfoMixin<TransformRemillJumpIntrinsics> {
- public:
-  TransformRemillJumpIntrinsics(const EntityLifter &lifter_)
-      : xref_resolver_(lifter_) {}
-
-  llvm::PreservedAnalyses run(llvm::Function &F,
-                              llvm::FunctionAnalysisManager &AM);
-
  private:
-  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
-                                         llvm::Value *val) const;
+  const CrossReferenceResolver &xref_resolver;
+
+
+  ReturnAddressResult QueryReturnAddress(
+      const CrossReferenceFolder &xref_folder, llvm::Module *module,
+      llvm::Value *val) const;
 
   bool TransformJumpIntrinsic(llvm::CallBase *call);
 
-  const CrossReferenceFolder xref_resolver_;
+ public:
+  inline TransformRemillJumpIntrinsics(
+      const CrossReferenceResolver &xref_resolver_)
+      : xref_resolver(xref_resolver_) {}
+
+  static llvm::StringRef name(void);
+
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &AM);
 };
 }  // namespace anvill

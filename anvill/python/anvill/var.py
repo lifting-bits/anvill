@@ -7,6 +7,8 @@
 #
 
 from abc import ABC, abstractmethod
+from typing import Dict, Any
+
 from .type import Type
 
 
@@ -30,7 +32,7 @@ class Variable(object):
     def visit(self, program: "Program", is_definition: bool, add_refs_as_defs: bool):
         ...
 
-    def proto(self):
+    def proto(self) -> Dict[str, Any]:
         proto = {}
         proto["address"] = self.address()
         if self.type() != None:

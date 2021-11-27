@@ -101,12 +101,12 @@ const llvm::DataLayout &EntityLifter::DataLayout(void) const {
 }
 
 // Return a reference to the memory provider used by this entity lifter.
-::anvill::MemoryProvider &EntityLifter::MemoryProvider(void) const {
+const ::anvill::MemoryProvider &EntityLifter::MemoryProvider(void) const {
   return *(impl->memory_provider);
 }
 
 // Return a reference to the type provider for this entity lifter.
-::anvill::TypeProvider &EntityLifter::TypeProvider(void) const {
+const ::anvill::TypeProvider &EntityLifter::TypeProvider(void) const {
   return *(impl->type_provider);
 }
 

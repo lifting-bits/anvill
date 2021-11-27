@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Lifter.h>
+#include <anvill/Lifters.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/InstIterator.h>
@@ -18,7 +18,7 @@
 
 #include <iostream>
 
-#include "ConvertXorToCmp.h"
+#include "ConvertXorsToCmps.h"
 #include "Utils.h"
 
 namespace anvill {
@@ -37,7 +37,7 @@ TEST_SUITE("XorConversion") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass<ConvertXorToCmp>(module.get(), ConvertXorToCmp()));
+    CHECK(RunFunctionPass<ConvertXorsToCmps>(module.get(), ConvertXorsToCmps()));
 
     const auto xor_as_not = module->getFunction("xor_as_not");
     int xor_count = 0;
@@ -68,7 +68,7 @@ TEST_SUITE("XorConversion") {
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
-    CHECK(RunFunctionPass(module.get(), ConvertXorToCmp()));
+    CHECK(RunFunctionPass(module.get(), ConvertXorsToCmps()));
 
     const auto xor_as_not_nochange = module->getFunction("xor_as_not_nochange");
     int xor_count = 0;

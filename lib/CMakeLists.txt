@@ -20,6 +20,29 @@ set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/Version.cpp")
 set(GIT_WORKING_DIR "${PROJECT_SOURCE_DIR}")
 include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 
+# List of passes. These names should each correspond with both an `.h` and a
+# `.cpp` file.
+set(anvill_passes
+  ConvertMasksToCasts
+  ConvertXorsToCmps
+  HoistUsersOfSelectsAndPhis
+  JumpTableAnalysis
+  LowerRemillMemoryAccessIntrinsics
+  LowerRemillUndefinedIntrinsics
+  LowerSwitchIntrinsics
+  LowerTypeHintIntrinsics
+  RecoverEntityUseInformation
+  RemoveCompilerBarriers
+  RemoveDelaySlotIntrinsics
+  RemoveErrorIntrinsics
+  RemoveRemillFunctionReturns
+  RemoveTrivialPhisAndSelects
+  SinkSelectionsIntoBranchTargets
+  SliceInterpreter
+  SliceManager
+  SlicerVisitor
+  TransformRemillJumpIntrinsics
+)
 
 set(anvill_arch_HEADERS
   "Arch/AllocationState.h"
@@ -62,42 +85,28 @@ set(anvill_providers_SOURCES
 )
 
 set(anvill_passes_HEADERS
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/BaseFunctionPass.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/BrightenPointerOperations.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/ConvertMasksToCasts.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/ConvertXorToCmp.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/EquivalencePass.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/HoistUsersOfSelectsAndPhis.h"
   "${anvill_PUBLIC_HEADER_DIR}/Passes/IndirectJumpPass.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/JumpTableAnalysis.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/LowerRemillMemoryAccessIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/LowerRemillUndefinedIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/LowerTypeHintIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RecoverEntityUseInformation.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RecoverStackFrameInformation.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RemoveCompilerBarriers.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RemoveDelaySlotIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RemoveErrorIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RemoveRemillFunctionReturns.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/RemoveTrivialPhisAndSelects.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/SinkSelectionsIntoBranchTargets.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/SliceInterpreter.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/SliceManager.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/SlicerVisitor.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/SplitStackFrameAtReturnAddress.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/LowerSwitchIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/TransformRemillJumpIntrinsics.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Passes/Utils.h"
 )
+
+set(anvill_passes_SOURCES
+  "Passes/Utils.cpp"
+  "Passes/Utils.h"
+)
+
+foreach(pass_name ${anvill_passes})
+  list(APPEND anvill_passes_HEADERS "${anvill_PUBLIC_HEADER_DIR}/Passes/${pass_name}.h")
+  list(APPEND anvill_passes_SOURCES "Passes/${pass_name}.cpp")
+endforeach()
 
 set(anvill_PUBLIC_HEADERS
   "${anvill_PUBLIC_HEADER_DIR}/ABI.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Providers.h"
   "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceFolder.h"
   "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceResolver.h"
-  "${anvill_PUBLIC_HEADER_DIR}/Lifters.h"
+  "${anvill_PUBLIC_HEADER_DIR}/Decls.h"
   "${anvill_PUBLIC_HEADER_DIR}/JSON.h"
+  "${anvill_PUBLIC_HEADER_DIR}/Lifters.h"
   "${anvill_PUBLIC_HEADER_DIR}/Optimize.h"
+  "${anvill_PUBLIC_HEADER_DIR}/Providers.h"
   "${anvill_PUBLIC_HEADER_DIR}/Result.h"
   "${anvill_PUBLIC_HEADER_DIR}/Specification.h"
   "${anvill_PUBLIC_HEADER_DIR}/Transforms.h"
@@ -116,9 +125,11 @@ set(anvill_SOURCES
   "ABI.cpp"
   "CrossReferenceFolder.cpp"
   "CrossReferenceResolver.cpp"
+  "Decls.cpp"
   "JSON.cpp"
-  "Specification.cpp"
   "Optimize.cpp"
+  "Specification.cpp"
+  "Specification.h"
   "Transforms.cpp"
   "Type.cpp"
   "Util.cpp"

@@ -192,8 +192,9 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
       auto maybe_inv_decl = FunctionDecl::Create(*func, options.arch);
       func->eraseFromParent();
       if (maybe_inv_decl.Succeeded()) {
-        maybe_inv_decl->address = ea;  // Force the address in.
-        return GetFunctionPointer(maybe_inv_decl.TakeValue(), ent_lifter);
+        auto inv_decl = maybe_inv_decl.TakeValue();
+        inv_decl.address = ea;  // Force the address in.
+        return GetFunctionPointer(inv_decl, ent_lifter);
       } else {
         LOG(ERROR) << "Cannot create function declaration for function at "
                    << std::hex << ea << std::dec << " with type "

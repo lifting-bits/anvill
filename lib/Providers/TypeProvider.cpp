@@ -8,7 +8,7 @@
 
 #include <anvill/Providers.h>
 
-#include <anvill/Specification.h>
+#include <anvill/Decls.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -17,32 +17,20 @@
 #include <remill/BC/Util.h>
 
 namespace anvill {
-namespace {
-
-class NullTypeProvider final : public TypeProvider {
- public:
-  virtual ~NullTypeProvider(void) = default;
-
-  using TypeProvider::TypeProvider;
-
-  // Try to return the type of a function starting at address `address`. This
-  // type is the prototype of the function.
-  std::optional<FunctionDecl> TryGetFunctionType(uint64_t) const final {
-    return std::nullopt;
-  }
-
-  std::optional<GlobalVarDecl>
-  TryGetVariableType(uint64_t) const final {
-    return std::nullopt;
-  }
-
- private:
-  NullTypeProvider(void) = delete;
-};
-
-}  // namespace
 
 TypeProvider::~TypeProvider(void) {}
+
+// Try to return the type of a function starting at address `address`. This
+// type is the prototype of the function.
+std::optional<FunctionDecl>
+NullTypeProvider::TryGetFunctionType(uint64_t) const {
+  return std::nullopt;
+}
+
+std::optional<GlobalVarDecl>
+NullTypeProvider::TryGetVariableType(uint64_t) const {
+  return std::nullopt;
+}
 
 // Try to return the type of a function starting at address `to_address`. This
 // type is the prototype of the function. The type can be call site specific,
@@ -76,12 +64,5 @@ void TypeProvider::QueryRegisterStateAtInstruction(
     uint64_t, uint64_t,
     std::function<void(const std::string &, llvm::Type *,
                        std::optional<uint64_t>)>) const {}
-
-// Creates a type provider that always fails to provide type information.
-TypeProvider::Ptr TypeProvider::CreateNull(
-    const ::anvill::TypeDictionary &type_dictionary_,
-    const llvm::DataLayout &dl_) {
-  return std::make_shared<NullTypeProvider>(type_dictionary_, dl_);
-}
 
 }  // namespace anvill
