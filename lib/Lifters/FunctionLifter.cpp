@@ -10,9 +10,7 @@
 
 #include <anvill/ABI.h>
 #include <anvill/Providers.h>
-#include <anvill/Providers.h>
 #include <anvill/Type.h>
-#include <anvill/Providers.h>
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -162,9 +160,9 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
       intrinsics(semantics_module.get()),
       inst_lifter(options.arch, intrinsics),
       pc_reg(options.arch->RegisterByName(
-          options.arch->ProgramCounterRegisterName())),
+          options.arch->ProgramCounterRegisterName())->EnclosingRegister()),
       sp_reg(options.arch->RegisterByName(
-          options.arch->StackPointerRegisterName())),
+          options.arch->StackPointerRegisterName())->EnclosingRegister()),
       is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
       is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),
@@ -377,8 +375,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       switch_parameters.push_back(pc);
 
       for (auto destination : target_list.target_addresses) {
-        auto dest_as_value = GenerateConcreteSpecificationCounter(block, destination);
-        switch_parameters.push_back(dest_as_value);
+        switch_parameters.push_back(llvm::ConstantInt::get(
+            pc_reg->type, destination));
       }
 
       // Invoke the anvill switch
@@ -724,14 +722,10 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
                                             llvm::BasicBlock *block) {
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
-  const auto pc_ptr =
-      inst_lifter.LoadRegAddress(block, state_ptr, remill::kPCVariableName);
-  const auto next_pc_ptr =
-      inst_lifter.LoadRegAddress(block, state_ptr, remill::kNextPCVariableName);
 
   llvm::IRBuilder<> ir(block);
-  ir.CreateStore(ret_pc_val, pc_ptr, false);
-  ir.CreateStore(ret_pc_val, next_pc_ptr, false);
+  ir.CreateStore(ret_pc_val, pc_reg_ref, false);
+  ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
   ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc));
 }
 
@@ -1295,16 +1289,8 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
   llvm::IRBuilder<> ir(block);
 
   options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
-    if (auto reg = reg_->EnclosingRegister(); reg_ == reg) {
-
-      // If we're going to lift the stack frame, then don't store something
-      // like `__anvill_reg_RSP`, otherwise that might confuse later stack
-      // frame recovery (especially if there's an issue eliminating the `State`
-      // structure).
-      if (options.symbolic_stack_pointer &&
-          reg->name == options.arch->StackPointerRegisterName()) {
-        return;
-      }
+    if (auto reg = reg_->EnclosingRegister();
+        reg_ == reg && reg != sp_reg && reg != pc_reg) {
 
       std::stringstream ss;
       ss << kUnmodelledRegisterPrefix << reg->name;
@@ -1321,92 +1307,6 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
       ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
     }
   });
-}
-
-llvm::Value *FunctionLifter::GenerateSpecificationCounter(llvm::BasicBlock *block,
-                                                    std::uint64_t address) {
-  if (options.symbolic_program_counter) {
-    return GenerateSymbolicSpecificationCounter(block, address);
-  } else {
-    return GenerateConcreteSpecificationCounter(block, address);
-  }
-}
-
-void FunctionLifter::UpdateSpecificationCounter(llvm::BasicBlock *block,
-                                          llvm::Value *pc) {
-  auto pc_reg =
-      options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
-
-  auto pc_reg_ptr = pc_reg->AddressOf(state_ptr, block);
-
-  llvm::IRBuilder<> ir(block);
-  ir.CreateStore(pc, pc_reg_ptr);
-}
-
-llvm::Value *
-FunctionLifter::GenerateSymbolicSpecificationCounter(llvm::BasicBlock *block,
-                                               std::uint64_t address) {
-  auto base_pc = semantics_module->getGlobalVariable(kSymbolicPCName);
-  if (!base_pc) {
-    base_pc = new llvm::GlobalVariable(*semantics_module, i8_type, false,
-                                       llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, kSymbolicPCName);
-  }
-
-  auto pc = llvm::ConstantExpr::getAdd(
-      llvm::ConstantExpr::getPtrToInt(base_pc, pc_reg_type),
-      llvm::ConstantInt::get(pc_reg_type, address, false));
-
-  return pc;
-}
-
-// Initialize a symbolic program counter value in a lifted function. This
-// mechanism is used to improve cross-reference discovery by using a
-// relocatable constant expression as the initial value for a program counter.
-// After optimizations, the net effect is that anything derived from this
-// initial program counter is "tainted" by this initial constant expression,
-// and therefore can be found.
-llvm::Value *
-FunctionLifter::InitializeSymbolicSpecificationCounter(llvm::BasicBlock *block) {
-  auto pc = GenerateSymbolicSpecificationCounter(block, func_address);
-  UpdateSpecificationCounter(block, pc);
-  return pc;
-}
-
-llvm::Value *
-FunctionLifter::GenerateConcreteSpecificationCounter(llvm::BasicBlock *block,
-                                               std::uint64_t address) {
-  auto pc = llvm::ConstantInt::get(pc_reg_type, address, false);
-  return pc;
-}
-
-llvm::Value *
-FunctionLifter::InitializeConcreteSpecificationCounter(llvm::BasicBlock *block) {
-  auto pc = GenerateConcreteSpecificationCounter(block, func_address);
-  UpdateSpecificationCounter(block, pc);
-
-  return pc;
-}
-
-// Initialize a symbolic stack pointer value in a lifted function. This
-// mechanism is used to improve stack frame recovery, in a similar way that
-// a symbolic PC improves cross-reference discovery.
-void FunctionLifter::InitializeSymbolicStackPointer(llvm::BasicBlock *block) {
-  auto sp_reg =
-      options.arch->RegisterByName(options.arch->StackPointerRegisterName());
-
-  auto sp_reg_ptr = sp_reg->AddressOf(state_ptr, block);
-
-  auto base_sp = semantics_module->getGlobalVariable(kSymbolicSPName);
-  if (!base_sp) {
-    base_sp = new llvm::GlobalVariable(*semantics_module, i8_type, false,
-                                       llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, kSymbolicSPName);
-  }
-
-  auto sp = llvm::ConstantExpr::getPtrToInt(base_sp, sp_reg->type);
-  llvm::IRBuilder<> ir(block);
-  ir.CreateStore(sp, sp_reg_ptr);
 }
 
 // Initialize a symbolic return address. This is similar to symbolic program
@@ -1495,17 +1395,18 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   // Stack-allocate and initialize the state pointer.
   AllocateAndInitializeStateStructure(block);
 
-  llvm::Value *pc = nullptr;
-  if (options.symbolic_program_counter) {
-    pc = InitializeSymbolicSpecificationCounter(block);
-  } else {
-    pc = InitializeConcreteSpecificationCounter(block);
-  }
+  auto pc_ptr = pc_reg->AddressOf(state_ptr, block);
+  auto sp_ptr = sp_reg->AddressOf(state_ptr, block);
+
+  llvm::IRBuilder<> ir(block);
+
+  // Initialize the program counter.
+  auto pc = options.program_counter_init_procedure(ir, pc_reg, func_address);
+  ir.CreateStore(pc, pc_ptr);
 
   // Initialize the stack pointer.
-  if (options.symbolic_stack_pointer) {
-    InitializeSymbolicStackPointer(block);
-  }
+  ir.CreateStore(options.stack_pointer_init_procedure(ir, sp_reg, func_address),
+                 sp_ptr);
 
   // Does this function have a return address? Most functions are provided a
   // return address on the stack, however the program entrypoint (usually
@@ -1533,8 +1434,6 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
     mem_ptr = StoreNativeValue(&arg, param_decl, types,
                                intrinsics, block, state_ptr, mem_ptr);
   }
-
-  llvm::IRBuilder<> ir(block);
 
   llvm::Value *lifted_func_args[remill::kNumBlockArgs] = {};
   lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
@@ -1742,12 +1641,15 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
   const auto entry_block = &(lifted_func->getEntryBlock());
-  const auto pc_ptr = inst_lifter.LoadRegAddress(entry_block, state_ptr,
-                                                 remill::kPCVariableName);
-  const auto next_pc_ptr = inst_lifter.LoadRegAddress(
-      entry_block, state_ptr, remill::kNextPCVariableName);
+  pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr,
+                                          pc_reg->name);
+  next_pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr,
+                                               remill::kNextPCVariableName);
+  sp_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr,
+                                          sp_reg->name);
 
   mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
+
 
   // Force initialize both the `PC` and `NEXT_PC` from the `pc` argument.
   // On some architectures, `NEXT_PC` is a "pseudo-register", i.e. an `alloca`
@@ -1755,8 +1657,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // so we want to ensure it gets reliably initialized before any lifted
   // instructions may depend upon it.
   llvm::IRBuilder<> ir(entry_block);
-  ir.CreateStore(pc, next_pc_ptr);
-  ir.CreateStore(pc, pc_ptr);
+  ir.CreateStore(pc, next_pc_reg_ref);
+  ir.CreateStore(pc, pc_reg_ref);
 
   // Add a branch between the first block of the lifted function, which sets
   // up some local variables, and the block that will contain the lifted

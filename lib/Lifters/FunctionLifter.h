@@ -126,6 +126,15 @@ class FunctionLifter {
   // Pointer to the `Memory *` in `lifted_func`.
   llvm::Value *mem_ptr_ref{nullptr};
 
+  // Pointer to the current value of the stack pointer in `lifted_func`.
+  llvm::Value *sp_reg_ref{nullptr};
+
+  // Pointer to the current value of the program counter in `lifted_func`.
+  llvm::Value *pc_reg_ref{nullptr};
+
+  // Pointer to the next value of the program counter in `lifted_func`.
+  llvm::Value *next_pc_reg_ref{nullptr};
+
   // Current instruction being lifted.
   remill::Instruction *curr_inst{nullptr};
 
@@ -419,39 +428,6 @@ class FunctionLifter {
   // some unmodelled external dependencies inside of a lifted function.
   void
   InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
-
-  // Generates a new program counter
-  llvm::Value *GenerateSpecificationCounter(llvm::BasicBlock *block,
-                                      std::uint64_t address);
-
-  // Updates the program counter value
-  void UpdateSpecificationCounter(llvm::BasicBlock *block, llvm::Value *pc);
-
-  // Generates a symbolic program counter value, used primarily by
-  // InitializeSymbolicSpecificationCounter
-  llvm::Value *GenerateSymbolicSpecificationCounter(llvm::BasicBlock *block,
-                                              std::uint64_t address);
-
-  // Initialize a symbolic program counter value in a lifted function. This
-  // mechanism is used to improve cross-reference discovery by using a
-  // relocatable constant expression as the initial value for a program counter.
-  // After optimizations, the net effect is that anything derived from this
-  // initial program counter is "tainted" by this initial constant expression,
-  // and therefore can be found.
-  llvm::Value *InitializeSymbolicSpecificationCounter(llvm::BasicBlock *block);
-
-  // Generates a concrete program counter value, used primarily by
-  // InitializeConcreteSpecificationCounter
-  llvm::Value *GenerateConcreteSpecificationCounter(llvm::BasicBlock *block,
-                                              std::uint64_t address);
-
-  // Initialize the program value with a concrete integer address.
-  llvm::Value *InitializeConcreteSpecificationCounter(llvm::BasicBlock *block);
-
-  // Initialize a symbolic stack pointer value in a lifted function. This
-  // mechanism is used to improve stack frame recovery, in a similar way that
-  // a symbolic PC improves cross-reference discovery.
-  void InitializeSymbolicStackPointer(llvm::BasicBlock *block);
 
   // Initialize a symbolic return address. This is similar to symbolic program
   // counters/stack pointers.

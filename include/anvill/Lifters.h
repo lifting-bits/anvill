@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -19,12 +20,15 @@ class Constant;
 class DataLayout;
 class Function;
 class GlobalValue;
+class IRBuilderBase;
 class Module;
 class PointerType;
 class Type;
+class Value;
 }  // namespace llvm
 namespace remill {
 class Arch;
+struct Register;
 }  // namespace remill
 namespace anvill {
 
@@ -96,6 +100,20 @@ enum class StackFrameStructureInitializationProcedure : char {
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
+  // Initialize the stack pointer with a constant expression of the form:
+  //
+  //    (ptrtoint __anvill_sp)
+  static llvm::Value *SymbolicStackPointerInit(
+      llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
+      uint64_t func_address);
+
+  // Initialize the program counter with a constant expression of the form:
+  //
+  //    (ptrtoint __anvill_pc)
+  static llvm::Value *SymbolicProgramCounterInit(
+      llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
+      uint64_t func_address);
+
   inline explicit LifterOptions(
       const remill::Arch *arch_, llvm::Module &module_,
       const TypeProvider &type_provider_,
@@ -112,11 +130,9 @@ class LifterOptions {
             StackFrameStructureInitializationProcedure::kSymbolic),
         stack_frame_lower_padding(0U),
         stack_frame_higher_padding(0U),
-        symbolic_program_counter(true),
-        symbolic_stack_pointer(true),
+        program_counter_init_procedure(SymbolicProgramCounterInit),
+        stack_pointer_init_procedure(SymbolicStackPointerInit),
         symbolic_return_address(true),
-        symbolic_register_types(true),
-        store_inferred_register_values(true),
         add_breakpoints(false),
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
@@ -180,16 +196,16 @@ class LifterOptions {
   //      (add (ptrtoint __anvill_pc) <address>)
   //
   // Otherwise, a concrete integer is used, i.e. `<address>`.
-  bool symbolic_program_counter : 1;
+  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
+                              uint64_t)>
+      program_counter_init_procedure;
 
-  // Should the stack pointer in lifted functions be represented with a
-  // symbolic expression? If so, then it takes on the form:
-  //
-  //      (ptrtoint __anvill_sp)
-  //
-  // Otherwise, the initial value of the stack pointer is loaded from a global
-  // variable, `__anvill_reg_<stack pointer name>`.
-  bool symbolic_stack_pointer : 1;
+  // Procedure for producing an initial value of the stack pointer on entry
+  // to a function. An `IRBuilderBase` is provided for building values within
+  // the entry block of the function at the given address.
+  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
+                              uint64_t)>
+      stack_pointer_init_procedure;
 
   // Should the return address in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
@@ -201,40 +217,6 @@ class LifterOptions {
   //
   //      llvm.returnaddress(0)
   bool symbolic_return_address : 1;
-
-  // Should we ask the type provider to provide us with typing hints for
-  // registers on entry to instructions? If so, then if there's a register
-  // at a specific address whose type is known, then the lifter performs
-  // roughly the following:
-  //
-  //      state->reg = __anvill_type_func_<hex address>_<type>(state->reg)
-  //
-  // The `__anvill_type_func_*` functions are basically uninterpreted functions,
-  // similar to Remill intrinsic functions, and serves to communicate the
-  // equivalent of a bitcast, but where the cast itself cannot be folded
-  // away by optimizations.
-  //
-  // TODO(pag): Convert this into using a global variable approach, like
-  //            with `__anvill_pc`. Then it will compose nicely with
-  //            `__anvill_sp`, which it currently does not.
-  bool symbolic_register_types : 1;
-
-  // If `symbolic_register_types` is `true`, and if the type provider gives us
-  // a concrete value that it believes resides in a register at a specific point
-  // in time, then should we trust that that value is indeed there and store it
-  // into the register? What this looks like is:
-  //
-  //      ... lifted instructions A ...
-  //      state->reg = <constant value>
-  //      ... lifted instructions B ...
-  //
-  // The impact of this option is two-fold. First, from `A`s perspective, any
-  // stores to `state->reg` are dead, and can likely be subject to dead store
-  // elimination, giving scalar replacement of aggregates and mem2reg and easier
-  // time of eliminating accesses to the `State` structure. Second, from `B`s
-  // perspective, `state->reg` is now a constant value, allowing store-to-load
-  // forwarding.
-  bool store_inferred_register_values : 1;
 
   // Add so-called breakpoint calls. These can be useful for visually
   // identifying the general provenance of lifted bitcode with respect to

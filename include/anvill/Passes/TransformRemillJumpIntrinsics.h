@@ -24,12 +24,12 @@ enum ReturnAddressResult {
   // casted from `__anvill_ra`, reaches into the `pc` argument of the
   // `__remill_jump` intrinsic. This is the ideal case that we want to
   // replace it with `__remill_function_return`.
-  kReturnAddressSpecificationCounter,
+  kReturnAddressProgramCounter,
 
   // This is a case a value returned by `llvm.returnaddress`, or casted
   // from `__anvill_ra` does not reaches to the `pc` argument and it
   // should not get transformed to `__remill_function_return`.
-  kUnclassifiableSpecificationCounter
+  kUnclassifiableProgramCounter
 };
 
 class TransformRemillJumpIntrinsics final

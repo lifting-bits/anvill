@@ -290,7 +290,7 @@ static bool IsStackPointerRegName(llvm::Module *module,
 
 // Returns `true` if `reg_name` appears to be the name of the program counter
 // register in the target architecture of `module`.
-static bool IsSpecificationCounterRegName(llvm::Module *module,
+static bool IsProgramCounterRegName(llvm::Module *module,
                                     const std::string &reg_name) {
   llvm::Triple triple(module->getTargetTriple());
   switch (triple.getArch()) {
@@ -477,12 +477,12 @@ bool IsStackPointer(llvm::Module *module, llvm::Value *val) {
 }
 
 // Returns `true` if it looks like `val` is the program counter.
-bool IsSpecificationCounter(llvm::Module *, llvm::Value *val) {
+bool IsProgramCounter(llvm::Module *, llvm::Value *val) {
   if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     return gv->getName() == kSymbolicPCName;
 
   } else if (auto load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-    return IsLoadOfUnmodelledRegister(load, IsSpecificationCounterRegName);
+    return IsLoadOfUnmodelledRegister(load, IsProgramCounterRegName);
 
   // TODO(pag): Cover arguments to remill three-argument form functions?
   } else {
