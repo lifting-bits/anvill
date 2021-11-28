@@ -40,7 +40,6 @@ class LowerSwitchIntrinsics
       : memProv(memProv),
         slm(slm) {}
 
-
   static llvm::StringRef name(void);
 
   llvm::PreservedAnalyses runOnIndirectJump(llvm::CallInst *indirectJump,
