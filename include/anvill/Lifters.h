@@ -20,6 +20,7 @@ class Constant;
 class DataLayout;
 class Function;
 class GlobalValue;
+class IntegerType;
 class IRBuilderBase;
 class Module;
 class PointerType;
@@ -109,10 +110,23 @@ class LifterOptions {
 
   // Initialize the program counter with a constant expression of the form:
   //
-  //    (ptrtoint __anvill_pc)
+  //    (add (ptrtoint __anvill_pc), <addr>)
+  //
   static llvm::Value *SymbolicProgramCounterInit(
       llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
       uint64_t func_address);
+
+  // Initialize the return address with a constant expression of the form:
+  //
+  //    (ptrtoint __anvill_ra)
+  static llvm::Value *SymbolicReturnAddressInit(
+      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+
+  // Initialize the return address with the result of:
+  //
+  //    call llvm.returnaddress()
+  static llvm::Value *ConcreteReturnAddressInit(
+      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
 
   inline explicit LifterOptions(
       const remill::Arch *arch_, llvm::Module &module_,
@@ -132,7 +146,7 @@ class LifterOptions {
         stack_frame_higher_padding(0U),
         program_counter_init_procedure(SymbolicProgramCounterInit),
         stack_pointer_init_procedure(SymbolicStackPointerInit),
-        symbolic_return_address(true),
+        return_address_init_procedure(SymbolicReturnAddressInit),
         add_breakpoints(false),
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
@@ -216,6 +230,8 @@ class LifterOptions {
   // will be the result of the intrinsic function call:
   //
   //      llvm.returnaddress(0)
+  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *, uint64_t)>
+      return_address_init_procedure;
   bool symbolic_return_address : 1;
 
   // Add so-called breakpoint calls. These can be useful for visually

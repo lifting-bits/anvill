@@ -84,4 +84,44 @@ llvm::Value *LifterOptions::SymbolicProgramCounterInit(
       llvm::ConstantInt::get(type, func_address, false));
 }
 
+// Initialize the return address with a constant expression of the form:
+//
+//    (ptrtoint __anvill_ra)
+llvm::Value *LifterOptions::SymbolicReturnAddressInit(
+    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address) {
+  auto &context = ir.getContext();
+  auto block = ir.GetInsertBlock();
+  auto module = block->getModule();
+  type = llvm::dyn_cast<llvm::IntegerType>(
+      remill::RecontextualizeType(type, context));
+  auto base_ra = module->getGlobalVariable(kSymbolicRAName);
+  if (!base_ra) {
+    base_ra = new llvm::GlobalVariable(
+        *module, type, false, llvm::GlobalValue::ExternalLinkage,
+        llvm::Constant::getNullValue(type), kSymbolicRAName);
+  }
+  return llvm::ConstantExpr::getPtrToInt(base_ra, type);
+}
+
+// Initialize the return address with the result of:
+//
+//    call llvm.returnaddress()
+llvm::Value *LifterOptions::ConcreteReturnAddressInit(
+    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address) {
+  auto &context = ir.getContext();
+  auto block = ir.GetInsertBlock();
+  auto module = block->getModule();
+  type = llvm::dyn_cast<llvm::IntegerType>(
+      remill::RecontextualizeType(type, context));
+
+  auto ret_addr_func = llvm::Intrinsic::getDeclaration(
+      module, llvm::Intrinsic::returnaddress);
+  llvm::Value *args[] = {
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)};
+
+  return ir.CreatePtrToInt(
+      ir.CreateCall(ret_addr_func->getFunctionType(), ret_addr_func, args),
+      type);
+}
+
 }  // namespace anvill
