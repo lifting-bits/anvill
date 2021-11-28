@@ -12,6 +12,7 @@
 #include <sstream>
 
 #include <anvill/JSON.h>
+#include <anvill/Lifters.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/JSON.h>
 #include <remill/Arch/Arch.h>
@@ -782,6 +783,20 @@ std::shared_ptr<const GlobalVarDecl> Specification::GlobalVarContaining(
     return std::shared_ptr<const GlobalVarDecl>(impl, it->second);
   } else {
     return {};
+  }
+}
+
+// Lift all functions.
+void Specification::LiftAllFunctions(EntityLifter &lifter) const {
+  for (const auto &func : impl->functions) {
+    lifter.LiftEntity(*func);
+  }
+}
+
+// Lift all variables.
+void Specification::LiftAllVariables(EntityLifter &lifter) const {
+  for (const auto &var : impl->variables) {
+    lifter.LiftEntity(*var);
   }
 }
 

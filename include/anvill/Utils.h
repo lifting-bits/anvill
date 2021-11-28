@@ -14,6 +14,7 @@
 namespace llvm {
 class BasicBlock;
 class Instruction;
+class IRBuilderBase;
 class Module;
 class Value;
 class Type;
@@ -26,6 +27,10 @@ namespace anvill {
 
 struct ValueDecl;
 class TypeDictionary;
+
+// Adapt `src` to another type (likely an integer type) that is `dest_type`.
+llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
+                         llvm::Type *dest_type);
 
 // Creates a `sub_<address>` name from an address
 std::string CreateFunctionName(std::uint64_t addr);

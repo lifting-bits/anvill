@@ -22,6 +22,7 @@ namespace llvm {
 class CallBase;
 class Function;
 class Instruction;
+class IRBuilderBase;
 class PointerType;
 class Value;
 }  // namespace llvm

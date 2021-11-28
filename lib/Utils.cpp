@@ -30,6 +30,148 @@
 #include <remill/BC/Util.h>
 
 namespace anvill {
+
+// Adapt `src` to another type (likely an integer type) that is `dest_type`.
+llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
+                         llvm::Type *dest_type) {
+  const auto src_type = src->getType();
+  if (src_type == dest_type) {
+    return src;
+  }
+
+  if (src_type->isIntegerTy()) {
+    if (dest_type->isIntegerTy()) {
+      auto src_size = src_type->getPrimitiveSizeInBits();
+      auto dest_size = dest_type->getPrimitiveSizeInBits();
+      if (src_size < dest_size) {
+        auto dest = ir.CreateZExt(src, dest_type);
+        CopyMetadataTo(src, dest);
+        return dest;
+      } else {
+        auto dest = ir.CreateTrunc(src, dest_type);
+        CopyMetadataTo(src, dest);
+        return dest;
+      }
+
+    } else if (auto dest_ptr_type =
+                   llvm::dyn_cast<llvm::PointerType>(dest_type);
+               dest_ptr_type) {
+      auto inter_type =
+          llvm::PointerType::get(dest_ptr_type->getElementType(), 0);
+
+      llvm::Value *inter_val = nullptr;
+      if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(src); pti) {
+        src = llvm::cast<llvm::Constant>(pti->getOperand(0));
+        if (src->getType() == dest_type) {
+          return src;
+        } else {
+          inter_val = ir.CreateBitCast(src, inter_type);
+          CopyMetadataTo(src, inter_val);
+        }
+
+      } else {
+        inter_val = ir.CreateIntToPtr(src, inter_type);
+        CopyMetadataTo(src, inter_val);
+      }
+
+      if (inter_type == dest_ptr_type) {
+        return inter_val;
+      } else {
+        auto dest = ir.CreateAddrSpaceCast(inter_val, dest_ptr_type);
+        CopyMetadataTo(src, dest);
+        return dest;
+      }
+    }
+
+  } else if (auto src_ptr_type = llvm::dyn_cast<llvm::PointerType>(src_type);
+             src_ptr_type) {
+
+    // Cast the pointer to the other pointer type.
+    if (auto dest_ptr_type = llvm::dyn_cast<llvm::PointerType>(dest_type);
+        dest_ptr_type) {
+
+      if (src_ptr_type->getAddressSpace() != dest_ptr_type->getAddressSpace()) {
+        src_ptr_type = llvm::PointerType::get(src_ptr_type->getElementType(),
+                                              dest_ptr_type->getAddressSpace());
+        auto dest = ir.CreateAddrSpaceCast(src, src_ptr_type);
+        CopyMetadataTo(src, dest);
+        src = dest;
+      }
+
+      if (src_ptr_type == dest_ptr_type) {
+        return src;
+      } else {
+        auto dest = ir.CreateBitCast(src, dest_ptr_type);
+        CopyMetadataTo(src, dest);
+        return dest;
+      }
+
+    // Convert the pointer to an integer.
+    } else if (auto dest_int_type =
+                   llvm::dyn_cast<llvm::IntegerType>(dest_type);
+               dest_int_type) {
+      if (src_ptr_type->getAddressSpace()) {
+        src_ptr_type =
+            llvm::PointerType::get(src_ptr_type->getElementType(), 0);
+        auto dest = ir.CreateAddrSpaceCast(src, src_ptr_type);
+        CopyMetadataTo(src, dest);
+        src = dest;
+      }
+
+      const auto block = ir.GetInsertBlock();
+      const auto func = block->getParent();
+      const auto module = func->getParent();
+      const auto &dl = module->getDataLayout();
+      auto &context = module->getContext();
+      auto dest = ir.CreatePtrToInt(
+          src, llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0)));
+      CopyMetadataTo(src, dest);
+      return AdaptToType(ir, dest, dest_type);
+    }
+
+  } else if (src_type->isFloatTy()) {
+    if (dest_type->isDoubleTy()) {
+      return ir.CreateFPExt(src, dest_type);
+
+    } else if (dest_type->isIntegerTy()) {
+      const auto i32_type = llvm::Type::getInt32Ty(dest_type->getContext());
+      return AdaptToType(ir, ir.CreateBitCast(src, i32_type), dest_type);
+    }
+
+  } else if (src_type->isDoubleTy()) {
+    if (dest_type->isFloatTy()) {
+      auto dest = ir.CreateFPTrunc(src, dest_type);
+      CopyMetadataTo(src, dest);
+      return dest;
+
+    } else if (dest_type->isIntegerTy()) {
+      const auto i64_type = llvm::Type::getInt64Ty(dest_type->getContext());
+      auto dest = ir.CreateBitCast(src, i64_type);
+      CopyMetadataTo(src, dest);
+      return AdaptToType(ir, dest, dest_type);
+    }
+  }
+
+  // If we want to change the type of a load, then we can change the type of
+  // the loaded pointer.
+  if (auto li = llvm::dyn_cast<llvm::LoadInst>(src)) {
+    ir.SetInsertPoint(li);
+    auto loaded_ptr = AdaptToType(
+        ir, li->getPointerOperand(),
+        llvm::PointerType::get(dest_type, li->getPointerAddressSpace()));
+    ir.SetInsertPoint(li);
+    auto new_li = ir.CreateLoad(dest_type, loaded_ptr);
+    new_li->setVolatile(li->isVolatile());
+    new_li->setAtomic(li->getOrdering(), li->getSyncScopeID());
+    new_li->setAlignment(li->getAlign());
+    CopyMetadataTo(li, new_li);
+    return new_li;
+  }
+
+  // Fall-through, we don't have a supported adaptor.
+  return nullptr;
+}
+
 namespace {
 
 // Unfold constant expressions by expanding them into their relevant

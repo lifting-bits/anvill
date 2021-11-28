@@ -271,7 +271,7 @@ class BNSpecification(Specification):
         # A function symbol may be identified as variable by binja.
         bn_func: Optional[bn.Function] = self.function_from_addr(ea)
         if bn_func is not None:
-            return self._get_function_from_bnfunction(ea, bn_func)
+            return self._get_function_from_bnfunction(bn_func.start, bn_func)
 
         # We have a symbol; might be an external function
         bn_sym: Optional[bn.CoreSymbol] = self._bv.get_symbol_at(ea)

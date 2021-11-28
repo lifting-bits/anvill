@@ -1056,7 +1056,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
   // Recursively decode and lift all instructions that we come across.
   while (!edge_work_list.empty()) {
-    const auto [inst_addr, from_addr] = *(edge_work_list.begin());
+    auto [inst_addr, from_addr] = *(edge_work_list.begin());
     edge_work_list.erase(edge_work_list.begin());
 
     llvm::BasicBlock *const block = edge_to_dest_block[{from_addr, inst_addr}];
@@ -1114,7 +1114,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     if (!inst_block) {
       inst_block = block;
 
-      // We've already lifted this instruction via another control-flow edge.
+    // We've already lifted this instruction via another control-flow edge.
     } else {
       llvm::BranchInst::Create(inst_block, block);
       continue;
@@ -1122,13 +1122,28 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
     // Decode.
     if (!DecodeInstructionInto(inst_addr, false /* is_delayed */, &inst)) {
+      if (inst_addr == func_address) {
+        inst.pc = inst_addr;
+        inst.arch_name = options.arch->arch_name;
+        inst_addr = options.control_flow_provider.GetRedirection(
+            inst, inst_addr);
+
+        // Failed to decode the first instruction of the function, but we can
+        // possibly recover via a tail-call to a redirection address!
+        if (inst_addr != func_address) {
+          edge_work_list.emplace(inst_addr, func_address);
+          continue;
+        }
+      }
+
       LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
+
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
 
-      // Didn't get a valid instruction.
+    // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
       continue;
