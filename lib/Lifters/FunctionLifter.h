@@ -84,7 +84,7 @@ class FunctionLifter {
   // TODO(pag): Consider passing in the `InstructionLifter` via `LifterOptions`?
   remill::InstructionLifter inst_lifter;
 
-  // Program counter and stack pointer registers.
+  // Specification counter and stack pointer registers.
   const remill::Register * const pc_reg;
   const remill::Register * const sp_reg;
 
@@ -421,15 +421,15 @@ class FunctionLifter {
   InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
 
   // Generates a new program counter
-  llvm::Value *GenerateProgramCounter(llvm::BasicBlock *block,
+  llvm::Value *GenerateSpecificationCounter(llvm::BasicBlock *block,
                                       std::uint64_t address);
 
   // Updates the program counter value
-  void UpdateProgramCounter(llvm::BasicBlock *block, llvm::Value *pc);
+  void UpdateSpecificationCounter(llvm::BasicBlock *block, llvm::Value *pc);
 
   // Generates a symbolic program counter value, used primarily by
-  // InitializeSymbolicProgramCounter
-  llvm::Value *GenerateSymbolicProgramCounter(llvm::BasicBlock *block,
+  // InitializeSymbolicSpecificationCounter
+  llvm::Value *GenerateSymbolicSpecificationCounter(llvm::BasicBlock *block,
                                               std::uint64_t address);
 
   // Initialize a symbolic program counter value in a lifted function. This
@@ -438,15 +438,15 @@ class FunctionLifter {
   // After optimizations, the net effect is that anything derived from this
   // initial program counter is "tainted" by this initial constant expression,
   // and therefore can be found.
-  llvm::Value *InitializeSymbolicProgramCounter(llvm::BasicBlock *block);
+  llvm::Value *InitializeSymbolicSpecificationCounter(llvm::BasicBlock *block);
 
   // Generates a concrete program counter value, used primarily by
-  // InitializeConcreteProgramCounter
-  llvm::Value *GenerateConcreteProgramCounter(llvm::BasicBlock *block,
+  // InitializeConcreteSpecificationCounter
+  llvm::Value *GenerateConcreteSpecificationCounter(llvm::BasicBlock *block,
                                               std::uint64_t address);
 
   // Initialize the program value with a concrete integer address.
-  llvm::Value *InitializeConcreteProgramCounter(llvm::BasicBlock *block);
+  llvm::Value *InitializeConcreteSpecificationCounter(llvm::BasicBlock *block);
 
   // Initialize a symbolic stack pointer value in a lifted function. This
   // mechanism is used to improve stack frame recovery, in a similar way that

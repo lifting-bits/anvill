@@ -23,6 +23,7 @@ class DataLayout;
 class Function;
 class FunctionType;
 class GlobalVariable;
+class LLVMContext;
 class Module;
 class Type;
 class Value;
@@ -41,12 +42,20 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+class SpecificationControlFlowProvider;
 class SpecificationImpl;
+class SpecificationMemoryProvider;
+class SpecificationTypeProvider;
 class TypeDictionary;
+class TypeTranslator;
 
 // Represents the data pulled out of a JSON (sub-)program specification.
 class Specification {
  private:
+  friend class SpecificationControlFlowProvider;
+  friend class SpecificationMemoryProvider;
+  friend class SpecificationTypeProvider;
+
   Specification(void) = delete;
 
   std::shared_ptr<SpecificationImpl> impl;
@@ -56,13 +65,32 @@ class Specification {
  public:
   ~Specification(void);
 
+  // Return the architecture used by this specification.
+  std::shared_ptr<const remill::Arch> Arch(void) const;
+
+  // Return the type dictionary used by this specification.
+  const ::anvill::TypeDictionary &TypeDictionary(void) const;
+
+  // Return the type translator used by this specification.
+  const ::anvill::TypeTranslator &TypeTranslator(void) const;
+
   // Try to create a program from a JSON specification. Returns a string error
   // if something went wrong.
   static anvill::Result<Specification, JSONDecodeError> DecodeFromJSON(
-      const llvm::json::Value &val);
+      llvm::LLVMContext &context, const llvm::json::Value &val);
 
   // Try to encode the specification into JSON.
   anvill::Result<llvm::json::Object, JSONEncodeError> EncodeToJSON(void);
+
+  // Return the function beginning at `address`, or an empty `shared_ptr`.
+  std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
+
+  // Return the global variable beginning at `address`, or an empty `shared_ptr`.
+  std::shared_ptr<const GlobalVarDecl> GlobalVarAt(std::uint64_t address) const;
+
+  // Return the global variable containing `address`, or an empty `shared_ptr`.
+  std::shared_ptr<const GlobalVarDecl> GlobalVarContaining(
+      std::uint64_t address) const;
 };
 
 }  // namespace anvill

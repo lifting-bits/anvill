@@ -128,7 +128,7 @@ def get_program(
     os: Optional[str] = None,
     maybe_base_address: Optional[int] = None,
     cache: bool = False,
-) -> Optional[Program]:
+) -> Optional[Specification]:
     if cache:
         DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
@@ -138,4 +138,4 @@ def get_program(
     if not os:
         os = _get_os()
 
-    return IDAProgram(arch, os, maybe_base_address)
+    return IDASpecification(arch, os, maybe_base_address)
