@@ -23,7 +23,7 @@ _FLOAT_ARGS_REGS = {
 
 
 class CallingConvention:
-    def __init__(self, arch, bn_func, cc):
+    def __init__(self, arch, bn_func: bn.Function, cc):
         self._cc = cc
         self._arch = arch
         self._bn_func = bn_func

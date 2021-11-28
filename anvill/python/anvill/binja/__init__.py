@@ -20,41 +20,35 @@ from ..program import *
 
 
 def get_program(
-    binary_path_or_bv: Union[str, bn.BinaryView],
-    maybe_base_address: Optional[int] = None,
-    cache: bool = False,
+    binary_path: Optional[str] = None,
+    binary_view: Optional[bn.BinaryView] = None,
+    base_address: Optional[int] = None,
 ) -> Optional[Program]:
-    if cache:
-        DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
-
-    bv: Optional[bv.BinaryView] = None
-    binary_path: str = ""
-
-    if isinstance(binary_path_or_bv, bn.BinaryView):
-        bv = binary_path_or_bv
-        try:
-            binary_path = bv.file.filename
-        except:
-            pass
-        assert maybe_base_address is None
-
-    elif isinstance(binary_path_or_bv, str):
-        binary_path: str = binary_path_or_bv
-        if maybe_base_address is not None:
-            # Force the new image base address; according to the documentation, we will
-            # not inherit any of the default load options that we get when calling the
+    if isinstance(binary_path, str):
+        if isinstance(base_address, int):
+            # Force the new image base address; according to the
+            # documentation, we will
+            # not inherit any of the default load options that we get when
+            # calling the
             # get_view_of_file method
-            bv = bn.BinaryViewType.get_view_of_file_with_options(
-                binary_path, options={"loader.imageBase": maybe_base_address}
+            binary_view = bn.BinaryViewType.get_view_of_file_with_options(
+                binary_path, options={"loader.imageBase": base_address}
             )
 
         else:
             # Use the auto-generated load options
-            bv = bn.BinaryViewType.get_view_of_file(binary_path)
+            binary_view = bn.BinaryViewType.get_view_of_file(binary_path)
+    elif isinstance(binary_view, bn.BinaryView):
+        try:
+            binary_path = binary_view.file.filename
+        except:
+            pass
+        assert base_address is None
 
-    if bv is None:
+
+    if binary_view is None:
         DEBUG("Failed to create the BinaryView")
         return None
 
     DEBUG("Recovering program {}".format(binary_path))
-    return BNProgram(bv, binary_path)
+    return BNProgram(binary_view, binary_path)

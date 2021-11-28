@@ -9,9 +9,10 @@
 from abc import ABC, abstractmethod
 
 from .arch import Arch
+from .os import CC
 from .type import Type, FunctionType, StructureType
 from .loc import Location
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Final, Optional, cast
 
 
 class Function(ABC):
@@ -24,24 +25,22 @@ class Function(ABC):
         "_return_values",
         "_type",
         "_cc",
-        "_register_info",
         "_is_entrypoint",
     )
 
     def __init__(
         self, arch: Arch, address: int, parameters: List[Location],
-        return_values: List[Location], func_type: Type,
-        is_entrypoint: bool, cc: int = 0
+        return_values: List[Location], func_type: FunctionType,
+        is_entrypoint: bool = False, cc: CC = 0
     ):
         assert isinstance(func_type, FunctionType)
-        self._arch: Arch = arch
-        self._address: int = address
-        self._parameters: List[Location] = parameters
-        self._return_values: List[Location] = return_values
-        self._type: Type = func_type
-        self._cc: int = cc
-        self._register_info: List[Location] = []
-        self._is_entrypoint: bool = is_entrypoint
+        self._arch: Final[Arch] = arch
+        self._address: Final[int] = address
+        self._parameters: Final[List[Location]] = parameters
+        self._return_values: Final[List[Location]] = return_values
+        self._type: Final[Optional[FunctionType]] = func_type
+        self._cc: Final[CC] = cc
+        self._is_entrypoint: Final[bool] = is_entrypoint
 
         for param in self._parameters:
             assert isinstance(param, Location)
@@ -65,10 +64,10 @@ class Function(ABC):
     def address(self) -> int:
         return self._address
 
-    def type(self) -> Type:
+    def type(self) -> Optional[FunctionType]:
         return self._type
 
-    def calling_convention(self) -> int:
+    def calling_convention(self) -> CC:
         return self._cc
 
     @abstractmethod
@@ -85,34 +84,26 @@ class Function(ABC):
         return False
 
     def proto(self) -> Dict[str, Any]:
-        proto: Dict[str, Any] = {"address": self.address()}
+        proto: Dict[str, Any] = {
+            "address": self.address(),
+            "return_stack_pointer": self._arch.return_stack_pointer_proto(
+                self.type().num_bytes_popped_off_stack()),
+            "is_variadic": self.is_variadic(),
+            "is_noreturn": self.is_noreturn(),
+            "calling_convention": cast(int, self._cc)
+        }
+
         if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()
-        proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(
-            self.type().num_bytes_popped_off_stack()
-        )
-        if self._parameters:
+
+        func_type = self.type()
+        if len(self._parameters) or len(self._return_values):
             proto["parameters"] = [loc.proto(self._arch)
                                    for loc in self._parameters]
-        if self._return_values:
             proto["return_values"] = [
                 loc.proto(self._arch) for loc in self._return_values
             ]
-        if self.is_variadic():
-            proto["is_variadic"] = True
-        if self.is_noreturn():
-            proto["is_noreturn"] = True
-        if self._cc:
-            proto["calling_convention"] = self._cc
-        if self._register_info:
-            proto["register_info"] = [
-                loc.proto(self._arch) for loc in self._register_info
-            ]
-
-        # The function type information is only available with the
-        # functions that are external. The lifter will handle the function
-        # types and ignore params and return values
-        if self.is_external():
-            proto["type"] = self.type().proto(self._arch)
+        else:
+            proto["type"] = func_type.proto(self._arch)
 
         return proto

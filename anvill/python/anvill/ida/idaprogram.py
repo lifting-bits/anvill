@@ -237,9 +237,6 @@ class IDAProgram(Program):
         
         return func
 
-    def function_from_addr(self, address):
-        return None
-
     def _init_func_thunk_ctrl_flow(self):
         """Initializes the control flow redirections and targets
         using function thunks"""

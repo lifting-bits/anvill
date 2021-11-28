@@ -79,7 +79,7 @@ bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
   }
 
   // Parse out the hex-encoded byte sequence.
-  for (auto i = 0ul; i < bytes.size(); i += 2) {
+  for (auto i = 0ul, j = 0ul; i < bytes.size(); i += 2, ++j) {
     char nibbles[3] = {bytes[i], bytes[i + 1], '\0'};
     char *parsed_to = nullptr;
     auto byte_val = strtol(nibbles, &parsed_to, 16);
@@ -90,7 +90,7 @@ bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
       return false;
     }
 
-    auto byte_address = address + i;
+    auto byte_address = address + j;
     auto &ent = memory[byte_address];
     if (BytePermission::kUnknown != ent.second) {
       ss << "Byte at address " << std::hex << byte_address
@@ -206,15 +206,6 @@ bool SpecificationImpl::ParseControlFlowTargets(
          << "th entry of 'control_flow_targets' list (source address: "
          << std::hex << source_address
          << ") already has a corresponding entry in the program specification";
-      return false;
-    }
-
-    if (this->redirections.count(source_address)) {
-      ss << "Source address of " << index
-         << "th entry of 'control_flow_targets' list (source address: "
-         << std::hex << source_address
-         << ") has an associated redirection address (redirected to: "
-         << this->redirections[source_address] << ")";
       return false;
     }
 
