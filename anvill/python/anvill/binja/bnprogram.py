@@ -279,7 +279,7 @@ class BNSpecification(Specification):
             if bn_sym.type == bn.SymbolType.ExternalSymbol:
                 bn_var: Optional[bn.DataVariable] = \
                     self._bv.get_data_var_at(ea)
-                if bn_var and isinstance(bn_var.type, bn.FunctionType):
+                if bn_var is not None and isinstance(bn_var.type, bn.FunctionType):
                     return self._get_function_from_extern_sym(ea, bn_sym, bn_var)
 
             # This is basically a thunk in PE binaries, I think.
