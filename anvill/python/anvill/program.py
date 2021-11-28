@@ -33,7 +33,7 @@ class Program(ABC):
     def __init__(self, arch: Arch, os: OS):
         self._arch: Final[Arch] = arch
         self._os: Final[OS] = os
-        self._memory: Memory = Memory()
+        self._memory: Final[Memory] = Memory()
         self._var_defs: Dict[int, Variable] = {}
         self._var_decls: Dict[int, Variable] = {}
         self._func_defs: Dict[int, Function] = {}
@@ -54,17 +54,7 @@ class Program(ABC):
                 if old_len < len(syms):
                     yield name
 
-    @abstractmethod
-    def function_from_addr(self, ea: int):
-        ...
-
     def get_function(self, ea: int) -> Optional[Function]:
-        bn_func = self.function_from_addr(ea)
-
-        # If this address is already in a function, then
-        # check if we processed it already
-        if bn_func:
-            ea = bn_func.start
         if ea in self._func_defs:
             assert ea not in self._func_decls
             return self._func_defs[ea]
@@ -99,9 +89,9 @@ class Program(ABC):
             self._symbols[ea].add(name)
 
     def add_variable_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
-        var = self.get_variable(ea)
-        if isinstance(var, Variable):
-            ea = var.address()
+        var: Optional[Variable] = self.get_variable(ea)
+        if var is not None and isinstance(var, Variable):
+            ea: int = var.address()
             if ea not in self._var_defs and ea not in self._var_decls:
                 self._var_decls[ea] = var
                 var.visit(self, False, add_refs_as_defs)
@@ -118,9 +108,9 @@ class Program(ABC):
         self._control_flow_redirections[source_ea] = destination_ea
 
     def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
-        var = self.get_variable(ea)
-        if isinstance(var, Variable):
-            ea = var.address()
+        var: Optional[Variable] = self.get_variable(ea)
+        if var is not None and isinstance(var, Variable):
+            ea: int = var.address()
             if ea not in self._var_defs:
                 if ea in self._var_decls:
                     del self._var_decls[ea]
@@ -131,9 +121,9 @@ class Program(ABC):
             return False
 
     def add_function_definition(self, ea: int, add_refs_as_defs=False) -> bool:
-        func = self.get_function(ea)
-        if isinstance(func, Function):
-            ea = func.address()
+        func: Optional[Function] = self.get_function(ea)
+        if func is not None and isinstance(func, Function):
+            ea: int = func.address()
             if ea not in self._func_defs:
                 if ea in self._func_decls:
                     del self._func_decls[ea]
@@ -144,9 +134,9 @@ class Program(ABC):
             return False
 
     def add_function_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
-        func = self.get_function(ea)
-        if isinstance(func, Function):
-            ea = func.address()
+        func: Optional[Function] = self.get_function(ea)
+        if func is not None and isinstance(func, Function):
+            ea: int = func.address()
             if ea not in self._func_defs and ea not in self._func_decls:
                 self._func_decls[ea] = func
                 func.visit(self, False, add_refs_as_defs)

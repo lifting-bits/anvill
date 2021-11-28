@@ -31,7 +31,7 @@ except:
     _80_PERCENT_CONFIDENCE = int(255 * 0.8)
 
 
-def _bool(b: bn.BoolWithConfidence, default_val: bool = False) -> bool:
+def to_bool(b: bn.BoolWithConfidence, default_val: bool = False) -> bool:
     """Convert a Binary Ninja confidence boolean to a normal boolean."""
     global _80_PERCENT_CONFIDENCE
     if b.confidence >= _80_PERCENT_CONFIDENCE:
@@ -248,7 +248,7 @@ class TypeCache:
         """Convert bn enum type into a `Type` instance"""
 
         assert tinfo_.type_class == bn.TypeClass.EnumerationTypeClass
-        tinfo = cast(bn.types.EnumerationType)
+        tinfo = cast(bn.types.EnumerationType, tinfo_)
         ret = EnumType()
 
         # If enum has no registered name, don't put it in the cache. It
@@ -330,7 +330,7 @@ class TypeCache:
         if tinfo.width == 10 or tinfo.width == 12:
             return FloatingPointType(tinfo.width)
         else:
-            return IntegerType(tinfo.width, _bool(tinfo.signed))
+            return IntegerType(tinfo.width, to_bool(tinfo.signed))
 
     def _convert_named_reference(self, tinfo_: bn.Type) -> Type:
         """ Convert named type references into a `Type` instance"""

@@ -111,8 +111,9 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
 
   if (FLAGS_spec.empty()) {
-    LOG(ERROR)
-        << "Please specify a path to a JSON specification file in --spec.";
+    std::cerr
+        << "Please specify a path to a JSON specification file in '--spec'"
+        << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -122,8 +123,8 @@ int main(int argc, char *argv[]) {
 
   auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_spec);
   if (remill::IsError(maybe_buff)) {
-    LOG(ERROR) << "Unable to read JSON spec file '" << FLAGS_spec
-               << "': " << remill::GetErrorString(maybe_buff);
+    std::cerr << "Unable to read JSON spec file '" << FLAGS_spec
+              << "': " << remill::GetErrorString(maybe_buff) << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -131,13 +132,20 @@ int main(int argc, char *argv[]) {
       remill::GetReference(maybe_buff);
   auto maybe_json = llvm::json::parse(buff->getBuffer());
   if (remill::IsError(maybe_json)) {
-    LOG(ERROR) << "Unable to parse JSON spec file '" << FLAGS_spec
-               << "': " << remill::GetErrorString(maybe_json);
+    std::cerr << "Unable to parse JSON spec file '" << FLAGS_spec
+              << "': " << remill::GetErrorString(maybe_json) << std::endl;
     return EXIT_FAILURE;
   }
 
   auto maybe_spec = anvill::Specification::DecodeFromJSON(
       remill::GetReference(maybe_json));
+
+  if (maybe_spec.Failed()) {
+    std::cerr << maybe_spec.TakeError().message << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
 
 //
 //  llvm::LLVMContext context;

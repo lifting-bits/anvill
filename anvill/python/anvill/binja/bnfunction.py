@@ -6,7 +6,7 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-from typing import Tuple, Optional, Iterator, Set, Union
+from typing import Tuple, Optional, Iterator, Set, Union, cast
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -15,6 +15,7 @@ from binaryninja import LowLevelILInstruction as llinst
 from .bninstruction import *
 from .table import *
 from .xreftype import *
+from .typecache import to_bool
 
 from ..arch import Arch
 from ..loc import Location
@@ -30,38 +31,53 @@ def should_ignore_register(bv, reg_name):
         return False
 
 
+class BNExternalFunction(Function):
+    def __init__(self, bn_sym: bn.CoreSymbol, bn_var: bn.DataVariable,
+                 arch: Arch, address: int, func_type: Type):
+        super(BNExternalFunction, self).__init__(arch, address, [], [], func_type,
+                                                 False)
+        self._bn_sym: bn.CoreSymbol = bn_sym
+        self._bn_var: bn.DataVariable = bn_var
+
+    def name(self) -> str:
+        return self._bn_sym.name
+
+    def is_external(self) -> bool:
+        return True
+
+    def is_noreturn(self) -> bool:
+        ftype = cast(bn.FunctionType, self._bn_var.type)
+        return not to_bool(ftype.can_return)
+
+    def visit(self, program, is_definition, add_refs_as_defs):
+        pass
+
+
 class BNFunction(Function):
     def __init__(
         self,
-        bn_func_or_var: Union[bn.Function, bn.Variable],
+        bn_func: bn.Function,
         arch: Arch,
         address: int,
         param_list: List[Location],
         ret_list: List[Location],
-        func_type: Type,
+        func_type: FunctionType,
         is_entrypoint=False,
-        is_external=False,
+        is_external=False
     ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list,
-                                         func_type, is_entrypoint)
-        self._bn_func: Optional[bn.Function] = None
+                                         func_type, is_entrypoint=is_entrypoint)
         self._is_external: bool = is_external
-
-        # initialize bn_func if the binja object is of type `Function`
-        self._bn_func_or_var: Union[bn.Function, bn.Variable] = bn_func_or_var
-        if isinstance(bn_func_or_var, bn.Function):
-            self._bn_func = bn_func_or_var
+        self._bn_func: bn.Function = bn_func
 
     def name(self) -> str:
-        return self._bn_func_or_var.name
+        return self._bn_func.name
 
     def is_external(self) -> bool:
         return self._is_external
 
     def is_noreturn(self) -> bool:
-        if self._bn_func is not None:
-            return not self._bn_func.can_return.value
-        return False
+        return not to_bool(self._bn_func.can_return)
 
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:

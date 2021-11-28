@@ -31,6 +31,9 @@ class Type(ABC):
     def flatten(self, arch: Arch, out_list: List['Type']):
         ...
 
+    def unaliased_type(self) -> 'Type':
+        return self
+
     def extract(self, arch: Arch, offset: int, size: int) -> 'Type':
         goal_size: int = size
         goal_offset: int = offset
@@ -470,24 +473,22 @@ class FunctionType(Type):
     def size(self, arch: Arch) -> int:
         raise NotImplementedError()
 
-    def set_return_type(self, return_type):
+    def set_return_type(self, return_type: Type):
         assert isinstance(return_type, Type)
+        assert not isinstance(return_type, FunctionType)
         self._return_type = return_type
 
-    def add_parameter_type(self, param_type):
+    def add_parameter_type(self, param_type: Type):
         assert isinstance(param_type, Type)
         assert not isinstance(param_type, VoidType)
         assert not isinstance(param_type, FunctionType)
         self._param_types.append(param_type)
 
-    def parameter_type(self, index):
+    def parameter_type(self, index) -> Type:
         return self._param_types[index]
 
-    def is_variadic(self):
+    def is_variadic(self) -> bool:
         return self._is_variadic
-
-    def num_bytes_popped_off_stack(self):
-        return self._num_bytes_popped_off_stack
 
     def set_is_variadic(self, is_variadic=True):
         self._is_variadic = is_variadic
@@ -495,22 +496,21 @@ class FunctionType(Type):
     def set_num_bytes_popped_off_stack(self, num_bytes_popped_off_stack):
         self._num_bytes_popped_off_stack = num_bytes_popped_off_stack
 
-    def num_bytes_popped_off_stack(self):
+    def num_bytes_popped_off_stack(self) -> int:
         return self._num_bytes_popped_off_stack
 
     def serialize(self, arch: Arch, ids: Dict[Type, int]) -> str:
         parts: List[str] = ["("]
-        if not len(self._param_types):
-            if self._is_variadic:
-                parts.append("&")
-            else:
-                parts.append("v")
-        else:
+        if len(self._param_types):
             for param_type in self._param_types:
                 parts.append(param_type.serialize(arch, ids))
-
             if self._is_variadic:
-                parts.append("&")
+                parts.append("&")  # Trailing variadic parameters.
+        else:
+            if self._is_variadic:
+                parts.append("&")  # Variadic parameters only.
+            else:
+                parts.append("v")  # No parameters.
 
         parts.append(self._return_type.serialize(arch, ids))
         parts.append(")")
@@ -535,6 +535,9 @@ class AliasType(Type):
 
     def size(self, arch: Arch) -> int:
         return self._underlying_type.size(arch)
+
+    def unaliased_type(self) -> 'Type':
+        return self._underlying_type.unaliased_type()
 
     def flatten(self, arch: Arch, out_list: List[Type]):
         self._underlying_type.flatten(arch, out_list)

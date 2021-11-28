@@ -8,13 +8,14 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-import os
 import sys
+
 import argparse
 import json
-import platform
+from typing import cast, Optional
 
 import binaryninja as bn
+from anvill import ERROR
 
 from .util import config_logger
 from .util import DEBUG
@@ -25,44 +26,28 @@ def main():
 
     arg_parser = argparse.ArgumentParser()
 
-    arg_parser.add_argument("--bin_in", help="Path to input binary.", required=True)
+    arg_parser.add_argument(
+        "--bin_in", help="Path to input binary.", required=True)
 
     arg_parser.add_argument(
-        "--spec_out", help="Path to output JSON specification.", required=True
-    )
-
-    arg_parser.add_argument(
-        "--entry_point",
-        type=str,
-        help="Output functions only reachable from given entry point.",
-    )
-
-    arg_parser.add_argument(
-        "--refs_as_defs",
-        action="store_true",
-        help="Output definitions of discovered functions and variables.",
-        default=False,
-    )
+        "--spec_out", help="Path to output JSON specification.", required=True)
 
     arg_parser.add_argument(
         "--log_file",
         type=str,
         default=None,
-        help="Log to a specific file.",
-    )
+        help="Log to a specific file.")
 
     arg_parser.add_argument(
         "--verbose",
         action="store_true",
         default=False,
-        help="Enable debug log for the module",
-    )
+        help="Enable debug log for the module.")
 
     arg_parser.add_argument(
         "--base_address",
         type=str,
-        help="Where the image should be loaded, expressed as an hex integer.",
-    )
+        help="Where the image should be loaded, expressed as an hex integer.")
 
     args = arg_parser.parse_args()
 
@@ -74,71 +59,52 @@ def main():
         try:
             maybe_base_address = int(args.base_address, 16)
             DEBUG(
-                f"Binary Ninja will attempt to load the image at virtual address {hex(maybe_base_address)}"
+                f"Binary Ninja will attempt to load the image at virtual address {maybe_base_address:x}"
             )
 
         except:
-            ERROR(f"The specified address it not valid: '{hex(args.base_address)}'")
+            ERROR(f"The specified address it not valid: '{args.base_address}'")
             return 1
 
-    p = get_program(args.bin_in, maybe_base_address)
+    p = get_program(binary_path=args.bin_in, base_address=maybe_base_address)
     if p is None:
         sys.stderr.write("FATAL: Could not initialize BinaryNinja's BinaryView\n")
         sys.stderr.write("Does BinaryNinja support this architecture?\n")
-        sys.exit(1)
+        return 1
 
-    bv = p.bv
+    bv = cast(bn.BinaryView, p.bv)
 
-    is_macos = "darwin" in platform.system().lower()
+    for f in bv.functions:
+        ea: int = f.start
+        DEBUG(f"Looking at binja found function at: {ea:x}")
+        p.add_function_definition(ea, True)
 
-    ep = None
-    if args.entry_point is not None:
-        try:
-            ep = int(args.entry_point, 0)
-        except ValueError:
-            ep = args.entry_point
-
-    ep_ea = None
-
-    if ep is None:
-        for f in bv.functions:
-            ea = f.start
-            DEBUG(f"Looking at binja found function at: {ea:x}")
-            p.add_function_definition(ea, args.refs_as_defs)
-    elif isinstance(ep, int):
-        p.add_function_definition(ep, args.refs_as_defs)
-    else:
-
-        # On macOS, we often have underscore-prefixed names, e.g. `_main`, so
-        # with `--entry_point main` we really want to find `_main`, but lift it
-        # as `main`.
-        if is_macos:
-            underscore_ep = "_{}".format(ep)
-            for s in bv.get_symbols():
-                ea, name = s.address, s.name
-                if name == underscore_ep:
-                    ep_ea = ea
-                    break
-        if ep_ea is None:
-            for s in bv.get_symbols():
-                ea, name = s.address, s.name
-                if name == ep:
-                    ep_ea = ea
-                    break
-
-        if ep_ea is not None:
-            p.add_function_definition(ep_ea, args.refs_as_defs)
-            p.add_symbol(ep_ea, ep)  # Add the name from `--entry_point`.
-        else:
-            return 1  # Failed to find the entrypoint.
-
-    for s in bv.get_symbols():
+    for s_ in bv.get_symbols():
+        s = cast(bn.CoreSymbol, s_)
         ea, name = s.address, s.name
-        if ea != ep_ea:
-            p.add_symbol(ea, name)
+        p.add_symbol(ea, name)
 
-    open(args.spec_out, "w").write(json.dumps(p.proto()))
+        if s.type == bn.SymbolType.FunctionSymbol:
+            continue  # Already added as a function.
 
+        elif s.type == bn.SymbolType.ExternalSymbol:
+            v = bv.get_data_var_at(ea)
+            if v is not None and isinstance(v.type, bn.FunctionType):
+                p.add_function_declaration(ea, False)
+            else:
+                p.add_variable_declaration(ea, False)
+
+        elif s.type == bn.SymbolType.LibraryFunctionSymbol or \
+             s.type == bn.SymbolType.ImportedFunctionSymbol:
+            continue  # TODO(pag): Handle me?
+
+        else:
+            p.add_variable_definition(ea, True)
+
+    with open(args.spec_out, "w") as f:
+        f.write(json.dumps(p.proto(), indent="  "))
+
+    return 0
 
 if __name__ == "__main__":
     exit(main())
