@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "RemoveTrivialPhisAndSelects.h"
 #include "Utils.h"
 
 namespace anvill {

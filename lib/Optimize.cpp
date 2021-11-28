@@ -68,10 +68,6 @@
 #include <unordered_set>
 #include <vector>
 
-DEFINE_uint32(
-    pointer_brighten_gas, 64u,
-    "Amount of internal iterations permitted for the pointer brightening pass.");
-
 namespace anvill {
 
 // Optimize a module. This can be a module with semantics code, lifted
@@ -177,10 +173,9 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // but it comes up often enough for lifted code.
   AddConvertXorsToCmps(fpm);
 
-  if (FLAGS_pointer_brighten_gas) {
-    AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
-  }
-
+//  if (FLAGS_pointer_brighten_gas) {
+//    AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
+//  }
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

@@ -104,6 +104,7 @@ class LifterOptions {
   // Initialize the stack pointer with a constant expression of the form:
   //
   //    (ptrtoint __anvill_sp)
+  //
   static llvm::Value *SymbolicStackPointerInit(
       llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
       uint64_t func_address);
@@ -119,12 +120,14 @@ class LifterOptions {
   // Initialize the return address with a constant expression of the form:
   //
   //    (ptrtoint __anvill_ra)
+  //
   static llvm::Value *SymbolicReturnAddressInit(
       llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
 
   // Initialize the return address with the result of:
   //
-  //    call llvm.returnaddress()
+  //    call llvm.returnaddress(0)
+  //
   static llvm::Value *ConcreteReturnAddressInit(
       llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
 
@@ -221,18 +224,12 @@ class LifterOptions {
                               uint64_t)>
       stack_pointer_init_procedure;
 
-  // Should the return address in lifted functions be represented with a
-  // symbolic expression? If so, then it takes on the form:
-  //
-  //      (ptrtoint __anvill_ra)
-  //
-  // Otherwise, the initial value of the return address on entry to a function
-  // will be the result of the intrinsic function call:
-  //
-  //      llvm.returnaddress(0)
-  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *, uint64_t)>
+  // Procedure for producing an initial value of the return address on entry
+  // to a function. An `IRBuilderBase` is provided for building values within
+  // the entry block of the function at the given address.
+  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *,
+                              uint64_t)>
       return_address_init_procedure;
-  bool symbolic_return_address : 1;
 
   // Add so-called breakpoint calls. These can be useful for visually
   // identifying the general provenance of lifted bitcode with respect to

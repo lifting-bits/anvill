@@ -18,6 +18,7 @@
 #include <string>
 
 #include <anvill/Lifters.h>
+#include <anvill/Optimize.h>
 #include <anvill/Providers.h>
 #include <anvill/Specification.h>
 #include <anvill/Version.h>
@@ -128,6 +129,8 @@ int main(int argc, char *argv[]) {
     lifter.LiftEntity(*main_func);
   }
 
+  anvill::OptimizeModule(lifter, module);
+
   int ret = EXIT_SUCCESS;
 
   if (!FLAGS_ir_out.empty()) {
@@ -144,152 +147,4 @@ int main(int argc, char *argv[]) {
   }
 
   return ret;
-
-//
-//  llvm::LLVMContext context;
-//  llvm::Module module("lifted_code", context);
-//
-//
-//
-//  arch->PrepareModule(&module);
-//
-//
-//
-//  if (FLAGS_add_breakpoints) {
-//    options.add_breakpoints = true;
-//  }
-//
-//  if (FLAGS_enable_provenance) {
-//    options.pc_metadata_name = "pc";
-//    // TODO(pag): Implement better data provenance tracking.
-//    // options.track_provenance = true;
-//  }
-//
-//  // NOTE(pag): Unfortunately, we need to load the semantics module first,
-//  //            which happens deep inside the `EntityLifter`. Only then does
-//  //            Remill properly know about register information, which
-//  //            subsequently allows it to parse value decls in specs :-(
-//  anvill::EntityLifter lifter(options, memory, types);
-//
-//  // Parse the spec, which contains as much or as little details about what is
-//  // being lifted as the spec generator desired and put it into an
-//  // anvill::Specification object, which is effectively a representation of the spec
-//  if (!ParseSpec(arch.get(), context, program, spec, module)) {
-//    return EXIT_FAILURE;
-//  }
-//
-//  program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
-//    (void) lifter.LiftEntity(*decl);
-//    return true;
-//  });
-//
-//  // Lift functions.
-//  program.ForEachFunction([&](const anvill::FunctionDecl *decl) {
-//    (void) lifter.LiftEntity(*decl);
-//    return true;
-//  });
-//
-//  // Verify the module
-//  if (!remill::VerifyModule(&module)) {
-//    std::string json_outs;
-//#  if LLVM_VERSION_MAJOR >= 12
-//    llvm::json::Path::Root path("");
-//    auto ret = llvm::json::fromJSON(json, json_outs, path);
-//#  else
-//    auto ret = llvm::json::fromJSON(json, json_outs);
-//#  endif
-//    if (ret) {
-//      std::cerr << "Couldn't verify module produced from spec:\n"
-//                << json_outs << '\n';
-//
-//    } else {
-//      std::cerr << "Couldn't verify module produced from spec:\n"
-//                << buff->getBuffer().str() << '\n';
-//    }
-//    return EXIT_FAILURE;
-//  }
-//
-//  // OLD: Apply optimizations.
-//  anvill::OptimizeModule(lifter, memory, arch.get(), program, module, options);
-//
-//  std::unordered_set<llvm::Constant *> has_name;
-//
-//  auto is_called = +[](llvm::Function &func) -> bool {
-//    for (auto user : func.users()) {
-//      if (llvm::isa<llvm::CallBase>(user)) {
-//        return true;
-//      }
-//    }
-//    return false;
-//  };
-//
-//  for (auto &func : module) {
-//    if (auto maybe_addr = lifter.AddressOfEntity(&func);
-//        maybe_addr && func.isDeclaration()) {
-//      program.ForEachNameOfAddress(
-//          *maybe_addr,
-//          [&](const std::string &name, const anvill::FunctionDecl *,
-//              const anvill::GlobalVarDecl *) {
-//            if (!has_name.count(&func)) {
-//              has_name.insert(&func);
-//              func.setName(name);
-//            }
-//            return true;
-//          });
-//    }
-//  }
-//
-//  for (auto &func : module) {
-//    if (auto maybe_addr = lifter.AddressOfEntity(&func);
-//        maybe_addr && is_called(func) && !has_name.count(&func)) {
-//      program.ForEachNameOfAddress(
-//          *maybe_addr,
-//          [&](const std::string &name, const anvill::FunctionDecl *,
-//              const anvill::GlobalVarDecl *) {
-//            if (!has_name.count(&func)) {
-//              has_name.insert(&func);
-//              func.setName(name);
-//            }
-//            return true;
-//          });
-//    }
-//  }
-//
-//  for (auto &func : module) {
-//    if (auto maybe_addr = lifter.AddressOfEntity(&func);
-//        maybe_addr && !has_name.count(&func)) {
-//      program.ForEachNameOfAddress(
-//          *maybe_addr,
-//          [&](const std::string &name, const anvill::FunctionDecl *,
-//              const anvill::GlobalVarDecl *) {
-//            if (!has_name.count(&func)) {
-//              has_name.insert(&func);
-//              func.setName(name);
-//            }
-//            return true;
-//          });
-//    }
-//  }
-//
-//  // Clean out any unneeded things from the module prior to output.
-//  {
-//    std::unique_ptr<llvm::ModulePass> pass(
-//        llvm::createStripDeadPrototypesPass());
-//    pass->doInitialization(module);
-//    pass->runOnModule(module);
-//    pass->doFinalization(module);
-//  }
-//
-//  // Clean up by initializing variables.
-//  for (auto &var : module.globals()) {
-//    if (!var.isDeclaration()) {
-//      continue;
-//    }
-//    const auto name = var.getName();
-//    if (name.startswith(anvill::kAnvillNamePrefix)) {
-//      var.setInitializer(llvm::Constant::getNullValue(var.getValueType()));
-//      var.setLinkage(llvm::GlobalValue::InternalLinkage);
-//    }
-//  }
-//
 }

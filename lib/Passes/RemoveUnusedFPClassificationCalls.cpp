@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveUnusedFPClassificationCalls.h"
+#include <anvill/Passes/RemoveUnusedFPClassificationCalls.h>
 
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
@@ -43,6 +43,11 @@ llvm::PreservedAnalyses RemoveUnusedFPClassificationCalls::run(
 
   return ConvertBoolToPreserved(ret);
 }
+
+llvm::StringRef RemoveUnusedFPClassificationCalls::name(void) {
+  return "RemoveUnusedFPClassificationCalls";
+}
+
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics
 // functions. It's frequently the case that instructions don't actually care

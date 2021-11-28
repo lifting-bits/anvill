@@ -37,10 +37,10 @@ set(anvill_passes
   RemoveErrorIntrinsics
   RemoveRemillFunctionReturns
   RemoveTrivialPhisAndSelects
+  RemoveUnusedFPClassificationCalls
   SinkSelectionsIntoBranchTargets
   SliceInterpreter
   SliceManager
-  SlicerVisitor
   TransformRemillJumpIntrinsics
 )
 
@@ -89,6 +89,8 @@ set(anvill_passes_HEADERS
 )
 
 set(anvill_passes_SOURCES
+  "Passes/SlicerVisitor.cpp"
+  "Passes/SlicerVisitor.h"
   "Passes/Utils.cpp"
   "Passes/Utils.h"
 )
@@ -141,6 +143,7 @@ add_library(anvill STATIC
   ${anvill_PRIVATE_HEADERS}
   ${anvill_arch_SOURCES}
   ${anvill_lifters_SOURCES}
+  ${anvill_passes_SOURCES}
   ${anvill_providers_SOURCES}
   ${anvill_SOURCES}
 )

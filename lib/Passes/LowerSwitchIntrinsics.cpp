@@ -107,7 +107,7 @@ class SwitchBuilder {
 
  public:
   SwitchBuilder(llvm::LLVMContext &context, SliceManager &slm,
-                const std::shared_ptr<MemoryProvider> &memProv,
+                const MemoryProvider &memProv,
                 const llvm::DataLayout &dl)
       : context(context),
         slm(slm),
@@ -177,7 +177,6 @@ LowerSwitchIntrinsics::runOnIndirectJump(llvm::CallInst *targetCall,
 
   SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
   auto following_switch = targetCall->getParent()->getTerminator();
-
 
   if (auto *follower = llvm::dyn_cast<llvm::SwitchInst>(following_switch)) {
     auto binding = PcBinding::Build(targetCall, follower);
