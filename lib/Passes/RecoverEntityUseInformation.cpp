@@ -12,6 +12,7 @@
 #include <anvill/Decls.h>
 #include <anvill/Lifters.h>
 #include <anvill/Providers.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <remill/Arch/Arch.h>
@@ -32,10 +33,6 @@ llvm::PreservedAnalyses RecoverEntityUseInformation::run(
   if (uses.empty()) {
     return llvm::PreservedAnalyses::all();
   }
-
-  llvm::Module *const module = function.getParent();
-  llvm::LLVMContext &context = module->getContext();
-  const llvm::DataLayout &dl = module->getDataLayout();
 
   std::unordered_set<llvm::Instruction *> to_erase;
 
@@ -80,8 +77,17 @@ llvm::PreservedAnalyses RecoverEntityUseInformation::run(
       continue;
     }
 
-    CHECK_EQ(val->getType(), entity->getType());
-    xref_use.use->set(entity);
+    auto ent_type = llvm::dyn_cast<llvm::PointerType>(entity->getType());
+    CHECK_NOTNULL(ent_type);
+
+    if (auto phi = llvm::dyn_cast<llvm::PHINode>(user_inst)) {
+      auto pred_block = phi->getIncomingBlock(*(xref_use.use));
+      llvm::IRBuilder<> ir(pred_block->getTerminator());
+      xref_use.use->set(AdaptToType(ir, entity, val_type));
+    } else {
+      llvm::IRBuilder<> ir(user_inst);
+      xref_use.use->set(AdaptToType(ir, entity, val_type));
+    }
 
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(val)) {
       to_erase.insert(val_inst);
@@ -125,10 +131,9 @@ EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
           continue;  // Can happen as a result of `dropAllReferences`.
         }
 
-        const auto val_type = val->getType();
-
-//        // If we see something related to Remill's `Memory *` or `State *` then
-//        // ignore those as being possible cross-references.
+//        // If we see something related to Remill's `Memory *` or `State *`
+//        // then ignore those as being possible cross-references.
+//        const auto val_type = val->getType();
 //        if (val_type == mem_ptr_type || val_type == state_ptr_type) {
 //          continue;
 //        }

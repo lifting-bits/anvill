@@ -11,6 +11,7 @@
 #include <anvill/ABI.h>
 #include <anvill/Passes/SliceManager.h>
 #include <anvill/Transforms.h>
+#include <glog/logging.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Analysis/CFG.h>
@@ -19,6 +20,7 @@
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/PatternMatch.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <remill/BC/Util.h>
 #include <z3++.h>
 
 #include <numeric>
@@ -656,10 +658,18 @@ class JumpTableDiscovery {
   // as whether or not the bound utilizes a signed compare.
   //
   // Returns true if a bound was found.
-  bool RunBoundsCheckPattern(const llvm::CallInst *intrinsicCall) {
+  bool RunBoundsCheckPattern(llvm::CallInst *intrinsicCall) {
     assert(this->index);
     auto dt_node = this->dt.getNode(intrinsicCall->getParent());
-    auto inode = dt_node->getIDom()->getBlock();
+    auto idom = dt_node->getIDom();
+    if (!idom) {
+      LOG(WARNING)
+          << "Found jump table use with no dominator: "
+          << remill::LLVMThingToString(intrinsicCall)
+          << " in function " << intrinsicCall->getFunction()->getName().str();
+      return false;
+    }
+    auto inode = idom->getBlock();
     auto term = inode->getTerminator();
     auto maybe_bcheck = this->TranslateTerminatorToBoundsCheck(
         term, intrinsicCall->getParent());
@@ -732,7 +742,7 @@ class JumpTableDiscovery {
     return false;
   }
 
-  std::optional<JumpTableResult> RunPattern(const llvm::CallInst *pcCall) {
+  std::optional<JumpTableResult> RunPattern(llvm::CallInst *pcCall) {
     auto computed_pc = pcCall->getArgOperand(0);
 
     if (this->RunIndexPattern(computed_pc) &&
@@ -763,13 +773,11 @@ class JumpTableDiscovery {
   }
 };
 
-
 llvm::IntegerType *PcRel::getExpectedType(SliceManager &slm) {
   auto slc = slm.getSlice(this->slice);
   return llvm::cast<llvm::IntegerType>(
       slc.getRepr()->getFunctionType()->params()[0]);
 }
-
 
 llvm::APInt PcRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
   return RunSingleIntFunc(interp, this->slice, indexValue);
@@ -783,8 +791,8 @@ llvm::DenseMap<llvm::CallInst *, JumpTableResult>
 JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *indirectJump,
                                      llvm::FunctionAnalysisManager &am,
                                      Result agg) {
-  auto const &dt =
-      am.getResult<llvm::DominatorTreeAnalysis>(*indirectJump->getFunction());
+  auto &func = *(indirectJump->getFunction());
+  auto &dt = am.getResult<llvm::DominatorTreeAnalysis>(func);
 
   llvm::DenseMap<llvm::CallInst *, JumpTableResult> results;
   JumpTableDiscovery jtdisc(dt, this->slices);
@@ -796,7 +804,7 @@ JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *indirectJump,
 }
 
 
-llvm::StringRef JumpTableAnalysis::name() {
+llvm::StringRef JumpTableAnalysis::name(void) {
   return "JumpTableAnalysis";
 }
 

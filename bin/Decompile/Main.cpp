@@ -123,11 +123,8 @@ int main(int argc, char *argv[]) {
   anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
   anvill::EntityLifter lifter(options);
 
-  auto main_func = spec.FunctionAt(0x401f50u);
-  if (main_func) {
-    lifter.LiftEntity(*main_func);
-  }
-
+  spec.LiftAllFunctions(lifter);
+  spec.LiftAllVariables(lifter);
   anvill::OptimizeModule(lifter, module);
 
   int ret = EXIT_SUCCESS;

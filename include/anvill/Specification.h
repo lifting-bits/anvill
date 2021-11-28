@@ -42,6 +42,7 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+class EntityLifter;
 class SpecificationControlFlowProvider;
 class SpecificationImpl;
 class SpecificationMemoryProvider;
@@ -91,6 +92,12 @@ class Specification {
   // Return the global variable containing `address`, or an empty `shared_ptr`.
   std::shared_ptr<const GlobalVarDecl> GlobalVarContaining(
       std::uint64_t address) const;
+
+  // Lift all functions.
+  void LiftAllFunctions(EntityLifter &lifter) const;
+
+  // Lift all variables.
+  void LiftAllVariables(EntityLifter &lifter) const;
 };
 
 }  // namespace anvill
