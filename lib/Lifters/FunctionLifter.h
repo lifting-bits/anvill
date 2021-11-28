@@ -428,17 +428,6 @@ class FunctionLifter {
   // some unmodelled external dependencies inside of a lifted function.
   void
   InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
-
-  // Initialize a symbolic return address. This is similar to symbolic program
-  // counters/stack pointers.
-  llvm::Value *InitializeSymbolicReturnAddress(llvm::BasicBlock *block,
-                                               llvm::Value *mem_ptr,
-                                               const ValueDecl &ret_address);
-
-  // Initialize a concrete return address. This is an intrinsic function call.
-  llvm::Value *InitializeConcreteReturnAddress(llvm::BasicBlock *block,
-                                               llvm::Value *mem_ptr,
-                                               const ValueDecl &ret_address);
 };
 
 }  // namespace anvill

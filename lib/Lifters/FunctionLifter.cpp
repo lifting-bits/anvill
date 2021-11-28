@@ -1309,50 +1309,6 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
   });
 }
 
-// Initialize a symbolic return address. This is similar to symbolic program
-// counters/stack pointers.
-llvm::Value *
-FunctionLifter::InitializeSymbolicReturnAddress(llvm::BasicBlock *block,
-                                                llvm::Value *mem_ptr,
-                                                const ValueDecl &ret_address) {
-  auto base_ra = semantics_module->getGlobalVariable(kSymbolicRAName);
-  if (!base_ra) {
-    base_ra = new llvm::GlobalVariable(*semantics_module, i8_type, false,
-                                       llvm::GlobalValue::ExternalLinkage,
-                                       i8_zero, kSymbolicRAName);
-  }
-
-  auto pc_reg =
-      options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
-  auto ret_addr = llvm::ConstantExpr::getPtrToInt(base_ra, pc_reg->type);
-
-  return StoreNativeValue(ret_addr, ret_address, type_specifier.Dictionary(),
-                          intrinsics, block, state_ptr, mem_ptr);
-}
-
-// Initialize a concrete return address. This is an intrinsic function call.
-llvm::Value *
-FunctionLifter::InitializeConcreteReturnAddress(llvm::BasicBlock *block,
-                                                llvm::Value *mem_ptr,
-                                                const ValueDecl &ret_address) {
-  auto ret_addr_func = llvm::Intrinsic::getDeclaration(
-      semantics_module.get(), llvm::Intrinsic::returnaddress);
-  llvm::Value *args[] = {llvm::ConstantInt::get(i32_type, 0)};
-
-  auto pc_reg =
-      options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
-
-  llvm::Value *ret_addr =
-      llvm::CallInst::Create(ret_addr_func, args, llvm::None,
-                             llvm::Twine::createNull(), &(block->front()));
-
-  llvm::IRBuilder<> ir(block);
-  ret_addr =
-      ir.CreatePtrToInt(ret_addr, pc_reg->type, llvm::Twine::createNull());
-  return StoreNativeValue(ret_addr, ret_address, type_specifier.Dictionary(),
-                          intrinsics, block, state_ptr, mem_ptr);
-}
-
 // Set up `native_func` to be able to call `lifted_func`. This means
 // marshalling high-level argument types into lower-level values to pass into
 // a stack-allocated `State` structure. This also involves providing initial
@@ -1408,23 +1364,20 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   ir.CreateStore(options.stack_pointer_init_procedure(ir, sp_reg, func_address),
                  sp_ptr);
 
+  auto &types = type_specifier.Dictionary();
+
   // Does this function have a return address? Most functions are provided a
   // return address on the stack, however the program entrypoint (usually
   // `_start`) won't have one. When we initialize the stack frame, we should
   // take note of this flag and in the case of the program entrypoint, omit the
   // symbolic return address from the stack frame.
   if (!decl.return_address.type->isVoidTy()) {
-    // Put the function's return address wherever it needs to go.
-    if (options.symbolic_return_address) {
-      mem_ptr = InitializeSymbolicReturnAddress(block, mem_ptr,
-                                                native_decl.return_address);
-    } else {
-      mem_ptr = InitializeConcreteReturnAddress(block, mem_ptr,
-                                                native_decl.return_address);
-    }
-  }
+    auto ra = options.return_address_init_procedure(
+        ir, address_type, func_address);
 
-  auto &types = type_specifier.Dictionary();
+    mem_ptr = StoreNativeValue(
+        ra, decl.return_address, types, intrinsics, block, state_ptr, mem_ptr);
+  }
 
   // Store the function parameters either into the state struct
   // or into memory (likely the stack).
@@ -1439,7 +1392,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   lifted_func_args[remill::kStatePointerArgNum] = state_ptr;
   lifted_func_args[remill::kMemoryPointerArgNum] = mem_ptr;
   lifted_func_args[remill::kPCArgNum] = pc;
-  auto call_to_lifted_func = ir.CreateCall(lifted_func, lifted_func_args);
+  auto call_to_lifted_func = ir.CreateCall(
+      lifted_func->getFunctionType(), lifted_func, lifted_func_args);
   mem_ptr = call_to_lifted_func;
 
   // Annotate all instructions leading up to and including the call of the
