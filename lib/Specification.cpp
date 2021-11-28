@@ -24,12 +24,9 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(
-    std::shared_ptr<llvm::LLVMContext> context_,
-    std::unique_ptr<const remill::Arch> arch_)
-    : context(std::move(context_)),
-      arch(std::move(arch_)),
-      type_dictionary(*context),
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_)
+    : arch(std::move(arch_)),
+      type_dictionary(*(arch->context)),
       type_translator(type_dictionary, arch.get()) {}
 
 bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
@@ -295,14 +292,16 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
         } else {
           auto func = maybe_func.TakeValue();
           auto func_address = func.address;
-          if (functions.count(func_address)) {
+          if (address_to_function.count(func_address)) {
             ss << "Duplicate function for address " << std::hex << func_address
                << std::dec << " at " << index
                << "th entry of 'functions' list of program specification";
             return func_obj;
           }
 
-          functions.emplace(func_address, std::move(func));
+          auto func_ptr = new FunctionDecl(std::move(func));
+          functions.emplace_back(func_ptr);
+          address_to_function.emplace(func_address, func_ptr);
         }
       } else {
         ss << index << "th entry of 'functions' list of program specification "
@@ -311,6 +310,12 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
       }
       ++index;
     }
+
+    std::sort(functions.begin(), functions.end(),
+              [] (const FunctionDeclPtr &a, const FunctionDeclPtr &b) {
+                return a->address < b->address;
+              });
+
   } else if (spec->find("functions") != spec->end()) {
     ss << "Non-JSON array value for 'functions' in program specification";
     return spec;
@@ -340,6 +345,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
 
   if (auto vars = spec->getArray("variables")) {
     auto index{0u};
+    const llvm::DataLayout &dl = type_translator.DataLayout();
     for (const llvm::json::Value &var : *vars) {
       if (auto var_obj = var.getAsObject()) {
         auto maybe_var = translator.DecodeGlobalVar(var_obj);
@@ -353,16 +359,20 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           return err.object ? err.object : var_obj;
 
         } else {
-          auto var = maybe_var.TakeValue();
-          auto var_address = var.address;
-          if (variables.count(var_address)) {
-            ss << "Duplicate variable for address " << std::hex << var_address
-               << std::dec << " at " << index
-               << "th entry of 'variables' list of program specification";
-            return var_obj;
-          }
+          auto var_ptr = new GlobalVarDecl(maybe_var.TakeValue());
+          variables.emplace_back(var_ptr);
 
-          variables.emplace(var_address, std::move(var));
+          auto size = dl.getTypeAllocSize(var_ptr->type).getKnownMinValue();
+          for (auto i = 0ull; i < size; ++i) {
+            auto [it, added] = address_to_var.emplace(var_ptr->address + i, var_ptr);
+            if (!added) {
+              ss << "Variable starting at " << std::hex << var_ptr->address
+                 << " (the " << index << "th entry in 'variables' list) "
+                 << "overlaps with the variable at " << it->second->address
+                 << " in program specification";
+              return var_obj;
+            }
+          }
         }
       } else {
         ss << index << "th entry of 'variables' list of program specification "
@@ -371,6 +381,12 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
       }
       ++index;
     }
+
+    std::sort(variables.begin(), variables.end(),
+              [] (const GlobalVarDeclPtr &a, const GlobalVarDeclPtr &b) {
+                return a->address < b->address;
+              });
+
   } else if (spec->find("variables") != spec->end()) {
     ss << "Non-JSON array value for 'variables' in program specification";
     return spec;
@@ -454,10 +470,25 @@ Specification::~Specification(void) {}
 Specification::Specification(std::shared_ptr<SpecificationImpl> impl_)
     : impl(std::move(impl_)) {}
 
+// Return the architecture used by this specification.
+std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
+  return std::shared_ptr<const remill::Arch>(impl, impl->arch.get());
+}
+
+// Return the type dictionary used by this specification.
+const ::anvill::TypeDictionary &Specification::TypeDictionary(void) const {
+  return impl->type_dictionary;
+}
+
+// Return the type provider used by this specification.
+const ::anvill::TypeTranslator &Specification::TypeTranslator(void) const {
+  return impl->type_translator;
+}
+
 // Try to create a program from a JSON specification. Returns a string error
 // if something went wrong.
 anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
-    const llvm::json::Value &json) {
+    llvm::LLVMContext &context, const llvm::json::Value &json) {
   const auto spec = json.getAsObject();
   if (!spec) {
     return JSONDecodeError("Could not interpret json value as an object");
@@ -491,12 +522,10 @@ anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
     return JSONDecodeError("Missing 'os' field in program specification");
   }
 
-  auto context = std::make_shared<llvm::LLVMContext>();
-
   // Get a unique pointer to a remill architecture object. The architecture
   // object knows how to deal with everything for this specific architecture,
   // such as semantics, register,  etc.
-  auto arch = remill::Arch::Build(context.get(), os_name, arch_name);
+  auto arch = remill::Arch::Build(&context, os_name, arch_name);
   if (!arch) {
     ss << "Invalid architecture/operating system combination "
        << remill::GetArchName(arch_name) << '/'
@@ -505,7 +534,7 @@ anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
   }
 
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(std::move(context), std::move(arch)));
+      new SpecificationImpl(std::move(arch)));
 
   if (auto err_obj = pimpl->ParseSpecification(spec, ss)) {
     return JSONDecodeError(ss.str(), err_obj);
@@ -527,9 +556,9 @@ Specification::EncodeToJSON(void) {
   llvm::json::Array redirects;
   llvm::json::Array targets;
 
-  for (const auto &[addr, func_decl] : impl->functions) {
+  for (const auto &func : impl->functions) {
     Result<llvm::json::Object, JSONEncodeError> maybe_func =
-        translator.Encode(func_decl);
+        translator.Encode(*func);
     if (maybe_func.Failed()) {
       return maybe_func.TakeError();
     } else {
@@ -537,9 +566,9 @@ Specification::EncodeToJSON(void) {
     }
   }
 
-  for (const auto &[addr, var_decl] : impl->variables) {
+  for (const auto &var : impl->variables) {
     Result<llvm::json::Object, JSONEncodeError> maybe_var =
-        translator.Encode(var_decl);
+        translator.Encode(*var);
     if (maybe_var.Failed()) {
       return maybe_var.TakeError();
     } else {
@@ -696,7 +725,7 @@ Specification::EncodeToJSON(void) {
       llvm::json::ObjectKey("os"), os});
 
   json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("functions"),
+      llvm::json::ObjectKey("address_to_function"),
       std::move(functions)});
 
   json.insert(llvm::json::Object::KV{
@@ -720,6 +749,40 @@ Specification::EncodeToJSON(void) {
       std::move(targets)});
 
   return json;
+}
+
+// Return the function beginning at `address`, or an empty `shared_ptr`.
+std::shared_ptr<const FunctionDecl> Specification::FunctionAt(
+    std::uint64_t address) const {
+  auto it = impl->address_to_function.find(address);
+  if (it != impl->address_to_function.end()) {
+    return std::shared_ptr<const FunctionDecl>(impl, it->second);
+  } else {
+    return {};
+  }
+}
+
+// Return the global variable beginning at `address`, or an empty `shared_ptr`.
+std::shared_ptr<const GlobalVarDecl> Specification::GlobalVarAt(
+    std::uint64_t address) const {
+  auto it = impl->address_to_var.find(address);
+  if (it != impl->address_to_var.end()) {
+    if (it->second->address == address) {
+      return std::shared_ptr<const GlobalVarDecl>(impl, it->second);
+    }
+  }
+  return {};
+}
+
+// Return the global variable containing `address`, or an empty `shared_ptr`.
+std::shared_ptr<const GlobalVarDecl> Specification::GlobalVarContaining(
+    std::uint64_t address) const {
+  auto it = impl->address_to_var.find(address);
+  if (it != impl->address_to_var.end()) {
+    return std::shared_ptr<const GlobalVarDecl>(impl, it->second);
+  } else {
+    return {};
+  }
 }
 
 }  // namespace anvill

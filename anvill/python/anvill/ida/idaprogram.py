@@ -43,7 +43,7 @@ TYPE_CONTEXT_RETURN = 4
 _FLOAT_SIZES = (2, 4, 8, 10, 12, 16)
 
 
-class IDAProgram(Program):
+class IDASpecification(Specification):
     def __init__(self, arch: Arch, os: OS, maybe_base_address: Optional[int] = None):
         if maybe_base_address is not None:
             delta = abs(ida_nalt.get_imagebase() - maybe_base_address)
@@ -57,7 +57,7 @@ class IDAProgram(Program):
         # we will end up missing code, data and cross references
         ida_auto.auto_wait()
 
-        super(IDAProgram, self).__init__(arch, os)
+        super(IDASpecification, self).__init__(arch, os)
 
         try:
             self._init_func_thunk_ctrl_flow()

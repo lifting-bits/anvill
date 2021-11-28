@@ -41,7 +41,7 @@ void UnfoldConstantExpressions(llvm::Instruction *inst);
 void CopyMetadataTo(llvm::Value *src, llvm::Value *dst);
 
 // Returns `true` if it looks like `val` is the program counter.
-bool IsProgramCounter(llvm::Module *module, llvm::Value *val);
+bool IsSpecificationCounter(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if it looks like `val` is the stack counter.
 bool IsStackPointer(llvm::Module *module, llvm::Value *val);

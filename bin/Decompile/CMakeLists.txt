@@ -7,13 +7,7 @@
 #
 
 add_executable(anvill-decompile-json
-  #"ControlFlowProvider.cpp"
-  #"ControlFlowProvider.h"
   "Main.cpp"
-  #"MemoryProvider.cpp"
-  #"MemoryProvider.h"
-  #"TypeProvider.cpp"
-  #"TypeProvider.h"
 )
 
 set_target_properties(anvill-decompile-json

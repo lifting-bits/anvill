@@ -394,7 +394,7 @@ CrossReferenceFolderImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
   auto module = gv->getParent();
   if (auto var = llvm::dyn_cast<llvm::GlobalVariable>(gv)) {
-    if (IsProgramCounter(module, gv)) {
+    if (IsSpecificationCounter(module, gv)) {
       xr.references_program_counter = true;
       xr.is_valid = true;
       return xr;

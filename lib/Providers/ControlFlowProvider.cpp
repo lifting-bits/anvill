@@ -10,6 +10,8 @@
 
 #include <remill/Arch/Instruction.h>
 
+#include "Specification.h"
+
 namespace anvill {
 
 std::uint64_t NullControlFlowProvider::GetRedirection(
@@ -20,6 +22,34 @@ std::uint64_t NullControlFlowProvider::GetRedirection(
 std::optional<ControlFlowTargetList>
 NullControlFlowProvider::TryGetControlFlowTargets(const remill::Instruction &) const {
   return std::nullopt;
+}
+
+
+SpecificationControlFlowProvider::~SpecificationControlFlowProvider(void) {}
+
+SpecificationControlFlowProvider::SpecificationControlFlowProvider(
+    const Specification &spec)
+      : impl(spec.impl) {}
+
+std::uint64_t SpecificationControlFlowProvider::GetRedirection(
+    const remill::Instruction &inst, std::uint64_t address) const {
+  auto it = impl->redirections.find(inst.pc);
+  if (it != impl->redirections.end()) {
+    return it->second;
+  } else {
+    return address;
+  }
+}
+
+std::optional<anvill::ControlFlowTargetList>
+SpecificationControlFlowProvider::TryGetControlFlowTargets(
+    const remill::Instruction &inst) const {
+  auto it = impl->targets.find(inst.pc);
+  if (it != impl->targets.end()) {
+    return it->second;
+  } else {
+    return std::nullopt;
+  }
 }
 
 }  // namespace anvill

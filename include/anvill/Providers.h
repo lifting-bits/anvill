@@ -32,6 +32,9 @@ class Instruction;
 }  // namespace remill
 namespace anvill {
 
+class Specification;
+class SpecificationImpl;
+
 // Provides the types of functions, called functions, and accessed data.
 class TypeProvider {
  protected:
@@ -97,6 +100,28 @@ class NullTypeProvider : public TypeProvider {
 
   std::optional<FunctionDecl> TryGetFunctionType(uint64_t) const override;
   std::optional<GlobalVarDecl> TryGetVariableType(uint64_t) const override;
+};
+
+// Provides the types of functions, called functions, and accessed data.
+class SpecificationTypeProvider : public TypeProvider {
+ private:
+  std::shared_ptr<SpecificationImpl> impl;
+
+ public:
+  virtual ~SpecificationTypeProvider(void);
+
+  explicit SpecificationTypeProvider(const Specification &spec);
+
+  // Try to return the type of a function starting at address `address`. This
+  // type is the prototype of the function.
+  std::optional<anvill::FunctionDecl> TryGetFunctionType(
+      uint64_t address) const final;
+
+  std::optional<anvill::GlobalVarDecl>
+  TryGetVariableType(uint64_t address) const final;
+
+ private:
+  SpecificationTypeProvider(void) = delete;
 };
 
 enum class BytePermission : std::uint8_t {
@@ -167,6 +192,22 @@ class NullMemoryProvider : public MemoryProvider {
   Query(uint64_t address) const override;
 };
 
+// Provider of memory wrapping around an `Specification`.
+class SpecificationMemoryProvider : public MemoryProvider {
+ public:
+  virtual ~SpecificationMemoryProvider(void);
+
+  explicit SpecificationMemoryProvider(const Specification &spec);
+
+  std::tuple<uint8_t, anvill::ByteAvailability, anvill::BytePermission>
+  Query(uint64_t address) const final;
+
+ private:
+  SpecificationMemoryProvider(void) = delete;
+
+  const std::shared_ptr<SpecificationImpl> impl;
+};
+
 // Describes a list of targets reachable from a given source address. This tells
 // us where the flows go, not the mechanics of how they get there.
 struct ControlFlowTargetList final {
@@ -221,6 +262,23 @@ class NullControlFlowProvider : public ControlFlowProvider {
 
   std::optional<ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &) const override;
+};
+
+class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
+ private:
+  std::shared_ptr<SpecificationImpl> impl;
+
+ public:
+  virtual ~SpecificationControlFlowProvider(void);
+
+  explicit SpecificationControlFlowProvider(const Specification &spec);
+
+  std::uint64_t GetRedirection(
+      const remill::Instruction &from_inst,
+      std::uint64_t address) const final;
+
+  std::optional<anvill::ControlFlowTargetList>
+  TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
 };
 
 }  // namespace anvill

@@ -18,7 +18,7 @@ from .bnvariable import *
 
 from .table import *
 
-from ..program import Program
+from ..program import Specification
 from ..arch import *
 from ..os import *
 from ..imageparser import *
@@ -36,9 +36,9 @@ def _is_function_pointer(bn_var):
     return False
 
 
-class BNProgram(Program):
+class BNSpecification(Specification):
     def __init__(self, bv: bn.BinaryView, path: str):
-        Program.__init__(self, _get_arch(bv), _get_os(bv))
+        Specification.__init__(self, _get_arch(bv), _get_os(bv))
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
         self._type_cache: Final[TypeCache] = TypeCache(self._arch, self._bv)

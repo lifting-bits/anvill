@@ -377,7 +377,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       switch_parameters.push_back(pc);
 
       for (auto destination : target_list.target_addresses) {
-        auto dest_as_value = GenerateConcreteProgramCounter(block, destination);
+        auto dest_as_value = GenerateConcreteSpecificationCounter(block, destination);
         switch_parameters.push_back(dest_as_value);
       }
 
@@ -700,7 +700,7 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   enc.flat |= bytes[3];
 
   // This looks like an `unimp <imm22>` instruction, where the `imm22` encodes
-  // the size of the value to return. See "Programming Note" in v8 manual, B.31,
+  // the size of the value to return. See "Specificationming Note" in v8 manual, B.31,
   // p 137.
   //
   // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
@@ -1035,6 +1035,7 @@ llvm::Value *FunctionLifter::TryCallNativeFunction(uint64_t native_addr,
     auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
     if (maybe_decl.Succeeded()) {
       decl = maybe_decl.TakeValue();
+      decl.address = native_addr;
 
     } else {
       LOG(ERROR) << "Unable to create FunctionDecl for "
@@ -1322,16 +1323,16 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
   });
 }
 
-llvm::Value *FunctionLifter::GenerateProgramCounter(llvm::BasicBlock *block,
+llvm::Value *FunctionLifter::GenerateSpecificationCounter(llvm::BasicBlock *block,
                                                     std::uint64_t address) {
   if (options.symbolic_program_counter) {
-    return GenerateSymbolicProgramCounter(block, address);
+    return GenerateSymbolicSpecificationCounter(block, address);
   } else {
-    return GenerateConcreteProgramCounter(block, address);
+    return GenerateConcreteSpecificationCounter(block, address);
   }
 }
 
-void FunctionLifter::UpdateProgramCounter(llvm::BasicBlock *block,
+void FunctionLifter::UpdateSpecificationCounter(llvm::BasicBlock *block,
                                           llvm::Value *pc) {
   auto pc_reg =
       options.arch->RegisterByName(options.arch->ProgramCounterRegisterName());
@@ -1343,7 +1344,7 @@ void FunctionLifter::UpdateProgramCounter(llvm::BasicBlock *block,
 }
 
 llvm::Value *
-FunctionLifter::GenerateSymbolicProgramCounter(llvm::BasicBlock *block,
+FunctionLifter::GenerateSymbolicSpecificationCounter(llvm::BasicBlock *block,
                                                std::uint64_t address) {
   auto base_pc = semantics_module->getGlobalVariable(kSymbolicPCName);
   if (!base_pc) {
@@ -1366,23 +1367,23 @@ FunctionLifter::GenerateSymbolicProgramCounter(llvm::BasicBlock *block,
 // initial program counter is "tainted" by this initial constant expression,
 // and therefore can be found.
 llvm::Value *
-FunctionLifter::InitializeSymbolicProgramCounter(llvm::BasicBlock *block) {
-  auto pc = GenerateSymbolicProgramCounter(block, func_address);
-  UpdateProgramCounter(block, pc);
+FunctionLifter::InitializeSymbolicSpecificationCounter(llvm::BasicBlock *block) {
+  auto pc = GenerateSymbolicSpecificationCounter(block, func_address);
+  UpdateSpecificationCounter(block, pc);
   return pc;
 }
 
 llvm::Value *
-FunctionLifter::GenerateConcreteProgramCounter(llvm::BasicBlock *block,
+FunctionLifter::GenerateConcreteSpecificationCounter(llvm::BasicBlock *block,
                                                std::uint64_t address) {
   auto pc = llvm::ConstantInt::get(pc_reg_type, address, false);
   return pc;
 }
 
 llvm::Value *
-FunctionLifter::InitializeConcreteProgramCounter(llvm::BasicBlock *block) {
-  auto pc = GenerateConcreteProgramCounter(block, func_address);
-  UpdateProgramCounter(block, pc);
+FunctionLifter::InitializeConcreteSpecificationCounter(llvm::BasicBlock *block) {
+  auto pc = GenerateConcreteSpecificationCounter(block, func_address);
+  UpdateSpecificationCounter(block, pc);
 
   return pc;
 }
@@ -1496,9 +1497,9 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 
   llvm::Value *pc = nullptr;
   if (options.symbolic_program_counter) {
-    pc = InitializeSymbolicProgramCounter(block);
+    pc = InitializeSymbolicSpecificationCounter(block);
   } else {
-    pc = InitializeConcreteProgramCounter(block);
+    pc = InitializeConcreteSpecificationCounter(block);
   }
 
   // Initialize the stack pointer.

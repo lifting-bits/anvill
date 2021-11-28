@@ -23,7 +23,7 @@ def get_program(
     binary_path: Optional[str] = None,
     binary_view: Optional[bn.BinaryView] = None,
     base_address: Optional[int] = None,
-) -> Optional[Program]:
+) -> Optional[Specification]:
     if isinstance(binary_path, str):
         if isinstance(base_address, int):
             # Force the new image base address; according to the
@@ -51,4 +51,4 @@ def get_program(
         return None
 
     DEBUG("Recovering program {}".format(binary_path))
-    return BNProgram(binary_view, binary_path)
+    return BNSpecification(binary_view, binary_path)

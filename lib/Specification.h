@@ -11,6 +11,7 @@
 #include <anvill/Specification.h>
 
 #include <map>
+#include <unordered_map>
 #include <utility>
 
 #include <anvill/Decls.h>
@@ -33,8 +34,7 @@ class SpecificationImpl
   friend class Specification;
 
   SpecificationImpl(void) = delete;
-  SpecificationImpl(std::shared_ptr<llvm::LLVMContext> context_,
-              std::unique_ptr<const remill::Arch> arch_);
+  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_);
 
   bool ParseRange(const llvm::json::Object *obj, std::stringstream &err);
 
@@ -50,23 +50,29 @@ class SpecificationImpl
  public:
   ~SpecificationImpl(void);
 
-  // Context used by all things.
-  const std::shared_ptr<llvm::LLVMContext> context;
-
   // Architecture used by all of the function and global variable declarations.
   const std::unique_ptr<const remill::Arch> arch;
 
   const TypeDictionary type_dictionary;
   const TypeTranslator type_translator;
 
-  // NOTE(pag): We used ordered containers so that any type of round-tripping
-  //            to/from JSON ends up getting a consistent order of information.
+  using GlobalVarDeclPtr = std::unique_ptr<GlobalVarDecl>;
+  using FunctionDeclPtr = std::unique_ptr<FunctionDecl>;
+
+  // Sorted list of functions and variables.
+  std::vector<GlobalVarDeclPtr> variables;
+  std::vector<FunctionDeclPtr> functions;
 
   // List of functions that have been parsed from the JSON spec.
-  std::map<std::uint64_t, FunctionDecl> functions;
+  std::unordered_map<std::uint64_t, const FunctionDecl *> address_to_function;
 
-  // List of variables that have been parsed from the JSON spec.
-  std::map<std::uint64_t, GlobalVarDecl> variables;
+  // Inverted mapping of byte addresses to the variables containing those
+  // addresses.
+  std::unordered_map<std::uint64_t, const GlobalVarDecl *> address_to_var;
+
+
+  // NOTE(pag): We used ordered containers so that any type of round-tripping
+  //            to/from JSON ends up getting a consistent order of information.
 
   // Mapping of addresses to one or more names.
   std::multimap<std::uint64_t, std::string> symbols;

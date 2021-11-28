@@ -16,6 +16,8 @@
 #include <llvm/IR/Type.h>
 #include <remill/BC/Util.h>
 
+#include "Specification.h"
+
 namespace anvill {
 
 TypeProvider::~TypeProvider(void) {}
@@ -64,5 +66,35 @@ void TypeProvider::QueryRegisterStateAtInstruction(
     uint64_t, uint64_t,
     std::function<void(const std::string &, llvm::Type *,
                        std::optional<uint64_t>)>) const {}
+
+
+SpecificationTypeProvider::~SpecificationTypeProvider(void) {}
+
+SpecificationTypeProvider::SpecificationTypeProvider(
+    const Specification &spec)
+    : TypeProvider(spec.impl->type_translator),
+      impl(spec.impl) {}
+
+// Try to return the type of a function starting at address `address`. This
+// type is the prototype of the function.
+std::optional<anvill::FunctionDecl>
+SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
+  auto func_it = impl->address_to_function.find(address);
+  if (func_it == impl->address_to_function.end()) {
+    return std::nullopt;
+  } else {
+    return *(func_it->second);
+  }
+}
+
+std::optional<anvill::GlobalVarDecl>
+SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
+  auto var_it = impl->address_to_var.find(address);
+  if (var_it != impl->address_to_var.end()) {
+    return *(var_it->second);
+  } else {
+    return std::nullopt;
+  }
+}
 
 }  // namespace anvill

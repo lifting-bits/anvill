@@ -27,7 +27,7 @@ class ControlFlowTargetList:
     complete: bool = False
 
 
-class Program(ABC):
+class Specification(ABC):
     """Represents a program."""
 
     def __init__(self, arch: Arch, os: OS):

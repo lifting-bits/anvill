@@ -16,44 +16,17 @@
 #include <memory>
 #include <sstream>
 #include <string>
-//#include <unordered_set>
 
+#include <anvill/Lifters.h>
+#include <anvill/Providers.h>
 #include <anvill/Specification.h>
 #include <anvill/Version.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/BC/Compat/Error.h>
-
-//// clang-format off
-//#include <remill/BC/Compat/CTypes.h>
-//#include <llvm/IR/LLVMContext.h>
-//#include <llvm/IR/Module.h>
-//#include <llvm/Pass.h>
-//
-//
-//#include <llvm/Transforms/IPO.h>
-//// clang-format on
-//
-//#include <anvill/ABI.h>
-//#include <anvill/Lifters.h>
-//#include <anvill/JSON.h>
-//#include <anvill/Providers.h>
-//#include <anvill/Providers.h>
-//#include <anvill/Type.h>
-//#include <remill/Arch/Arch.h>
-//#include <remill/Arch/Name.h>
-//
-//#include <remill/BC/IntrinsicTable.h>
-//#include <remill/BC/Lifter.h>
-//#include <remill/BC/Util.h>
-//#include <remill/OS/OS.h>
-
-//#include <anvill/Optimize.h>
-//#include <anvill/Utils.h>
-
-//#include "ControlFlowProvider.h"
-//#include "MemoryProvider.h"
-//#include "TypeProvider.h"
+#include <remill/BC/Util.h>
 
 DECLARE_string(arch);
 DECLARE_string(os);
@@ -96,11 +69,6 @@ static void SetVersion(void) {
   google::SetVersionString(ss.str());
 }
 
-namespace decompile {
-
-
-}  // namespace decompile
-
 int main(int argc, char *argv[]) {
 
   // get version string from git, and put as output to --version
@@ -136,15 +104,45 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  llvm::LLVMContext context;
+  llvm::Module module("lifted_code", context);
+
   auto maybe_spec = anvill::Specification::DecodeFromJSON(
-      remill::GetReference(maybe_json));
+      context, remill::GetReference(maybe_json));
 
   if (maybe_spec.Failed()) {
     std::cerr << maybe_spec.TakeError().message << std::endl;
     return EXIT_FAILURE;
   }
 
-  return EXIT_SUCCESS;
+  anvill::Specification spec = maybe_spec.TakeValue();
+  anvill::SpecificationTypeProvider tp(spec);
+  anvill::SpecificationControlFlowProvider cfp(spec);
+  anvill::SpecificationMemoryProvider mp(spec);
+  anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
+  anvill::EntityLifter lifter(options);
+
+  auto main_func = spec.FunctionAt(0x401f50u);
+  if (main_func) {
+    lifter.LiftEntity(*main_func);
+  }
+
+  int ret = EXIT_SUCCESS;
+
+  if (!FLAGS_ir_out.empty()) {
+    if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
+      std::cerr << "Could not save LLVM IR to " << FLAGS_ir_out << '\n';
+      ret = EXIT_FAILURE;
+    }
+  }
+  if (!FLAGS_bc_out.empty()) {
+    if (!remill::StoreModuleToFile(&module, FLAGS_bc_out, true)) {
+      std::cerr << "Could not save LLVM bitcode to " << FLAGS_bc_out << '\n';
+      ret = EXIT_FAILURE;
+    }
+  }
+
+  return ret;
 
 //
 //  llvm::LLVMContext context;
@@ -174,7 +172,7 @@ int main(int argc, char *argv[]) {
 //
 //  // Parse the spec, which contains as much or as little details about what is
 //  // being lifted as the spec generator desired and put it into an
-//  // anvill::Program object, which is effectively a representation of the spec
+//  // anvill::Specification object, which is effectively a representation of the spec
 //  if (!ParseSpec(arch.get(), context, program, spec, module)) {
 //    return EXIT_FAILURE;
 //  }
@@ -293,20 +291,4 @@ int main(int argc, char *argv[]) {
 //    }
 //  }
 //
-//  int ret = EXIT_SUCCESS;
-//
-//  if (!FLAGS_ir_out.empty()) {
-//    if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
-//      std::cerr << "Could not save LLVM IR to " << FLAGS_ir_out << '\n';
-//      ret = EXIT_FAILURE;
-//    }
-//  }
-//  if (!FLAGS_bc_out.empty()) {
-//    if (!remill::StoreModuleToFile(&module, FLAGS_bc_out, true)) {
-//      std::cerr << "Could not save LLVM bitcode to " << FLAGS_bc_out << '\n';
-//      ret = EXIT_FAILURE;
-//    }
-//  }
-//
-//  return ret;
 }
