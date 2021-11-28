@@ -664,6 +664,8 @@ uint64_t CrossReferenceFolderImpl::MagicReturnAddressValue(void) const {
   }
 }
 
+CrossReferenceFolder::~CrossReferenceFolder(void) {}
+
 // The primary way of using a cross-reference resolver is with an entity
 // lifter that can resolve global references on our behalf.
 CrossReferenceFolder::CrossReferenceFolder(

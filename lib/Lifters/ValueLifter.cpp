@@ -222,6 +222,10 @@ llvm::Constant *ValueLifterImpl::GetPointer(
     uint64_t ea, llvm::Type *value_type, EntityLifterImpl &ent_lifter,
     uint64_t loc_ea, unsigned address_space) const {
 
+  if (!value_type) {
+    value_type = llvm::Type::getInt8Ty(context);
+  }
+
   auto ptr_type = llvm::PointerType::get(value_type, address_space);
   auto ret = TryGetPointerForAddress(ea, ent_lifter, ptr_type);
   if (!ret) {

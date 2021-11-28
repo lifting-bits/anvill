@@ -449,7 +449,7 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
 llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   const auto &dt = fam.getResult<llvm::DominatorTreeAnalysis>(function);

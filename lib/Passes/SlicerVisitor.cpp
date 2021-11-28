@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/SlicerVisitor.h>
+#include "SlicerVisitor.h"
 
 namespace anvill {
 llvm::Value *Slicer::checkInstruction(llvm::Value *targetValue) {
