@@ -30,12 +30,12 @@ class PcRel {
   // Interprets the slice, providing loadedVal as the argument.
   llvm::APInt apply(SliceInterpreter &interp, llvm::APInt loadedVal);
 
-
   llvm::IntegerType *getExpectedType(SliceManager &);
 };
 
-// A slice that represents the computation from an index (some non-constant value) to a loaded address.
-// The slice is linear and constant except for the index, resulting in one integer argument for the slice.`
+// A slice that represents the computation from an index (some non-constant
+// value) to a loaded address. The slice is linear and constant except for the
+// index, resulting in one integer argument for the slice.
 class IndexRel {
  private:
   SliceID slice;
@@ -44,7 +44,8 @@ class IndexRel {
  public:
   llvm::Value *getIndex();
 
-  // Interprets the slice, substituting indexValue for the index, retrieving a jump table address.
+  // Interprets the slice, substituting indexValue for the index, retrieving a
+  // jump table address.
   llvm::APInt apply(SliceInterpreter &interp, llvm::APInt indexValue);
 
   IndexRel(SliceID slice, llvm::Value *index) : slice(slice), index(index) {}

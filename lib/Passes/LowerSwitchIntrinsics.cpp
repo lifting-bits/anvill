@@ -94,8 +94,9 @@ class SwitchBuilder {
 
     llvm::APInt res(ty->getBitWidth(), 0);
 
-
-    // Endianess? may have to flip around memory as needed, yeah looks like LoadIntMemory loads at system memory so need to use flip_memory in llvm::endianess
+    // Endianess? may have to flip around memory as needed, yeah looks like
+    // LoadIntMemory loads at system memory so need to use flip_memory in
+    // llvm::endianess
     llvm::LoadIntFromMemory(res, memory.data(), target_bytes);
 
     if (this->dl.isLittleEndian() == llvm::sys::IsLittleEndianHost) {
@@ -114,9 +115,10 @@ class SwitchBuilder {
         mem_prov(memProv),
         dl(dl) {}
 
-  // A native switch utilizes llvms switch construct in the intended manner to dispatch control flow on integer values.
-  // This pass converts jump table based compiler implementations of this construct back into simple swith cases over an integer index
-  // that directly jumps to known labels.
+  // A native switch utilizes llvms switch construct in the intended manner to
+  // dispatch control flow on integer values. This pass converts jump table-
+  // based compiler implementations of this construct back into simple switch
+  // cases over an integer index that directly jumps to known labels.
   std::optional<llvm::SwitchInst *>
   CreateNativeSwitch(JumpTableResult jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
