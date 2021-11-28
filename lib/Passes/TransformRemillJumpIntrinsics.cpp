@@ -93,7 +93,7 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(
     llvm::Value *val) const {
 
   if (IsReturnAddress(module, val)) {
-    return kReturnAddressSpecificationCounter;
+    return kReturnAddressProgramCounter;
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
     return QueryReturnAddress(xref_folder, module, pti->getOperand(0));
@@ -107,10 +107,10 @@ TransformRemillJumpIntrinsics::QueryReturnAddress(
   } else if (auto xr = xref_folder.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_folder.MagicReturnAddressValue()) {
-    return kReturnAddressSpecificationCounter;
+    return kReturnAddressProgramCounter;
   }
 
-  return kUnclassifiableSpecificationCounter;
+  return kUnclassifiableProgramCounter;
 }
 
 // Dispatch to the proper memory replacement function given a function call.
@@ -167,8 +167,8 @@ TransformRemillJumpIntrinsics::run(llvm::Function &func,
     const auto ret_addr =
         call->getArgOperand(remill::kPCArgNum)->stripPointerCastsAndAliases();
     switch (QueryReturnAddress(xref_folder, module, ret_addr)) {
-      case kReturnAddressSpecificationCounter: return true;
-      case kUnclassifiableSpecificationCounter: return false;
+      case kReturnAddressProgramCounter: return true;
+      case kUnclassifiableProgramCounter: return false;
     }
   });
 
