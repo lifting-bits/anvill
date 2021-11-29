@@ -15,7 +15,7 @@ class UnhandledArchitectureType(AnvillException):
 
 
 class UnhandledTypeException(AnvillException):
-    def __init__(self, msg, ty):
+    def __init__(self, msg, ty=None):
         super(UnhandledTypeException, self).__init__(msg)
         self.type = ty
 

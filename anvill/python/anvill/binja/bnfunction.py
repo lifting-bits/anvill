@@ -17,17 +17,17 @@ from .table import *
 from .xreftype import *
 from .typecache import to_bool
 
-from ..arch import Arch
+from ..arch import Arch, Register
 from ..loc import Location
 from ..function import Function
 from ..type import *
 
 
-def should_ignore_register(bv, reg_name):
+def should_ignore_register(bv, reg_name: Optional[Register]):
     _IGNORE_REGS_LIST = {"aarch64": ["XZR", "WZR"]}
     try:
         return reg_name.upper() in _IGNORE_REGS_LIST[bv.arch.name]
-    except KeyError:
+    except:
         return False
 
 
@@ -217,10 +217,14 @@ class BNFunction(Function):
                 except KeyError:
                     DEBUG(f"Unsupported register {item_or_list.name}")
 
-                if initial_inst.mlil is not None:
-                    yield from self._extract_types_mlil(
-                        program, initial_inst.mlil, initial_inst.mlil
-                    )
+                try:
+                    initial_mlil = initial_inst.mlil
+                    if initial_mlil is not None:
+                        yield from self._extract_types_mlil(
+                            program, initial_mlil, initial_mlil
+                        )
+                except:
+                    pass
 
     def _fill_bytes(self, program, memory, start, end, ref_eas):
         br = bn.BinaryReader(program.bv)
@@ -313,9 +317,12 @@ def _collect_xrefs_from_inst(
         _collect_xrefs_from_inst(bv, program, opnd, ref_eas, reftype)
 
     if isinstance(inst, bn.LowLevelILInstruction):
-        mlil_inst = inst.mlil
-        if mlil_inst is not None:
-            _collect_xrefs_from_inst(bv, program, mlil_inst, ref_eas)
+        try:
+            mlil_inst = inst.mlil
+            if mlil_inst is not None:
+                _collect_xrefs_from_inst(bv, program, mlil_inst, ref_eas)
+        except:
+            pass
 
 
 def is_code(bv, addr):

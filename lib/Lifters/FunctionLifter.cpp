@@ -1131,7 +1131,8 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         // Failed to decode the first instruction of the function, but we can
         // possibly recover via a tail-call to a redirection address!
         if (inst_addr != func_address) {
-          edge_work_list.emplace(inst_addr, func_address);
+          llvm::BranchInst::Create(GetOrCreateBlock(func_address, inst_addr),
+                                   block);
           continue;
         }
       }
@@ -1149,6 +1150,20 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       continue;
 
     } else {
+      if (inst_addr == func_address) {
+        inst_addr = options.control_flow_provider.GetRedirection(
+            inst, inst_addr);
+
+        // Redirect control-flow out of this function if possible. This helps
+        // us lift GOT/PLT thunks into things that aren't just indirect jumps
+        // that leak the `State` structure.
+        if (inst_addr != func_address) {
+          llvm::BranchInst::Create(GetOrCreateBlock(func_address, inst_addr),
+                                   block);
+          continue;
+        }
+      }
+
       VisitInstruction(inst, block);
     }
   }
