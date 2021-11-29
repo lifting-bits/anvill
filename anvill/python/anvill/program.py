@@ -61,7 +61,10 @@ class Specification(ABC):
         elif ea in self._func_decls:
             return self._func_decls[ea]
         else:
-            return self.get_function_impl(ea)
+            try:
+                return self.get_function_impl(ea)
+            except Exception as e:
+                raise type(e)(f"Error when trying to get function {ea:x}: {str(e)}") from e
 
     def get_variable(self, ea: int) -> Optional[Variable]:
         if ea in self._var_defs:
@@ -70,7 +73,10 @@ class Specification(ABC):
         elif ea in self._var_decls:
             return self._var_decls[ea]
         else:
-            return self.get_variable_impl(ea)
+            try:
+                return self.get_variable_impl(ea)
+            except Exception as e:
+                raise type(e)(f"Error when trying to get variable {ea:x}: {str(e)}") from e
 
     @abstractmethod
     def get_symbols_impl(self, ea: int) -> Iterator[str]:
