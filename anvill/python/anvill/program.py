@@ -97,7 +97,7 @@ class Specification(ABC):
     def add_variable_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)
         if var is not None and isinstance(var, Variable):
-            ea: int = var.address()
+            ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs and ea not in self._var_decls:
                 self._var_decls[ea] = var
                 var.visit(self, False, add_refs_as_defs)
@@ -116,7 +116,7 @@ class Specification(ABC):
     def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)
         if var is not None and isinstance(var, Variable):
-            ea: int = var.address()
+            ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs:
                 if ea in self._var_decls:
                     del self._var_decls[ea]
@@ -129,7 +129,7 @@ class Specification(ABC):
     def add_function_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         func: Optional[Function] = self.get_function(ea)
         if func is not None and isinstance(func, Function):
-            ea: int = func.address()
+            ea = func.address()  # Argument `ea` might be inside the function.
             if ea not in self._func_defs:
                 if ea in self._func_decls:
                     del self._func_decls[ea]
@@ -142,7 +142,7 @@ class Specification(ABC):
     def add_function_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
         func: Optional[Function] = self.get_function(ea)
         if func is not None and isinstance(func, Function):
-            ea: int = func.address()
+            ea = func.address()  # Argument `ea` might be inside the function.
             if ea not in self._func_defs and ea not in self._func_decls:
                 self._func_decls[ea] = func
                 func.visit(self, False, add_refs_as_defs)

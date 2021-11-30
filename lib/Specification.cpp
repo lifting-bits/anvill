@@ -365,14 +365,16 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
 
           auto size = dl.getTypeAllocSize(var_ptr->type).getKnownMinValue();
           for (auto i = 0ull; i < size; ++i) {
-            auto [it, added] = address_to_var.emplace(var_ptr->address + i, var_ptr);
-            if (!added) {
-              ss << "Variable starting at " << std::hex << var_ptr->address
-                 << " (the " << index << "th entry in 'variables' list) "
-                 << "overlaps with the variable at " << it->second->address
-                 << " in program specification";
-              return var_obj;
-            }
+            (void) address_to_var.emplace(var_ptr->address + i, var_ptr);
+
+//            auto [it, added] =
+//            if (!added) {
+//              ss << "Variable starting at " << std::hex << var_ptr->address
+//                 << " (the " << index << "th entry in 'variables' list) "
+//                 << "overlaps with the variable at " << it->second->address
+//                 << " in program specification";
+//              return var_obj;
+//            }
           }
         }
       } else {

@@ -14,7 +14,7 @@
 
 #include <iostream>
 
-#include "RecoverStackFrameInformation.h"
+#include "RecoverBasicStackFrame.h"
 #include "Utils.h"
 
 namespace anvill {

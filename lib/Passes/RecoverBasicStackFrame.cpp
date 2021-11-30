@@ -6,90 +6,54 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RecoverStackFrameInformation.h"
+#include <anvill/Passes/RecoverBasicStackFrame.h>
 
+#include <anvill/ABI.h>
 #include <anvill/CrossReferenceFolder.h>
+#include <anvill/CrossReferenceResolver.h>
+#include <anvill/Lifters.h>
 #include <remill/BC/Util.h>
 
+#include <cassert>
 #include <iostream>
 #include <limits>
 
 #include "Utils.h"
 
 namespace anvill {
-RecoverStackFrameInformation *
-RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
-                                     const LifterOptions &options) {
-  return new RecoverStackFrameInformation(error_manager, options);
-}
 
-bool RecoverStackFrameInformation::Run(llvm::Function &function,
-                                       llvm::FunctionAnalysisManager &fam) {
+llvm::PreservedAnalyses RecoverBasicStackFrame::run(
+    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // Analyze the stack frame first, enumerating the instructions referencing
   // the __anvill_sp symbol and determining the boundaries of the stack memory
-  auto stack_frame_analysis_res = AnalyzeStackFrame(function);
-  if (!stack_frame_analysis_res.Succeeded()) {
-    EmitError(SeverityType::Error, stack_frame_analysis_res.Error(),
-              "The stack frame analysis has failed");
-
-    return false;
-  }
-
-  auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-  if (stack_frame_analysis.size == 0) {
-    return false;
+  StackFrameAnalysis stack_frame_analysis = AnalyzeStackFrame(function, options);
+  if (stack_frame_analysis.instruction_uses.empty()) {
+    return llvm::PreservedAnalyses::all();
   }
 
   // It is now time to patch the function. This method will take the stack
   // analysis and use it to generate a stack frame type and update all the
   // instructions
-  auto update_func_res = UpdateFunction(
-      function, options, stack_frame_analysis);
-
-  if (!update_func_res.Succeeded()) {
-    EmitError(
-        SeverityType::Fatal, update_func_res.Error(),
-        "Function transformation has failed and the stack could not be recovered");
-
-    return false;
-  }
+  UpdateFunction(function, options, stack_frame_analysis);
 
   // Analyze the __anvill_sp usage again; this time, the resulting
   // instruction list should be empty
-  auto second_stack_frame_uses_res = EnumerateStackPointerUsages(function);
-  if (!second_stack_frame_uses_res.Succeeded()) {
-    EmitError(SeverityType::Fatal, second_stack_frame_uses_res.Error(),
-              "The post-transformation stack frame analysis has failed");
+  assert(EnumerateStackPointerUsages(function).empty());
 
-    return false;
-  }
-
-  auto second_stack_frame_uses = second_stack_frame_uses_res.TakeValue();
-  if (!second_stack_frame_uses.empty()) {
-    EmitError(
-        SeverityType::Fatal,
-        StackAnalysisErrorCode::FunctionTransformationFailed,
-        "The stack frame recovery did not replace all the possible __anvill_sp uses");
-  }
-
-  return true;
+  return llvm::PreservedAnalyses::none();
 }
 
-llvm::StringRef RecoverStackFrameInformation::name(void) {
-  return llvm::StringRef("RecoverStackFrameInformation");
+llvm::StringRef RecoverBasicStackFrame::name(void) {
+  return llvm::StringRef("RecoverBasicStackFrame");
 }
 
-Result<StackPointerRegisterUsages, StackAnalysisErrorCode>
-RecoverStackFrameInformation::EnumerateStackPointerUsages(
+StackPointerRegisterUsages
+RecoverBasicStackFrame::EnumerateStackPointerUsages(
     llvm::Function &function) {
-  if (function.isDeclaration()) {
-    return StackAnalysisErrorCode::InvalidParameter;
-  }
-
   StackPointerRegisterUsages output;
 
   auto module = function.getParent();
@@ -108,21 +72,20 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
   return output;
 }
 
-Result<StackFrameAnalysis, StackAnalysisErrorCode>
-RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
+static constexpr uint64_t kMax16 = std::numeric_limits<uint16_t>::max();
+static constexpr uint64_t kMax32 = std::numeric_limits<uint32_t>::max();
 
-  // Enumerate all the instructions referencing __anvill_sp
-  auto stack_related_instr_list_res = EnumerateStackPointerUsages(function);
-  if (!stack_related_instr_list_res.Succeeded()) {
-    return stack_related_instr_list_res.TakeError();
-  }
+StackFrameAnalysis
+RecoverBasicStackFrame::AnalyzeStackFrame(
+    llvm::Function &function, const StackFrameRecoveryOptions &options) {
 
   // The CrossReferenceResolver can accumulate all the offsets
   // applied to the stack pointer symbol for us
   auto module = function.getParent();
-  auto data_layout = module->getDataLayout();
+  auto &data_layout = module->getDataLayout();
 
-  CrossReferenceFolder resolver(data_layout);
+  NullCrossReferenceResolver resolver;
+  CrossReferenceFolder folder(resolver, data_layout);
 
   // Pre-initialize the stack limits
   StackFrameAnalysis output;
@@ -130,22 +93,24 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
   output.lowest_offset = std::numeric_limits<std::int64_t>::max();
 
   // Go through each one of the instructions we have found
-  auto stack_related_instr_list = stack_related_instr_list_res.TakeValue();
-
-  for (const auto use : stack_related_instr_list) {
+  for (const auto use : EnumerateStackPointerUsages(function)) {
 
     // Skip any operand that is not related to the stack pointer
     const auto val = use->get();
 
     // Attempt to resolve the constant expression into an offset
-    const auto reference = resolver.TryResolveReferenceWithClearedCache(val);
+    const auto reference = folder.TryResolveReferenceWithClearedCache(val);
     if (!reference.is_valid || !reference.references_stack_pointer) {
       continue;
     }
 
     // The offset from the stack pointer. Force to a 32-bit, then sign-extend.
-    const int64_t stack_offset = static_cast<int32_t>(
-        reference.Displacement(data_layout));
+    int64_t stack_offset = reference.Displacement(data_layout);
+    if (options.max_stack_frame_size <= kMax16) {
+      stack_offset = static_cast<int16_t>(stack_offset);
+    } else if (options.max_stack_frame_size <= kMax32) {
+      stack_offset = static_cast<int32_t>(stack_offset);
+    }
 
     // Update the boundaries, based on the offset we have found
     std::uint64_t type_size =
@@ -153,18 +118,16 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
 
     // In the case of `store` instructions, we want to record the size of the
     // stored value as the type size or updating the stack offset.
-    if (auto store_inst = llvm::dyn_cast<llvm::StoreInst>(use->getUser())) {
+    if (auto store = llvm::dyn_cast<llvm::StoreInst>(use->getUser())) {
       if (use->getOperandNo() == 1) {
-        const auto stored_type = store_inst->getValueOperand()->getType();
+        const auto stored_type = store->getValueOperand()->getType();
         type_size = data_layout.getTypeAllocSize(stored_type).getFixedSize();
       }
 
       // In the case of `load` instructions, we want to redord the size of the
       // loaded value.
-    } else if (auto load_inst =
-                   llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
-      type_size =
-          data_layout.getTypeAllocSize(load_inst->getType()).getFixedSize();
+    } else if (auto load = llvm::dyn_cast<llvm::LoadInst>(use->getUser())) {
+      type_size = data_layout.getTypeAllocSize(load->getType()).getFixedSize();
     }
 
     output.highest_offset =
@@ -177,89 +140,60 @@ RecoverStackFrameInformation::AnalyzeStackFrame(llvm::Function &function) {
     output.instruction_uses.emplace_back(use, type_size, stack_offset);
   }
 
-  if (!stack_related_instr_list.empty()) {
-    output.size =
-        static_cast<std::size_t>(output.highest_offset - output.lowest_offset);
-  }
+  output.size =
+      static_cast<std::size_t>(output.highest_offset - output.lowest_offset);
 
   return output;
 }
 
-Result<llvm::StructType *, StackAnalysisErrorCode>
-RecoverStackFrameInformation::GenerateStackFrameType(
-    const llvm::Function &function, const LifterOptions &options,
+llvm::StructType *
+RecoverBasicStackFrame::GenerateStackFrameType(
+    const llvm::Function &function, const StackFrameRecoveryOptions &options,
     const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
-  if (stack_frame_analysis.instruction_uses.empty()) {
-    return StackAnalysisErrorCode::InvalidParameter;
-  }
 
   // Generate a stack frame type with a name that matches the anvill ABI
   auto function_name = function.getName().str();
   auto stack_frame_type_name = function_name + kStackFrameTypeNameSuffix;
 
   // Make sure this type is not defined already
-  auto &module = *function.getParent();
-  auto &context = module.getContext();
-  auto stack_frame_type = getTypeByName(module, stack_frame_type_name);
-  if (stack_frame_type != nullptr) {
-    return StackAnalysisErrorCode::StackFrameTypeAlreadyExists;
-  }
+  auto module = function.getParent();
+  const auto &dl = module->getDataLayout();
+  auto &context = module->getContext();
+
+  auto stack_frame_type = llvm::StructType::getTypeByName(
+      context, stack_frame_type_name);
 
   // Determine how many bytes we should allocate. We may have been
   // asked to add some additional padding. We don't care how it is
   // accessed right now, we just add to the total size of the final
   // stack frame
-  auto stack_frame_size = padding_bytes + stack_frame_analysis.size;
+  auto stack_frame_size = std::max<uint64_t>(
+      1u,
+      std::min<uint64_t>(options.max_stack_frame_size,
+                         padding_bytes + stack_frame_analysis.size));
 
-  if (stack_frame_size > options.max_stack_frame_size) {
-    return StackAnalysisErrorCode::StackFrameTooBig;
+  // Round the stack frame to a multiple of the address size.
+  auto address_size = dl.getPointerSize(0);
+  const auto num_slots = (stack_frame_size + (address_size - 1u)) /
+                         address_size;
+  stack_frame_size = num_slots * address_size;
+
+  if (stack_frame_type != nullptr) {
+    assert(dl.getTypeAllocSize(stack_frame_type).getKnownMinSize() <=
+           stack_frame_size);
+    return stack_frame_type;
   }
 
-  // Generate the stack frame using a byte array
-  auto array_elem_type = llvm::Type::getInt8Ty(context);
-  auto byte_array_type =
-      llvm::ArrayType::get(array_elem_type, stack_frame_size);
+  // Generate the stack frame using an array of address-sized elements.
+  auto addr_type = llvm::Type::getIntNTy(context, address_size * 8u);
+  auto arr_type = llvm::ArrayType::get(addr_type, num_slots);
 
-  const std::vector<llvm::Type *> stack_frame_types = {byte_array_type};
-  stack_frame_type =
-      llvm::StructType::create(stack_frame_types, stack_frame_type_name, true);
-
-  if (stack_frame_type == nullptr) {
-    return StackAnalysisErrorCode::InternalError;
-  }
-
-  return stack_frame_type;
+  llvm::Type *stack_frame_types[] = {arr_type};
+  return llvm::StructType::create(stack_frame_types, stack_frame_type_name);
 }
 
-static Result<llvm::GlobalVariable *, BaseFunctionPassErrorCode>
-GetSymbolicValue(llvm::Module &module, llvm::Type *type,
-                 const std::string &name) {
-
-  if (name.find(kAnvillNamePrefix) != 0U) {
-    return BaseFunctionPassErrorCode::InvalidSymbolicValueName;
-  }
-
-  auto symbolic_value = module.getGlobalVariable(name);
-  if (symbolic_value != nullptr) {
-    if (type != symbolic_value->getValueType()) {
-      return BaseFunctionPassErrorCode::SymbolicValueConflict;
-    }
-
-  } else {
-    auto initial_value = llvm::Constant::getNullValue(type);
-
-    symbolic_value = new llvm::GlobalVariable(
-        module, type, false, llvm::GlobalValue::ExternalLinkage, initial_value,
-        name);
-  }
-
-  return symbolic_value;
-}
-
-
-Result<llvm::GlobalVariable *, StackAnalysisErrorCode>
-RecoverStackFrameInformation::GetStackSymbolicByteValue(llvm::Module &module,
-                                                        std::int32_t offset) {
+llvm::GlobalVariable *RecoverBasicStackFrame::GetStackSymbolicByteValue(
+    llvm::Module &module, std::int32_t offset, llvm::IntegerType *type) {
 
   // Create a new name
   auto value_name = kSymbolicStackFrameValuePrefix;
@@ -271,22 +205,19 @@ RecoverStackFrameInformation::GetStackSymbolicByteValue(llvm::Module &module,
 
   value_name += std::to_string(abs(offset));
 
-  // Get the symbolic value; this will fail if we already have
-  // one with the same name but wrong type
-  auto &context = module.getContext();
-  auto byte_type = llvm::Type::getInt8Ty(context);
-
-  auto symbolic_value_res = GetSymbolicValue(module, byte_type, value_name);
-  if (!symbolic_value_res.Succeeded()) {
-    return StackAnalysisErrorCode::StackInitializationError;
+  auto gv = module.getGlobalVariable(value_name);
+  if (gv) {
+    assert(gv->getValueType() == type);
+    return gv;
+  } else {
+    return new llvm::GlobalVariable(
+        module, type, false, llvm::GlobalValue::ExternalLinkage, nullptr,
+        value_name);
   }
-
-  return symbolic_value_res.TakeValue();
 }
 
-Result<std::monostate, StackAnalysisErrorCode>
-RecoverStackFrameInformation::UpdateFunction(
-    llvm::Function &function, const LifterOptions &options,
+void RecoverBasicStackFrame::UpdateFunction(
+    llvm::Function &function, const StackFrameRecoveryOptions &options,
     const StackFrameAnalysis &stack_frame_analysis) {
 
   StackFrameStructureInitializationProcedure init_strategy =
@@ -298,23 +229,18 @@ RecoverStackFrameInformation::UpdateFunction(
   std::size_t stack_frame_higher_padding =
       options.stack_frame_higher_padding;
 
-  if (function.isDeclaration() ||
-      stack_frame_analysis.instruction_uses.empty()) {
-    return StackAnalysisErrorCode::InvalidParameter;
-  }
-
   // Generate a new stack frame type, using a byte array inside a
   // StructType
   auto padding_bytes = stack_frame_lower_padding + stack_frame_higher_padding;
 
-  auto stack_frame_type_res = GenerateStackFrameType(
+  auto stack_frame_type = GenerateStackFrameType(
       function, options, stack_frame_analysis, padding_bytes);
 
-  if (!stack_frame_type_res.Succeeded()) {
-    return stack_frame_type_res.TakeError();
-  }
-
-  auto stack_frame_type = stack_frame_type_res.TakeValue();
+  auto &context = function.getContext();
+  auto module = function.getParent();
+  const auto &dl = module->getDataLayout();
+  auto address_size = dl.getPointerSize(0);
+  auto addr_type = llvm::Type::getIntNTy(context, address_size * 8u);
 
   // Take the first instruction as an insert pointer for the
   // IRBuilder, and then create an `alloca` instruction to
@@ -385,20 +311,15 @@ RecoverStackFrameInformation::UpdateFunction(
       llvm::Value *gep_indexes[] = {builder.getInt32(0), builder.getInt32(0),
                                     nullptr};
 
-      for (auto i = 0U; i < total_stack_frame_size; ++i) {
+      for (auto i = 0U; i < total_stack_frame_size; i += address_size) {
         gep_indexes[2] = builder.getInt32(i);
         auto stack_frame_byte =
             builder.CreateGEP(stack_frame_alloca, gep_indexes);
 
-        auto symbolic_value_ptr_res =
-            GetStackSymbolicByteValue(module, current_offset);
+        auto symbolic_value_ptr =
+            GetStackSymbolicByteValue(module, current_offset, addr_type);
 
-        if (!symbolic_value_ptr_res.Succeeded()) {
-          return symbolic_value_ptr_res.TakeError();
-        }
-
-        auto symbolic_value_ptr = symbolic_value_ptr_res.TakeValue();
-        ++current_offset;
+        current_offset += static_cast<int>(address_size);
 
         auto symbolic_value = builder.CreateLoad(symbolic_value_ptr);
         builder.CreateStore(symbolic_value, stack_frame_byte);
@@ -452,18 +373,14 @@ RecoverStackFrameInformation::UpdateFunction(
     CopyMetadataTo(sp_use.use->get(), stack_frame_ptr);
     sp_use.use->set(stack_frame_ptr);
   }
-
-  return std::monostate();
 }
 
-RecoverStackFrameInformation::RecoverStackFrameInformation(
-    ITransformationErrorManager &error_manager, const LifterOptions &options)
-    : BaseFunctionPass(error_manager),
-      options(options) {}
+RecoverBasicStackFrame::RecoverBasicStackFrame(
+    const StackFrameRecoveryOptions &options_)
+    : options(options_) {}
 
-void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
-                                     ITransformationErrorManager &error_manager,
-                                     const LifterOptions &options) {
-  fpm.addPass(RecoverStackFrameInformation(error_manager, options));
+void AddRecoverBasicStackFrame(llvm::FunctionPassManager &fpm,
+                               const StackFrameRecoveryOptions &options) {
+  fpm.addPass(RecoverBasicStackFrame(options));
 }
 }  // namespace anvill

@@ -100,26 +100,8 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(
-                    program, inst.operands, inst)
-                for reg_info in register_information:
-                    if should_ignore_register(
-                        program.bv, self._arch.register_name(reg_info[0])
-                    ):
-                        continue
-
-                    loc = Location()
-                    loc.set_register(self._arch.register_name(reg_info[0]))
-                    loc.set_type(reg_info[1])
-                    if reg_info[2] is not None:
-                        # fill_bytes misses some references, catch what we can
-                        ref_eas.add(reg_info[2])
-                        # print(f"inst_addr: {hex(inst.address)}, reg_info[2]: {reg_info[2]}, ref_eas: {ref_eas}")
-                        # assert reg_info[2] in ref_eas
-                        # assert reg_info 1 is a pointer, then reg2 should be in ea
-                        # loc.set_value(reg_info[2])
-                    #loc.set_address(inst.address)
-                    #self._register_info.append(loc)
+                for ref_ea in self._extract_types(program, inst.operands, inst):
+                    ref_eas.add(ref_ea)
 
         # There is a distinction between declaration and definition. If the
         # function is a declaration, then Anvill only needs to know its symbols
@@ -128,45 +110,12 @@ class BNFunction(Function):
         for ref_ea in ref_eas:
             # If ref_ea is an invalid address
             seg = program.bv.get_segment_at(ref_ea)
-            if seg is None:
-                continue
-            program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
-
-    def _extract_types_mlil(
-        self, program, item_or_list, initial_inst: mlinst
-    ) -> Iterator[Tuple[str, Type, Optional[int]]]:
-        """
-        This function decomposes a list of MLIL instructions and variables into a list of tuples
-        that associate registers with pointer information if it exists.
-        """
-        if isinstance(item_or_list, list):
-            for item in item_or_list:
-                yield from self._extract_types_mlil(program, item, initial_inst)
-        elif isinstance(item_or_list, mlinst):
-            yield from self._extract_types_mlil(program, item_or_list.operands,
-                                                initial_inst)
-        elif isinstance(item_or_list, bn.Variable):
-            if item_or_list.type is None:
-                return
-            # Sometimes the backing storage is a `temp` register, and not a real
-            # register. If so, ignore it.
-            # The use of LLIL_REG_IS_TEMP is correct here, as there is no MLIL equivalent
-            # and it seem to use the same underlying data
-            if bn.LLIL_REG_IS_TEMP(item_or_list.storage):
-                return
-            # We only care about registers that represent pointers.
-            if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
-                if (
-                    item_or_list.source_type
-                    == bn.VariableSourceType.RegisterVariableSourceType
-                ):
-                    reg_name = program.bv.arch.get_reg_name(
-                        item_or_list.storage)
-                    yield reg_name, program.type_cache.get(item_or_list.type), None
+            if seg is not None:
+                program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
     def _extract_types(
         self, program, item_or_list, initial_inst: llinst
-    ) -> Iterator[Tuple[str, Type, Optional[int]]]:
+    ) -> Iterator[int]:
         """
         This function decomposes a list of LLIL instructions and associates
         registers with pointer values if they exist. If an MLIL instruction
@@ -206,24 +155,11 @@ class BNFunction(Function):
                         == bn.function.RegisterValueType.ConstantPointerValue
                         or possible_pointer.type
                         == bn.function.RegisterValueType.ExternalPointerValue
-                    ):  # or
-                        # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
-                        # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
-                        val_type = _convert_bn_llil_type(
-                            possible_pointer, item_or_list.info.size
-                        )
-                        yield item_or_list.name, val_type, possible_pointer.value
+                    ):
+                        if possible_pointer.value:
+                            yield possible_pointer.value
 
                 except KeyError:
-                    DEBUG(f"Unsupported register {item_or_list.name}")
-
-                try:
-                    initial_mlil = initial_inst.mlil
-                    if initial_mlil is not None:
-                        yield from self._extract_types_mlil(
-                            program, initial_mlil, initial_mlil
-                        )
-                except:
                     pass
 
     def _fill_bytes(self, program, memory, start, end, ref_eas):

@@ -8,13 +8,19 @@
 
 #pragma once
 
-#include <anvill/Lifters.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/Pass.h>
 
-#include <unordered_map>
+#include <vector>
 
-#include "BaseFunctionPass.h"
+#include <anvill/Result.h>
 
+namespace llvm {
+class IntegerType;
+}  // namespace llvm
 namespace anvill {
+
+class StackFrameRecoveryOptions;
 
 enum class StackAnalysisErrorCode {
   UnknownError,
@@ -73,56 +79,51 @@ struct StackFrameAnalysis final {
 
 // This function pass recovers stack information by analyzing the usage
 // of the `__anvill_sp` symbol
-class RecoverStackFrameInformation final
-    : public BaseFunctionPass<RecoverStackFrameInformation> {
+class RecoverBasicStackFrame final
+    : public llvm::PassInfoMixin<RecoverBasicStackFrame> {
 
   // Lifting options
-  const LifterOptions &options;
+  const StackFrameRecoveryOptions &options;
 
  public:
-  // Creates a new RecoverStackFrameInformation object
-  static RecoverStackFrameInformation *
-  Create(ITransformationErrorManager &error_manager,
-         const LifterOptions &options);
 
   // Function pass entry point
-  bool Run(llvm::Function &function, llvm::FunctionAnalysisManager &fam);
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 
   // Returns the pass name
-  static llvm::StringRef name();
+  static llvm::StringRef name(void);
 
   // Enumerates all the store and load instructions that reference
   // the stack
-  static Result<StackPointerRegisterUsages, StackAnalysisErrorCode>
+  static StackPointerRegisterUsages
   EnumerateStackPointerUsages(llvm::Function &function);
 
   // Analyzes the stack frame, determining the relative boundaries and
   // collecting the instructions that operate on the stack pointer
-  static Result<StackFrameAnalysis, StackAnalysisErrorCode>
-  AnalyzeStackFrame(llvm::Function &function);
+  static StackFrameAnalysis AnalyzeStackFrame(
+      llvm::Function &function, const StackFrameRecoveryOptions &options);
 
   // Generates a simple, byte-array based, stack frame for the given
   // function
-  static Result<llvm::StructType *, StackAnalysisErrorCode>
+  static llvm::StructType *
   GenerateStackFrameType(const llvm::Function &function,
-                         const LifterOptions &options,
+                         const StackFrameRecoveryOptions &options,
                          const StackFrameAnalysis &stack_frame_analysis,
                          std::size_t padding_bytes);
 
   // Generates a new symbolic stack value
-  static Result<llvm::GlobalVariable *, StackAnalysisErrorCode>
-  GetStackSymbolicByteValue(llvm::Module &module, std::int32_t offset);
+  static llvm::GlobalVariable *
+  GetStackSymbolicByteValue(llvm::Module &module, std::int32_t offset,
+                            llvm::IntegerType *type);
 
   // Patches the function, replacing the load/store instructions so that
   // they operate on the new stack frame type we generated
-  static Result<std::monostate, StackAnalysisErrorCode>
-  UpdateFunction(llvm::Function &function, const LifterOptions &options,
-                 const StackFrameAnalysis &stack_frame_analysis);
+  static void UpdateFunction(
+      llvm::Function &function, const StackFrameRecoveryOptions &options,
+      const StackFrameAnalysis &stack_frame_analysis);
 
-  RecoverStackFrameInformation(ITransformationErrorManager &error_manager,
-                               const LifterOptions &options);
-
-  virtual ~RecoverStackFrameInformation(void) override = default;
+  RecoverBasicStackFrame(const StackFrameRecoveryOptions &options);
 };
 
 }  // namespace anvill

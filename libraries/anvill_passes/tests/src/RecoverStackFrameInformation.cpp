@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RecoverStackFrameInformation.h"
+#include "RecoverBasicStackFrame.h"
 
 #include <anvill/ABI.h>
 #include <anvill/Transforms.h>
@@ -19,12 +19,12 @@
 #include <array>
 #include <sstream>
 
-#include "RecoverStackFrameInformation.h"
+#include "RecoverBasicStackFrame.h"
 #include "Utils.h"
 
 namespace anvill {
 
-TEST_SUITE("RecoverStackFrameInformation") {
+TEST_SUITE("RecoverBasicStackFrame") {
   TEST_CASE("Run the whole pass on a well-formed function") {
     static const StackFrameStructureInitializationProcedure
         kInitStackSettings[] = {
@@ -42,7 +42,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
         for (auto padding_bytes : kTestPaddingSettings) {
           llvm::LLVMContext context;
           auto module =
-              LoadTestData(context, "RecoverStackFrameInformation.ll");
+              LoadTestData(context, "RecoverBasicStackFrame.ll");
 
           REQUIRE(module != nullptr);
 
@@ -63,7 +63,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
               lift_options.stack_frame_higher_padding = padding_bytes / 2U;
 
           CHECK(RunFunctionPass(
-              module.get(), RecoverStackFrameInformation(*error_manager.get(),
+              module.get(), RecoverBasicStackFrame(*error_manager.get(),
                                                          lift_options)));
 
 
@@ -80,7 +80,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
   SCENARIO("Function analysis can recreate a simple, byte-array frame type") {
     GIVEN("a lifted function without stack information") {
       llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+      auto module = LoadTestData(context, "RecoverBasicStackFrame.ll");
       REQUIRE(module != nullptr);
 
       auto &function_list = module->getFunctionList();
@@ -96,7 +96,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       WHEN("enumerating stack pointer usages") {
         auto stack_ptr_usages_res =
-            RecoverStackFrameInformation::EnumerateStackPointerUsages(function);
+            RecoverBasicStackFrame::EnumerateStackPointerUsages(function);
 
         REQUIRE(stack_ptr_usages_res.Succeeded());
 
@@ -113,7 +113,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       WHEN("analyzing the stack frame") {
         auto stack_frame_analysis_res =
-            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+            RecoverBasicStackFrame::AnalyzeStackFrame(function);
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
@@ -147,7 +147,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       WHEN("creating a new stack frame with no padding bytes") {
         auto stack_frame_analysis_res =
-            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+            RecoverBasicStackFrame::AnalyzeStackFrame(function);
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
@@ -161,7 +161,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
         auto stack_frame_type_res =
-            RecoverStackFrameInformation::GenerateStackFrameType(
+            RecoverBasicStackFrame::GenerateStackFrameType(
                 function, lift_options, stack_frame_analysis, 0);
         REQUIRE(stack_frame_type_res.Succeeded());
 
@@ -194,7 +194,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       WHEN("creating a new stack frame with additional padding bytes") {
         auto stack_frame_analysis_res =
-            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+            RecoverBasicStackFrame::AnalyzeStackFrame(function);
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
@@ -208,7 +208,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
         auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
         auto stack_frame_type_res =
-            RecoverStackFrameInformation::GenerateStackFrameType(
+            RecoverBasicStackFrame::GenerateStackFrameType(
                 function, lift_options, stack_frame_analysis, 128U);
         REQUIRE(stack_frame_type_res.Succeeded());
 
@@ -245,7 +245,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
   SCENARIO("Applying stack frame recovery") {
     GIVEN("a well formed function") {
       llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+      auto module = LoadTestData(context, "RecoverBasicStackFrame.ll");
       REQUIRE(module != nullptr);
 
       auto &function_list = module->getFunctionList();
@@ -261,7 +261,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
 
       WHEN("recovering the stack frame") {
         auto stack_frame_analysis_res =
-            RecoverStackFrameInformation::AnalyzeStackFrame(function);
+            RecoverBasicStackFrame::AnalyzeStackFrame(function);
 
         REQUIRE(stack_frame_analysis_res.Succeeded());
 
@@ -278,7 +278,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
         lift_options.stack_frame_struct_init_procedure =
             StackFrameStructureInitializationProcedure::kZeroes;
 
-        auto update_res = RecoverStackFrameInformation::UpdateFunction(
+        auto update_res = RecoverBasicStackFrame::UpdateFunction(
             function, lift_options, stack_frame_analysis);
         REQUIRE(update_res.Succeeded());
 
@@ -319,7 +319,7 @@ TEST_SUITE("RecoverStackFrameInformation") {
           // If we run a second stack analysis, we should no longer find any
           // stack frame operation to recover
           stack_frame_analysis_res =
-              RecoverStackFrameInformation::AnalyzeStackFrame(function);
+              RecoverBasicStackFrame::AnalyzeStackFrame(function);
           REQUIRE(stack_frame_analysis_res.Succeeded());
 
           auto second_stack_frame_analysis =

@@ -290,10 +290,18 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
 
 
   switch (type->getTypeID()) {
+
+    // Read an integer. Sometimes the allocation size/padding will make us
+    // overread, so we need to truncate.
     case llvm::Type::IntegerTyID: {
       const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
       auto val = ConsumeBytesAsInt(data, size);
-      return llvm::ConstantInt::get(type, val);
+      if (auto num_bits = type->getPrimitiveSizeInBits();
+          num_bits < val.getBitWidth()) {
+        return llvm::ConstantInt::get(type, val.trunc(num_bits));
+      } else {
+        return llvm::ConstantInt::get(type, val);
+      }
     }
 
     // Get the address of pointer type and look for it into the entity map.

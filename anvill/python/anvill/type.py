@@ -360,6 +360,8 @@ class IntegerType(Type):
         (1, False): "B",
         (2, True): "h",
         (2, False): "H",
+        (3, True): "w",
+        (3, False): "W",
         (4, True): "i",
         (4, False): "I",
         (8, True): "l",

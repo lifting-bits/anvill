@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/RecoverEntityUseInformation.h>
+#include <anvill/Passes/ConvertAddressesToEntityUses.h>
 
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Decls.h>
@@ -23,7 +23,7 @@
 
 namespace anvill {
 
-llvm::PreservedAnalyses RecoverEntityUseInformation::run(
+llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return llvm::PreservedAnalyses::all();
@@ -103,11 +103,11 @@ llvm::PreservedAnalyses RecoverEntityUseInformation::run(
   return llvm::PreservedAnalyses::none();
 }
 
-llvm::StringRef RecoverEntityUseInformation::name(void) {
-  return "RecoverEntityUseInformation";
+llvm::StringRef ConvertAddressesToEntityUses::name(void) {
+  return "ConvertAddressesToEntityUses";
 }
 
-EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
+EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
     llvm::Function &function) {
 
   EntityUsages output;
@@ -156,7 +156,7 @@ EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
   return output;
 }
 
-RecoverEntityUseInformation::RecoverEntityUseInformation(
+ConvertAddressesToEntityUses::ConvertAddressesToEntityUses(
     const CrossReferenceResolver &xref_resolver_)
     : xref_resolver(xref_resolver_) {}
 
@@ -170,9 +170,9 @@ RecoverEntityUseInformation::RecoverEntityUseInformation(
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+void AddConvertAddressesToEntityUses(llvm::FunctionPassManager &fpm,
                                     const CrossReferenceResolver &resolver) {
-  fpm.addPass(RecoverEntityUseInformation(resolver));
+  fpm.addPass(ConvertAddressesToEntityUses(resolver));
 }
 
 }  // namespace anvill
