@@ -259,7 +259,7 @@ class ExprSolve {
       return std::nullopt;
     }
   }
-  std::optional<Bound> OptomizeExpr(const std::unique_ptr<Expr> &exp,
+  std::optional<Bound> OptimizeExpr(const std::unique_ptr<Expr> &exp,
                                     llvm::Value *index, bool isSigned) {
 
 
@@ -329,8 +329,8 @@ class ExprSolve {
   // track of whether or not the bounds should use signed or unsigned comparison.
   std::optional<Bound> SolveForBounds(const std::unique_ptr<Expr> &exp,
                                       llvm::Value *index) {
-    auto unsigned_bounds = this->OptomizeExpr(exp, index, false);
-    auto signed_bounds = this->OptomizeExpr(exp, index, true);
+    auto unsigned_bounds = this->OptimizeExpr(exp, index, false);
+    auto signed_bounds = this->OptimizeExpr(exp, index, true);
 
     if (!signed_bounds.has_value()) {
       return unsigned_bounds;
