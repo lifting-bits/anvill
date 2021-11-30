@@ -157,7 +157,7 @@ void OptimizeModule(const EntityLifter &lifter,
 
   fpm.addPass(llvm::DCEPass());
   AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
-//  fpm.addPass(llvm::SROA());
+  fpm.addPass(llvm::SROA());
 //  AddSplitStackFrameAtReturnAddress(fpm, err_man);
 //  fpm.addPass(llvm::SROA());
 
