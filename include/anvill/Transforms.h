@@ -21,10 +21,9 @@ class FunctionPass;
 namespace anvill {
 
 class CrossReferenceResolver;
-class EntityLifter;
-class LifterOptions;
 class MemoryProvider;
 class SliceManager;
+class StackFrameRecoveryOptions;
 
 // Error severity; `fatal` is used when an error has occurred and
 // the LLVM module is no longer in a consistent state
@@ -245,9 +244,8 @@ void AddRemoveRemillFunctionReturns(
 // to eliminate the stack frame, then to enable splitting of the stack from
 // into components (see `CreateSplitStackFrameAtReturnAddress`) such that
 // SROA can apply to the arguments and return address components.
-void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
-                                     TransformationErrorManager &error_manager,
-                                     const LifterOptions &options);
+void AddRecoverBasicStackFrame(llvm::FunctionPassManager &fpm,
+                               const StackFrameRecoveryOptions &options);
 
 // Anvill-lifted code is full of references to constant expressions related
 // to `__anvill_pc`. These constant expressions exist to "taint" values as
@@ -259,7 +257,7 @@ void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+void AddConvertAddressesToEntityUses(llvm::FunctionPassManager &fpm,
                                     const CrossReferenceResolver &resolver);
 
 // Some machine code instructions explicitly introduce undefined values /

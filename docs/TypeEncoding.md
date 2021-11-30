@@ -26,6 +26,8 @@ The basic elements of the type encoding follows.
 | `B` | 1 | `uint8_t` |
 | `h` | 2 | `int16_t` or `short` |
 | `H` | 2 | `uint16_t` or `unsigned short` |
+| `w` | 4 | `int24_t` |
+| `W` | 4 | `uint24_t` |
 | `i` | 4 | `int32_t` or `int` |
 | `I` | 4 | `uint32_t` or `unsigned` |
 | `l` | 8 | `int64_t` or `long long` |

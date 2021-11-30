@@ -40,8 +40,8 @@ using EntityUsages = std::vector<EntityUse>;
 
 // This function pass recovers stack information by analyzing the usage
 // of the `__anvill_sp` symbol
-class RecoverEntityUseInformation final
-    : public llvm::PassInfoMixin<RecoverEntityUseInformation> {
+class ConvertAddressesToEntityUses final
+    : public llvm::PassInfoMixin<ConvertAddressesToEntityUses> {
  private:
 
   // Resolve addresses to entities and vice versa.
@@ -60,7 +60,7 @@ class RecoverEntityUseInformation final
   // specific instruction operand uses.
   EntityUsages EnumeratePossibleEntityUsages(llvm::Function &function);
 
-  RecoverEntityUseInformation(const CrossReferenceResolver &xref_resolver_);
+  ConvertAddressesToEntityUses(const CrossReferenceResolver &xref_resolver_);
 };
 
 }  // namespace anvill

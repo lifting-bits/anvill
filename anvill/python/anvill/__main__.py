@@ -12,11 +12,13 @@ import sys
 
 import argparse
 import json
+import traceback
 from typing import cast, Optional
 
 import binaryninja as bn
 from anvill import ERROR
 
+from .exc import InvalidVariableException
 from .util import config_logger
 from .util import DEBUG
 from .binja import get_program
@@ -76,8 +78,11 @@ def main():
 
     for f in bv.functions:
         ea: int = f.start
-        DEBUG(f"Looking at binja found function at: {ea:x}")
-        p.add_function_definition(ea, True)
+        DEBUG(f"Found function at: {ea:x}")
+        try:
+            p.add_function_definition(ea, True)
+        except:
+            ERROR(f"Error when trying to add function {ea:x}: {traceback.format_exc()}")
 
     for s_ in bv.get_symbols():
         s = cast(bn.CoreSymbol, s_)
@@ -99,7 +104,12 @@ def main():
             continue  # TODO(pag): Handle me?
 
         else:
-            p.add_variable_definition(ea, True)
+            try:
+                DEBUG(f"Found variable at: {ea:x}")
+                p.add_variable_definition(ea, True)
+            except:
+                ERROR(f"Error when trying to add variable {ea:x}: {traceback.format_exc()}")
+
 
     with open(args.spec_out, "w") as f:
         f.write(json.dumps(p.proto(), indent="  "))

@@ -83,6 +83,8 @@ class TypeDictionary {
       llvm::Type *uint8;  // `B`.
       llvm::Type *int16;  // `h`.
       llvm::Type *uint16;  // `H`.
+      llvm::Type *int24;  // `w`.
+      llvm::Type *uint24;  // `W`.
       llvm::Type *int32;  // `i`.
       llvm::Type *uint32;  // `I`.
       llvm::Type *int64;  // `l`.

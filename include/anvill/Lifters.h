@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -98,6 +97,29 @@ enum class StackFrameStructureInitializationProcedure : char {
   kSymbolic,
 };
 
+class StackFrameRecoveryOptions {
+ public:
+  // How the RecoverBasicStackFrame function pass should initialize
+  // recovered stack frames
+  StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure{
+      StackFrameStructureInitializationProcedure::kSymbolic};
+
+  //
+  // Stack frame padding is useful to support red zones for ABIs that support
+  // them. See https://en.wikipedia.org/wiki/Red_zone_(computing) for more
+  // information
+  //
+
+  // How many bytes of padding should be added after recovered stack frames.
+  std::uint64_t stack_frame_lower_padding{0u};
+
+  // How many bytes of padding should be added before recovered stack frames
+  std::uint64_t stack_frame_higher_padding{0u};
+
+  // What is the maximum stack frame size to consider?
+  std::uint64_t max_stack_frame_size{8192u};
+};
+
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
@@ -143,10 +165,6 @@ class LifterOptions {
         memory_provider(memory_provider_),
         state_struct_init_procedure(StateStructureInitializationProcedure::
                                         kGlobalRegisterVariablesAndZeroes),
-        stack_frame_struct_init_procedure(
-            StackFrameStructureInitializationProcedure::kSymbolic),
-        stack_frame_lower_padding(0U),
-        stack_frame_higher_padding(0U),
         program_counter_init_procedure(SymbolicProgramCounterInit),
         stack_pointer_init_procedure(SymbolicStackPointerInit),
         return_address_init_procedure(SymbolicReturnAddressInit),
@@ -184,28 +202,9 @@ class LifterOptions {
   // state structure is initialized.
   StateStructureInitializationProcedure state_struct_init_procedure;
 
-  // How the RecoverStackFrameInformation function pass should initialize
-  // recovered stack frames
-  StackFrameStructureInitializationProcedure stack_frame_struct_init_procedure;
-
   // Name of metadata to attach to LLVM instructions, so that they can be
   // related to original program counters in the binary.
   const char *pc_metadata_name{nullptr};
-
-  //
-  // Stack frame padding is useful to support red zones for ABIs that support
-  // them. See https://en.wikipedia.org/wiki/Red_zone_(computing) for more
-  // information
-  //
-
-  // How many bytes of padding should be added after recovered stack frames.
-  std::size_t stack_frame_lower_padding;
-
-  // How many bytes of padding should be added before recovered stack frames
-  std::size_t stack_frame_higher_padding;
-
-  // What is the maximum stack frame size to consider?
-  std::size_t max_stack_frame_size{8192u};
 
   // Should the program counter in lifted functions be represented with a
   // symbolic expression? If so, then it takes on the form:
@@ -230,6 +229,8 @@ class LifterOptions {
   std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *,
                               uint64_t)>
       return_address_init_procedure;
+
+  StackFrameRecoveryOptions stack_frame_recovery_options;
 
   // Add so-called breakpoint calls. These can be useful for visually
   // identifying the general provenance of lifted bitcode with respect to

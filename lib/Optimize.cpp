@@ -74,10 +74,13 @@ namespace anvill {
 // code, etc.
 // When utilizing crossRegisterProxies cleanup triggers asan
 
-void OptimizeModule(const EntityLifter &lifter_context,
+void OptimizeModule(const EntityLifter &lifter,
                     llvm::Module &module) {
 
-  const MemoryProvider &mem_provider = lifter_context.MemoryProvider();
+  const LifterOptions &options = lifter.Options();
+  const MemoryProvider &mp = lifter.MemoryProvider();
+  SliceManager slc(lifter);
+  EntityCrossReferenceResolver xr(lifter);
 
   if (auto err = module.materializeAll(); remill::IsError(err)) {
     LOG(FATAL) << remill::GetErrorString(err);
@@ -104,8 +107,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   llvm::CGSCCAnalysisManager cam(false);
   llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam(false);
-  SliceManager slc(lifter_context);
-  EntityCrossReferenceResolver xref_resolver(lifter_context);
 
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);
@@ -156,13 +157,13 @@ void OptimizeModule(const EntityLifter &lifter_context,
   // stack analysis.
   AddConvertMasksToCasts(fpm);
 
-  AddLowerSwitchIntrinsics(fpm, slc, mem_provider);
-  AddRecoverEntityUseInformation(fpm, xref_resolver);
+  AddLowerSwitchIntrinsics(fpm, slc, mp);
+  AddConvertAddressesToEntityUses(fpm, xr);
   AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveTrivialPhisAndSelects(fpm);
 
   fpm.addPass(llvm::DCEPass());
-//  AddRecoverStackFrameInformation(fpm, err_man, options);
+  AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
 //  fpm.addPass(llvm::SROA());
 //  AddSplitStackFrameAtReturnAddress(fpm, err_man);
 //  fpm.addPass(llvm::SROA());
@@ -184,8 +185,8 @@ void OptimizeModule(const EntityLifter &lifter_context,
 
   llvm::FunctionPassManager second_fpm;
 
-  AddTransformRemillJumpIntrinsics(second_fpm, xref_resolver);
-  AddRemoveRemillFunctionReturns(second_fpm, xref_resolver);
+  AddTransformRemillJumpIntrinsics(second_fpm, xr);
+  AddRemoveRemillFunctionReturns(second_fpm, xr);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
   AddRemoveFailedBranchHints(second_fpm);
   second_fpm.addPass(CodeQualityStatCollector());

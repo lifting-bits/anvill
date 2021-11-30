@@ -183,6 +183,10 @@ void TypeSpecifierImpl::EncodeType(
         ss << 'h';
       } else if (struct_ptr == type_dict.u.named.uint16) {
         ss << 'H';
+      } else if (struct_ptr == type_dict.u.named.int24) {
+        ss << 'w';
+      } else if (struct_ptr == type_dict.u.named.uint24) {
+        ss << 'W';
       } else if (struct_ptr == type_dict.u.named.int32) {
         ss << 'i';
       } else if (struct_ptr == type_dict.u.named.uint32) {
@@ -741,6 +745,12 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
       case 'H':  // uint16_t.
         i += 1;
         return type_dict.u.named.uint16;
+      case 'w':  // int24_t.
+        i += 1;
+        return type_dict.u.named.int24;
+      case 'W':  // uint24_t.
+        i += 1;
+        return type_dict.u.named.uint24;
       case 'i':  // int32_t.
         i += 1;
         return type_dict.u.named.int32;
@@ -856,6 +866,8 @@ TypeDictionary::TypeDictionary(llvm::LLVMContext &context) {
   u.named.uint8 = GetOrCreateInt(context, "uint8", 8);
   u.named.int16 = GetOrCreateInt(context, "int16", 16);
   u.named.uint16 = GetOrCreateInt(context, "uint16", 16);
+  u.named.int32 = GetOrCreateInt(context, "int24", 24);
+  u.named.uint32 = GetOrCreateInt(context, "uint24", 24);
   u.named.int32 = GetOrCreateInt(context, "int32", 32);
   u.named.uint32 = GetOrCreateInt(context, "uint32", 32);
   u.named.int64 = GetOrCreateInt(context, "int64", 64);
@@ -888,6 +900,8 @@ TypeDictionary::TypeDictionary(llvm::LLVMContext &context) {
   u.named.uint8 = u.named.char_;
   u.named.int16 = llvm::Type::getInt16Ty(context);
   u.named.uint16 = u.named.int16;
+  u.named.int24 = llvm::Type::getIntNTy(context, 24u);
+  u.named.uint24 = u.named.int24;
   u.named.int32 = llvm::Type::getInt32Ty(context);
   u.named.uint32 = u.named.int32;
   u.named.int64 = llvm::Type::getInt64Ty(context);

@@ -67,17 +67,15 @@ class BNSpecification(Specification):
         """Given an address, return a `Variable` instance, or
         raise an `InvalidVariableException` exception."""
 
-        # raise exception if the variable has invalid address
-        seg = self._bv.get_segment_at(address)
-        if seg is None:
-            raise InvalidVariableException("Invalid variable address")
-
-        arch = self._arch
-        bn_var = self._bv.get_data_var_at(address)
-
         # `bn_var` can be None if the data variable is not created
         # for it. raise an exception with the address information
+        bn_var: Optional[bn.DataVariable] = self._bv.get_data_var_at(address)
         if bn_var is None:
+            bn_var = self._bv.get_previous_data_var_before(address)
+            if bn_var is not None:
+                if bn_var.address < address < (bn_var.address + len(bn_var)):
+                    return self.get_variable_impl(bn_var.address)
+
             raise InvalidVariableException(
                 "Missing BN data variable at {:x}".format(address)
             )
@@ -91,7 +89,7 @@ class BNSpecification(Specification):
             var_type = ArrayType()
             var_type.set_num_elements(1)
 
-        return BNVariable(bn_var, arch, address, var_type)
+        return BNVariable(bn_var, self._arch, address, var_type)
 
     def _get_function_parameters(self, bn_func: bn.Function) -> List[Location]:
         """Get the list of function parameters from the function type. If
@@ -171,16 +169,6 @@ class BNSpecification(Specification):
             index += 1
 
         return param_list
-
-    def function_from_addr(self, address: int) -> Optional[bn.Function]:
-        """Return the Binary Ninja function associated with some address."""
-        bn_func = self._bv.get_function_at(address)
-        if not bn_func:
-            func_contains = self._bv.get_functions_containing(address)
-            if func_contains and len(func_contains):
-                bn_func = func_contains[0]
-
-        return bn_func
 
     def _get_function_from_bnfunction(self, ea: int, bn_func: bn.Function) \
             -> Function:
@@ -268,12 +256,23 @@ class BNSpecification(Specification):
         """Given an architecture and an address, return a `Function` instance or
         raise an `InvalidFunctionException` exception."""
 
-        # A function symbol may be identified as variable by binja.
-        bn_func: Optional[bn.Function] = self.function_from_addr(ea)
+        # Try to get the function starting at `ea`.
+        bn_func: Optional[bn.Function] = self._bv.get_function_at(ea)
         if bn_func is not None:
             return self._get_function_from_bnfunction(bn_func.start, bn_func)
 
-        # We have a symbol; might be an external function
+        # Try to get any function containing `ea`.
+        last_start = 0xffffffff
+        for containing_bn_func in self._bv.get_functions_containing(ea):
+            if containing_bn_func.start != last_start:
+                try:
+                    return self._get_function_from_bnfunction(
+                        containing_bn_func.start, containing_bn_func)
+                except:
+                    last_start = containing_bn_func.start
+
+        # Try to see if this is actually a variable/external with function type
+        # that we should interpret as being a function.
         bn_sym: Optional[bn.CoreSymbol] = self._bv.get_symbol_at(ea)
         if bn_sym is not None:
             if bn_sym.type == bn.SymbolType.ExternalSymbol:
@@ -291,7 +290,6 @@ class BNSpecification(Specification):
 
         return None
 
-
     def get_symbols_impl(self, address: int) -> Iterable[str]:
         for s in self._bv.get_symbols(address, 1):
             yield s.name
@@ -306,7 +304,7 @@ class BNSpecification(Specification):
         for s in self._bv.get_symbols():
             yield s.address, s.name
 
-    def _is_callsite(self, func: bn.Function, ea: int) -> bool:
+    def _is_call_site(self, func: bn.Function, ea: int) -> bool:
         inst_il = func.get_low_level_il_at(ea)
         if is_function_call(self._bv, inst_il):
             return True
@@ -388,7 +386,7 @@ class BNSpecification(Specification):
 
                     # if the caller address is a call site, set a control flow
                     # target for the address
-                    if self._is_callsite(caller_function, caller.address):
+                    if self._is_call_site(caller_function, caller.address):
                         self.set_control_flow_targets(
                             caller.address, [redirection_dest], True
                         )

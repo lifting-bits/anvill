@@ -23,6 +23,7 @@ include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 # List of passes. These names should each correspond with both an `.h` and a
 # `.cpp` file.
 set(anvill_passes
+  ConvertAddressesToEntityUses
   ConvertMasksToCasts
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis
@@ -31,7 +32,7 @@ set(anvill_passes
   LowerRemillUndefinedIntrinsics
   LowerSwitchIntrinsics
   LowerTypeHintIntrinsics
-  RecoverEntityUseInformation
+  RecoverBasicStackFrame
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
   RemoveErrorIntrinsics
