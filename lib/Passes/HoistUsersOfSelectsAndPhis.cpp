@@ -15,7 +15,9 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/IRBuilder.h>
+#include <remill/BC/Util.h>
 
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -28,6 +30,21 @@ namespace {
 struct IncomingValue final {
   llvm::BasicBlock *basic_block{nullptr};
   llvm::Value *value{nullptr};
+
+  inline bool operator<(const IncomingValue that) const {
+    if (basic_block < that.basic_block) {
+      return true;
+    } else if (basic_block > that.basic_block) {
+      return false;
+    } else {
+      return value < that.value;
+    }
+  }
+
+  inline bool operator==(const IncomingValue that) const {
+    return basic_block == that.basic_block &&
+           value == that.value;
+  }
 };
 
 // A list of incoming values for a PHI node
@@ -58,53 +75,31 @@ class HoistUsersOfSelectsAndPhis::PassFunctionState {
   //
   // Returns true if the function was changed
   bool FoldSelectInstruction(InstructionList &output,
-                             llvm::Instruction *instr);
+                             llvm::SelectInst *instr);
 
   // Folds `PHINode` instructions interacting with `CastInst`,
   // `BinaryOperator` and `GetElementPtrInst` instructions
   //
   // Returns true if the function was changed
-  bool FoldPHINode(InstructionList &output, llvm::Instruction *instr);
+  bool FoldPHINode(InstructionList &output, llvm::PHINode *instr);
 
   bool FoldPHINodeWithBinaryOp(llvm::Instruction *&output,
-                               llvm::Instruction *phi_node,
+                               llvm::PHINode *phi_node,
                                IncomingValueList &incoming_values,
                                llvm::Instruction *binary_op_instr);
 
   bool FoldPHINodeWithCastInst(llvm::Instruction *&output,
-                               llvm::Instruction *phi_node,
+                               llvm::PHINode *phi_node,
                                IncomingValueList &incoming_values,
                                llvm::Instruction *cast_instr);
 
   bool FoldPHINodeWithGEPInst(llvm::Instruction *&output,
-                              llvm::Instruction *phi_node,
+                              llvm::PHINode *phi_node,
                               IncomingValueList &incoming_values,
                               llvm::Instruction *cast_instr);
 };
 
 namespace {
-
-// These maps select the correct fold operation for the given instruction
-// types.
-//
-// The first callback is kInstructionFolderMap[instr_type] which (for now) can
-// handle Select and PHI nodes.
-//
-// Inside the function folder, an additional callback is used, depending on the
-// type of the second instruction being folded. The two maps are:
-//  - SelectInst: kSelectInstructionFolderMap
-//  - PHINode: kPHINodeFolderMap
-
-using InstructionFolder = bool (HoistUsersOfSelectsAndPhis::PassFunctionState::*)(
-    HoistUsersOfSelectsAndPhis::InstructionList &, llvm::Instruction *);
-
-// clang-format off
-const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap = {
-  { llvm::Instruction::Select, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldSelectInstruction },
-  { llvm::Instruction::PHI, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINode },
-};
-
-// clang-format on
 
 // Case handlers for `SelectInst` instructions
 using SelectInstructionFolder = bool (*)(llvm::Instruction *&output,
@@ -117,7 +112,6 @@ using SelectInstructionFolder = bool (*)(llvm::Instruction *&output,
 static void PerformInstructionReplacements(
     const InstructionReplacementList &replacement_list) {
   for (const InstructionReplacement &repl : replacement_list) {
-    repl.replacement_instr->copyMetadata(*repl.original_instr);
     repl.original_instr->replaceAllUsesWith(repl.replacement_instr);
     repl.original_instr->eraseFromParent();
   }
@@ -285,7 +279,6 @@ static bool FoldSelectWithCastInst(
       builder.CreateCast(cast_opcode, false_value, destination_type);
   CopyMetadataTo(cast_instr, new_false_value);
 
-
   auto replacement =
       builder.CreateSelect(condition, new_true_value, new_false_value);
   CopyMetadataTo(select_instr, replacement);
@@ -390,7 +383,7 @@ const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstruct
 // Case handlers for `PHINode` instructions
 using PHINodeInstructionFolder =
     bool (HoistUsersOfSelectsAndPhis::PassFunctionState::*)(
-        llvm::Instruction *&output, llvm::Instruction *,
+        llvm::Instruction *&output, llvm::PHINode *,
         IncomingValueList &, llvm::Instruction *);
 
 // clang-format off
@@ -444,6 +437,14 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
 
 // clang-format on
 
+static llvm::BasicBlock *InsertionBlock(const IncomingValue &ival) {
+  if (auto incoming_inst = llvm::dyn_cast<llvm::Instruction>(ival.value)) {
+    return incoming_inst->getParent();
+  } else {
+    return ival.basic_block;
+  }
+}
+
 }  // namespace
 
 llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
@@ -483,13 +484,16 @@ llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
       // Attempt to combine this instruction; the folder function also
       // drops all the instructions that are no longer needed but will
       // keep `instr` alive for now
-      auto instr_folder_it = kInstructionFolderMap.find(instr->getOpcode());
-      if (instr_folder_it != kInstructionFolderMap.end()) {
-        const auto instr_folder = instr_folder_it->second;
-        if ((function_state.get()->*instr_folder)(next_worklist, instr)) {
-          function_changed = true;
-          ++num_changed;
-        }
+      auto res = false;
+      if (auto phi = llvm::dyn_cast<llvm::PHINode>(instr)) {
+        res = function_state->FoldPHINode(next_worklist, phi);
+      } else if (auto select = llvm::dyn_cast<llvm::SelectInst>(instr)) {
+        res = function_state->FoldSelectInstruction(next_worklist, select);
+      }
+
+      if (res) {
+        function_changed = true;
+        ++num_changed;
       }
     }
   }
@@ -497,7 +501,7 @@ llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
   // Go through the visited instructions and drop the ones we no
   // longer need. Doing the cleanup now ensures we do not risk
   // new instructions polluting the unordered_set by ending up
-  // allocated at a memory location we have already seen
+  // allocated at a memory location we have already seen.
   for (auto &instr : visited_instructions) {
     if (instr->use_empty()) {
       instr->eraseFromParent();
@@ -505,14 +509,13 @@ llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
     }
   }
 
-
-  LOG(INFO) << "InstructionFolderPass: changed " << num_changed
+  LOG(INFO) << "HoistUsersOfSelectsAndPhis: changed " << num_changed
             << " masks with casts";
   return ConvertBoolToPreserved(function_changed);
 }
 
 llvm::StringRef HoistUsersOfSelectsAndPhis::name(void) {
-  return llvm::StringRef("InstructionFolderPass");
+  return llvm::StringRef("HoistUsersOfSelectsAndPhis");
 }
 
 // If there is cyclic dependency incoming values on phi node; It can't be folded. The
@@ -532,8 +535,38 @@ static bool IsPHINodeFoldable(llvm::Instruction *instr,
   return true;
 }
 
+static llvm::PHINode *BuildPHI(
+    llvm::PHINode *phi_node, llvm::Type *destination_type,
+    std::map<IncomingValue, IncomingValue> new_incoming_values) {
+
+  llvm::IRBuilder<> builder(phi_node);
+
+  auto new_phi_node =
+      builder.CreatePHI(destination_type, phi_node->getNumIncomingValues());
+  CopyMetadataTo(phi_node, new_phi_node);
+
+  // The same value may reach into the PHI node multiple times, so we need
+  // to replace all cases with the same thing.
+  auto incoming_value_count = phi_node->getNumIncomingValues();
+  for (auto i = 0U; i < incoming_value_count; ++i) {
+    IncomingValue incoming_value;
+    incoming_value.value = phi_node->getIncomingValue(i);
+    incoming_value.basic_block = phi_node->getIncomingBlock(i);
+
+    auto new_incoming_value = new_incoming_values[incoming_value];
+    CHECK_NOTNULL(new_incoming_value.value);
+    CHECK_NOTNULL(new_incoming_value.basic_block);
+
+    new_phi_node->addIncoming(new_incoming_value.value,
+                              new_incoming_value.basic_block);
+  }
+
+  DCHECK(BasicBlockIsSane(phi_node));
+  return new_phi_node;
+}
+
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithBinaryOp(
-    llvm::Instruction *&output, llvm::Instruction *phi_node,
+    llvm::Instruction *&output, llvm::PHINode *phi_node,
     IncomingValueList &incoming_values, llvm::Instruction *binary_op_instr) {
 
   // This binary operator is using our `PHINode` instruction. Take the
@@ -555,12 +588,12 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithBinaryOp(
 
   // Go through each incoming value, and try to push the binary operator
   // on the other side of the PHI node
-  IncomingValueList new_incoming_values;
+  std::map<IncomingValue, IncomingValue> new_incoming_values;
 
-  for (auto &incoming_value : incoming_values) {
+  for (IncomingValue &incoming_value : incoming_values) {
 
     // Set the builder inside the incoming block
-    llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
+    llvm::IRBuilder<> builder(InsertionBlock(incoming_value)->getTerminator());
 
     IncomingValue new_incoming_value;
     new_incoming_value.value =
@@ -568,29 +601,18 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithBinaryOp(
     CopyMetadataTo(binary_op_instr, new_incoming_value.value);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
-    new_incoming_values.push_back(std::move(new_incoming_value));
+    new_incoming_values.insert_or_assign(incoming_value,
+                                         std::move(new_incoming_value));
   }
 
   // Move back to the current block, then rewrite the phi node
-  llvm::IRBuilder<> builder(phi_node);
-
-  auto new_phi_node =
-      builder.CreatePHI(phi_node->getType(), new_incoming_values.size());
-  new_phi_node->copyMetadata(*phi_node);
-
-  for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.value,
-                              new_incoming_value.basic_block);
-  }
-
-  DCHECK(BasicBlockIsSane(phi_node));
-
-  output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
+  output = BuildPHI(phi_node, phi_node->getType(),
+                    std::move(new_incoming_values));
   return true;
 }
 
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst(
-    llvm::Instruction *&output, llvm::Instruction *phi_node,
+    llvm::Instruction *&output, llvm::PHINode *phi_node,
     IncomingValueList &incoming_values, llvm::Instruction *cast_instr) {
 
   llvm::Instruction::CastOps cast_opcode{};
@@ -605,12 +627,12 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst(
 
   // Go through each incoming value, and try to push the cast operator
   // on the other side of the PHI node
-  IncomingValueList new_incoming_values;
+  std::map<IncomingValue, IncomingValue> new_incoming_values;
 
   for (auto &incoming_value : incoming_values) {
 
     // Set the builder inside the incoming block
-    llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
+    llvm::IRBuilder<> builder(InsertionBlock(incoming_value)->getTerminator());
 
     IncomingValue new_incoming_value;
     new_incoming_value.value =
@@ -618,31 +640,16 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst(
     CopyMetadataTo(cast_instr, new_incoming_value.value);
 
     new_incoming_value.basic_block = incoming_value.basic_block;
-    new_incoming_values.push_back(std::move(new_incoming_value));
+    new_incoming_values.insert_or_assign(incoming_value,
+                                         std::move(new_incoming_value));
   }
 
-  // Move back to the current block, then rewrite the phi node; since
-  // we changed the type on the other side, make sure to update it here
-  // as well
-  llvm::IRBuilder<> builder(phi_node);
-
-  auto new_phi_node =
-      builder.CreatePHI(destination_type, new_incoming_values.size());
-  new_phi_node->copyMetadata(*phi_node);
-
-  for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.value,
-                              new_incoming_value.basic_block);
-  }
-
-  DCHECK(BasicBlockIsSane(phi_node));
-
-  output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
+  output = BuildPHI(phi_node, destination_type, std::move(new_incoming_values));
   return true;
 }
 
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
-    llvm::Instruction *&output, llvm::Instruction *phi_node,
+    llvm::Instruction *&output, llvm::PHINode *phi_node,
     IncomingValueList &incoming_values, llvm::Instruction *gep_instr) {
 
   std::vector<llvm::Value *> index_list;
@@ -738,7 +745,7 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
 
   // Go through each incoming value and move the `GetElementPtrInst`
   // instruction on each incoming basic block
-  IncomingValueList new_incoming_values;
+  std::map<IncomingValue, IncomingValue> new_incoming_values;
 
   std::vector<llvm::Value *> mapped_index_list;
   mapped_index_list.reserve(index_list.size());
@@ -752,7 +759,7 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
     }
 
     // Set the builder inside the incoming block
-    llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
+    llvm::IRBuilder<> builder(InsertionBlock(incoming_value)->getTerminator());
 
     IncomingValue new_incoming_value;
     new_incoming_value.basic_block = incoming_value.basic_block;
@@ -760,47 +767,40 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
         value_map[base_ptr][incoming_value.basic_block], mapped_index_list);
     CopyMetadataTo(gep_instr, new_incoming_value.value);
 
-    new_incoming_values.push_back(std::move(new_incoming_value));
+    new_incoming_values.insert_or_assign(
+        incoming_value, std::move(new_incoming_value));
   }
 
   // Move back to the current block, then rewrite the phi node; on this
   // side, we have to use the type returned by the GEP instruction
-  llvm::IRBuilder<> builder(phi_node);
 
-  auto new_phi_node =
-      builder.CreatePHI(gep_instr->getType(), new_incoming_values.size());
-  new_phi_node->copyMetadata(*phi_node);
-
-  for (auto &new_incoming_value : new_incoming_values) {
-    new_phi_node->addIncoming(new_incoming_value.value,
-                              new_incoming_value.basic_block);
-  }
-
-  output = llvm::dyn_cast<llvm::Instruction>(new_phi_node);
+  output = BuildPHI(phi_node, gep_instr->getType(),
+                    std::move(new_incoming_values));
   return true;
 }
 
-
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINode(
     HoistUsersOfSelectsAndPhis::InstructionList &output,
-    llvm::Instruction *instr) {
+    llvm::PHINode *instr) {
 
   // Extract the incoming values
   IncomingValueList incoming_value_list;
 
-
   // FoldPHINode is automatically called for PHINode types
   // (see kInstructionFolderMap)
-  auto phi_node = llvm::dyn_cast<llvm::PHINode>(instr);
-  auto incoming_value_count = phi_node->getNumIncomingValues();
+  auto incoming_value_count = instr->getNumIncomingValues();
   for (auto i = 0U; i < incoming_value_count; ++i) {
     IncomingValue incoming_value;
-
-    incoming_value.value = phi_node->getIncomingValue(i);
-    incoming_value.basic_block = phi_node->getIncomingBlock(i);
-
-    incoming_value_list.push_back(std::move(incoming_value));
+    incoming_value.value = instr->getIncomingValue(i);
+    incoming_value.basic_block = instr->getIncomingBlock(i);
+    incoming_value_list.emplace_back(std::move(incoming_value));
   }
+
+  // The same value may reach into the PHI node multiple times, so we need
+  // to replace all cases with the same thing.
+  std::sort(incoming_value_list.begin(), incoming_value_list.end());
+  auto it = std::unique(incoming_value_list.begin(), incoming_value_list.end());
+  incoming_value_list.erase(it, incoming_value_list.end());
 
   if (!IsPHINodeFoldable(instr, incoming_value_list)) {
     return false;
@@ -838,7 +838,7 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINode(
   auto function_changed = !inst_replacement_list.empty();
   PerformInstructionReplacements(inst_replacement_list);
 
-  for (auto &incoming_value : incoming_value_list) {
+  for (IncomingValue &incoming_value : incoming_value_list) {
     auto value_as_instr =
         llvm::dyn_cast<llvm::Instruction>(incoming_value.value);
 
@@ -855,23 +855,14 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINode(
 }
 
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldSelectInstruction(
-    HoistUsersOfSelectsAndPhis::InstructionList &output, llvm::Instruction *instr) {
+    HoistUsersOfSelectsAndPhis::InstructionList &output,
+    llvm::SelectInst *instr) {
 
   // Extract the condition and the two operands for later
-  llvm::Value *condition{nullptr};
-  llvm::Value *true_value{nullptr};
-  llvm::Value *false_value{nullptr};
+  llvm::Value *condition{instr->getCondition()};
+  llvm::Value *true_value{instr->getTrueValue()};
+  llvm::Value *false_value{instr->getFalseValue()};
 
-  {
-
-    // FoldSelectInstruction is automatically called for SelectInst
-    // types (see kInstructionFolderMap)
-    auto select_instr = llvm::dyn_cast<llvm::SelectInst>(instr);
-
-    condition = select_instr->getCondition();
-    true_value = select_instr->getTrueValue();
-    false_value = select_instr->getFalseValue();
-  }
 
   // Postpone the replacement and cleanup at the end of the
   // rewrite to avoid possible issues with PHI nodes or

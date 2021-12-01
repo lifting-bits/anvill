@@ -516,12 +516,13 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
     auto other_decl = maybe_other_decl.value();
 
     if (const auto other_func = DeclareFunction(other_decl)) {
+      auto target_address = other_decl.address;
       const auto mem_ptr_from_call =
-          TryCallNativeFunction(other_decl.address, other_func, block);
+          TryCallNativeFunction(std::move(other_decl), other_func, block);
 
       if (!mem_ptr_from_call) {
         LOG(ERROR) << "Failed to call native function at address " << std::hex
-                   << other_decl.address << " via call at address " << inst.pc
+                   << target_address << " via call at address " << inst.pc
                    << " in function at address " << func_address << std::dec;
 
         // If we fail to create an ABI specification for this function then
@@ -1018,28 +1019,9 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
 // to know how to adapt one native return type into another native return
 // type, and instead we let LLVM's optimizations figure it out later during
 // scalar replacement of aggregates (SROA).
-llvm::Value *FunctionLifter::TryCallNativeFunction(uint64_t native_addr,
+llvm::Value *FunctionLifter::TryCallNativeFunction(FunctionDecl decl,
                                                    llvm::Function *native_func,
                                                    llvm::BasicBlock *block) {
-  auto &decl = addr_to_decl[native_addr];
-  if (!decl.address) {
-    DCHECK(!decl.type);
-    DCHECK(decl.params.empty());
-    DCHECK(decl.returns.empty());
-    auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
-    if (maybe_decl.Succeeded()) {
-      decl = maybe_decl.TakeValue();
-      decl.address = native_addr;
-
-    } else {
-      LOG(ERROR) << "Unable to create FunctionDecl for "
-                 << remill::LLVMThingToString(native_func->getFunctionType())
-                 << " with calling convention " << native_func->getCallingConv()
-                 << ": " << maybe_decl.TakeError();
-      return nullptr;
-    }
-  }
-
   llvm::IRBuilder<> irb(block);
 
   llvm::Value *mem_ptr = irb.CreateLoad(mem_ptr_type, mem_ptr_ref);
@@ -1092,16 +1074,17 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
       if (maybe_decl.has_value()) {
         auto decl = maybe_decl.value();
+        const auto decl_address = decl.address;
         llvm::Function *const other_decl = DeclareFunction(decl);
 
         if (const auto mem_ptr_from_call =
-                TryCallNativeFunction(decl.address, other_decl, block)) {
+                TryCallNativeFunction(std::move(decl), other_decl, block)) {
           llvm::ReturnInst::Create(llvm_context, mem_ptr_from_call, block);
           continue;
         }
 
         LOG(ERROR) << "Failed to call native function " << std::hex
-                   << decl.address << " at " << inst_addr
+                   << decl_address << " at " << inst_addr
                    << " via fall-through or tail call from function "
                    << func_address << std::dec;
 
@@ -1349,27 +1332,6 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
     return;
   }
 
-  // Get a `FunctionDecl` for `native_func`, which we can use to figure out
-  // how to marshal its parameters into the emulated `State` and `Memory *`
-  // of Remill lifted code, and marshal out the return value, if any.
-  auto &native_decl = addr_to_decl[func_address];
-  if (!native_decl.address) {
-    DCHECK(!native_decl.type);
-    DCHECK(native_decl.params.empty());
-    DCHECK(native_decl.returns.empty());
-    auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
-    if (maybe_decl.Succeeded()) {
-      native_decl = maybe_decl.TakeValue();
-      native_decl.address = func_address;
-    } else {
-      LOG(ERROR) << "Unable to create FunctionDecl for "
-                 << remill::LLVMThingToString(native_func->getFunctionType())
-                 << " with calling convention " << native_func->getCallingConv()
-                 << ": " << maybe_decl.TakeError();
-      return;
-    }
-  }
-
   // Create a state structure and a stack frame in the native function
   // and we'll call the lifted function with that. The lifted function
   // will get inlined into this function.
@@ -1413,7 +1375,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   // or into memory (likely the stack).
   auto arg_index = 0u;
   for (auto &arg : native_func->args()) {
-    const auto &param_decl = native_decl.params[arg_index++];
+    const auto &param_decl = decl.params[arg_index++];
     mem_ptr = StoreNativeValue(&arg, param_decl, types,
                                intrinsics, block, state_ptr, mem_ptr);
   }
@@ -1437,15 +1399,15 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 
   llvm::Value *ret_val = nullptr;
 
-  if (native_decl.returns.size() == 1) {
-    ret_val = LoadLiftedValue(native_decl.returns.front(), types,
+  if (decl.returns.size() == 1) {
+    ret_val = LoadLiftedValue(decl.returns.front(), types,
                               intrinsics, block, state_ptr, mem_ptr);
     ir.SetInsertPoint(block);
 
-  } else if (1 < native_decl.returns.size()) {
+  } else if (1 < decl.returns.size()) {
     ret_val = llvm::UndefValue::get(native_func->getReturnType());
     auto index = 0u;
-    for (auto &ret_decl : native_decl.returns) {
+    for (auto &ret_decl : decl.returns) {
       auto partial_ret_val = LoadLiftedValue(
           ret_decl, types, intrinsics, block, state_ptr, mem_ptr);
       ir.SetInsertPoint(block);
@@ -1569,7 +1531,6 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
-  addr_to_decl.clear();
   addr_to_func.clear();
   edge_work_list.clear();
   edge_to_dest_block.clear();

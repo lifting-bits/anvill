@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 
 from .arch import Arch
 from .os import CC
-from .type import Type, FunctionType, StructureType
+from .type import Type, FunctionType, StructureType, VoidType
 from .loc import Location
 from typing import List, Dict, Any, Final, Optional, cast
 
@@ -46,12 +46,16 @@ class Function(ABC):
             assert isinstance(param, Location)
             param_type: Type = param.type()
             assert isinstance(param_type, Type)
+            assert not isinstance(param_type, VoidType)
+            assert not isinstance(param_type, FunctionType)
 
         if len(self._return_values) == 1:
             ret_val = self._return_values[0]
             assert isinstance(ret_val, Location)
             ret_type = ret_val.type()
             assert isinstance(ret_type, Type)
+            assert not isinstance(ret_type, VoidType)
+            assert not isinstance(ret_type, FunctionType)
 
         elif len(self._return_values):
             str_type = StructureType()
@@ -59,6 +63,8 @@ class Function(ABC):
                 assert isinstance(ret_val, Location)
                 ret_type = ret_val.type()
                 assert isinstance(ret_type, Type)
+                assert not isinstance(ret_type, VoidType)
+                assert not isinstance(ret_type, FunctionType)
                 str_type.add_element_type(ret_type)
 
     def address(self) -> int:
