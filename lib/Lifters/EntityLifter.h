@@ -67,7 +67,7 @@ class EntityLifterImpl {
   EntityLifterImpl(void) = delete;
 
   // Options used to guide how lifting should occur.
-  const LifterOptions &options;
+  const LifterOptions options;
 
   // Provider of memory when asking for bytes for instructions or data.
   const MemoryProvider * const memory_provider;

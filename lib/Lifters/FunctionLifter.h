@@ -169,9 +169,6 @@ class FunctionLifter {
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
-  // Maps addresses to function declarations, which describe ABIs and such.
-  std::unordered_map<uint64_t, FunctionDecl> addr_to_decl;
-
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
   llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
@@ -391,7 +388,7 @@ class FunctionLifter {
   // to know how to adapt one native return type into another native return
   // type, and instead we let LLVM's optimizations figure it out later during
   // scalar replacement of aggregates (SROA).
-  llvm::Value *TryCallNativeFunction(uint64_t native_addr,
+  llvm::Value *TryCallNativeFunction(FunctionDecl decl,
                                      llvm::Function *native_func,
                                      llvm::BasicBlock *block);
 

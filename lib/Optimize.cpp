@@ -24,6 +24,7 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
@@ -93,6 +94,8 @@ void OptimizeModule(const EntityLifter &lifter,
     }
     memory_escape->eraseFromParent();
   }
+
+  CHECK(remill::VerifyModule(&module));
 
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm(false);
@@ -181,7 +184,6 @@ void OptimizeModule(const EntityLifter &lifter,
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   AddRemoveRemillFunctionReturns(second_fpm, xr);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
-
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
   mpm.run(module, mam);

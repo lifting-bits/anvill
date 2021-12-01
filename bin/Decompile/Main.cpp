@@ -121,8 +121,12 @@ int main(int argc, char *argv[]) {
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);
   anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
-  anvill::EntityLifter lifter(options);
 
+  if (FLAGS_enable_provenance) {
+    options.pc_metadata_name = "pc";
+  }
+
+  anvill::EntityLifter lifter(options);
   spec.LiftAllFunctions(lifter);
   spec.LiftAllVariables(lifter);
   anvill::OptimizeModule(lifter, module);
