@@ -45,54 +45,67 @@ class Expr {
                                    const Environment &env) const = 0;
 };
 
-class Sext final : public Expr {
+
+// Casts must always handle bitvectors, if we recieve a bool, upcast to a bitvector
+class Cast : public Expr {
  private:
   std::unique_ptr<Expr> target;
+
+ public:
+  Cast(std::unique_ptr<Expr> target) : target(std::move(target)) {}
+
+  z3::expr BuildExpression(z3::context &c,
+                           const Environment &env) const override;
+
+
+  virtual z3::expr BuildExpressionFromEvaluated(z3::expr target) const = 0;
+
+  virtual ~Cast() = default;
+};
+
+
+class Sext final : public Cast {
+ private:
   unsigned target_size;
 
  public:
   Sext(std::unique_ptr<Expr> target, unsigned target_size)
-      : target(std::move(target)),
+      : Cast(std::move(target)),
         target_size(target_size) {}
 
-  z3::expr BuildExpression(z3::context &c,
-                           const Environment &env) const override;
+  z3::expr BuildExpressionFromEvaluated(z3::expr target) const override;
 
   static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target,
                                       unsigned size);
 };
 
-class Zext final : public Expr {
+class Zext final : public Cast {
  private:
-  std::unique_ptr<Expr> target;
   unsigned target_size;
 
  public:
   Zext(std::unique_ptr<Expr> target, unsigned target_size)
-      : target(std::move(target)),
+      : Cast(std::move(target)),
         target_size(target_size) {}
 
-  z3::expr BuildExpression(z3::context &c,
-                           const Environment &env) const override;
+  z3::expr BuildExpressionFromEvaluated(z3::expr target) const override;
 
   static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target,
                                       unsigned size);
 };
 
-class Trunc final : public Expr {
+class Trunc final : public Cast {
  private:
-  std::unique_ptr<Expr> target;
   unsigned hi;
   unsigned lo;
 
  public:
   Trunc(std::unique_ptr<Expr> target, unsigned hi, unsigned lo)
-      : target(std::move(target)),
+      : Cast(std::move(target)),
         hi(hi),
         lo(lo) {}
 
-  z3::expr BuildExpression(z3::context &c,
-                           const Environment &env) const override;
+  z3::expr BuildExpressionFromEvaluated(z3::expr target) const override;
 
   static std::unique_ptr<Expr> Create(std::unique_ptr<Expr> target, unsigned hi,
                                       unsigned lo);

@@ -10,20 +10,6 @@
 
 namespace anvill {
 
-enum CastType { ZEXT, SEXT, NONE };
-struct Cast {
-  CastType caTy;
-  unsigned int toBits;
-
-  llvm::APInt apply(llvm::APInt target) {
-    switch (this->caTy) {
-      case CastType::ZEXT: return target.zext(this->toBits);
-      case CastType::SEXT: return target.sext(this->toBits);
-      case CastType::NONE: return target;
-    }
-  }
-};
-
 // A slice that represents the computation of the program counter, given a loaded value from a jump table.
 // The slice has one unknown argument which is the loaded value. The slice argument and return value are integers.
 class PcRel {

@@ -150,8 +150,7 @@ z3::expr UnopExpr::BuildExpression(z3::context &c,
   }
 }
 
-z3::expr Sext::BuildExpression(z3::context &c, const Environment &env) const {
-  auto texpr = this->target->BuildExpression(c, env);
+z3::expr Sext::BuildExpressionFromEvaluated(z3::expr texpr) const {
   return z3::sext(texpr, this->target_size);
 }
 
@@ -160,8 +159,7 @@ std::unique_ptr<Expr> Sext::Create(std::unique_ptr<Expr> target,
   return std::make_unique<Sext>(std::move(target), size);
 }
 
-z3::expr Zext::BuildExpression(z3::context &c, const Environment &env) const {
-  auto texpr = this->target->BuildExpression(c, env);
+z3::expr Zext::BuildExpressionFromEvaluated(z3::expr texpr) const {
   return z3::zext(texpr, this->target_size);
 }
 
@@ -171,14 +169,28 @@ std::unique_ptr<Expr> Zext::Create(std::unique_ptr<Expr> target,
 }
 
 
-z3::expr Trunc::BuildExpression(z3::context &c, const Environment &env) const {
-  auto texpr = this->target->BuildExpression(c, env);
+z3::expr Trunc::BuildExpressionFromEvaluated(z3::expr texpr) const {
   return texpr.extract(this->hi, this->lo);
 }
 
 std::unique_ptr<Expr> Trunc::Create(std::unique_ptr<Expr> target, unsigned hi,
                                     unsigned lo) {
   return std::make_unique<Trunc>(std::move(target), hi, lo);
+}
+
+z3::expr Cast::BuildExpression(z3::context &c, const Environment &env) const {
+  auto texpr = this->target->BuildExpression(c, env);
+  assert(texpr.get_sort().is_bv() || texpr.get_sort().is_bool());
+  if (texpr.is_bv()) {
+    return this->BuildExpressionFromEvaluated(std::move(texpr));
+  } else {
+    // time to upcast to a bv
+    bool tb[1] = {true};
+    bool fb[1] = {false};
+    auto t = c.bv_val(1, tb);
+    auto f = c.bv_val(1, fb);
+    return this->BuildExpressionFromEvaluated(z3::ite(texpr, t, f));
+  }
 }
 
 
