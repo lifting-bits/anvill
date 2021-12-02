@@ -43,9 +43,6 @@ DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
 
-DEFINE_bool(enable_provenance, false,
-            "Enable tracking of provenance in LLVM debug metadata.");
-
 static void SetVersion(void) {
   std::stringstream ss;
   auto vs = anvill::version::GetVersionString();
@@ -123,9 +120,15 @@ int main(int argc, char *argv[]) {
   anvill::SpecificationMemoryProvider mp(spec);
   anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
 
-  if (FLAGS_enable_provenance) {
-    options.pc_metadata_name = "pc";
-  }
+  // Annotate instructions with `!pc` metadata that (approximately) tells us
+  // where they are from.
+  options.pc_metadata_name = "pc";
+
+  // Annotate instructions with `!stack_offset` metadata that tells us where,
+  // relative to the stack pointer value on entry to a function, the pointer
+  // points.
+  options.stack_frame_recovery_options.stack_offset_metadata_name =
+      "stack_offset";
 
   anvill::EntityLifter lifter(options);
   spec.LiftAllFunctions(lifter);

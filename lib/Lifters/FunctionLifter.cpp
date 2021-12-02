@@ -1157,12 +1157,8 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 llvm::MDNode *FunctionLifter::GetPCAnnotation(uint64_t pc) const {
   if (options.pc_metadata_name) {
     auto pc_val = llvm::ConstantInt::get(address_type, pc);
-#if LLVM_VERSION_NUMBER >= LLVM_VERSION(3, 6)
     auto pc_md = llvm::ValueAsMetadata::get(pc_val);
     return llvm::MDNode::get(llvm_context, pc_md);
-#else
-    return llvm::MDNode::get(llvm_context, pc_val);
-#endif
   } else {
     return nullptr;
   }

@@ -111,13 +111,26 @@ class StackFrameRecoveryOptions {
   //
 
   // How many bytes of padding should be added after recovered stack frames.
+  // If the stack grows down, then this padding would represent the size of
+  // the redzone.
   std::uint64_t stack_frame_lower_padding{0u};
 
-  // How many bytes of padding should be added before recovered stack frames
+  // How many bytes of padding should be added before recovered stack frames.
+  // If the stack grows down, then this padding would represent bytes of the
+  // caller's stack frame.
   std::uint64_t stack_frame_higher_padding{0u};
 
   // What is the maximum stack frame size to consider?
   std::uint64_t max_stack_frame_size{8192u};
+
+  // The name to use for the metadata on pointers to describe the offset from
+  // the stack pointer of a given pointer value.
+  const char *stack_offset_metadata_name{nullptr};
+
+  // Direction of stack growth.
+  //
+  // TODO(pag): Initialize this via the arch or the options.
+  bool stack_grows_down{true};
 };
 
 // Options that direct the behavior of the code and data lifters.

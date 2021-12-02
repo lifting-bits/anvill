@@ -151,8 +151,8 @@ void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm);
 // frame. This approach is very convenient, but comes at the cost of having
 // to do this particular transformation in order to recover more typical stack
 // frame structures.
-void AddSplitStackFrameAtReturnAddress(
-    llvm::FunctionPassManager &fpm, TransformationErrorManager &error_manager);
+void AddSplitStackFrameAtReturnAddress(llvm::FunctionPassManager &fpm,
+                                       const StackFrameRecoveryOptions &);
 
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics

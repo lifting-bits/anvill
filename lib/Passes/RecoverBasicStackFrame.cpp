@@ -12,47 +12,66 @@
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Lifters.h>
+#include <glog/logging.h>
 #include <remill/BC/Util.h>
 
 #include <cassert>
 #include <iostream>
 #include <limits>
+#include <vector>
 
 #include "Utils.h"
 
 namespace anvill {
+namespace {
 
-llvm::PreservedAnalyses RecoverBasicStackFrame::run(
-    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
-  if (function.isDeclaration()) {
-    return llvm::PreservedAnalyses::all();
-  }
 
-  // Analyze the stack frame first, enumerating the instructions referencing
-  // the __anvill_sp symbol and determining the boundaries of the stack memory
-  StackFrameAnalysis stack_frame_analysis = AnalyzeStackFrame(function, options);
-  if (stack_frame_analysis.instruction_uses.empty()) {
-    return llvm::PreservedAnalyses::all();
-  }
+// Describes an instruction that accesses the stack pointer through the
+// `__anvill_sp` symbol.
+struct StackPointerUse final {
+  inline explicit StackPointerUse(llvm::Use *use_, std::uint64_t type_size_,
+                                  std::int64_t stack_offset_)
+      : use(use_),
+        type_size(type_size_),
+        stack_offset(stack_offset_) {}
 
-  // It is now time to patch the function. This method will take the stack
-  // analysis and use it to generate a stack frame type and update all the
-  // instructions
-  UpdateFunction(function, options, stack_frame_analysis);
+  // An operand inside of a particular instruction, where `use->getUser()`
+  // is an `llvm::Instruction`, and `use->get()` is a value related to the
+  // stack pointer.
+  llvm::Use *const use;
 
-  // Analyze the __anvill_sp usage again; this time, the resulting
-  // instruction list should be empty
-  assert(EnumerateStackPointerUsages(function).empty());
+  // Operand size
+  const std::uint64_t type_size;
 
-  return llvm::PreservedAnalyses::none();
-}
+  // Stack offset referenced
+  const std::int64_t stack_offset;
+};
 
-llvm::StringRef RecoverBasicStackFrame::name(void) {
-  return llvm::StringRef("RecoverBasicStackFrame");
-}
+// Contains a list of `load` and `store` instructions that reference
+// the stack pointer
+using StackPointerRegisterUsages = std::vector<llvm::Use *>;
 
-StackPointerRegisterUsages
-RecoverBasicStackFrame::EnumerateStackPointerUsages(
+// This structure contains the stack size, along with the lower and
+// higher bounds of the offsets, and all the instructions that have
+// been analyzed
+struct StackFrameAnalysis final {
+
+  // A list of uses that reference the stack pointer
+  std::vector<StackPointerUse> instruction_uses;
+
+  // Lowest SP-relative offset
+  std::int64_t lowest_offset{};
+
+  // Highest SP-relative offset
+  std::int64_t highest_offset{};
+
+  // Stack frame size
+  std::size_t size{};
+};
+
+// Enumerates all the store and load instructions that reference
+// the stack
+static StackPointerRegisterUsages EnumerateStackPointerUsages(
     llvm::Function &function) {
   StackPointerRegisterUsages output;
 
@@ -75,8 +94,9 @@ RecoverBasicStackFrame::EnumerateStackPointerUsages(
 static constexpr uint64_t kMax16 = std::numeric_limits<uint16_t>::max();
 static constexpr uint64_t kMax32 = std::numeric_limits<uint32_t>::max();
 
-StackFrameAnalysis
-RecoverBasicStackFrame::AnalyzeStackFrame(
+// Analyzes the stack frame, determining the relative boundaries and
+// collecting the instructions that operate on the stack pointer
+static StackFrameAnalysis AnalyzeStackFrame(
     llvm::Function &function, const StackFrameRecoveryOptions &options) {
 
   // The CrossReferenceResolver can accumulate all the offsets
@@ -146,8 +166,9 @@ RecoverBasicStackFrame::AnalyzeStackFrame(
   return output;
 }
 
-llvm::StructType *
-RecoverBasicStackFrame::GenerateStackFrameType(
+// Generates a simple, byte-array based, stack frame for the given
+// function
+static llvm::StructType *GenerateStackFrameType(
     const llvm::Function &function, const StackFrameRecoveryOptions &options,
     const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
 
@@ -192,15 +213,25 @@ RecoverBasicStackFrame::GenerateStackFrameType(
   return llvm::StructType::create(stack_frame_types, stack_frame_type_name);
 }
 
-llvm::GlobalVariable *RecoverBasicStackFrame::GetStackSymbolicByteValue(
-    llvm::Module &module, std::int32_t offset, llvm::IntegerType *type) {
+// Generates a new symbolic stack value.
+static llvm::GlobalVariable *GetStackSymbolicByteValue(
+    llvm::Module &module, const StackFrameRecoveryOptions &options,
+    std::int32_t offset, llvm::IntegerType *type) {
 
   // Create a new name
   auto value_name = kSymbolicStackFrameValuePrefix;
-  if (offset < 0) {
-    value_name += "minus_";
-  } else if (offset > 0) {
-    value_name += "plus_";
+  if (options.stack_grows_down) {
+    if (offset < 0) {
+      value_name += "plus_";
+    } else if (offset > 0) {
+      value_name += "minus_";
+    }
+  } else {
+    if (offset < 0) {
+      value_name += "minus_";
+    } else if (offset > 0) {
+      value_name += "plus_";
+    }
   }
 
   value_name += std::to_string(abs(offset));
@@ -216,7 +247,9 @@ llvm::GlobalVariable *RecoverBasicStackFrame::GetStackSymbolicByteValue(
   }
 }
 
-void RecoverBasicStackFrame::UpdateFunction(
+// Patches the function, replacing the load/store instructions so that
+// they operate on the new stack frame type we generated.
+static void UpdateFunction(
     llvm::Function &function, const StackFrameRecoveryOptions &options,
     const StackFrameAnalysis &stack_frame_analysis) {
 
@@ -242,6 +275,15 @@ void RecoverBasicStackFrame::UpdateFunction(
   auto address_size = dl.getPointerSize(0);
   auto addr_type = llvm::Type::getIntNTy(context, address_size * 8u);
 
+  int64_t base_stack_offset;
+  if (options.stack_grows_down) {
+    base_stack_offset = stack_frame_analysis.lowest_offset -
+                        static_cast<std::int32_t>(stack_frame_lower_padding);
+  } else {
+    base_stack_offset = stack_frame_analysis.lowest_offset -
+                        static_cast<std::int32_t>(stack_frame_lower_padding);
+  }
+
   // Take the first instruction as an insert pointer for the
   // IRBuilder, and then create an `alloca` instruction to
   // generate our new stack frame
@@ -250,6 +292,40 @@ void RecoverBasicStackFrame::UpdateFunction(
 
   llvm::IRBuilder<> builder(&insert_point);
   auto stack_frame_alloca = builder.CreateAlloca(stack_frame_type);
+
+  // Annotate the stack.
+  if (options.stack_offset_metadata_name) {
+
+    // TODO(pag): Account for the stack size having actually been clamped down
+    //            to a smaller range.
+
+    int64_t base = 0;
+
+    // If the stack grows down, the higher offsets represent accesses to
+    // the callee's stack frame. These will be positive.
+    if (options.stack_grows_down) {
+      base = stack_frame_analysis.highest_offset;
+      base += static_cast<int64_t>(options.stack_frame_higher_padding);
+      base -= static_cast<int64_t>(address_size);
+
+    // If the stack grows up, the lower offsets represent accesses to the
+    // callee's stack frame. These will be negative.
+    } else {
+      base = stack_frame_analysis.lowest_offset;
+      base -= static_cast<int64_t>(options.stack_frame_lower_padding);
+      base += static_cast<int64_t>(address_size);
+    }
+
+    // NOTE(pag): Base points to the highest or lowest address-sized integer
+    //            that can be stored on the stack.
+
+    auto md_id = context.getMDKindID(kAnvillStackZero);
+    auto adjust_val = llvm::ConstantInt::get(
+        addr_type, static_cast<uint64_t>(base), true);
+    auto adjust_md = llvm::ValueAsMetadata::get(adjust_val);
+    stack_frame_alloca->setMetadata(
+        md_id, llvm::MDNode::get(context, adjust_md));
+  }
 
   // When we have padding enabled in the configuration, we must
   // make sure that accesses are still correctly centered around the
@@ -262,7 +338,7 @@ void RecoverBasicStackFrame::UpdateFunction(
   //
   //     [higher addresses]
   //
-  //     [__anvill_stack_plus_3    <- optional higher padding]
+  //     [__anvill_stack_plus_3    <- optional higher padding <- alloca
   //
   //     __anvill_stack_plus_2
   //     __anvill_stack_plus_1
@@ -270,12 +346,9 @@ void RecoverBasicStackFrame::UpdateFunction(
   //     __anvill_stack_minus_1
   //     __anvill_stack_minus_2
   //
-  //     [__anvill_stack_minus_3   <- optional lower padding]
+  //     [__anvill_stack_minus_3   <- optional lower padding
   //
   //     [lower addresses]
-
-  auto base_stack_offset = stack_frame_analysis.lowest_offset -
-                           static_cast<std::int32_t>(stack_frame_lower_padding);
 
   auto total_stack_frame_size = padding_bytes + stack_frame_analysis.size;
 
@@ -312,12 +385,12 @@ void RecoverBasicStackFrame::UpdateFunction(
                                     nullptr};
 
       for (auto i = 0U; i < total_stack_frame_size; i += address_size) {
-        gep_indexes[2] = builder.getInt32(i);
+        gep_indexes[2] = builder.getInt32(i / address_size);
         auto stack_frame_byte =
             builder.CreateGEP(stack_frame_alloca, gep_indexes);
 
-        auto symbolic_value_ptr =
-            GetStackSymbolicByteValue(module, current_offset, addr_type);
+        auto symbolic_value_ptr = GetStackSymbolicByteValue(
+            module, options, current_offset, addr_type);
 
         current_offset += static_cast<int>(address_size);
 
@@ -359,25 +432,94 @@ void RecoverBasicStackFrame::UpdateFunction(
     //
     // As a reminder, the stack frame type is a StructType that contains
     // an ArrayType with int8 elements
-    auto stack_frame_ptr = builder.CreateGEP(
-        stack_frame_alloca, {builder.getInt32(0), builder.getInt32(0),
-                             builder.getInt32(zero_based_offset)});
-    CopyMetadataTo(sp_use.use->get(), stack_frame_ptr);
+    llvm::Value *stack_frame_ptr = builder.CreateGEP(
+        stack_frame_alloca,
+        {builder.getInt32(0), builder.getInt32(0),
+         builder.getInt32(zero_based_offset / address_size)});
+
+    auto from_val = sp_use.use->get();
+    CopyMetadataTo(from_val, stack_frame_ptr);
+
+    llvm::PointerType *ptr_type = nullptr;
+    unsigned scale = 0;
+    auto missing = static_cast<uint64_t>(zero_based_offset) % address_size;
+    switch (missing) {
+      case 7:
+      case 5:
+      case 3:
+      case 1:
+        ptr_type = llvm::Type::getInt8PtrTy(context, 0);
+        scale = 1;
+        break;
+
+      case 4:
+        ptr_type = llvm::Type::getInt32PtrTy(context, 0);
+        scale = 4;
+        break;
+
+      case 6:
+      case 2:
+        ptr_type = llvm::Type::getInt16PtrTy(context, 0);
+        scale = 2;
+        break;
+      case 0:
+        break;
+      default:
+        LOG(FATAL)
+            << "Unsupported address size: " << address_size;
+        break;
+    }
+
+    if (ptr_type) {
+      stack_frame_ptr = builder.CreateBitOrPointerCast(
+          stack_frame_ptr, ptr_type);
+      CopyMetadataTo(from_val, stack_frame_ptr);
+      stack_frame_ptr = builder.CreateGEP(
+          stack_frame_alloca, builder.getInt32(missing / scale));
+      CopyMetadataTo(from_val, stack_frame_ptr);
+    }
 
     stack_frame_ptr =
         builder.CreateBitOrPointerCast(stack_frame_ptr, obj->getType());
+    CopyMetadataTo(from_val, stack_frame_ptr);
 
     // We now have to replace the operand; it is not correct to use
     // `replaceAllUsesWith` on the operand, because the scope of a constant
     // could be bigger than just the function we are using.
-    CopyMetadataTo(sp_use.use->get(), stack_frame_ptr);
     sp_use.use->set(stack_frame_ptr);
   }
 }
 
-RecoverBasicStackFrame::RecoverBasicStackFrame(
-    const StackFrameRecoveryOptions &options_)
-    : options(options_) {}
+}  // namespace
+
+llvm::PreservedAnalyses RecoverBasicStackFrame::run(
+    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
+  if (function.isDeclaration()) {
+    return llvm::PreservedAnalyses::all();
+  }
+
+  // Analyze the stack frame first, enumerating the instructions referencing
+  // the __anvill_sp symbol and determining the boundaries of the stack memory
+  StackFrameAnalysis stack_frame_analysis = AnalyzeStackFrame(function, options);
+  if (stack_frame_analysis.instruction_uses.empty()) {
+    return llvm::PreservedAnalyses::all();
+  }
+
+  // It is now time to patch the function. This method will take the stack
+  // analysis and use it to generate a stack frame type and update all the
+  // instructions
+  UpdateFunction(function, options, stack_frame_analysis);
+
+  // Analyze the __anvill_sp usage again; this time, the resulting
+  // instruction list should be empty
+  assert(EnumerateStackPointerUsages(function).empty());
+
+  return llvm::PreservedAnalyses::none();
+}
+
+llvm::StringRef RecoverBasicStackFrame::name(void) {
+  return llvm::StringRef("RecoverBasicStackFrame");
+}
 
 void AddRecoverBasicStackFrame(llvm::FunctionPassManager &fpm,
                                const StackFrameRecoveryOptions &options) {
