@@ -74,7 +74,12 @@ const std::string kAnvillSwitchIncompleteFunc(
 
 // The name of the uninterpreted function that implements data provenance
 // tracking.
-extern const std::string kAnvillDataProvenanceFunc(
+const std::string kAnvillDataProvenanceFunc(
     kAnvillNamePrefix + "data_provenance");
+
+// Metadata ID for annotating stack frame `alloca` instructions, and telling
+// us that what the logical "zero offset" is away from the beginning of the
+// `alloca`.
+const std::string kAnvillStackZero(kAnvillNamePrefix + "stack_zero");
 
 }  // namespace anvill

@@ -42,6 +42,7 @@ set(anvill_passes
   SinkSelectionsIntoBranchTargets
   SliceInterpreter
   SliceManager
+  SplitStackFrameAtReturnAddress
   TransformRemillJumpIntrinsics
 )
 

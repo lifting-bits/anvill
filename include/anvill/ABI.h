@@ -77,4 +77,9 @@ extern const std::string kAnvillSwitchIncompleteFunc;
 // tracking.
 extern const std::string kAnvillDataProvenanceFunc;
 
+// Metadata ID for annotating stack frame `alloca` instructions, and telling
+// us that what the logical "zero offset" is away from the beginning of the
+// `alloca`.
+extern const std::string kAnvillStackZero;
+
 }  // namespace anvill
