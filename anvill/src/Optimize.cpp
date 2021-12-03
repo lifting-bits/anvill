@@ -149,6 +149,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
+  AddRemoveComparisonAndBranchIntrinsics(fpm);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveUnusedFPClassificationCalls(fpm);
   AddRemoveDelaySlotIntrinsics(fpm);
@@ -165,10 +166,12 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddRemoveTrivialPhisAndSelects(fpm);
 
   fpm.addPass(llvm::DCEPass());
+  AddRemoveStackPointerCExprs(fpm);
   AddRecoverStackFrameInformation(fpm, err_man, options);
   fpm.addPass(llvm::SROA());
   AddSplitStackFrameAtReturnAddress(fpm, err_man);
   fpm.addPass(llvm::SROA());
+
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it

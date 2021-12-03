@@ -61,6 +61,13 @@ add_library(anvill_passes STATIC
   src/SwitchLoweringPass.cpp
   src/BaseFunctionPass.h
 
+
+  src/RemoveBranchAndFlagIntrinsics.h
+  src/RemoveBranchAndFlagIntrinsics.cpp
+
+  src/RemoveStackPointerCExprs.cpp
+  src/RemoveStackPointerCExprs.cpp
+
   src/Utils.h
   src/Utils.cpp
   src/SliceManager.cpp
