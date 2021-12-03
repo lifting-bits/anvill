@@ -273,4 +273,6 @@ void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
                            SliceManager &slc);
 
 void AddRemoveComparisonAndBranchIntrinsics(llvm::FunctionPassManager &fpm);
+
+void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm);
 }  // namespace anvill

@@ -16,13 +16,16 @@ RemoveBranchAndFlagIntrinsics::run(llvm::Function &F,
   std::vector<llvm::Instruction *> to_del;
   for (auto &insn : llvm::instructions(F)) {
     if (auto *call = llvm::dyn_cast<llvm::CallBase>(&insn)) {
-      auto name = call->getCalledFunction()->getName();
-      if (name.startswith(kFlagIntrinsicPrefix) ||
-          name.startswith(kCompareInstrinsicPrefix)) {
+      auto callee = call->getCalledFunction();
+      if (callee != nullptr) {
+        auto name = callee->getName();
+        if (name.startswith(kFlagIntrinsicPrefix) ||
+            name.startswith(kCompareInstrinsicPrefix)) {
 
 
-        call->replaceAllUsesWith(call->getArgOperand(0));
-        to_del.push_back(call);
+          call->replaceAllUsesWith(call->getArgOperand(0));
+          to_del.push_back(call);
+        }
       }
     }
   }
