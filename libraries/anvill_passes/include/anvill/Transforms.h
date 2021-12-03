@@ -281,4 +281,6 @@ void AddBranchRecovery(llvm::FunctionPassManager &fpm);
 
 void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm);
 
+void AddRemoveFailedBranchHints(llvm::FunctionPassManager &fpm);
+
 }  // namespace anvill

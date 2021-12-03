@@ -242,6 +242,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddTransformRemillJumpIntrinsics(second_fpm, lifter_context);
   AddRemoveRemillFunctionReturns(second_fpm, lifter_context);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
+  AddRemoveFailedBranchHints(second_fpm);
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));

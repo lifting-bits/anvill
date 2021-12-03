@@ -54,6 +54,9 @@ add_library(anvill_passes STATIC
   src/InstructionFolderPass.h
   src/InstructionFolderPass.cpp
 
+  src/RemoveUnusedBranchHints.cpp
+  src/RemoveUnusedBranchHints.h
+
   #src/IndirectJumpPass.h
   src/JumpTableAnalysis.cpp
   #src/JumpTableAnalysis.h
