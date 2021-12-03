@@ -271,4 +271,6 @@ void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
                            const std::shared_ptr<MemoryProvider> &memprov,
                            SliceManager &slc);
+
+void AddRemoveComparisonAndBranchIntrinsics(llvm::FunctionPassManager &fpm);
 }  // namespace anvill
