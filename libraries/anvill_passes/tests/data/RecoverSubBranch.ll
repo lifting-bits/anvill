@@ -61,9 +61,9 @@ declare %struct.Memory* @__remill_missing_block(%struct.State* nonnull align 1, 
 define %struct.Memory* @slice(%struct.Memory* %0, i64 %RAX, i64 %RDX, i64* nocapture %RIP_output) local_unnamed_addr #2 {
   %2 = sub i64 %RDX, %RAX
   %3 = icmp eq i64 %2, 0
-  %4 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_zero(i1 zeroext %3, i64 %2) #3
+  %4 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_zero(i1 zeroext %3, i64 %RDX, i64 %RAX, i64 %2) #3
   %5 = icmp slt i64 %2, 0
-  %6 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_sign(i1 zeroext %5, i64 %2) #3
+  %6 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_sign(i1 zeroext %5, i64 %RDX, i64 %RAX, i64 %2) #3
   %7 = lshr i64 %RDX, 63
   %8 = lshr i64 %RAX, 63
   %9 = lshr i64 %2, 63

@@ -103,6 +103,9 @@ z3::expr BinopExpr::ExpressionFromLhsRhs(Z3Binop opcode, z3::expr e1,
       }
 
     case XOR: return e1 ^ e2;
+    case AShr: return z3::ashr(e1, e2);
+    case LShr: return z3::lshr(e1, e2);
+    case Shl: return z3::shl(e1, e2);
     default: throw std::invalid_argument("unknown opcode binop");
   }
 }

@@ -58,7 +58,6 @@ class ConstraintExtractor
     if (auto *insn = llvm::dyn_cast<llvm::Instruction>(v)) {
       return this->visit(*insn);
     }
-
     return std::nullopt;
   }
 
