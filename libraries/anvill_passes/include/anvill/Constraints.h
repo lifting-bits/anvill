@@ -157,7 +157,10 @@ enum Z3Binop {
   SLE,
   SLT,
   XOR,
-  NEQ
+  NEQ,
+  LShr,
+  AShr,
+  Shl
 };
 class BinopExpr final : public Expr {
  private:
@@ -192,6 +195,9 @@ class BinopExpr final : public Expr {
       case llvm::Instruction::BinaryOps::Add: return {Z3Binop::ADD};
       case llvm::Instruction::BinaryOps::Sub: return {Z3Binop::SUB};
       case llvm::Instruction::BinaryOps::Xor: return {Z3Binop::XOR};
+      case llvm::Instruction::BinaryOps::LShr: return {Z3Binop::LShr};
+      case llvm::Instruction::BinaryOps::AShr: return {Z3Binop::AShr};
+      case llvm::Instruction::BinaryOps::Shl: return {Z3Binop::Shl};
       default: return std::nullopt;
     }
   }

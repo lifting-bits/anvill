@@ -49,20 +49,10 @@ static const std::unordered_map<std::string, ArithFlags> FlagPredMap = {
     {"carry", ArithFlags::CARRY}};
 
 
-struct FlagDefinition {
-  llvm::Value *lhs;
-  llvm::Value *rhs;
-  Z3Binop binop;
-  ArithFlags flagres;
-  llvm::Type *resultTy;
-};
-
-
 class EnvironmentBuilder {
 
  private:
   std::optional<ComparedValues> symbols;
-  std::unordered_map<std::string, FlagDefinition> bindings;
   uint64_t id_counter;
 
  public:
@@ -75,65 +65,34 @@ class EnvironmentBuilder {
     return FlagIDPrefix + std::to_string(this->id_counter++);
   }
 
-
-  static std::optional<FlagDefinition> parseFlagDefinition(RemillFlag rf) {
-    std::optional<Z3Binop> conn = std::nullopt;
-    std::optional<llvm::Value *> lhs = std::nullopt;
-    std::optional<llvm::Value *> rhs = std::nullopt;
-    if (auto *binop = llvm::dyn_cast<llvm::BinaryOperator>(rf.over)) {
-      conn = BinopExpr::TranslateOpcodeToConnective(binop->getOpcode());
-      lhs = binop->getOperand(0);
-      rhs = binop->getOperand(1);
-    } else if (auto *binop = llvm::dyn_cast<llvm::ICmpInst>(rf.over)) {
-      conn = BinopExpr::TranslateIcmpOpToZ3(binop->getPredicate());
-      lhs = binop->getOperand(0);
-      rhs = binop->getOperand(1);
-    }
-
-    if (conn && lhs && rhs) {
-      return {{*lhs, *rhs, *conn, rf.flg, rf.over->getType()}};
-    }
-
-
-    return std::nullopt;
-  }
-
-  bool composedOfSameSymbols(FlagDefinition flagdef) {
+  bool composedOfSameSymbols(RemillFlag flagdef) {
     return !this->symbols || ((this->symbols->first == flagdef.lhs ||
                                this->symbols->first == flagdef.rhs) &&
                               (this->symbols->second == flagdef.lhs ||
                                this->symbols->second == flagdef.rhs));
   }
 
-  static bool areIntegerTypes(FlagDefinition flagdef) {
+  static bool areIntegerTypes(RemillFlag flagdef) {
     return flagdef.lhs->getType()->isIntegerTy() &&
            flagdef.rhs->getType()->isIntegerTy();
   }
 
  public:
-  EnvironmentBuilder()
-      : symbols(std::nullopt),
-        bindings(std::unordered_map<std::string, FlagDefinition>()),
-        id_counter(0) {}
+  EnvironmentBuilder() : symbols(std::nullopt), id_counter(0) {}
 
   inline const static std::string FlagIDPrefix = "flag";
 
 
-  std::optional<std::unique_ptr<Expr>> addFlag(RemillFlag rf) {
-    auto flagdef = parseFlagDefinition(rf);
-    if (flagdef.has_value() && this->composedOfSameSymbols(*flagdef) &&
-        areIntegerTypes(*flagdef)) {
-      this->symbols = {std::make_pair(flagdef->lhs, flagdef->rhs)};
-      auto name = this->nextID();
-      this->bindings.insert({name, *flagdef});
-      return {AtomVariable::Create(name)};
+  std::optional<llvm::Value *> addFlag(RemillFlag rf) {
+    if (this->composedOfSameSymbols(rf) && areIntegerTypes(rf)) {
+      if (!this->symbols.has_value()) {
+        this->symbols = {std::make_pair(rf.lhs, rf.rhs)};
+      }
+
+      return {rf.flag_val};
     }
 
     return std::nullopt;
-  }
-
-  z3::expr create_flag_for_name(z3::context &cont, std::string name) {
-    return cont.bool_const(name.c_str());
   }
 
   std::pair<z3::expr, z3::expr> symbols_as_z3(z3::context &cont,
@@ -151,139 +110,6 @@ class EnvironmentBuilder {
     return std::make_pair(v1, v2);
   }
 
-  z3::expr get_expr_for_binop(llvm::Value *v, const Environment &env) {
-    if (v == this->symbols->first) {
-      return env.lookup(EnvironmentBuilder::getValueName(0));
-    } else if (v == this->symbols->second) {
-      return env.lookup(EnvironmentBuilder::getValueName(1));
-    }
-
-    throw std::invalid_argument(
-        "Expression Builder has value in flagdef that is not one of the symbols");
-  }
-
-
-  static z3::expr get_constant_in_z3(z3::context &cont, llvm::Type *ty,
-                                     uint64_t constant) {
-    auto bits = AtomIntExpr::GetBigEndianBits(
-        llvm::APInt(ty->getIntegerBitWidth(), constant));
-    return cont.bv_val(ty->getIntegerBitWidth(), bits.get());
-  }
-
-  // NOTE(ian): Overflow and Carry semantics are not clear at this point in llvm ie:
-  //   define %struct.Memory* @slice(%struct.Memory* %0, i64 %RAX, i64 %RDX, i64* nocapture %RIP_output) local_unnamed_addr #2 {
-  //   %2 = insertelement <2 x i64> poison, i64 %RDX, i32 0
-  //   %3 = insertelement <2 x i64> %2, i64 %RAX, i32 1
-  //   %4 = ashr <2 x i64> %3, <i64 63, i64 63>
-  //   %5 = zext <2 x i64> %4 to <2 x i128>
-  //   %6 = shl nuw <2 x i128> %5, <i128 64, i128 64>
-  //   %7 = zext <2 x i64> %3 to <2 x i128>
-  //   %8 = or <2 x i128> %6, %7
-  //   %shift = shufflevector <2 x i128> %8, <2 x i128> poison, <2 x i32> <i32 1, i32 undef>
-  //   %9 = mul nsw <2 x i128> %8, %shift
-  //   %10 = extractelement <2 x i128> %9, i32 0
-  //   %11 = trunc i128 %10 to i64
-  //   %12 = lshr i128 %10, 64
-  //   %13 = trunc i128 %12 to i64
-  //   %14 = sext i64 %11 to i128
-  //   %15 = icmp ne i128 %10, %14
-  //   %16 = tail call zeroext i1 (i1, ...) @__remill_flag_computation_overflow(i1 zeroext %15, i64 %RAX, i64 %RDX, i64 %11, i64 %13) #3
-  //   br i1 %16, label %17, label %19
-
-  // 17:                                               ; preds = %1
-  //   %18 = tail call %struct.Memory* @__remill_missing_block(%struct.State* undef, i64 7, %struct.Memory* %0) #4, !noalias !0
-  //   br label %sub_0.exit
-
-  // 19:                                               ; preds = %1
-  //   %20 = tail call i64 @__remill_read_memory_64(%struct.Memory* %0, i64 undef) #3
-  //   %21 = tail call %struct.Memory* @__remill_function_return(%struct.State* undef, i64 %20, %struct.Memory* %0) #4, !noalias !0
-  //   br label %sub_0.exit
-
-  // sub_0.exit:                                       ; preds = %19, %17
-  //   %.sroa.13.0 = phi i64 [ 7, %17 ], [ %20, %19 ]
-  //   %22 = phi %struct.Memory* [ %18, %17 ], [ %21, %19 ]
-  //   store i64 %.sroa.13.0, i64* %RIP_output, align 8
-  //   ret %struct.Memory* %22
-  // }
-
-  // This is the llvm for an imul RAX, RDX; jo. The relation between the multiplication and the overflow flag is not apparent at this point
-  // We have lost too much of the original semantic unit. Fortunately, mul OF and CF tend not to lead to clean icmp branches
-  // anyways. Perhaps if this becomes an issue we can add a custom pass that better handles these overflow checks and replaces them with
-  // the llvm intrinsic: https://llvm.org/docs/LangRef.html#llvm-smul-with-overflow-intrinsics/
-  static std::optional<z3::expr>
-  get_overflow_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
-                    z3::expr rhs, FlagDefinition flagdef) {
-
-    z3::expr zero =
-        EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0);
-    z3::expr sign_lhs = z3::slt(lhs, EnvironmentBuilder::get_constant_in_z3(
-                                         cont, flagdef.lhs->getType(), 0));
-    z3::expr sign_rhs = z3::slt(rhs, EnvironmentBuilder::get_constant_in_z3(
-                                         cont, flagdef.rhs->getType(), 0));
-    z3::expr binop_sign = z3::slt(
-        binop_res,
-        EnvironmentBuilder::get_constant_in_z3(cont, flagdef.resultTy, 0));
-    switch (flagdef.binop) {
-      case Z3Binop::ADD:
-        return (sign_lhs ^ binop_sign) && (sign_rhs ^ binop_sign);
-      case Z3Binop::SUB:
-        return (sign_lhs ^ sign_rhs) && (sign_lhs ^ binop_sign);
-
-      default: return std::nullopt;
-    }
-  }
-
-  static std::optional<z3::expr>
-  get_carry_flag(z3::context &cont, z3::expr binop_res, z3::expr lhs,
-                 z3::expr rhs, FlagDefinition flagdef) {
-
-    switch (flagdef.binop) {
-      case Z3Binop::ADD:
-        return z3::ult(binop_res, lhs) || z3::ult(binop_res, rhs);
-      case Z3Binop::SUB: return z3::ult(lhs, rhs);
-
-      default: return std::nullopt;
-    }
-  }
-
-
-  std::optional<z3::expr>
-  get_flag_assertion(z3::context &cont, z3::expr binop_res, z3::expr lhs,
-                     z3::expr rhs, FlagDefinition flagdef) {
-    switch (flagdef.flagres) {
-      case ArithFlags::ZF:
-        return binop_res == EnvironmentBuilder::get_constant_in_z3(
-                                cont, flagdef.resultTy, 0);
-      case ArithFlags::SIGN:
-        return binop_res < EnvironmentBuilder::get_constant_in_z3(
-                               cont, flagdef.resultTy, 0);
-      case ArithFlags::OF:
-        return EnvironmentBuilder::get_overflow_flag(cont, binop_res, lhs, rhs,
-                                                     flagdef);
-      case ArithFlags::CARRY:
-        return EnvironmentBuilder::get_carry_flag(cont, binop_res, lhs, rhs,
-                                                  flagdef);
-      default: throw std::runtime_error("unsupported arithmetic flag");
-    }
-  }
-
-  bool define_flag_in_context(z3::context &cont, z3::solver &solver,
-                              const Environment &env, FlagDefinition flagdef,
-                              z3::expr flag_expr) {
-
-    auto lhs = this->get_expr_for_binop(flagdef.lhs, env);
-    auto rhs = this->get_expr_for_binop(flagdef.rhs, env);
-    auto binop = BinopExpr::ExpressionFromLhsRhs(flagdef.binop, lhs, rhs);
-    auto flag_assertion = get_flag_assertion(cont, binop, lhs, rhs, flagdef);
-
-    if (flag_assertion.has_value()) {
-      solver.add(flag_expr == *flag_assertion);
-      return true;
-    } else {
-      return false;
-    }
-  }
-
   std::optional<std::pair<Environment, ComparedValues>>
   BuildEnvironment(z3::context &cont, z3::solver &solver) {
     if (!symbols.has_value()) {
@@ -293,18 +119,21 @@ class EnvironmentBuilder {
     Environment env;
 
     auto symbs = this->symbols_as_z3(cont, env);
+    return {std::make_pair(env, *this->symbols)};
+  }
 
-    for (auto pr : this->bindings) {
+  std::optional<std::unique_ptr<Expr>> getSymbolFor(llvm::Value *tgt) {
+    if (this->symbols) {
+      if (tgt == this->symbols->first) {
+        return {AtomVariable::Create(EnvironmentBuilder::getValueName(0))};
+      }
 
-      auto flag_expr = this->create_flag_for_name(cont, pr.first);
-      env.insert(pr.first, flag_expr);
-
-      if (!this->define_flag_in_context(cont, solver, env, pr.second,
-                                        flag_expr)) {
-        return std::nullopt;
+      if (tgt == this->symbols->second) {
+        return {AtomVariable::Create(EnvironmentBuilder::getValueName(1))};
       }
     }
-    return {std::make_pair(env, *this->symbols)};
+
+    return std::nullopt;
   }
 };
 
@@ -319,13 +148,20 @@ class LocalConstraintExtractor
       : envBuilder(envBuilder) {}
 
   std::optional<std::unique_ptr<Expr>> attemptStop(llvm::Value *value) {
+    auto symbol_for = envBuilder.getSymbolFor(value);
+    if (symbol_for.has_value()) {
+      return symbol_for;
+    }
+
     auto flag_semantics = ParseFlagIntrinsic(value);
     if (flag_semantics.has_value()) {
       auto res = envBuilder.addFlag(*flag_semantics);
-      return res;
-    } else {
-      return std::nullopt;
+      if (res.has_value()) {
+        return this->ExpectInsnOrStopCondition(*res);
+      }
     }
+
+    return std::nullopt;
   }
 };
 
@@ -341,14 +177,16 @@ std::optional<RemillFlag> ParseFlagIntrinsic(const llvm::Value *value) {
       auto flag_repr = FlagPredMap.find(suffix.second.str());
       if (flag_repr != FlagPredMap.end()) {
         // the arithmetic result that the flag was computed over is the last operand
-        auto value = call->getArgOperand(call->getNumArgOperands() - 1);
-        return {{flag_repr->second, value}};
+        auto flag_val = call->getArgOperand(0);
+        auto lhs = call->getArgOperand(1);
+        auto rhs = call->getArgOperand(2);
+        auto over = call->getArgOperand(3);
+        return {{flag_repr->second, flag_val, lhs, rhs, over}};
       }
     }
   }
   return std::nullopt;
 }
-
 
 // (declare-fun value1 () (_ BitVec 64))
 // (declare-fun value0 () (_ BitVec 64))
@@ -456,6 +294,7 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
       }
     }
   }
+
 
   return std::nullopt;
 }
