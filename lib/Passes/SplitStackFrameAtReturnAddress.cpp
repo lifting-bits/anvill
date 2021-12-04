@@ -176,7 +176,8 @@ static void AnnotateStackUses(llvm::AllocaInst *frame_alloca,
 // Find a `StoreInst` that looks like it puts the return address into the
 // stack. Failure to find this means it likely stayed in registers.
 static const FixedOffsetUse *FindReturnAddressStore(
-    const std::vector<FixedOffsetUse> &uses) {
+    const std::vector<FixedOffsetUse> &uses,
+    const StackFrameRecoveryOptions &options) {
   const FixedOffsetUse *found = nullptr;
   for (const auto &use : uses) {
     if (auto store = llvm::dyn_cast<llvm::StoreInst>(use.use->getUser())) {
@@ -184,11 +185,32 @@ static const FixedOffsetUse *FindReturnAddressStore(
         if (!found) {
           found = &use;
         } else {
-          CHECK_EQ(found->offset.getSExtValue(), use.offset.getSExtValue())
-              << "Found return address stored to two different offsets: "
-              << remill::LLVMThingToString(store) << " and "
-              << remill::LLVMThingToString(found->use->getUser())
-              << " in function " << store->getFunction()->getName().str();
+          auto prev_offset = found->offset.getSExtValue();
+          auto curr_offset = use.offset.getSExtValue();
+
+          if (options.stack_grows_down) {
+            if (prev_offset > curr_offset) {
+              LOG_IF(ERROR, prev_offset != curr_offset)
+                  << "Found return address stored to two different offsets: "
+                  << remill::LLVMThingToString(store) << " and "
+                  << remill::LLVMThingToString(found->use->getUser())
+                  << " in function " << store->getFunction()->getName().str()
+                  << "; treating offset " << curr_offset
+                  << " as return address location instead of " << prev_offset;
+              found = &use;
+            }
+          } else {
+            if (prev_offset < curr_offset) {
+              LOG_IF(ERROR, prev_offset != curr_offset)
+                  << "Found return address stored to two different offsets: "
+                  << remill::LLVMThingToString(store) << " and "
+                  << remill::LLVMThingToString(found->use->getUser())
+                  << " in function " << store->getFunction()->getName().str()
+                  << "; treating offset " << curr_offset
+                  << " as return address location instead of " << prev_offset;
+              found = &use;
+            }
+          }
         }
       }
     }
@@ -266,6 +288,199 @@ static llvm::Instruction *DemandedOffset(
   return inst;
 }
 
+static void SubstituteUse(
+    llvm::IRBuilder<> &ir, llvm::Use *use, uint64_t offset, uint64_t addr_size,
+    std::unordered_map<uint64_t, llvm::Instruction *> &pointers,
+    std::unordered_map<uint64_t, llvm::Instruction *> &computed_offsets,
+    std::unordered_map<llvm::Instruction *, llvm::Value *> &to_replace) {
+  auto use_inst = llvm::dyn_cast<llvm::Instruction>(use->get());
+  auto user_inst = llvm::dyn_cast<llvm::Instruction>(use->getUser());
+  CHECK_NOTNULL(use_inst);
+  CHECK_NOTNULL(user_inst);  // Not sure. Metadata, perhaps?
+
+  llvm::Instruction *const ret = DemandedOffset(
+      ir, use_inst, pointers, computed_offsets, offset, addr_size);
+  CHECK_NOTNULL(ret);
+
+  CopyMetadataTo(use_inst, ret);
+
+  switch (user_inst->getOpcode()) {
+
+    // Convert a `ptrtoint` into a `ptrtoint`.
+    case llvm::Instruction::PtrToInt:
+      if (!to_replace.count(user_inst)) {
+        auto pti = ir.CreatePtrToInt(ret, user_inst->getType());
+        CopyMetadataTo(user_inst, pti);
+        to_replace.emplace(user_inst, pti);
+      }
+      break;
+
+    // Integral arithmetic/operations on pointers; we need to cast to an
+    // integer.
+    case llvm::Instruction::Add:
+    case llvm::Instruction::Sub:
+    case llvm::Instruction::Mul:
+    case llvm::Instruction::SDiv:
+    case llvm::Instruction::UDiv:
+    case llvm::Instruction::ZExt:
+    case llvm::Instruction::SExt:
+    case llvm::Instruction::Trunc:
+    case llvm::Instruction::Or:
+    case llvm::Instruction::Xor:
+    case llvm::Instruction::And: {
+      auto pti = ir.CreatePtrToInt(ret, use_inst->getType());
+      CopyMetadataTo(use_inst, pti);
+      use->set(pti);
+      break;
+    }
+
+    // These might operate on either pointers or integers.
+    case llvm::Instruction::ICmp:
+    case llvm::Instruction::PHI:
+    case llvm::Instruction::Select:
+    default: {
+      auto ty = use_inst->getType();
+      if (ty->isIntegerTy()) {
+        auto pti = ir.CreatePtrToInt(ret, ty);
+        CopyMetadataTo(use_inst, pti);
+        use->set(pti);
+      } else {
+        auto bc = ir.CreateBitOrPointerCast(ret, ty);
+        CopyMetadataTo(use_inst, bc);
+        use->set(bc);
+      }
+      break;
+    }
+
+    // Convert an `inttoptr` into a pointer-to-pointer `bitcast`. If it's
+    // already a `bitcast`, then also convert it to a `bitcast`.
+    case llvm::Instruction::IntToPtr:
+    case llvm::Instruction::BitCast:
+      if (!to_replace.count(user_inst)) {
+        auto bc = ir.CreateBitOrPointerCast(ret, user_inst->getType());
+        CopyMetadataTo(user_inst, bc);
+        to_replace.emplace(user_inst, bc);
+      }
+      break;
+
+    // If the user is a `load`, then replace its use of the pointer.
+    case llvm::Instruction::Load: {
+      auto li = llvm::dyn_cast<llvm::LoadInst>(user_inst);
+      auto pty = llvm::PointerType::get(
+          li->getType(), li->getPointerAddressSpace());
+      auto bc = ir.CreateBitOrPointerCast(ret, pty);
+      CopyMetadataTo(use_inst, bc);
+      use->set(bc);
+      break;
+    }
+
+    // If the user is a `store`, then replace its use of the pointer.
+    case llvm::Instruction::Store: {
+      auto si = llvm::dyn_cast<llvm::StoreInst>(user_inst);
+      auto ty = si->getValueOperand()->getType();
+
+      // Operating on the value being stored.
+      if (use == &(si->getOperandUse(0u))) {
+        if (ty->isIntegerTy()) {
+          auto pti = ir.CreatePtrToInt(ret, ty);
+          CopyMetadataTo(use_inst, pti);
+          use->set(pti);
+        } else {
+          auto bc = ir.CreateBitOrPointerCast(ret, ty);
+          CopyMetadataTo(use_inst, bc);
+          use->set(bc);
+        }
+
+      // Operating on the pointer.
+      } else {
+        auto pty = llvm::PointerType::get(ty, si->getPointerAddressSpace());
+        auto bc = ir.CreateBitOrPointerCast(ret, pty);
+        CopyMetadataTo(use_inst, bc);
+        use->set(bc);
+      }
+      break;
+    }
+
+    case llvm::Instruction::GetElementPtr: {
+      auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(user_inst);
+
+      // This easy; the GEP has all constant indices to we can schedule it
+      // for replacement.
+      if (gep->hasAllConstantIndices()) {
+        if (!to_replace.count(user_inst)) {
+          auto bc = ir.CreateBitOrPointerCast(ret, user_inst->getType());
+          CopyMetadataTo(user_inst, bc);
+          to_replace.emplace(user_inst, bc);
+        }
+
+      // This is trickier; we need to form a new GEP or something like it.
+      } else {
+        llvm::SmallVector<const llvm::Value *, 4u> const_indices_c;
+        llvm::SmallVector<llvm::Value *, 4u> const_indices;
+        llvm::SmallVector<llvm::Value *, 4u> var_indices;
+        for (llvm::Use &index : gep->indices()) {
+          if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(index.get())) {
+            if (var_indices.empty()) {
+              const_indices.emplace_back(ci);
+              const_indices_c.emplace_back(ci);
+            } else {
+              var_indices.emplace_back(ci);
+            }
+          } else {
+            var_indices.emplace_back(index.get());
+          }
+        }
+
+        CHECK(!var_indices.empty());
+
+        auto addr_space = gep->getPointerAddressSpace();
+
+        // This is the easy case, because we can replace the use with
+        // something that was constant calculated.
+        if (const_indices.empty()) {
+          auto pty = llvm::PointerType::get(
+              gep->getSourceElementType(), addr_space);
+          auto bc = ir.CreateBitOrPointerCast(ret, pty);
+          CopyMetadataTo(use_inst, bc);
+          use->set(bc);
+
+        // This is the hard case, because we need to invent a new GEP.
+        } else if (!to_replace.count(user_inst)) {
+          llvm::APInt sub_offset(addr_size * 8u, 0u);
+          auto source_ty = gep->getSourceElementType();
+          auto &dl = user_inst->getModule()->getDataLayout();
+          CHECK(llvm::GEPOperator::accumulateConstantOffset(
+              source_ty, const_indices_c, dl, sub_offset));
+
+          auto effective_sub_offset = static_cast<uint64_t>(
+              static_cast<int64_t>(offset) +
+              sub_offset.getSExtValue());
+          llvm::Instruction *const sub_ret = DemandedOffset(
+              ir, use_inst, pointers, computed_offsets,
+              effective_sub_offset, addr_size);
+
+          CHECK_NOTNULL(sub_ret);
+          CopyMetadataTo(use_inst, sub_ret);
+
+          auto sub_ret_ty = llvm::GetElementPtrInst::getIndexedType(
+              source_ty, const_indices);
+          auto sub_ret_pty = llvm::PointerType::get(
+              sub_ret_ty, addr_space);
+
+          auto bc = ir.CreateBitOrPointerCast(ret, sub_ret_pty);
+          CopyMetadataTo(user_inst, bc);
+
+          auto new_gep = ir.CreateGEP(sub_ret_ty, bc, var_indices);
+          CopyMetadataTo(user_inst, new_gep);
+
+          to_replace.emplace(user_inst, new_gep);
+        }
+      }
+      break;
+    }
+  }
+}
+
 static void SplitStackFrameAround(
     llvm::AllocaInst *frame_alloca, std::vector<FixedOffsetUse> uses,
     uint64_t offset_of_ra, const StackFrameRecoveryOptions &options) {
@@ -309,8 +524,7 @@ static void SplitStackFrameAround(
 
   auto make_subframe = [&] (
       std::vector<std::pair<llvm::Use *, uint64_t>> use_offsets,
-      const char *down_name, const char *up_name) {
-    auto num_slots = (offset_of_ra + (addr_size - 1u)) / addr_size;
+      const char *down_name, const char *up_name, uint64_t num_slots) {
     auto num_slots_val = ir.getIntN(addr_size_bits, num_slots);
     if (options.stack_grows_down) {
       sub_frame = ir.CreateAlloca(addr_type, 0u, num_slots_val, down_name);
@@ -326,203 +540,22 @@ static void SplitStackFrameAround(
 
     CopyMetadataTo(frame_alloca, sub_frame);
 
-//    auto after_sub_frame = sub_frame->getNextNode();
-
     for (auto [use, offset] : use_offsets) {
-      auto use_inst = llvm::dyn_cast<llvm::Instruction>(use->get());
-      auto user_inst = llvm::dyn_cast<llvm::Instruction>(use->getUser());
-      CHECK_NOTNULL(use_inst);
-      CHECK_NOTNULL(user_inst);  // Not sure. Metadata, perhaps?
-
-      llvm::Instruction *const ret = DemandedOffset(
-          ir, use_inst, pointers, computed_offsets, offset, addr_size);
-      CHECK_NOTNULL(ret);
-
-      CopyMetadataTo(use_inst, ret);
-
-      switch (user_inst->getOpcode()) {
-
-        // Convert a `ptrtoint` into a `ptrtoint`.
-        case llvm::Instruction::PtrToInt:
-          if (!to_replace.count(user_inst)) {
-            auto pti = ir.CreatePtrToInt(ret, user_inst->getType());
-            CopyMetadataTo(user_inst, pti);
-            to_replace.emplace(user_inst, pti);
-          }
-          break;
-
-        // Integral arithmetic/operations on pointers; we need to cast to an
-        // integer.
-        case llvm::Instruction::Add:
-        case llvm::Instruction::Sub:
-        case llvm::Instruction::Mul:
-        case llvm::Instruction::SDiv:
-        case llvm::Instruction::UDiv:
-        case llvm::Instruction::ZExt:
-        case llvm::Instruction::SExt:
-        case llvm::Instruction::Trunc:
-        case llvm::Instruction::Or:
-        case llvm::Instruction::Xor:
-        case llvm::Instruction::And: {
-          auto pti = ir.CreatePtrToInt(ret, use_inst->getType());
-          CopyMetadataTo(use_inst, pti);
-          use->set(pti);
-          break;
-        }
-
-        // These might operate on either pointers or integers.
-        case llvm::Instruction::ICmp:
-        case llvm::Instruction::PHI:
-        case llvm::Instruction::Select:
-        default: {
-          auto ty = use_inst->getType();
-          if (ty->isIntegerTy()) {
-            auto pti = ir.CreatePtrToInt(ret, ty);
-            CopyMetadataTo(use_inst, pti);
-            use->set(pti);
-          } else {
-            auto bc = ir.CreateBitOrPointerCast(ret, ty);
-            CopyMetadataTo(use_inst, bc);
-            use->set(bc);
-          }
-          break;
-        }
-
-        // Convert an `inttoptr` into a pointer-to-pointer `bitcast`. If it's
-        // already a `bitcast`, then also convert it to a `bitcast`.
-        case llvm::Instruction::IntToPtr:
-        case llvm::Instruction::BitCast:
-          if (!to_replace.count(user_inst)) {
-            auto bc = ir.CreateBitOrPointerCast(ret, user_inst->getType());
-            CopyMetadataTo(user_inst, bc);
-            to_replace.emplace(user_inst, bc);
-          }
-          break;
-
-        // If the user is a `load`, then replace its use of the pointer.
-        case llvm::Instruction::Load: {
-          auto li = llvm::dyn_cast<llvm::LoadInst>(user_inst);
-          auto pty = llvm::PointerType::get(
-              li->getType(), li->getPointerAddressSpace());
-          auto bc = ir.CreateBitOrPointerCast(ret, pty);
-          CopyMetadataTo(use_inst, bc);
-          use->set(bc);
-          break;
-        }
-
-        // If the user is a `store`, then replace its use of the pointer.
-        case llvm::Instruction::Store: {
-          auto si = llvm::dyn_cast<llvm::StoreInst>(user_inst);
-          auto ty = si->getValueOperand()->getType();
-
-          // Operating on the value being stored.
-          if (use == &(si->getOperandUse(0u))) {
-            if (ty->isIntegerTy()) {
-              auto pti = ir.CreatePtrToInt(ret, ty);
-              CopyMetadataTo(use_inst, pti);
-              use->set(pti);
-            } else {
-              auto bc = ir.CreateBitOrPointerCast(ret, ty);
-              CopyMetadataTo(use_inst, bc);
-              use->set(bc);
-            }
-
-          // Operating on the pointer.
-          } else {
-            auto pty = llvm::PointerType::get(ty, si->getPointerAddressSpace());
-            auto bc = ir.CreateBitOrPointerCast(ret, pty);
-            CopyMetadataTo(use_inst, bc);
-            use->set(bc);
-          }
-          break;
-        }
-
-        case llvm::Instruction::GetElementPtr: {
-          auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(user_inst);
-
-          // This easy; the GEP has all constant indices to we can schedule it
-          // for replacement.
-          if (gep->hasAllConstantIndices()) {
-            if (!to_replace.count(user_inst)) {
-              auto bc = ir.CreateBitOrPointerCast(ret, user_inst->getType());
-              CopyMetadataTo(user_inst, bc);
-              to_replace.emplace(user_inst, bc);
-            }
-
-          // This is trickier; we need to form a new GEP or something like it.
-          } else {
-            llvm::SmallVector<const llvm::Value *, 4u> const_indices_c;
-            llvm::SmallVector<llvm::Value *, 4u> const_indices;
-            llvm::SmallVector<llvm::Value *, 4u> var_indices;
-            for (llvm::Use &index : gep->indices()) {
-              if (auto ci = llvm::dyn_cast<llvm::ConstantInt>(index.get())) {
-                if (var_indices.empty()) {
-                  const_indices.emplace_back(ci);
-                  const_indices_c.emplace_back(ci);
-                } else {
-                  var_indices.emplace_back(ci);
-                }
-              } else {
-                var_indices.emplace_back(index.get());
-              }
-            }
-
-            CHECK(!var_indices.empty());
-
-            auto addr_space = gep->getPointerAddressSpace();
-
-            // This is the easy case, because we can replace the use with
-            // something that was constant calculated.
-            if (const_indices.empty()) {
-              auto pty = llvm::PointerType::get(
-                  gep->getSourceElementType(), addr_space);
-              auto bc = ir.CreateBitOrPointerCast(ret, pty);
-              CopyMetadataTo(use_inst, bc);
-              use->set(bc);
-
-            // This is the hard case, because we need to invent a new GEP.
-            } else if (!to_replace.count(user_inst)) {
-              llvm::APInt sub_offset(addr_size * 8u, 0u);
-              auto source_ty = gep->getSourceElementType();
-              CHECK(llvm::GEPOperator::accumulateConstantOffset(
-                  source_ty, const_indices_c, dl, sub_offset));
-
-              auto effective_sub_offset = static_cast<uint64_t>(
-                  static_cast<int64_t>(offset) +
-                  sub_offset.getSExtValue());
-              llvm::Instruction *const sub_ret = DemandedOffset(
-                  ir, use_inst, pointers, computed_offsets,
-                  effective_sub_offset, addr_size);
-
-              CHECK_NOTNULL(sub_ret);
-              CopyMetadataTo(use_inst, sub_ret);
-
-              auto sub_ret_ty = llvm::GetElementPtrInst::getIndexedType(
-                  source_ty, const_indices);
-              auto sub_ret_pty = llvm::PointerType::get(
-                  sub_ret_ty, addr_space);
-
-              auto bc = ir.CreateBitOrPointerCast(ret, sub_ret_pty);
-              CopyMetadataTo(user_inst, bc);
-
-              auto new_gep = ir.CreateGEP(sub_ret_ty, bc, var_indices);
-              CopyMetadataTo(user_inst, new_gep);
-
-              to_replace.emplace(user_inst, new_gep);
-            }
-          }
-          break;
-        }
-      }
+      SubstituteUse(ir, use, offset, addr_size, pointers,
+                    computed_offsets, to_replace);
     }
   };
 
   if (!above.empty()) {
-    make_subframe(std::move(above), "parameters", "locals");
+    auto num_slots = (offset_of_ra + (addr_size - 1u)) / addr_size;
+    make_subframe(std::move(above), "parameters", "locals", num_slots);
   }
 
   if (!below.empty()) {
-    make_subframe(std::move(below), "locals", "parameters");
+    auto frame_size = dl.getTypeAllocSize(
+        frame_alloca->getAllocatedType()).getKnownMinSize();
+    auto num_slots = ((frame_size - end_of_ra) + (addr_size - 1u)) / addr_size;
+    make_subframe(std::move(below), "locals", "parameters", num_slots);
   }
 
   for (auto [old_val, new_val] : to_replace) {
@@ -555,7 +588,7 @@ SplitStackFrameAtReturnAddress::run(llvm::Function &function,
     AnnotateStackUses(frame_alloca, uses, options);
   }
 
-  auto store_use = FindReturnAddressStore(uses);
+  auto store_use = FindReturnAddressStore(uses, options);
   if (!store_use) {
     return llvm::PreservedAnalyses::all();  // Probably stayed in registers.
   }
