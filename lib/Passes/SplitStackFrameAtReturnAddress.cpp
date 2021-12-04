@@ -39,7 +39,7 @@ static llvm::AllocaInst *FindStackFrameAlloca(llvm::Function &func) {
 
     auto frame_type = llvm::dyn_cast<llvm::StructType>(
         alloca->getAllocatedType());
-    if (!frame_type) {
+    if (!frame_type || frame_type->isLiteral()) {
       continue;
     }
 
@@ -184,7 +184,11 @@ static const FixedOffsetUse *FindReturnAddressStore(
         if (!found) {
           found = &use;
         } else {
-          CHECK_EQ(found->offset.getSExtValue(), use.offset.getSExtValue());
+          CHECK_EQ(found->offset.getSExtValue(), use.offset.getSExtValue())
+              << "Found return address stored to two different offsets: "
+              << remill::LLVMThingToString(store) << " and "
+              << remill::LLVMThingToString(found->use->getUser())
+              << " in function " << store->getFunction()->getName().str();
         }
       }
     }
