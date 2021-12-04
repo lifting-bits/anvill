@@ -120,6 +120,9 @@ int main(int argc, char *argv[]) {
   anvill::SpecificationMemoryProvider mp(spec);
   anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
 
+//  options.state_struct_init_procedure =
+//      anvill::StateStructureInitializationProcedure::kNone;
+
   // Annotate instructions with `!pc` metadata that (approximately) tells us
   // where they are from.
   options.pc_metadata_name = "pc";

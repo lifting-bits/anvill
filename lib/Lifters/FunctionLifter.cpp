@@ -48,7 +48,7 @@ namespace {
 // Clear out LLVM variable names. They're usually not helpful.
 static void ClearVariableNames(llvm::Function *func) {
   for (auto &block : *func) {
-    block.setName(llvm::Twine::createNull());
+//    block.setName(llvm::Twine::createNull());
     for (auto &inst : block) {
       if (inst.hasName()) {
         inst.setName(llvm::Twine::createNull());
@@ -1256,6 +1256,9 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
     const auto ssbase_reg = options.arch->RegisterByName("SSBASE");
     const auto fsbase_reg = options.arch->RegisterByName("FSBASE");
     const auto gsbase_reg = options.arch->RegisterByName("GSBASE");
+    const auto dsbase_reg = options.arch->RegisterByName("DSBASE");
+    const auto esbase_reg = options.arch->RegisterByName("ESBASE");
+    const auto csbase_reg = options.arch->RegisterByName("CSBASE");
 
     if (gsbase_reg) {
       const auto gsbase_val = llvm::ConstantExpr::getPtrToInt(
@@ -1280,6 +1283,21 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
     if (ssbase_reg) {
       ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
                      ssbase_reg->AddressOf(state_ptr, ir));
+    }
+
+    if (dsbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     dsbase_reg->AddressOf(state_ptr, ir));
+    }
+
+    if (esbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     esbase_reg->AddressOf(state_ptr, ir));
+    }
+
+    if (csbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     csbase_reg->AddressOf(state_ptr, ir));
     }
   }
 }
