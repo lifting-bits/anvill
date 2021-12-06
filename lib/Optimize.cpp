@@ -190,6 +190,7 @@ void OptimizeModule(const EntityLifter &lifter,
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   AddRemoveRemillFunctionReturns(second_fpm, xr);
+  AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
   AddRemoveFailedBranchHints(second_fpm);
   second_fpm.addPass(CodeQualityStatCollector());

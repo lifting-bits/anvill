@@ -72,4 +72,8 @@ std::string GetModuleIR(llvm::Module &module);
 
 llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
 
+// Returns the pointer to the function that lets us overwrite the return
+// address. This is not available on all architectures / OSes.
+llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module);
+
 }  // namespace anvill

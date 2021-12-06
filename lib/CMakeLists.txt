@@ -25,6 +25,7 @@ include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 set(anvill_passes
   ConvertAddressesToEntityUses
   ConvertMasksToCasts
+  ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis
   JumpTableAnalysis
