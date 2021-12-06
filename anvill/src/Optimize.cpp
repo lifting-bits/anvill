@@ -152,7 +152,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   auto error_manager_ptr = ITransformationErrorManager::Create();
   auto &err_man = *error_manager_ptr.get();
 
-  AddRemoveComparisonAndBranchIntrinsics(fpm);
   AddSinkSelectionsIntoBranchTargets(fpm, err_man);
   AddRemoveUnusedFPClassificationCalls(fpm);
   AddRemoveDelaySlotIntrinsics(fpm);
@@ -176,7 +175,6 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddSplitStackFrameAtReturnAddress(fpm, err_man);
   fpm.addPass(llvm::SROA());
   AddBranchRecovery(fpm);
-
 
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
