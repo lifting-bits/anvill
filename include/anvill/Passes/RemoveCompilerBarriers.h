@@ -13,7 +13,7 @@
 namespace anvill {
 
 class RemoveCompilerBarriers final
-    : llvm::PassInfoMixin<RemoveCompilerBarriers> {
+    : public llvm::PassInfoMixin<RemoveCompilerBarriers> {
  public:
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);

@@ -181,9 +181,52 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
   return true;
 }
 
-
 llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
   return modified ? llvm::PreservedAnalyses::none()
                   : llvm::PreservedAnalyses::all();
 }
+
+// Returns the pointer to the function that lets us overwrite the return
+// address. This is not available on all architectures / OSes.
+llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
+  llvm::Triple triple(module->getTargetTriple());
+  const char *func_name = nullptr;
+  switch (triple.getArch()) {
+    case llvm::Triple::ArchType::x86:
+    case llvm::Triple::ArchType::x86_64:
+    case llvm::Triple::ArchType::aarch64:
+    case llvm::Triple::ArchType::aarch64_be:
+      func_name = "llvm.addressofreturnaddress.p0i8";
+      break;
+
+    // The Windows `_AddressOfReturnAddress` intrinsic function works on
+    // AArch32 / ARMv7 (as well as the above).
+    case llvm::Triple::ArchType::arm:
+    case llvm::Triple::ArchType::armeb:
+    case llvm::Triple::ArchType::aarch64_32:
+      if (triple.isOSWindows()) {
+        func_name = "_AddressOfReturnAddress";
+      }
+      break;
+    default: break;
+  }
+
+  llvm::Function *func = nullptr;
+
+  // Common path to handle the Windows-specific case, or the slightly
+  // more general case uniformly.
+  if (func_name) {
+    func = module->getFunction(func_name);
+    if (!func) {
+      auto &context = module->getContext();
+      auto fty =
+          llvm::FunctionType::get(llvm::Type::getInt8PtrTy(context, 0), false);
+      func = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage,
+                                    func_name, module);
+    }
+  }
+
+  return func;
+}
+
 }  // namespace anvill

@@ -154,6 +154,12 @@ void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm);
 void AddSplitStackFrameAtReturnAddress(llvm::FunctionPassManager &fpm,
                                        const StackFrameRecoveryOptions &);
 
+// Look for uses of the `(ptrtoint __remill_ra)` constant expression
+// representing uses of the return address, and translate them to concrete uses
+// of the return address.
+void AddConvertSymbolicReturnAddressToConcreteReturnAddress(
+    llvm::FunctionPassManager &fpm);
+
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics
 // functions. It's frequently the case that instructions don't actually care

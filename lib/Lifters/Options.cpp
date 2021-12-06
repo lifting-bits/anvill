@@ -14,6 +14,7 @@
 #include <glog/logging.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Intrinsics.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
@@ -107,7 +108,7 @@ llvm::Value *LifterOptions::SymbolicReturnAddressInit(
 //
 //    call llvm.returnaddress()
 llvm::Value *LifterOptions::ConcreteReturnAddressInit(
-    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address) {
+    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t) {
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
   auto module = block->getModule();

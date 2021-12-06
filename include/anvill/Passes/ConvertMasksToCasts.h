@@ -45,7 +45,8 @@ namespace anvill {
 //        %255 = sub i64 %252, zext (i32 ... @__anvill_sp ... to i64)
 //        %256 = shl i64 %255, 32
 //        %257 = ashr exact i64 %256, 32, !pc !70
-class ConvertMasksToCasts final : llvm::PassInfoMixin<ConvertMasksToCasts> {
+class ConvertMasksToCasts final
+    : public llvm::PassInfoMixin<ConvertMasksToCasts> {
  public:
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM);

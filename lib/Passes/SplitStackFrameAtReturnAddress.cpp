@@ -483,7 +483,7 @@ static void SubstituteUse(
 
 static void SplitStackFrameAround(
     llvm::AllocaInst *frame_alloca, std::vector<FixedOffsetUse> uses,
-    uint64_t offset_of_ra, const StackFrameRecoveryOptions &options) {
+    const StackFrameRecoveryOptions &options) {
 
   llvm::LLVMContext &context = frame_alloca->getContext();
   llvm::Module * const module = frame_alloca->getModule();
@@ -492,7 +492,36 @@ static void SplitStackFrameAround(
   const auto addr_size_bits = dl.getPointerSizeInBits(0);
   llvm::IntegerType * const addr_type = llvm::Type::getIntNTy(
       context, addr_size * 8u);
-  const auto end_of_ra = offset_of_ra + addr_size;
+
+  // If we don't find a return address store, then we'll still split at zero.
+  //
+  // TODO(pag): We could in theory have a function in something like aarch64
+  //            that doesn't spill its return address, but does save it to
+  //            the stack in the interior of a structure which then gets passed
+  //            along (kind of like what `__libc_dlopen_mode` does). Perhaps
+  //            consider architecture-specific "appropriate" split locations
+  //            in the presence of a non-`nullptr` `store_use`, which should
+  //            probably often be 0.
+  const FixedOffsetUse *store_use = FindReturnAddressStore(uses, options);
+  uint64_t offset_of_ra = 0;
+  uint64_t end_of_ra = 0;
+  if (store_use) {
+    offset_of_ra = store_use->offset.getZExtValue();
+    end_of_ra = offset_of_ra + addr_size;
+
+    // Log the above scenario out in case it comes up.
+    if (auto user_inst = llvm::dyn_cast<llvm::Instruction>(
+            store_use->use->getUser());
+        user_inst && offset_of_ra != 0) {
+
+      LOG(ERROR)
+          << "Offset of return address storage location in function "
+          << frame_alloca->getFunction()->getName().str()
+          << " is " << offset_of_ra << ": "
+          << remill::LLVMThingToString(user_inst)
+          << " in block " << user_inst->getParent()->getName().str();
+    }
+  }
 
   std::vector<std::pair<llvm::Use *, uint64_t>> above;
   std::vector<std::pair<llvm::Use *, uint64_t>> at;
@@ -558,6 +587,10 @@ static void SplitStackFrameAround(
     make_subframe(std::move(below), "locals", "parameters", num_slots);
   }
 
+  if (!at.empty()) {
+    make_subframe(std::move(at), "return_address_loc", "return_address_loc", 1);
+  }
+
   for (auto [old_val, new_val] : to_replace) {
     old_val->dropAllReferences();
     old_val->replaceAllUsesWith(new_val);
@@ -588,13 +621,7 @@ SplitStackFrameAtReturnAddress::run(llvm::Function &function,
     AnnotateStackUses(frame_alloca, uses, options);
   }
 
-  auto store_use = FindReturnAddressStore(uses, options);
-  if (!store_use) {
-    return llvm::PreservedAnalyses::all();  // Probably stayed in registers.
-  }
-
-  SplitStackFrameAround(frame_alloca, std::move(uses),
-                        store_use->offset.getZExtValue(), options);
+  SplitStackFrameAround(frame_alloca, std::move(uses), options);
 
   return llvm::PreservedAnalyses::none();
 }

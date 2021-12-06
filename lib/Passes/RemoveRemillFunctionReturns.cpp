@@ -70,49 +70,6 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
   }
 }
 
-// Returns the pointer to the function that lets us overwrite the return
-// address. This is not available on all architectures / OSes.
-static llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
-  llvm::Triple triple(module->getTargetTriple());
-  const char *func_name = nullptr;
-  switch (triple.getArch()) {
-    case llvm::Triple::ArchType::x86:
-    case llvm::Triple::ArchType::x86_64:
-    case llvm::Triple::ArchType::aarch64:
-    case llvm::Triple::ArchType::aarch64_be:
-      func_name = "llvm.addressofreturnaddress.p0i8";
-      break;
-
-    // The Windows `_AddressOfReturnAddress` intrinsic function works on
-    // AArch32 / ARMv7 (as well as the above).
-    case llvm::Triple::ArchType::arm:
-    case llvm::Triple::ArchType::armeb:
-    case llvm::Triple::ArchType::aarch64_32:
-      if (triple.isOSWindows()) {
-        func_name = "_AddressOfReturnAddress";
-      }
-      break;
-    default: break;
-  }
-
-  llvm::Function *func = nullptr;
-
-  // Common path to handle the Windows-specific case, or the slightly
-  // more general case uniformly.
-  if (func_name) {
-    func = module->getFunction(func_name);
-    if (!func) {
-      auto &context = module->getContext();
-      auto fty =
-          llvm::FunctionType::get(llvm::Type::getInt8PtrTy(context, 0), false);
-      func = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage,
-                                    func_name, module);
-    }
-  }
-
-  return func;
-}
-
 // Override the return address in the function `func` with values from
 // `fixups`.
 static void OverwriteReturnAddress(
@@ -242,12 +199,12 @@ RemoveRemillFunctionReturns::QueryReturnAddress(
   } else if (IsRelatedToStackPointer(module, val)) {
     return kFoundSymbolicStackPointerLoad;
 
-    // Sometimes optimizations result in really crazy looking constant expressions
-    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
-    // this situation by initializing a "magic" address associated with
-    // `__anvill_ra`, and then if we find this magic value on something that
-    // references `__anvill_ra`, then we conclude that all those manipulations
-    // in the constant expression are actually not important.
+  // Sometimes optimizations result in really crazy looking constant expressions
+  // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+  // this situation by initializing a "magic" address associated with
+  // `__anvill_ra`, and then if we find this magic value on something that
+  // references `__anvill_ra`, then we conclude that all those manipulations
+  // in the constant expression are actually not important.
   } else if (auto xr = xref_folder.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_folder.MagicReturnAddressValue()) {
