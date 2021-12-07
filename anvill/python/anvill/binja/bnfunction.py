@@ -5,7 +5,7 @@
 # This source code is licensed in accordance with the terms specified in
 # the LICENSE file found in the root directory of this source tree.
 #
-
+import traceback
 from typing import Tuple, Optional, Iterator, Set, Union, cast
 
 import binaryninja as bn
@@ -15,7 +15,7 @@ from binaryninja import LowLevelILInstruction as llinst
 from .bninstruction import *
 from .table import *
 from .xreftype import *
-from .typecache import to_bool
+from .typecache import to_bool, TypeCache
 
 from ..arch import Arch, Register
 from ..loc import Location
@@ -79,6 +79,145 @@ class BNFunction(Function):
     def is_noreturn(self) -> bool:
         return not to_bool(self._bn_func.can_return)
 
+    def _set_loc(self, loc: Location, arch: bn.Architecture,
+                    v: bn.Variable, stack_offset: int):
+        if v.source_type == bn.VariableSourceType.RegisterVariableSourceType:
+            reg_id = cast(bn.RegisterIndex, v.storage)
+            bn_reg_name = arch.get_reg_name(reg_id)
+            reg_name = self._arch.register_name(bn_reg_name)
+            if reg_name is None:
+                raise InvalidLocationException(
+                    f"Could not locate register {bn_reg_name} in architecture")
+            loc.set_register(reg_name)
+        elif v.source_type == bn.VariableSourceType.StackVariableSourceType:
+            loc.set_memory(self._arch.stack_pointer_name(),
+                           v.storage + stack_offset)
+        else:
+            raise InvalidLocationException(
+                f"Unsupported variable type {v.source_type}: {v}")
+
+    def _var_to_loc(self, v: bn.Variable, arch: bn.Architecture, tc: TypeCache,
+                    stack_offset: int) -> Location:
+        loc = Location()
+        loc.set_type(tc.get(v.type))
+        self._set_loc(loc, arch, v, stack_offset)
+        return loc
+
+    def _const_to_loc(self, p: bn.MediumLevelILConstBase,
+                      arch: bn.Architecture, type: Type,
+                      stack_offset: int) -> Location:
+        llils: List[bn.LowLevelILInstruction] = p.llils
+        if not len(llils):
+            raise InvalidLocationException(
+                f"Could not create location for {p} at {p.address:08x}")
+
+        loc = Location()
+        loc.set_type(type)
+        ll: bn.LowLevelILInstruction = llils[-1]
+
+        # Constant argument through a register.
+        if isinstance(ll, bn.LowLevelILSetRegSsa):
+            dest: bn.ILRegister = ll.dest.reg
+            if dest.temp:
+                raise InvalidLocationException(
+                    f"Could not infer register location from temporay "
+                    f"register {ll}")
+
+            bn_reg_name = dest.arch.get_reg_name(dest.index)
+            reg_name = self._arch.register_name(bn_reg_name)
+            if reg_name is None:
+                raise InvalidLocationException(
+                    f"Could not locate register {bn_reg_name} in "
+                    f"architecture")
+            loc.set_register(reg_name)
+            return loc
+
+        # Constant argument on the stack.
+        elif isinstance(ll, bn.LowLevelILStoreSsa):
+            dest: Optional[bn.MediumLevelILInstruction] = ll.mapped_medium_level_il
+            if dest is not None:
+                if isinstance(dest, bn.MediumLevelILVar):
+                    v: bn.Variable = cast(bn.MediumLevelILVar, dest).src
+                    self._set_loc(loc, arch, v, stack_offset)
+                    return loc
+                elif isinstance(dest, bn.MediumLevelILSetVar):
+                    v: bn.Variable = cast(bn.MediumLevelILSetVar, dest).dest
+                    self._set_loc(loc, arch, v, stack_offset)
+                    return loc
+                else:
+                    raise InvalidLocationException(
+                        f"Unsupported Mapped MLIL {dest.operation} for constant {p} at "
+                        f"{p.address:08x}")
+
+        raise InvalidLocationException(
+            f"Unsupported LLIL {ll} for constant {p} at {p.address:08x}")
+
+    def _visit_mlil_call(self, call: bn.MediumLevelILCallBase, tc: TypeCache,
+                         ref_eas: Set[int]):
+        bv: bn.BinaryView = self._bn_func.view
+        arch: bn.Architecture = self._bn_func.arch or bv.arch
+
+        if isinstance(call.dest, int):
+            ref_eas.add(call.dest)
+        elif isinstance(call.dest, bn.MediumLevelILConstPtr):
+            ref_eas.add(call.dest.constant)
+        elif isinstance(call.dest, bn.MediumLevelILConst):
+            ref_eas.add(call.dest.constant)
+
+        rets: List[Location] = []
+        params: List[Location] = []
+        stack_offset = self._bn_func.get_reg_value_at(
+            call.address, arch.stack_pointer, arch)
+        stack_adjust: int = abs(stack_offset.value)
+
+        rap = self._arch.return_address_proto()
+        if "memory" in rap:
+            stack_adjust += arch.address_size
+
+        if 0 < stack_offset.value:  # Stack grows up.
+            stack_adjust = -stack_adjust
+
+        for v in call.output:
+            rets.append(self._var_to_loc(v, arch, tc, stack_adjust))
+
+        for i, p in enumerate(call.params):
+            if isinstance(p, bn.MediumLevelILVar):
+                v: bn.Variable = cast(bn.MediumLevelILVar, p).src
+                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+            elif isinstance(p, bn.MediumLevelILSetVar):
+                v: bn.Variable = cast(bn.MediumLevelILSetVar, p).dest
+                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+            elif isinstance(p, bn.MediumLevelILConstBase):
+                params.append(self._const_to_loc(p, arch, tc.get(p.expr_type), stack_adjust))
+            else:
+                raise InvalidLocationException(
+                    f"Unsupported parameter {p} at index {i} of call at {call.address:08x}")
+
+        # TODO(pag): Figure out return location if `outputs` is empty but
+        #            target is known.
+
+        #print("outputs:", rets)
+        #print("params:", params)
+        #print()
+
+    def _visit_calls(self, tc: TypeCache, ref_eas: Set[int]):
+        mlil_func: Optional[bn.MediumLevelILFunction] = None
+        try:
+            mlil_func = self._bn_func.mlil
+        except:
+            return
+
+        for mlil_block in mlil_func:
+            for mlil_inst_ in mlil_block:
+                mlil_inst = cast(bn.MediumLevelILInstruction, mlil_inst_)
+                if isinstance(mlil_inst_, bn.MediumLevelILCallBase):
+                    try:
+                        print(f"Call at 0x{mlil_inst.address:08x}")
+                        self._visit_mlil_call(mlil_inst, tc, ref_eas)
+                    except:
+                        print(traceback.format_exc())
+
+
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:
             return
@@ -102,6 +241,10 @@ class BNFunction(Function):
             for inst in block:
                 for ref_ea in self._extract_types(program, inst.operands, inst):
                     ref_eas.add(ref_ea)
+
+        # Collect call site types.
+        tc = TypeCache(self._arch, self._bn_func.view)
+        self._visit_calls(tc, ref_eas)
 
         # There is a distinction between declaration and definition. If the
         # function is a declaration, then Anvill only needs to know its symbols
