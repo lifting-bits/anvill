@@ -27,7 +27,7 @@ setuptools.setup(
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja.__init__",
         "anvill.binja.bnfunction", "anvill.binja.bninstruction", "anvill.binja.bnprogram",
         "anvill.binja.bnvariable", "anvill.binja.callingconvention", "anvill.binja.typecache",
-        "anvill.binja.xreftype", "anvill.binja.table", "anvill.exc", "anvill.function",
+        "anvill.binja.xreftype", "anvill.binja.table", "anvill.call", "anvill.exc", "anvill.function",
         "anvill.ida.__init__", "anvill.ida.idafunction", "anvill.ida.idaprogram",
         "anvill.ida.idavariable", "anvill.ida.utils", "anvill.imageparser.__init__",
         "anvill.imageparser.elfparser", "anvill.loc", "anvill.mem", "anvill.os", "anvill.program",
