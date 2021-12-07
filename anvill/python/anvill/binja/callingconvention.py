@@ -37,7 +37,7 @@ class CallingConvention:
         # if the func calling_convention is None assign 0
         # as the default calling convention
         if self._cc is None:
-            self._bn_func.arch.calling_conventions[0]
+            self._cc = self._bn_func.arch.calling_conventions[0]
 
         # set the float_arg_regs for default calling convention (cdecl)
         # for both x86 and arm architectures

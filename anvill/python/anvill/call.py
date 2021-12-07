@@ -6,41 +6,43 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-from abc import ABC, abstractmethod
-
 from .arch import Arch
 from .os import CC
 from .type import Type, FunctionType, StructureType, VoidType
 from .loc import Location
-from typing import List, Dict, Any, Final, Optional, cast
+from typing import List, Dict, Any, Final, cast
 
 
-class Function(ABC):
+class CallSite(object):
     """Represents a generic function."""
 
     __slots__ = (
         "_arch",
+        "_func_address",
         "_address",
         "_parameters",
         "_return_values",
-        "_type",
         "_cc",
-        "_is_entrypoint",
+        "_is_variadic",
+        "_is_noreturn",
+        "_call_stack_adjustment"
     )
 
     def __init__(
-        self, arch: Arch, address: int, parameters: List[Location],
-        return_values: List[Location], func_type: FunctionType,
-        is_entrypoint: bool = False, cc: CC = 0
+        self, arch: Arch, address: int, func_address: int,
+        parameters: List[Location], return_values: List[Location],
+        is_variadic: bool = False, is_noreturn: bool = False, cc: CC = 0,
+        call_stack_adjustment: int = 0
     ):
-        assert isinstance(func_type, FunctionType)
         self._arch: Final[Arch] = arch
         self._address: Final[int] = address
+        self._func_address: Final[int] = func_address
         self._parameters: Final[List[Location]] = parameters
         self._return_values: Final[List[Location]] = return_values
-        self._type: Final[Optional[FunctionType]] = func_type
+        self._is_variadic: Final[bool] = is_variadic
+        self._is_noreturn: Final[bool] = is_noreturn
         self._cc: Final[CC] = cc
-        self._is_entrypoint: Final[bool] = is_entrypoint
+        self._call_stack_adjustment: Final[int] = call_stack_adjustment
 
         for param in self._parameters:
             assert isinstance(param, Location)
@@ -68,26 +70,21 @@ class Function(ABC):
                 str_type.add_element_type(ret_type)
 
     def address(self) -> int:
+        """Returns the call site address."""
         return self._address
 
-    def type(self) -> Optional[FunctionType]:
-        return self._type
+    def function_address(self) -> int:
+        """Return the address of the function containing this call site."""
+        return self._func_address
 
     def calling_convention(self) -> CC:
         return self._cc
 
-    @abstractmethod
-    def visit(self, program, is_definition: bool, add_refs_as_defs: bool):
-        ...
-
     def is_variadic(self) -> bool:
-        return self._type.is_variadic()
+        return self._is_variadic
 
     def is_noreturn(self) -> bool:
-        return False
-
-    def is_external(self) -> bool:
-        return False
+        return self._is_noreturn
 
     def return_values(self) -> List[Location]:
         return self._return_values[:]
@@ -96,26 +93,15 @@ class Function(ABC):
         return self._parameters[:]
 
     def proto(self) -> Dict[str, Any]:
-        proto: Dict[str, Any] = {
-            "address": self.address(),
+        return {
+            "address": self._address,
+            "function_address": self._func_address,
             "return_stack_pointer": self._arch.return_stack_pointer_proto(
-                self.type().num_bytes_popped_off_stack()),
-            "is_variadic": self.is_variadic(),
-            "is_noreturn": self.is_noreturn(),
-            "calling_convention": cast(int, self._cc)
+                self._call_stack_adjustment),
+            "is_variadic": self._is_variadic,
+            "is_noreturn": self._is_noreturn,
+            "calling_convention": cast(int, self._cc),
+            "return_address": self._arch.return_address_proto(),
+            "parameters": [loc.proto(self._arch) for loc in self._parameters],
+            "return_values": [loc.proto(self._arch) for loc in self._return_values]
         }
-
-        if not self._is_entrypoint:
-            proto["return_address"] = self._arch.return_address_proto()
-
-        func_type = self.type()
-        if len(self._parameters) or len(self._return_values):
-            proto["parameters"] = [loc.proto(self._arch)
-                                   for loc in self._parameters]
-            proto["return_values"] = [
-                loc.proto(self._arch) for loc in self._return_values
-            ]
-        else:
-            proto["type"] = func_type.proto(self._arch)
-
-        return proto

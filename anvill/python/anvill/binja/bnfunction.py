@@ -17,9 +17,12 @@ from .table import *
 from .xreftype import *
 from .typecache import to_bool, TypeCache
 
+from ..call import CallSite
+from ..program import Specification
 from ..arch import Arch, Register
 from ..loc import Location
 from ..function import Function
+from ..os import CC, DEFAULT_CC
 from ..type import *
 
 
@@ -32,11 +35,11 @@ def should_ignore_register(bv, reg_name: Optional[Register]):
 
 
 class BNExternalFunction(Function):
-    def __init__(self, bn_sym: bn.CoreSymbol, bn_var: bn.DataVariable,
+    def __init__(self, bn_sym: bn.Symbol, bn_var: bn.DataVariable,
                  arch: Arch, address: int, func_type: Type):
         super(BNExternalFunction, self).__init__(arch, address, [], [], func_type,
                                                  False)
-        self._bn_sym: bn.CoreSymbol = bn_sym
+        self._bn_sym: bn.Symbol = bn_sym
         self._bn_var: bn.DataVariable = bn_var
 
     def name(self) -> str:
@@ -106,22 +109,27 @@ class BNFunction(Function):
     def _const_to_loc(self, p: bn.MediumLevelILConstBase,
                       arch: bn.Architecture, type: Type,
                       stack_offset: int) -> Location:
-        llils: List[bn.LowLevelILInstruction] = p.llils
-        if not len(llils):
-            raise InvalidLocationException(
-                f"Could not create location for {p} at {p.address:08x}")
+        ll: Optional[bn.LowLevelILInstruction] = p.llil
+        if ll is None:
+            llils: List[bn.LowLevelILInstruction] = p.llils
+            if not len(llils):
+                raise InvalidLocationException(
+                    f"Could not create location for {p}:{p.__class__} at {p.address:08x}")
+            else:
+                ll = llils[-1]
+
+        assert ll is not None
 
         loc = Location()
         loc.set_type(type)
-        ll: bn.LowLevelILInstruction = llils[-1]
 
         # Constant argument through a register.
         if isinstance(ll, bn.LowLevelILSetRegSsa):
             dest: bn.ILRegister = ll.dest.reg
             if dest.temp:
                 raise InvalidLocationException(
-                    f"Could not infer register location from temporay "
-                    f"register {ll}")
+                    f"Could not infer register location from temporary "
+                    f"register {ll}:{ll.__class__}")
 
             bn_reg_name = dest.arch.get_reg_name(dest.index)
             reg_name = self._arch.register_name(bn_reg_name)
@@ -150,19 +158,23 @@ class BNFunction(Function):
                         f"{p.address:08x}")
 
         raise InvalidLocationException(
-            f"Unsupported LLIL {ll} for constant {p} at {p.address:08x}")
+            f"Unsupported LLIL {ll}:{ll.__class__} for constant {p} at {p.address:08x}")
 
-    def _visit_mlil_call(self, call: bn.MediumLevelILCallBase, tc: TypeCache,
+    def _visit_mlil_call(self, call: bn.MediumLevelILCallBase,
+                         spec: Specification, tc: TypeCache,
                          ref_eas: Set[int]):
         bv: bn.BinaryView = self._bn_func.view
         arch: bn.Architecture = self._bn_func.arch or bv.arch
-
+        called_func_ea: Optional[int] = None
         if isinstance(call.dest, int):
-            ref_eas.add(call.dest)
+            called_func_ea = call.dest
         elif isinstance(call.dest, bn.MediumLevelILConstPtr):
-            ref_eas.add(call.dest.constant)
+            called_func_ea = call.dest.constant
         elif isinstance(call.dest, bn.MediumLevelILConst):
-            ref_eas.add(call.dest.constant)
+            called_func_ea = call.dest.constant
+
+        if called_func_ea is not None:
+            ref_eas.add(called_func_ea)
 
         rets: List[Location] = []
         params: List[Location] = []
@@ -189,18 +201,39 @@ class BNFunction(Function):
                 params.append(self._var_to_loc(v, arch, tc, stack_adjust))
             elif isinstance(p, bn.MediumLevelILConstBase):
                 params.append(self._const_to_loc(p, arch, tc.get(p.expr_type), stack_adjust))
+            elif isinstance(p, bn.MediumLevelILVarField):
+                # TODO(pag): This isn't quite right but close enough.
+                v: bn.Variable = cast(bn.MediumLevelILVarField, p).src
+                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
             else:
                 raise InvalidLocationException(
-                    f"Unsupported parameter {p} at index {i} of call at {call.address:08x}")
+                    f"Unsupported parameter {p}:{p.__class__} at index {i} of call at {call.address:08x}")
 
-        # TODO(pag): Figure out return location if `outputs` is empty but
-        #            target is known.
+        is_variadic: bool = False
+        is_noreturn: bool = False
+        cc: CC = DEFAULT_CC
+        called_func: Optional[Function] = None
+        if called_func_ea is not None:
+            spec.add_function_declaration(called_func_ea, False)
+            called_func = spec.get_function(called_func_ea)
 
-        #print("outputs:", rets)
-        #print("params:", params)
-        #print()
+        if called_func is not None:
+            if not len(rets):
+                rets = called_func.return_values()
+            is_variadic = called_func.is_variadic()
+            is_noreturn = called_func.is_noreturn()
+            cc = called_func.calling_convention()
+        else:
+            # TODO(pag): Find calling convention.
+            pass
 
-    def _visit_calls(self, tc: TypeCache, ref_eas: Set[int]):
+        DEBUG(f"Call at 0x{call.address:08x} params:{params} returns:{rets} is_variadic:{is_variadic} is_noreturn:{is_noreturn} cc:{cc}")
+        cs = CallSite(self._arch, call.address, self._bn_func.start, params,
+                      rets, is_variadic, is_noreturn, cc,
+                      self._bn_func.get_call_stack_adjustment(call.address).value)
+        spec._call_sites[cs.function_address(), cs.address()] = cs
+
+    def _visit_calls(self, spec: Specification, tc: TypeCache, ref_eas: Set[int]):
         mlil_func: Optional[bn.MediumLevelILFunction] = None
         try:
             mlil_func = self._bn_func.mlil
@@ -212,15 +245,16 @@ class BNFunction(Function):
                 mlil_inst = cast(bn.MediumLevelILInstruction, mlil_inst_)
                 if isinstance(mlil_inst_, bn.MediumLevelILCallBase):
                     try:
-                        print(f"Call at 0x{mlil_inst.address:08x}")
-                        self._visit_mlil_call(mlil_inst, tc, ref_eas)
+                        self._visit_mlil_call(mlil_inst, spec, tc, ref_eas)
                     except:
-                        print(traceback.format_exc())
+                        ERROR(traceback.format_exc())
 
 
-    def visit(self, program, is_definition, add_refs_as_defs):
+    def visit(self, program_: 'Specification', is_definition, add_refs_as_defs):
         if not is_definition:
             return
+
+        program = cast('BNSpecification', program_)
 
         # The lifter does not support thumb2 instruction set. If the function
         # is of arch type `thumb2` then don't visit them and fill the memory
@@ -243,8 +277,8 @@ class BNFunction(Function):
                     ref_eas.add(ref_ea)
 
         # Collect call site types.
-        tc = TypeCache(self._arch, self._bn_func.view)
-        self._visit_calls(tc, ref_eas)
+        tc: TypeCache = program._type_cache
+        self._visit_calls(program, tc, ref_eas)
 
         # There is a distinction between declaration and definition. If the
         # function is a declaration, then Anvill only needs to know its symbols

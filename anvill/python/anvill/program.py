@@ -11,6 +11,7 @@ import collections
 from dataclasses import dataclass, field
 from typing import List, DefaultDict, Dict, Iterator, Optional, Set, Final
 
+from .call import *
 from .os import *
 from .function import *
 from .var import *
@@ -41,6 +42,7 @@ class Specification(ABC):
         self._control_flow_redirections: Dict[int, int] = {}
         self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
         self._symbols: DefaultDict[int, Set[str]] = collections.defaultdict(set)
+        self._call_sites: Dict[Tuple[int, int], CallSite] = {}
 
     def get_symbols(self, ea: int) -> Iterator[str]:
         if ea in self._symbols:
@@ -200,6 +202,7 @@ class Specification(ABC):
         variables: List[Dict[str, Any]] = []
         redirects: List[Tuple[int, int]] = []
         targets: List[Dict[str, Any]] = []
+        call_sites: List[Dict[str, Any]] = []
 
         for ea, names in self._symbols.items():
             for name in names:
@@ -217,6 +220,9 @@ class Specification(ABC):
 
         for var in self._var_defs.values():
             variables.append(var.proto())
+
+        for cs in self._call_sites.values():
+            call_sites.append(cs.proto())
 
         # Use two entry lists so that we don't use 'source' as a key. That
         # would turn it into a string in the final JSON forcing us to
@@ -238,6 +244,7 @@ class Specification(ABC):
         symbols.sort(key=lambda t: t[0])  # Sort by symbol address.
         redirects.sort(key=lambda t: t[0])  # Sort by source address.
         targets.sort(key=lambda o: o["source"])
+        call_sites.sort(key=lambda o: (o["function_address"], o["address"]))
 
         return {
             "arch": self._arch.name(),
@@ -247,5 +254,6 @@ class Specification(ABC):
             "symbols": symbols,
             "memory": self._memory.proto(),
             "control_flow_redirections": redirects,
-            "control_flow_targets": targets
+            "control_flow_targets": targets,
+            "call_sites": call_sites,
         }

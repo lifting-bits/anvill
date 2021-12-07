@@ -244,7 +244,7 @@ class BNSpecification(Specification):
         )
         return func
 
-    def _get_function_from_extern_sym(self, ea: int, bn_sym: bn.CoreSymbol,
+    def _get_function_from_extern_sym(self, ea: int, bn_sym: bn.Symbol,
                                       bn_var: bn.DataVariable) -> Function:
         """Given a `bn.ExternalSymbol` and a `bn.DataVariable` referencing
         the same object, and assuming the type is a `bn.FunctionType`, convert
@@ -273,7 +273,7 @@ class BNSpecification(Specification):
 
         # Try to see if this is actually a variable/external with function type
         # that we should interpret as being a function.
-        bn_sym: Optional[bn.CoreSymbol] = self._bv.get_symbol_at(ea)
+        bn_sym: Optional[bn.Symbol] = cast(Optional[bn.Symbol], self._bv.get_symbol_at(ea))
         if bn_sym is not None:
             if bn_sym.type == bn.SymbolType.ExternalSymbol:
                 bn_var: Optional[bn.DataVariable] = \
