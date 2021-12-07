@@ -85,7 +85,7 @@ def main():
             ERROR(f"Error when trying to add function {ea:x}: {traceback.format_exc()}")
 
     for s_ in bv.get_symbols():
-        s = cast(bn.CoreSymbol, s_)
+        s = cast(bn.Symbol, s_)
         ea, name = s.address, s.name
         p.add_symbol(ea, name)
 
