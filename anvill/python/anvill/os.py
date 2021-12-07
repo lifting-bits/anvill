@@ -12,6 +12,12 @@ from typing import NewType, cast
 from .arch import Arch
 
 CC = NewType('CC', int)
+DEFAULT_CC = cast(CC, 0)
+X86_STDCALL_CC = cast(CC, 64)
+X86_CDECL_CC = cast(CC, 0)
+X86_THISCALL_CC = cast(CC, 70)
+AARCH32_CDECL_CC = cast(CC, 48)
+
 
 class OS(ABC):
     @abstractmethod
