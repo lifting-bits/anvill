@@ -83,3 +83,18 @@ class Location(object):
             ret["type"] = self._type.proto(arch)
 
         return ret
+
+    def __repr__(self):
+        if self._register is not None:  # reg
+            return f"RegisterLocation({self._register})"
+        elif self._mem_base_register is not None:  # [base_reg + offset]
+            if 0 < self._mem_offset:
+                return f"MemoryLocation({self._mem_base_register} + {abs(self._mem_offset)})"
+            elif 0 > self._mem_offset:
+                return f"MemoryLocation({self._mem_base_register} - {abs(self._mem_offset)})"
+            else:
+                return f"MemoryLocation({self._mem_base_register})"
+        elif self._mem_offset is not None:  # [offset]
+            return f"MemoryLocation({self._mem_offset:08x})"
+        else:
+            return "UnknownLocation"
