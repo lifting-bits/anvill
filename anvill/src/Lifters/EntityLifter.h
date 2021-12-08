@@ -21,6 +21,7 @@
 #include <anvill/Lifters/Options.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/ValueMap.h>
 
@@ -52,7 +53,7 @@ class EntityLifterImpl {
   explicit EntityLifterImpl(
       const LifterOptions &options_,
       const std::shared_ptr<MemoryProvider> &mem_provider_,
-      const std::shared_ptr<TypeProvider> &type_provider_);
+      const std::shared_ptr<TypeProvider> &type_provider_, const FunctionPrototypeProvider&);
 
   // Tells the entity lifter that `entity` is the lifted function/data at
   // `address`. There is some collusion between the `Context`, the

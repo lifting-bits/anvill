@@ -24,7 +24,7 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 #include <iostream>
 
 #include "ConvertXorToCmp.h"
@@ -44,7 +44,7 @@ TEST_SUITE("XorConversion") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass<ConvertXorToCmp>(module.get(), ConvertXorToCmp()));
 
@@ -75,7 +75,7 @@ TEST_SUITE("XorConversion") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass(module.get(), ConvertXorToCmp()));
 

@@ -86,4 +86,7 @@ const std::string kAnvillSwitchIncompleteFunc(
 extern const std::string kAnvillDataProvenanceFunc(
     kAnvillNamePrefix + "data_provenance");
 
+// Unresolved call intrinsic
+extern const std::string kAnvillUnresolvedCallFunc(kAnvillNamePrefix + "unresolved_call");
+
 }  // namespace anvill

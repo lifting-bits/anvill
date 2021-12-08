@@ -163,11 +163,13 @@ FunctionLifter::~FunctionLifter(void) {}
 
 FunctionLifter::FunctionLifter(const LifterOptions &options_,
                                MemoryProvider &memory_provider_,
-                               TypeProvider &type_provider_)
+                               TypeProvider &type_provider_, const FunctionPrototypeProvider& func_protos)
     : options(options_),
       memory_provider(memory_provider_),
       type_provider(type_provider_),
+      function_prototype_provider(func_protos),
       semantics_module(remill::LoadArchSemantics(options.arch)),
+      anvill_intrinsics(std::nullopt),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
       inst_lifter(options.arch, intrinsics),
@@ -193,6 +195,9 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
   if (options.pc_metadata_name) {
     pc_annotation_id = llvm_context.getMDKindID(options.pc_metadata_name);
   }
+
+
+  //   this->anvill_intrinsics.RegisterIntrinsic(kAnvillUnresolvedCallFunc, func_protos.params, func_protos.returns);
 }
 
 // Helper to get the basic block to contain the instruction at `addr`. This
@@ -579,6 +584,17 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
                            not_taken_block);
 }
 
+  void FunctionLifter::InsertAnvillIntrinsicCall(llvm::BasicBlock *in_block, llvm::StringRef key, const remill::IntrinsicTable &intrinsics, llvm::Value *state_ptr,
+                             llvm::Value *mem_ptr) {
+                               if (!this->anvill_intrinsics.has_value()) {
+                                 AutoCaller new_caller(*this->semantics_module.get());
+                                 new_caller.RegisterIntrinsic(kAnvillUnresolvedCallFunc, this->function_prototype_provider.params, this->function_prototype_provider.returns);
+                                 this->anvill_intrinsics.emplace(std::move(new_caller));
+                               }
+
+                               this->anvill_intrinsics->InsertCall(in_block, key, intrinsics, state_ptr, mem_ptr);
+                             }
+
 // Visit an indirect function call control-flow instruction. Similar to
 // indirect jumps, we invoke an intrinsic function, `__remill_function_call`;
 // however, unlike indirect jumps, we do not tail-call this intrinsic, and
@@ -590,7 +606,11 @@ void FunctionLifter::VisitIndirectFunctionCall(
     llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
+  
+
   remill::AddCall(block, intrinsics.function_call);
+  //this->InsertAnvillIntrinsicCall(block, kAnvillUnresolvedCallFunc, this->intrinsics, this->state_ptr, this->mem_ptr_ref);
+
   VisitAfterFunctionCall(inst, block);
 }
 

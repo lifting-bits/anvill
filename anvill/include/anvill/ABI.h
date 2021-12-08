@@ -86,4 +86,8 @@ extern const std::string kAnvillSwitchIncompleteFunc;
 // tracking.
 extern const std::string kAnvillDataProvenanceFunc;
 
+
+// Unresolved call intrinsic
+extern const std::string kAnvillUnresolvedCallFunc;
+
 }  // namespace anvill

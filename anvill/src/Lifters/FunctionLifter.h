@@ -22,12 +22,13 @@
 #include <llvm/IR/CallingConv.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
-
+#include <anvill/IntrinsicTable.h>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 
 namespace llvm {
 class Function;
@@ -48,6 +49,7 @@ class EntityLifterImpl;
 class MemoryProvider;
 class TypeProvider;
 
+
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
  public:
@@ -55,7 +57,8 @@ class FunctionLifter {
 
   FunctionLifter(const LifterOptions &options_,
                  MemoryProvider &memory_provider_,
-                 TypeProvider &type_provider_);
+                 TypeProvider &type_provider_,
+                 const FunctionPrototypeProvider& func_protos);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -79,9 +82,12 @@ class FunctionLifter {
   const LifterOptions &options;
   MemoryProvider &memory_provider;
   TypeProvider &type_provider;
+  const FunctionPrototypeProvider& function_prototype_provider;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
+
+  std::optional<AutoCaller> anvill_intrinsics;
 
   // Context associated with `module`.
   llvm::LLVMContext &llvm_context;
@@ -165,6 +171,11 @@ class FunctionLifter {
 
   // Maps addresses to function declarations, which describe ABIs and such.
   std::unordered_map<uint64_t, FunctionDecl> addr_to_decl;
+
+  // Lazy anvill intrinsic registration
+  void InsertAnvillIntrinsicCall(llvm::BasicBlock *in_block, llvm::StringRef key, const remill::IntrinsicTable &intrinsics, llvm::Value *state_ptr,
+                             llvm::Value *mem_ptr);
+
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.

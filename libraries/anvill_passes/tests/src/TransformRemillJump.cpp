@@ -22,7 +22,7 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 #include <iostream>
 
 #include "TransformRemillJumpIntrinsics.h"
@@ -42,7 +42,7 @@ TEST_SUITE("TransformRemillJump_Test0") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
@@ -66,7 +66,7 @@ TEST_SUITE("TransformRemillJump_Test1") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
@@ -92,7 +92,7 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 
@@ -118,7 +118,7 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
     anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options, nullptr, nullptr, FunctionPrototypeProvider());
 
     CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
 

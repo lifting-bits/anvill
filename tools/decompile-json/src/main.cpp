@@ -49,6 +49,7 @@
 #include <anvill/Lifters/EntityLifter.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
@@ -1078,11 +1079,14 @@ int main(int argc, char *argv[]) {
     // options.track_provenance = true;
   }
 
+
+
+  anvill::FunctionPrototypeProvider prototype_prov;
   // NOTE(pag): Unfortunately, we need to load the semantics module first,
   //            which happens deep inside the `EntityLifter`. Only then does
   //            Remill properly know about register information, which
   //            subsequently allows it to parse value decls in specs :-(
-  anvill::EntityLifter lifter(options, memory, types);
+  anvill::EntityLifter lifter(options, memory, types, prototype_prov);
 
   // Parse the spec, which contains as much or as little details about what is
   // being lifted as the spec generator desired and put it into an
@@ -1090,6 +1094,9 @@ int main(int argc, char *argv[]) {
   if (!ParseSpec(arch.get(), context, program, spec, module)) {
     return EXIT_FAILURE;
   }
+
+  // This grosseness is to pass down entire program info to the function lifter which needs to be initialized after parsing.
+  prototype_prov.SetupProvider(program);
 
   program.ForEachVariable([&](const anvill::GlobalVarDecl *decl) {
     (void) lifter.LiftEntity(*decl);

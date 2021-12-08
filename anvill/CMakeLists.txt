@@ -77,9 +77,16 @@ add_library(anvill STATIC
   include/anvill/Providers/TypeProvider.h
   src/Providers/TypeProvider.cpp
 
+  include/anvill/Providers/FunctionPrototypeProvider.h
+  src/Providers/FunctionPrototypeProvider.cpp
+
   include/anvill/Providers/IControlFlowProvider.h
   src/Providers/ControlFlowProvider.h
   src/Providers/ControlFlowProvider.cpp
+
+
+  include/anvill/IntrinsicTable.h
+  src/IntrinsicTable.cpp
 )
 
 appendRemillVersionToTargetOutputName(anvill)

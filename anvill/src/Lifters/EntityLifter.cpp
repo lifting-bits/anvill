@@ -19,6 +19,7 @@
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Providers/TypeProvider.h>
+#include <anvill/Providers/FunctionPrototypeProvider.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
@@ -37,12 +38,12 @@ EntityLifterImpl::~EntityLifterImpl(void) {}
 EntityLifterImpl::EntityLifterImpl(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<TypeProvider> &type_provider_)
-    : options(options_),
+    const std::shared_ptr<TypeProvider> &type_provider_,
+    const FunctionPrototypeProvider& fproto_prov ) : options(options_),
       memory_provider(mem_provider_),
       type_provider(type_provider_),
       value_lifter(options),
-      function_lifter(options, *mem_provider_, *type_provider_),
+      function_lifter(options, *mem_provider_, *type_provider_,fproto_prov ),
       data_lifter(options, *mem_provider_, *type_provider_) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
@@ -94,9 +95,10 @@ EntityLifter::~EntityLifter(void) {}
 EntityLifter::EntityLifter(
     const LifterOptions &options_,
     const std::shared_ptr<MemoryProvider> &mem_provider_,
-    const std::shared_ptr<::anvill::TypeProvider> &type_provider_)
+    const std::shared_ptr<::anvill::TypeProvider> &type_provider_,
+    const FunctionPrototypeProvider& fprots)
     : impl(std::make_shared<EntityLifterImpl>(options_, mem_provider_,
-                                              type_provider_)) {}
+                                              type_provider_, fprots)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,
 // then return the address of that entity in the binary being lifted.
