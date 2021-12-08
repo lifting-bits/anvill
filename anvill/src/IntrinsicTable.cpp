@@ -68,6 +68,7 @@ namespace anvill {
             int i = 0;
             for (auto ret : rets) {
                 auto extracted = ir.CreateExtractValue(call_inst,i);
+                auto val = StoreNativeValue(extracted, ret, intrinsics, ir.GetInsertBlock(), state_ptr, mem_ptr);
                 i++;
             }
     }
