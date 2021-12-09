@@ -553,9 +553,10 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
   }
 
   if (!maybe_decl) {
-    LOG(ERROR) << "Missing type information for function called at address "
-               << inst.pc << " in function at address " << func_address
-               << std::dec;
+    LOG(ERROR)
+        << "Missing type information for function called at address "
+        << std::hex << inst.pc << " in function at address " << func_address
+        << std::dec;
 
     // If we do not have a function declaration, treat this as a call
     // to an unknown address.

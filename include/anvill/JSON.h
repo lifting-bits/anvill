@@ -31,6 +31,7 @@ class Specification;
 class SpecificationImpl;
 class TypeTranslator;
 
+struct CallSiteDecl;
 struct FunctionDecl;
 struct GlobalVarDecl;
 struct ParameterDecl;
@@ -106,6 +107,12 @@ class JSONTranslator {
   Result<FunctionDecl, JSONDecodeError>
   DecodeFunction(const llvm::json::Object *obj) const;
 
+  // Try to decode call site information from a JSON specification. This is a
+  // lot like function declarations, but is specific to a call site, rather
+  // than specific to the function's entrypoint.
+  Result<CallSiteDecl, JSONDecodeError>
+  DecodeCallSite(const llvm::json::Object *obj) const;
+
   // Try to decode global variable information from a JSON specification. These
   // are really variable prototypes / declarations.
   Result<GlobalVarDecl, JSONDecodeError>
@@ -114,6 +121,10 @@ class JSONTranslator {
   // Encode a function declaration.
   Result<llvm::json::Object, JSONEncodeError>
   Encode(const FunctionDecl &decl) const;
+
+  // Encode a call site declaration.
+  Result<llvm::json::Object, JSONEncodeError>
+  Encode(const CallSiteDecl &decl) const;
 
   // Encode a variable declaration.
   Result<llvm::json::Object, JSONEncodeError>

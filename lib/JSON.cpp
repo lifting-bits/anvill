@@ -380,7 +380,7 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
     } else {
       std::stringstream ss;
       ss << "Non-present or non-object 'return_stack_pointer' in function "
-         << "specification at " << std::hex << decl.address;
+         << "specification at " << std::hex << address;
       return JSONDecodeError(ss.str(), obj);
     }
 
@@ -440,6 +440,220 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
     decl.type = llvm::FunctionType::get(
         ret_type, param_types, decl.is_variadic);
   }
+
+  return decl;
+}
+
+// Try to decode call site information from a JSON specification. This is a
+// lot like function declarations, but is specific to a call site, rather
+// than specific to the function's entrypoint.
+Result<CallSiteDecl, JSONDecodeError>
+JSONTranslator::DecodeCallSite(const llvm::json::Object *obj) const {
+
+  CallSiteDecl decl;
+
+  auto maybe_ea = obj->getInteger("address");
+  if (!maybe_ea) {
+    return JSONDecodeError(
+        "Missing call site address in call site specification", obj);
+  }
+
+  auto maybe_func_ea = obj->getInteger("function_address");
+  if (!maybe_func_ea) {
+    return JSONDecodeError(
+        "Missing containing function address in call site specification", obj);
+  }
+
+  const auto address = static_cast<uint64_t>(*maybe_ea);
+
+  decl.arch = arch;
+  decl.address = address;
+  decl.function_address = static_cast<uint64_t>(*maybe_func_ea);
+
+  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
+    decl.is_noreturn = *maybe_is_noreturn;
+  }
+
+  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
+    decl.is_variadic = *maybe_is_variadic;
+  }
+
+  if (auto maybe_cc = obj->getInteger("calling_convention")) {
+    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
+  }
+
+  if (auto params = obj->getArray("parameters")) {
+    auto i = 0u;
+    for (const llvm::json::Value &maybe_param : *params) {
+      if (auto param_obj = maybe_param.getAsObject()) {
+        auto maybe_param = DecodeParameter(param_obj);
+        if (maybe_param.Succeeded()) {
+          decl.params.emplace_back(maybe_param.TakeValue());
+        } else {
+          auto err = maybe_param.TakeError();
+          std::stringstream ss;
+          ss << "Could not parse " << i
+             << "th parameter of call site at address " << std::hex << address
+             << ": " << err.message;
+          return JSONDecodeError(ss.str(), err.object);
+        }
+      } else {
+        std::stringstream ss;
+        ss << "Could not parse " << i
+           << "th parameter of call site at address " << std::hex << address
+           << ": not a JSON object";
+        return JSONDecodeError(ss.str(), obj);
+      }
+
+      ++i;
+    }
+  }
+
+  // Get the return address location.
+  if (auto ret_addr = obj->getObject("return_address")) {
+    auto maybe_ret = DecodeValue(ret_addr, "return address",
+                                 true  /* allow_void */);
+    if (!maybe_ret.Succeeded()) {
+      auto err = maybe_ret.TakeError();
+      std::stringstream ss;
+      ss << "Could not parse return address of call site at address "
+         << std::hex << address << ": " << err.message;
+      return JSONDecodeError(ss.str(), err.object);
+
+    } else {
+      decl.return_address = maybe_ret.TakeValue();
+
+      // Looks like a void return type, i.e. function with no return address,
+      // so make sure there's no location/value info.
+      if (decl.return_address.type == void_type ||
+          decl.return_address.type == dict_void_type) {
+        if (decl.return_address.mem_offset ||
+            decl.return_address.mem_reg ||
+            decl.return_address.reg) {
+          std::stringstream ss;
+          ss << "Return address of call site at address "
+             << std::hex << address
+             << " is marked as having a void type, but a location was "
+             << "specified";
+          return JSONDecodeError(ss.str(), ret_addr);
+        }
+
+        decl.return_address.type = void_type;
+
+      // Make sure the return address is address-sized.
+      } else {
+        auto dl = arch->DataLayout();
+        if (auto num_bits = dl.getTypeAllocSizeInBits(decl.return_address.type);
+            num_bits != arch->address_size) {
+          std::stringstream ss;
+          ss << "Return address of call site at address "
+             << std::hex << address << std::dec
+             << " is a " << num_bits << "-bit value, but address size for "
+             << remill::GetArchName(arch->arch_name) << " is "
+             << arch->address_size;
+          return JSONDecodeError(ss.str(), ret_addr);
+        }
+      }
+    }
+
+  // A lack of a return address suggests that this function has no return
+  // address, e.g. is something like `_start` on Linux, where there is no
+  // logical place to return, and no return address is initialized in the
+  // appropriate place in a register / on the stack by the kernel.
+  } else {
+    decl.return_address.type = void_type;
+  }
+
+  // Decode the value of the stack pointer on exit from the function, which is
+  // defined in terms of `reg + offset` for a value of a register `reg`
+  // on entry to the function.
+  if (auto ret_sp = obj->getObject("return_stack_pointer")) {
+    auto maybe_reg = ret_sp->getString("register");
+    if (maybe_reg) {
+      std::string reg_name = maybe_reg->str();
+      decl.return_stack_pointer = arch->RegisterByName(reg_name);
+      if (!decl.return_stack_pointer) {
+        std::stringstream ss;
+        ss << "Unable to locate register '" << reg_name
+           << "' used computing the exit value of the "
+           << "stack pointer in call site at "
+           << std::hex << address;
+        return JSONDecodeError(ss.str(), ret_sp);
+      }
+    } else {
+      std::stringstream ss;
+      ss << "Non-present or non-string 'register' in 'return_stack_pointer' "
+         << "object of call site specification at " << std::hex
+         << decl.address;
+      return JSONDecodeError(ss.str(), ret_sp);
+    }
+
+    auto maybe_offset = ret_sp->getInteger("offset");
+    if (maybe_offset) {
+      decl.return_stack_pointer_offset = *maybe_offset;
+    }
+  } else {
+    std::stringstream ss;
+    ss << "Non-present or non-object 'return_stack_pointer' in call site "
+       << "specification at " << std::hex << address;
+    return JSONDecodeError(ss.str(), obj);
+  }
+
+  if (auto returns = obj->getArray("return_values")) {
+    auto i = 0u;
+    for (const llvm::json::Value &maybe_ret : *returns) {
+      if (auto ret_obj = maybe_ret.getAsObject()) {
+        auto maybe_ret = DecodeReturnValue(ret_obj);
+        if (maybe_ret.Succeeded()) {
+          decl.returns.emplace_back(maybe_ret.TakeValue());
+        } else {
+          auto err = maybe_ret.TakeError();
+          std::stringstream ss;
+          ss << "Could not decode " << i << "th return value in call site at "
+             << std::hex << address << ": " << err.message;
+          return JSONDecodeError(ss.str(), err.object);
+        }
+      } else {
+        std::stringstream ss;
+        ss << "Could not decode " << i << "th return value in call site at "
+           << std::hex << address
+           << ": non-object found in 'return_values' list";
+        return JSONDecodeError(ss.str(), obj);
+      }
+      ++i;
+    }
+  }
+
+  // Figure out the return type of this function based off the return
+  // values.
+  llvm::Type *ret_type = nullptr;
+  if (decl.returns.empty()) {
+    ret_type = llvm::Type::getVoidTy(context);
+
+  } else if (decl.returns.size() == 1) {
+    ret_type = decl.returns[0].type;
+
+  // The multiple return value case is most interesting, and somewhere
+  // where we see some divergence between C and what we will decompile.
+  // For example, on 32-bit x86, a 64-bit return value might be spread
+  // across EAX:EDX. Instead of representing this by a single value, we
+  // represent it as a structure if two 32-bit ints, and make sure to say
+  // that one part is in EAX, and the other is in EDX.
+  } else {
+    llvm::SmallVector<llvm::Type *, 8> ret_types;
+    for (auto &ret_val : decl.returns) {
+      ret_types.push_back(ret_val.type);
+    }
+    ret_type = llvm::StructType::get(context, ret_types, false);
+  }
+
+  llvm::SmallVector<llvm::Type *, 8> param_types;
+  for (auto &param_val : decl.params) {
+    param_types.push_back(param_val.type);
+  }
+
+  decl.type = llvm::FunctionType::get(
+      ret_type, param_types, decl.is_variadic);
 
   return decl;
 }
@@ -607,6 +821,122 @@ JSONTranslator::Encode(const FunctionDecl &decl) const {
     json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
                                        static_cast<int64_t>(decl.address)});
   }
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
+                                     decl.is_variadic});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_noreturn"),
+                                     decl.is_noreturn});
+
+  llvm::json::Array params_json;
+  for (const auto &pdecl : decl.params) {
+    auto maybe_val = SerializeParamToJSON(pdecl, type_translator);
+    if (maybe_val.Succeeded()) {
+      params_json.emplace_back(maybe_val.TakeValue());
+    } else {
+      return maybe_val.TakeError();
+    }
+  }
+
+  llvm::json::Array returns_json;
+  for (const auto &rdecl : decl.returns) {
+    auto maybe_val = SerializeValueToJSON(rdecl, type_translator);
+    if (maybe_val.Succeeded()) {
+      returns_json.emplace_back(maybe_val.TakeValue());
+    } else {
+      return maybe_val.TakeError();
+    }
+  }
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("parameters"),
+                             llvm::json::Value(std::move(params_json))});
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("return_values"),
+                             llvm::json::Value(std::move(returns_json))});
+
+  llvm::json::Object return_stack_pointer_json;
+  return_stack_pointer_json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("register"), decl.return_stack_pointer->name});
+  return_stack_pointer_json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("offset"), decl.return_stack_pointer_offset});
+  return_stack_pointer_json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("type"),
+      type_translator.EncodeToString(decl.return_stack_pointer->type)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("return_stack_pointer"),
+      llvm::json::Value(std::move(return_stack_pointer_json))});
+
+  if (decl.return_address.type != void_type &&
+      decl.return_address.type != dict_void_type) {
+    auto maybe_val = SerializeValueToJSON(decl.return_address, type_translator);
+    if (maybe_val.Succeeded()) {
+      json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("return_address"),
+        llvm::json::Value(maybe_val.TakeValue())});
+    } else {
+      return maybe_val.TakeError();
+    }
+  }
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("calling_convention"),
+                             llvm::json::Value(decl.calling_convention)});
+
+  return json;
+}
+
+// Encode a call site declaration.
+Result<llvm::json::Object, JSONEncodeError>
+JSONTranslator::Encode(const CallSiteDecl &decl) const {
+
+  if (!decl.address) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no address");
+  }
+
+  if (!decl.function_address) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no containing function address");
+  }
+
+  if (!decl.arch) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no architecture");
+  }
+
+  if (!decl.type) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no function type");
+  }
+
+  if (!decl.return_stack_pointer) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no return stack pointer");
+  }
+
+  if (!decl.return_address.type) {
+    return JSONEncodeError(
+        "Cannot encode call site declaration with no return address type");
+  }
+
+  if (decl.arch != arch) {
+    if (decl.arch->arch_name != arch->arch_name ||
+        decl.arch->os_name != arch->os_name) {
+      return JSONEncodeError(
+          "Cannot encode call site declaration with different architecture/OS");
+    }
+  }
+
+  llvm::json::Object json;
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
+                                     static_cast<int64_t>(decl.address)});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("function_address"),
+                                     static_cast<int64_t>(decl.function_address)});
 
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_variadic"),
                                      decl.is_variadic});

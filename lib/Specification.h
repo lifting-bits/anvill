@@ -58,10 +58,12 @@ class SpecificationImpl
 
   using GlobalVarDeclPtr = std::unique_ptr<GlobalVarDecl>;
   using FunctionDeclPtr = std::unique_ptr<FunctionDecl>;
+  using CallSiteDeclPtr = std::unique_ptr<CallSiteDecl>;
 
-  // Sorted list of functions and variables.
+  // Sorted list of functions, variables, and call sites.
   std::vector<GlobalVarDeclPtr> variables;
   std::vector<FunctionDeclPtr> functions;
+  std::vector<CallSiteDeclPtr> call_sites;
 
   // List of functions that have been parsed from the JSON spec.
   std::unordered_map<std::uint64_t, const FunctionDecl *> address_to_function;
@@ -85,6 +87,10 @@ class SpecificationImpl
 
   // De-virtualization targets.
   std::map<std::uint64_t, ControlFlowTargetList> targets;
+
+  // Call-site specific target information.
+  std::map<std::pair<std::uint64_t, std::uint64_t>, const CallSiteDecl *>
+      loc_to_call_site;
 };
 
 }  // namespace anvill
