@@ -497,29 +497,18 @@ static bool IsCallRelatedToStackPointerItrinsic(llvm::CallBase *call) {
 
 }  // namespace
 
-namespace {
-
-class SymbolicStackResolverImpl {
+class StackPointerResolverImpl {
  public:
-  SymbolicStackResolverImpl() = delete;
-
-  static bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
-    auto impl = new SymbolicStackResolverImpl(module);
-    return impl->ResolveFromValue(val);
-  }
-
   bool ResolveFromValue(llvm::Value *val);
   bool ResolveFromConstantExpr(llvm::ConstantExpr *ce);
 
- private:
-  SymbolicStackResolverImpl(llvm::Module *m) : module(m) {}
-  ~SymbolicStackResolverImpl() {}
+  inline explicit StackPointerResolverImpl(llvm::Module *m) : module(m) {}
 
-  llvm::Module *module;
+  llvm::Module * const module;
   std::unordered_map<llvm::Value *, bool> cache;
 };
 
-bool SymbolicStackResolverImpl::ResolveFromValue(llvm::Value *val) {
+bool StackPointerResolverImpl::ResolveFromValue(llvm::Value *val) {
 
   // Lookup the cache and return the value if it exist
   auto it = cache.find(val);
@@ -535,7 +524,6 @@ bool SymbolicStackResolverImpl::ResolveFromValue(llvm::Value *val) {
   } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
     result = ResolveFromValue(op2->getOperand(0)) ||
              ResolveFromValue(op2->getOperand(1));
-    ;
   } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
     result = ResolveFromValue(op1->getOperand(0));
   } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
@@ -558,13 +546,14 @@ bool SymbolicStackResolverImpl::ResolveFromValue(llvm::Value *val) {
   return result;
 }
 
-bool SymbolicStackResolverImpl::ResolveFromConstantExpr(
+bool StackPointerResolverImpl::ResolveFromConstantExpr(
     llvm::ConstantExpr *ce) {
   if (ce->getOpcode()) {
     switch (ce->getOpcode()) {
       case llvm::Instruction::IntToPtr:
       case llvm::Instruction::PtrToInt:
       case llvm::Instruction::BitCast:
+      case llvm::Instruction::AddrSpaceCast:
       case llvm::Instruction::GetElementPtr:
       case llvm::Instruction::Shl:
       case llvm::Instruction::LShr:
@@ -584,7 +573,8 @@ bool SymbolicStackResolverImpl::ResolveFromConstantExpr(
         return ResolveFromValue(ce->getOperand(0)) ||
                ResolveFromValue(ce->getOperand(1));
       case llvm::Instruction::Select:
-        return ResolveFromValue(ce->getOperand(1)) ||
+        return ResolveFromValue(ce->getOperand(0)) ||
+               ResolveFromValue(ce->getOperand(1)) ||
                ResolveFromValue(ce->getOperand(2));
       case llvm::Instruction::FCmp:
         return ResolveFromValue(ce->getOperand(0)) ||
@@ -596,10 +586,19 @@ bool SymbolicStackResolverImpl::ResolveFromConstantExpr(
   return false;
 }
 
-}  // namespace
+StackPointerResolver::~StackPointerResolver(void) {}
+StackPointerResolver::StackPointerResolver(llvm::Module *module)
+    : impl(new StackPointerResolverImpl(module)) {}
+
+// Returns `true` if it looks like `val` is derived from a symbolic stack
+// pointer representation.
+bool StackPointerResolver::IsRelatedToStackPointer(llvm::Value *val) const {
+  return impl->ResolveFromValue(val);
+}
 
 bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
-  return SymbolicStackResolverImpl::IsRelatedToStackPointer(module, val);
+  StackPointerResolverImpl impl(module);
+  return impl.ResolveFromValue(val);
 }
 
 // Returns `true` if it looks like `val` is the stack counter.
@@ -662,7 +661,8 @@ bool IsReturnAddress(llvm::Module *module, llvm::Value *val) {
     return gv->getName() == kSymbolicRAName;
 
   } else if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
+    if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress ||
+        call->getIntrinsicID() == llvm::Intrinsic::sponentry) {
       return true;
     } else if (auto func = call->getCalledFunction();
                func && func->getName().startswith("__remill_read_memory_")) {

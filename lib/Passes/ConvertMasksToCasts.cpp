@@ -190,8 +190,6 @@ ConvertMasksToCasts::run(llvm::Function &func,
     }
   }
 
-  LOG(INFO) << "ConvertMasksToCasts: replaced " << replaced_items
-            << " masks with casts";
   return ConvertBoolToPreserved(changed);
 }
 

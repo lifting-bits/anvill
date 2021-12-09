@@ -173,8 +173,6 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
       }
 
       invertible_xor = false;
-      LOG(INFO) << "ConvertXorsToCmps: found a non-invertible xor!\n";
-
       break;
     }
 
@@ -214,8 +212,6 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     }
   }
 
-  LOG(INFO) << "ConvertXorsToCmps: replaced " << replaced_items
-            << " xors with negated comparisons";
   return ConvertBoolToPreserved(changed);
 }
 

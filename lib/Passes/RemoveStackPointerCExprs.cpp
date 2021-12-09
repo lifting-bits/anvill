@@ -1,83 +1,144 @@
 /*
- * Copyright (c) 2021 Trail of Bits, Inc.
+ * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RemoveStackPointerCExprs.h"
+#include <anvill/Passes/RemoveStackPointerCExprs.h>
 
-#include <anvill/Analysis/CrossReferenceResolver.h>
-#include <anvill/Analysis/Utils.h>
+#include <anvill/CrossReferenceFolder.h>
+#include <anvill/CrossReferenceResolver.h>
+#include <anvill/Lifters.h>
+#include <anvill/Transforms.h>
+#include <glog/logging.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/ReplaceConstant.h>
+#include <remill/BC/Util.h>
 
-#include <iostream>
+#include "Utils.h"
 
 namespace anvill {
+namespace {
 
-void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm) {
-  fpm.addPass(RemoveStackPointerCExprs());
+class ConcreteStackPointerResolver final : public NullCrossReferenceResolver {
+ private:
+  llvm::Module * const module;
+  const StackFrameRecoveryOptions &options;
+
+ public:
+  virtual ~ConcreteStackPointerResolver(void) = default;
+
+  inline explicit ConcreteStackPointerResolver(
+      llvm::Module *module_,
+      const StackFrameRecoveryOptions &options_)
+      : module(module_), options(options_) {}
+
+  std::optional<std::uint64_t> AddressOfEntity(
+        llvm::Constant *ent) const final {
+    if (!IsStackPointer(module, ent)) {
+      return std::nullopt;
+    }
+
+    uint64_t base64 = 0;
+    uint64_t base32 = 0;
+    uint64_t base16 = 0;
+    if (options.stack_pointer_is_negative) {
+      base64 = 0xffff7ffc07000000ull;
+      base32 = 0xff860000ull;
+      base16 = 0xf800ull;
+    } else {
+      base64 = 0x00007ffc07000000ull;
+      base32 = 0x00860000ull;
+      base16 = 0x0800ull;
+    }
+
+    switch (auto addr_size = module->getDataLayout().getPointerSizeInBits(0)) {
+      case 64: return base64;
+      case 32: return base32;
+      case 16: return base16;
+      default:
+        LOG(ERROR) << "Unsupported address size " << addr_size;
+        return std::nullopt;
+    }
+  }
+};
+
+}  // namespace
+
+// Remove constant expressions of the stack pointer that are not themselves
+// resolvable to references. For example, comparisons between one or two
+// stack pointer values.
+void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm,
+                                 const StackFrameRecoveryOptions &options) {
+  fpm.addPass(RemoveStackPointerCExprs(options));
+}
+
+llvm::StringRef RemoveStackPointerCExprs::name(void) {
+  return "RemoveStackPointerCExprs";
 }
 
 llvm::PreservedAnalyses
-RemoveStackPointerCExprs::run(llvm::Function &F,
-                              llvm::FunctionAnalysisManager &AM) {
-  bool did_see = false;
+RemoveStackPointerCExprs::run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam) {
+  llvm::Module * const module = func.getParent();
+  const llvm::DataLayout &dl = module->getDataLayout();
+  const auto addr_size = dl.getPointerSizeInBits(0);
 
-  CrossReferenceResolver resolver(F.getParent()->getDataLayout());
+  ConcreteStackPointerResolver resolver(module, options);
+  CrossReferenceFolder folder(resolver, dl);
+  StackPointerResolver stack_resolver(module);
+
   std::vector<llvm::Instruction *> worklist;
 
-  for (auto &insn : llvm::instructions(F)) {
+  for (auto &insn : llvm::instructions(func)) {
     worklist.push_back(&insn);
   }
 
-  did_see = false;
+  auto changed = false;
   while (!worklist.empty()) {
     auto curr = worklist.back();
     worklist.pop_back();
-    for (auto &use : curr->operands()) {
-      if (llvm::isa_and_nonnull<llvm::ConstantExpr>(use.get()) &&
-          IsRelatedToStackPointer(F.getParent(), use.get())) {
+    for (llvm::Use &use : curr->operands()) {
+      auto ce = llvm::dyn_cast_or_null<llvm::ConstantExpr>(use.get());
+      if (!ce) {
+        continue;
+      }
 
-        auto cexpr = llvm::cast<llvm::ConstantExpr>(use.get());
-        auto maybe_resolved =
-            resolver.TryResolveReferenceWithClearedCache(cexpr);
+      if (!stack_resolver.IsRelatedToStackPointer(ce)) {
+        continue;
+      }
 
-        //NOTE(ian): Ok new idea we need to split constant expressions iff they are not resolvable to a stack reference with displacement
-        if (!maybe_resolved.is_valid ||
-            !maybe_resolved.references_stack_pointer) {
-
-          did_see = true;
-
-          // NOTE(ian): convertConstantExprsToInstructions in llvm 14 builds multiple replacement instructions for components of the cexpr so we wouldnt need to do this loop
-          // the method for doing this is much better. createReplacementInstr doesnt work because it tries to translate the whole instruction...
-          auto newi = cexpr->getAsInstruction();
-          newi->insertBefore(curr);
-          use.set(newi);
-
-          worklist.push_back(newi);
+      ResolvedCrossReference xr = folder.TryResolveReferenceWithCaching(ce);
+      if (xr.is_valid) {
+        if (xr.size < addr_size) {
+          if (auto ity = llvm::dyn_cast<llvm::IntegerType>(ce->getType())) {
+            auto disp = static_cast<uint64_t>(xr.Displacement(dl));
+            use.set(llvm::ConstantInt::get(ity, disp, true));
+            changed = true;
+            continue;
+          }
         }
+      } else {
+
+        changed = true;
+
+        // NOTE(ian): convertConstantExprsToInstructions in llvm 14 builds
+        //            multiple replacement instructions for components of the
+        //            cexpr so we wouldn't need to do this loop the method for
+        //            doing this is much better. createReplacementInstr doesn't
+        //            work because it tries to translate the whole instruction.
+        auto newi = ce->getAsInstruction();
+        newi->insertBefore(curr);
+        use.set(newi);
+
+        worklist.push_back(newi);
       }
     }
   }
-
-  if (did_see) {
-    return llvm::PreservedAnalyses::none();
-  } else {
-    return llvm::PreservedAnalyses::all();
-  }
+  return ConvertBoolToPreserved(changed);
 }
 }  // namespace anvill

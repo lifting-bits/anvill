@@ -120,10 +120,10 @@ class CrossReferenceFolderImpl {
   MAKE_BINOP_FOLDER(ICmpUge, >=, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpUlt, <, Merge, NO_WRAP, true)
   MAKE_BINOP_FOLDER(ICmpUle, <, Merge, NO_WRAP, true)
-  MAKE_BINOP_FOLDER(ICmpSgt, >, Merge, SIGNED_WRAP, false)
-  MAKE_BINOP_FOLDER(ICmpSge, >=, Merge, SIGNED_WRAP, false)
-  MAKE_BINOP_FOLDER(ICmpSlt, <, Merge, SIGNED_WRAP, false)
-  MAKE_BINOP_FOLDER(ICmpSle, <=, Merge, SIGNED_WRAP, false)
+  MAKE_BINOP_FOLDER(ICmpSgt, >, Merge, SIGNED_WRAP, true)
+  MAKE_BINOP_FOLDER(ICmpSge, >=, Merge, SIGNED_WRAP, true)
+  MAKE_BINOP_FOLDER(ICmpSlt, <, Merge, SIGNED_WRAP, true)
+  MAKE_BINOP_FOLDER(ICmpSle, <=, Merge, SIGNED_WRAP, true)
 
 #undef MAKE_BINOP_FOLDER
 #undef NO_WRAP
@@ -164,6 +164,9 @@ class CrossReferenceFolderImpl {
 
   // Cache of resolved values.
   ResolvedCrossReferenceCache xref_cache;
+
+  // Discovered entities.
+  std::vector<llvm::Value *> entities;
 };
 
 
@@ -242,6 +245,30 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
   }
 
   auto &xr = xref_cache[inst_val];
+
+  auto module = inst_val->getModule();
+  if (IsProgramCounter(module, inst_val)) {
+    entities.push_back(inst_val);
+    xr.size = dl.getPointerSizeInBits(0);
+    xr.references_program_counter = true;
+    xr.is_valid = true;
+    return xr;
+
+  } else if (IsStackPointer(module, inst_val)) {
+    entities.push_back(inst_val);
+    xr.size = dl.getPointerSizeInBits(0);
+    xr.references_stack_pointer = true;
+    xr.is_valid = true;
+    return xr;
+
+  } else if (IsReturnAddress(module, inst_val)) {
+    entities.push_back(inst_val);
+    xr.size = dl.getPointerSizeInBits(0);
+    xr.u.address = MagicReturnAddressValue();
+    xr.references_return_address = true;
+    xr.is_valid = true;
+    return xr;
+  }
 
   auto opnd_type = inst_val->getOperand(0)->getType();
   uint64_t size = opnd_type->getPrimitiveSizeInBits();
@@ -356,6 +383,9 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
     xr = ResolveGlobalValue(gv);
     xr.size = dl.getPointerSizeInBits(0);
+    if (!llvm::isa<llvm::Function>(gv) && !llvm::isa<llvm::GlobalIFunc>(gv)) {
+      xr.hinted_value_type = gv->getValueType();
+    }
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(const_val)) {
     xr = ResolveConstantExpr(ce);
@@ -389,6 +419,7 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
 
 ResolvedCrossReference
 CrossReferenceFolderImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
+  entities.push_back(gv);
 
   ResolvedCrossReference xr = {};
 
@@ -397,37 +428,37 @@ CrossReferenceFolderImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
     if (IsProgramCounter(module, gv)) {
       xr.references_program_counter = true;
       xr.is_valid = true;
-      return xr;
 
     } else if (IsStackPointer(module, gv)) {
       xr.references_stack_pointer = true;
       xr.is_valid = true;
-      return xr;
 
     } else if (IsReturnAddress(module, gv)) {
       xr.u.address = MagicReturnAddressValue();
       xr.references_return_address = true;
       xr.is_valid = true;
-      return xr;
     }
   }
 
-  xr.references_global_value = true;
-
+  // Even if we resolve the above, we let ourselves enter the cross-reference
+  // resolver so that we can go and interpret concrete values for things like
+  // stack pointers.
   if (auto maybe_addr = xref_resolver.AddressOfEntity(gv); maybe_addr) {
     xr.u.address = *maybe_addr;
     xr.references_entity = true;
     xr.is_valid = true;
   }
 
-  if (auto [base, offset] = remill::StripAndAccumulateConstantOffsets(dl, gv);
-      base) {
-    xr.hinted_value_type = base->getType()->getPointerElementType();
-    xr.displacement_from_hinted_value_type = offset;
+  if (xr.is_valid) {
+    return xr;
+  }
 
-  } else if (!llvm::isa<llvm::Function>(gv)) {
-    xr.hinted_value_type = gv->getValueType();
-    xr.displacement_from_hinted_value_type = 0;
+  xr.references_global_value = true;
+
+  if (auto ga = llvm::dyn_cast<llvm::GlobalAlias>(gv)) {
+    if (auto aliasee = ga->getAliasee()) {
+      xr = this->ResolveConstant(aliasee);
+    }
   }
 
   return xr;
@@ -655,6 +686,9 @@ CrossReferenceFolderImpl::ResolveValue(llvm::Value *val) {
 }
 
 // Returns the "magic" value that represents the return address.
+//
+// TODO(pag): Move this into the cross-reference resolver. At the same time,
+//            introduce a `MagicStackPointerValue` into the xref resolver.
 uint64_t CrossReferenceFolderImpl::MagicReturnAddressValue(void) const {
   uint64_t addr = 0x4141414141414141ull;
   switch (dl.getPointerSizeInBits(0)) {
@@ -686,6 +720,7 @@ void CrossReferenceFolder::ClearCache(void) const {
 // if the application is using the cache and does not want to invalidate it.
 ResolvedCrossReference
 CrossReferenceFolder::TryResolveReferenceWithCaching(llvm::Value *val) const {
+  impl->entities.clear();
   return impl->ResolveValue(val);
 }
 
@@ -694,6 +729,7 @@ CrossReferenceFolder::TryResolveReferenceWithClearedCache(llvm::Value *val) cons
   // If the application is not using cache, invalidate it before resolving
   // the cross references. It is done to avoid stale `val` sitting in the
   // cache if it has been changed/deleted.
+  impl->entities.clear();
   impl->xref_cache.clear();
   return impl->ResolveValue(val);
 }

@@ -112,27 +112,11 @@ struct GlobalVarDecl {
       const std::string &name, llvm::Module &) const;
 };
 
-// A function decl, as represented at a "near ABI" level. To be specific,
-// not all C, and most C++ decls, as written would be directly translatable
-// to this. This ought nearly represent how LLVM represents a C/C++ function
-// type at the bitcode level, but we go a bit further in explicitness, e.g.
-// where a function throwing an exception would -- at least on Linux amd64 --
-// be represented as returning two values: one in RAX/XMM0, and one in RDX.
-// Similarly, on Linux x86, a 64-bit int returned from a function would be
-// represented by the low four bytes in EAX, and the high four bytes in EDX.
-//
-// NOTE(pag): We associate an architecture with the function decls in the
-//            event that we want to handle multiple architectures in the same
-//            program (e.g. embedded shellcode for different targets, or
-//            Thumb code in an Arm program, or x86 code in a bootloader that
-//            brings up amd64 code, etc.).
-struct FunctionDecl {
+// A declaration for a callable entity.
+struct CallableDecl {
  public:
   // The architecture from which this function's code derives.
   const remill::Arch *arch{nullptr};
-
-  // Address of this function in memory.
-  std::uint64_t address{0};
 
   // ABI-level type of this function.
   llvm::FunctionType *type{nullptr};
@@ -175,14 +159,6 @@ struct FunctionDecl {
   // The calling convention of this function.
   llvm::CallingConv::ID calling_convention{0u};
 
-  // The maximum number of bytes of redzone afforded to this function
-  // (if it doesn't change the stack pointer, or, for example, writes
-  // below the stack pointer on x86/amd64).
-  std::uint64_t num_bytes_in_redzone{0};
-
-  // Declare this function in an LLVM module.
-  llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
-
   // Interpret `target` as being the function to call, and call it from within
   // a basic block in a lifted bitcode function. Returns the new value of the
   // memory pointer.
@@ -190,6 +166,34 @@ struct FunctionDecl {
       llvm::Value *target, const anvill::TypeDictionary &types,
       const remill::IntrinsicTable &intrinsics, llvm::BasicBlock *block,
       llvm::Value *state_ptr, llvm::Value *mem_ptr) const;
+};
+
+// A function decl, as represented at a "near ABI" level. To be specific,
+// not all C, and most C++ decls, as written would be directly translatable
+// to this. This ought nearly represent how LLVM represents a C/C++ function
+// type at the bitcode level, but we go a bit further in explicitness, e.g.
+// where a function throwing an exception would -- at least on Linux amd64 --
+// be represented as returning two values: one in RAX/XMM0, and one in RDX.
+// Similarly, on Linux x86, a 64-bit int returned from a function would be
+// represented by the low four bytes in EAX, and the high four bytes in EDX.
+//
+// NOTE(pag): We associate an architecture with the function decls in the
+//            event that we want to handle multiple architectures in the same
+//            program (e.g. embedded shellcode for different targets, or
+//            Thumb code in an Arm program, or x86 code in a bootloader that
+//            brings up amd64 code, etc.).
+struct FunctionDecl : public CallableDecl {
+ public:
+  // Address of this function in memory.
+  std::uint64_t address{0};
+
+  // The maximum number of bytes of redzone afforded to this function
+  // (if it doesn't change the stack pointer, or, for example, writes
+  // below the stack pointer on x86/amd64).
+  std::uint64_t num_bytes_in_redzone{0};
+
+  // Declare this function in an LLVM module.
+  llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 
   // Create a function declaration from an LLVM function.
   inline static Result<FunctionDecl, std::string>
@@ -200,6 +204,21 @@ struct FunctionDecl {
   // Create a function declaration from an LLVM function.
   static Result<FunctionDecl, std::string> Create(
       llvm::Function &func, const remill::Arch *arch);
+};
+
+// A call site decl, as represented at a "near ABI" level. This is like a
+// `FunctionDecl`, but is specific to a call site. Thus, it represents where
+// the parameters of a function called by a call site reside, where the return
+// values will reside, etc., and all with respect to the register state on
+// entry to the called function. The purpose of call site specific declarations
+// is that
+struct CallSiteDecl : public CallableDecl {
+ public:
+  // Address of the call site.
+  std::uint64_t address{0};
+
+  // Address of the function containing this call site.
+  std::uint64_t function_address{0};
 };
 
 }  // namespace anvill

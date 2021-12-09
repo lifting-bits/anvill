@@ -52,7 +52,8 @@ struct ResolvedCrossReference {
   // operands being hinted, we drop the type hints.
   llvm::Type *hinted_value_type{nullptr};
 
-  // size of the operand that is used to adjust the displacement of references
+  // Size (in bits) of the operand that is used to adjust the displacement of
+  // references.
   unsigned size{0};
 
   // If we have a `hinted_type`, then how "far away" are we from that hinted
@@ -69,7 +70,8 @@ struct ResolvedCrossReference {
 
   // Whether or not a global value was referenced. This usually means we came
   // across an `llvm::GlobalVariable`, `llvm::GlobalAlias`, or `llvm::Function`.
-  // This doesn't imply that the found value is a known entity.
+  // This doesn't imply that the found value is a known entity. This is a good
+  // indicator that a relocation is needed.
   bool references_global_value : 1;
 
   // Whether or not we observed the stack pointer being used in the computation

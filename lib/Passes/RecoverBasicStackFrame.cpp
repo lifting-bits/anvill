@@ -74,14 +74,14 @@ struct StackFrameAnalysis final {
 static StackPointerRegisterUsages EnumerateStackPointerUsages(
     llvm::Function &function) {
   StackPointerRegisterUsages output;
-
-  auto module = function.getParent();
+  StackPointerResolver sp_resolver(function.getParent());
 
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
       for (auto i = 0u, num_ops = instr.getNumOperands(); i < num_ops; ++i) {
         auto &use = instr.getOperandUse(i);
-        if (auto val = use.get(); IsRelatedToStackPointer(module, val)) {
+        if (auto val = use.get(); llvm::isa<llvm::Constant>(val) &&
+                                  sp_resolver.IsRelatedToStackPointer(val)) {
           output.emplace_back(&use);
         }
       }
@@ -115,11 +115,13 @@ static StackFrameAnalysis AnalyzeStackFrame(
   // Go through each one of the instructions we have found
   for (const auto use : EnumerateStackPointerUsages(function)) {
 
-    // Skip any operand that is not related to the stack pointer
+    // Skip any operand that is not related to the stack pointer.
     const auto val = use->get();
 
-    // Attempt to resolve the constant expression into an offset
-    const auto reference = folder.TryResolveReferenceWithClearedCache(val);
+    // Attempt to resolve the constant expression into an offset. If we can't
+    // resolve it, then it probably means that there was a comparison or
+    // something, and we should unfold it.
+    const auto reference = folder.TryResolveReferenceWithCaching(val);
     if (!reference.is_valid || !reference.references_stack_pointer) {
       continue;
     }

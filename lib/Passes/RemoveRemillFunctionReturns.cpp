@@ -114,6 +114,7 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
 
   const auto module = func.getParent();
   CrossReferenceFolder xref_folder(xref_resolver, module->getDataLayout());
+  StackPointerResolver sp_resolver(module);
 
   std::vector<llvm::CallBase *> matches_pattern;
   std::vector<std::pair<llvm::CallBase *, llvm::Value *>> fixups;
@@ -124,7 +125,7 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
           func && func->getName() == "__remill_function_return") {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
-        switch (QueryReturnAddress(xref_folder, module, ret_addr)) {
+        switch (QueryReturnAddress(xref_folder, sp_resolver, module, ret_addr)) {
           case kFoundReturnAddress: matches_pattern.push_back(call); break;
 
           // Do nothing if it's a symbolic stack pointer load; we're probably
@@ -163,7 +164,9 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
 // Returns `true` if `val` is a return address.
 ReturnAddressResult
 RemoveRemillFunctionReturns::QueryReturnAddress(
-    const CrossReferenceFolder &xref_folder, llvm::Module *module,
+    const CrossReferenceFolder &xref_folder,
+    const StackPointerResolver &sp_resolver,
+    llvm::Module *module,
     llvm::Value *val) const {
 
   if (IsReturnAddress(module, val)) {
@@ -191,10 +194,12 @@ RemoveRemillFunctionReturns::QueryReturnAddress(
     }
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(xref_folder, module, pti->getOperand(0));
+    return QueryReturnAddress(xref_folder, sp_resolver, module,
+                              pti->getOperand(0));
 
   } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
-    return QueryReturnAddress(xref_folder, module, cast->getOperand(0));
+    return QueryReturnAddress(xref_folder, sp_resolver, module,
+                              cast->getOperand(0));
 
   } else if (IsRelatedToStackPointer(module, val)) {
     return kFoundSymbolicStackPointerLoad;

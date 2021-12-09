@@ -6,7 +6,6 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-
 #include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
 
 #include <anvill/ABI.h>
@@ -219,6 +218,9 @@ static const FixedOffsetUse *FindReturnAddressStore(
   return found;
 }
 
+// Given a desired offset, figure out a pointer element type that will allow us
+// to get to that offset, then produce a series of instructions that gets us
+// to the offset, while trying to re-use previously constructed pointers.
 static llvm::Instruction *DemandedOffset(
     llvm::IRBuilder<> &ir, llvm::Instruction *old_inst,
     std::unordered_map<uint64_t, llvm::Instruction *> &pointers,
