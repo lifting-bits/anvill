@@ -94,7 +94,7 @@ llvm::Function *FunctionDecl::DeclareInModule(
 // Interpret `target` as being the function to call, and call it from within
 // a basic block in a lifted bitcode function. Returns the new value of the
 // memory pointer.
-llvm::Value *FunctionDecl::CallFromLiftedBlock(
+llvm::Value *CallableDecl::CallFromLiftedBlock(
     llvm::Value *target, const anvill::TypeDictionary &types,
     const remill::IntrinsicTable &intrinsics,
     llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const {

@@ -377,4 +377,10 @@ void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
 void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
                               SliceManager &slc, const MemoryProvider &memprov);
+
+// Remove constant expressions of the stack pointer that are not themselves
+// resolvable to references. For example, comparisons between one or two
+// stack pointer values.
+void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm,
+                                 const StackFrameRecoveryOptions &options);
 }  // namespace anvill

@@ -14,6 +14,7 @@ namespace anvill {
 
 class CrossReferenceFolder;
 class CrossReferenceResolver;
+class StackPointerResolver;
 
 enum ReturnAddressResult {
 
@@ -54,7 +55,9 @@ class RemoveRemillFunctionReturns final
 
  private:
   ReturnAddressResult QueryReturnAddress(
-      const CrossReferenceFolder &xref_folder, llvm::Module *module,
+      const CrossReferenceFolder &xref_folder,
+      const StackPointerResolver &sp_resolver,
+      llvm::Module *module,
       llvm::Value *val) const;
 };
 }  // namespace anvill

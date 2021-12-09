@@ -131,6 +131,17 @@ class StackFrameRecoveryOptions {
   //
   // TODO(pag): Initialize this via the arch or the options.
   bool stack_grows_down{true};
+
+  // Is the initial value of the stack pointer negative or positive? This
+  // influences things like the somewhat arbitrary flags computed from the
+  // stack pointer (NOTE: flags testing alignment of stack pointer aren't
+  // arbitrary, but aren't well-defined either). The signedness of the stack
+  // pointer is often relevant to whether or not we're in user mode or kernel
+  // mode.
+  //
+  // TODO(pag): Initialize this via the arch or the options. E.g. user mode
+  //            Linux for 32-bit might use negative numbers.
+  bool stack_pointer_is_negative{false};
 };
 
 // Options that direct the behavior of the code and data lifters.

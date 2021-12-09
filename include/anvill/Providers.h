@@ -61,13 +61,15 @@ class TypeProvider {
       uint64_t address) const = 0;
 
   // Try to return the type of a function that has been called from `from_isnt`.
-  virtual std::optional<FunctionDecl> TryGetCalledFunctionType(
+  virtual std::optional<CallableDecl> TryGetCalledFunctionType(
+      uint64_t function_address,
       const remill::Instruction &from_inst) const;
 
   // Try to return the type of a function starting at address `to_address`. This
   // type is the prototype of the function. The type can be call site specific,
   // where the call site is `from_inst`.
-  virtual std::optional<FunctionDecl> TryGetCalledFunctionType(
+  virtual std::optional<CallableDecl> TryGetCalledFunctionType(
+      uint64_t function_address,
       const remill::Instruction &from_inst,
       uint64_t to_address) const;
 

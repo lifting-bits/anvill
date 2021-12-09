@@ -37,19 +37,21 @@ NullTypeProvider::TryGetVariableType(uint64_t) const {
 // Try to return the type of a function starting at address `to_address`. This
 // type is the prototype of the function. The type can be call site specific,
 // where the call site is `from_inst`.
-std::optional<FunctionDecl> TypeProvider::TryGetCalledFunctionType(
-    const remill::Instruction &from_inst, uint64_t to_address) const {
-  auto decl = TryGetCalledFunctionType(from_inst);
+std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionType(
+    uint64_t function_address, const remill::Instruction &from_inst,
+    uint64_t to_address) const {
+  auto decl = TryGetCalledFunctionType(function_address, from_inst);
   if (!decl) {
-    return TryGetFunctionType(to_address);
-  } else {
-    return decl;
+    if (auto func_decl = TryGetFunctionType(to_address)) {
+      return static_cast<CallableDecl &>(func_decl.value());
+    }
   }
+  return decl;
 }
 
 // Try to return the type of a function that has been called from `from_isnt`.
-std::optional<FunctionDecl> TypeProvider::TryGetCalledFunctionType(
-    const remill::Instruction &) const {
+std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionType(
+    uint64_t function_address, const remill::Instruction &) const {
   return std::nullopt;
 }
 
@@ -66,7 +68,6 @@ void TypeProvider::QueryRegisterStateAtInstruction(
     uint64_t, uint64_t,
     std::function<void(const std::string &, llvm::Type *,
                        std::optional<uint64_t>)>) const {}
-
 
 SpecificationTypeProvider::~SpecificationTypeProvider(void) {}
 

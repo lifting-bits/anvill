@@ -38,6 +38,7 @@ set(anvill_passes
   RemoveDelaySlotIntrinsics
   RemoveErrorIntrinsics
   RemoveRemillFunctionReturns
+  RemoveStackPointerCExprs
   RemoveTrivialPhisAndSelects
   RemoveUnusedFPClassificationCalls
   SinkSelectionsIntoBranchTargets

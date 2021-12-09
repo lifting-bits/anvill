@@ -8,8 +8,9 @@
 
 #pragma once
 
-#include <string>
 #include <cstdint>
+#include <memory>
+#include <string>
 
 namespace llvm {
 class BasicBlock;
@@ -53,6 +54,20 @@ bool IsStackPointer(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if it looks like `val` is the return address.
 bool IsReturnAddress(llvm::Module *module, llvm::Value *val);
+
+class StackPointerResolverImpl;
+class StackPointerResolver {
+ private:
+  std::unique_ptr<StackPointerResolverImpl> impl;
+
+ public:
+  ~StackPointerResolver(void);
+  explicit StackPointerResolver(llvm::Module *module);
+
+  // Returns `true` if it looks like `val` is derived from a symbolic stack
+  // pointer representation.
+  bool IsRelatedToStackPointer(llvm::Value *) const;
+};
 
 // Returns `true` if it looks like `val` is derived from a symbolic stack
 // pointer representation.

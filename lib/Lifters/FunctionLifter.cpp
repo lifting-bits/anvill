@@ -135,6 +135,15 @@ static void AnnotateInstruction(llvm::Instruction *inst, unsigned id,
   }
 }
 
+static void AnnotateInstruction(llvm::Value *val, unsigned id,
+                                llvm::MDNode *annot) {
+  if (auto inst = llvm::dyn_cast<llvm::Instruction>(val)) {
+    if (!inst->getMetadata(id)) {
+      inst->setMetadata(id, annot);
+    }
+  }
+}
+
 // Annotate and instruction with the `id` annotation if that instruction
 // is unannotated.
 static void AnnotateInstructions(llvm::BasicBlock *block, unsigned id,
@@ -333,7 +342,7 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   //    containing AddTerminatingTailCall
 
   if (maybe_target_list.has_value()) {
-    const auto &target_list = maybe_target_list.value();
+    const auto target_list = std::move(maybe_target_list.value());
 
     // If the target list is complete and has only one destination, then we
     // can handle it as normal jump
@@ -344,9 +353,9 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
       llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination),
                                block);
 
-      // We have multiple destinations. Handle this with a switch. If the target
-      // list is not marked as complete, then we'll still add __remill_jump
-      // inside the default block
+    // We have multiple destinations. Handle this with a switch. If the target
+    // list is not marked as complete, then we'll still add __remill_jump
+    // inside the default block
     } else {
       llvm::BasicBlock *default_case{nullptr};
 
@@ -358,8 +367,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
         llvm::IRBuilder<> builder(default_case);
         builder.CreateUnreachable();
 
-        // Create a default case that will contain the __remill_jump. For this
-        // to work, we need to update `current_bb`
+      // Create a default case that will contain the __remill_jump. For this
+      // to work, we need to update `current_bb`
       } else {
         add_remill_jump = true;
 
@@ -398,13 +407,16 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
         auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
         switch_inst->addCase(dest_case, dest_block);
       }
+
+      AnnotateInstruction(next_pc, pc_annotation_id, pc_annotation);
+      AnnotateInstruction(switch_inst, pc_annotation_id, pc_annotation);
     }
   }
 
   if (add_remill_jump) {
 
-    // Either we didn't find any target list from the control flow provider, or we
-    // did but it wasn't marked as `complete`
+    // Either we didn't find any target list from the control flow provider, or
+    // we did but it wasn't marked as `complete`.
     remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
   }
 }
@@ -462,92 +474,108 @@ void FunctionLifter::VisitConditionalFunctionReturn(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }
 
-std::optional<FunctionDecl>
+std::optional<CallableDecl>
 FunctionLifter::TryGetTargetFunctionType(
-    const remill::Instruction &from_inst, std::uint64_t address) {
+    const remill::Instruction &from_inst, std::uint64_t address,
+    std::uint64_t redirected_address) {
 
-  std::uint64_t redirected_addr = address;
-  std::optional<FunctionDecl> opt_function_decl;
+  std::optional<CallableDecl> opt_callable_decl =
+      type_provider.TryGetCalledFunctionType(
+          func_address, from_inst, redirected_address);
 
-  if (from_inst.IsValid()) {
-    redirected_addr = options.control_flow_provider.GetRedirection(
-        from_inst, address);
+  if (opt_callable_decl) {
+    return opt_callable_decl;
 
-    // In case we get redirected but still fail, try once more with the original
-    // address
-    opt_function_decl = type_provider.TryGetCalledFunctionType(
-        from_inst, redirected_addr);
+  // In case we get redirected but still fail, try once more with the original
+  // address
+  } else if (address != redirected_address) {
+    return type_provider.TryGetCalledFunctionType(
+        func_address, from_inst, address);
 
-  // This isn't a redirection.
   } else {
-    opt_function_decl = type_provider.TryGetFunctionType(address);
-  }
-
-  // When we retry using the original address, still keep the (possibly)
-  // redirected value
-  if (!opt_function_decl.has_value() && redirected_addr != address) {
-    opt_function_decl = type_provider.TryGetFunctionType(address);
-  }
-
-  if (!opt_function_decl.has_value()) {
     return std::nullopt;
   }
+}
 
-  // The `redirected_addr` value can either be the original one or the
-  // redirected address
-  auto function_decl = opt_function_decl.value();
-  function_decl.address = redirected_addr;
+// Call `pc` in `block`, treating it as a callable declaration `decl`.
+llvm::Value *FunctionLifter::CallCallableDecl(
+    llvm::BasicBlock *block, llvm::Value *pc, CallableDecl decl) {
+  llvm::IRBuilder<> ir(block);
+  CHECK_NOTNULL(decl.type);
+  CHECK_EQ(decl.arch, options.arch);
 
-  return function_decl;
+  auto &context = block->getContext();
+  auto dest_func_type = remill::RecontextualizeType(decl.type, context);
+
+  auto dest_func = ir.CreateBitOrPointerCast(
+      pc, llvm::PointerType::get(dest_func_type, 0));
+
+  auto mem_ptr = ir.CreateLoad(mem_ptr_type, mem_ptr_ref);
+  auto new_mem_ptr = decl.CallFromLiftedBlock(
+      dest_func, type_specifier.Dictionary(), intrinsics, block,
+      state_ptr, mem_ptr);
+  auto store = ir.CreateStore(new_mem_ptr, mem_ptr_ref);
+
+  AnnotateInstruction(dest_func, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(mem_ptr, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(new_mem_ptr, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(store, pc_annotation_id, pc_annotation);
+
+  return new_mem_ptr;
 }
 
 // Try to resolve `inst.branch_taken_pc` to a lifted function, and introduce
 // a function call to that address in `block`. Failing this, add a call
 // to `__remill_function_call`.
 void FunctionLifter::CallFunction(const remill::Instruction &inst,
-                                  llvm::BasicBlock *block) {
+                                  llvm::BasicBlock *block,
+                                  std::optional<std::uint64_t> target_pc) {
 
-  // First, try to see if it's actually related to another function. This is
-  // equivalent to a tail-call in the original code.
-  const auto maybe_other_decl = TryGetTargetFunctionType(
-      inst, inst.branch_taken_pc);
+  std::optional<CallableDecl> maybe_decl;
 
-  if (maybe_other_decl.has_value()) {
-    auto other_decl = maybe_other_decl.value();
+  if (target_pc) {
 
-    if (const auto other_func = DeclareFunction(other_decl)) {
-      auto target_address = other_decl.address;
-      const auto mem_ptr_from_call =
-          TryCallNativeFunction(std::move(other_decl), other_func, block);
+    // First, try to see if it's actually related to another function. This is
+    // equivalent to a tail-call in the original code.
+    auto target_addr = target_pc.value();
+    const auto redirected_addr = options.control_flow_provider.GetRedirection(
+        inst, target_addr);
 
-      if (!mem_ptr_from_call) {
-        LOG(ERROR) << "Failed to call native function at address " << std::hex
-                   << target_address << " via call at address " << inst.pc
-                   << " in function at address " << func_address << std::dec;
+    // Now, get the type of the target given the source and destination.
+    maybe_decl = TryGetTargetFunctionType(inst, target_addr, redirected_addr);
+    target_pc = redirected_addr;
 
-        // If we fail to create an ABI specification for this function then
-        // treat this as a call to an unknown address.
-        remill::AddCall(block, intrinsics.function_call);
-      }
-    } else {
-      LOG(ERROR) << "Failed to call non-executable memory or invalid address "
-                 << std::hex << inst.branch_taken_pc << " via call at address "
-                 << inst.pc << " in function at address " << func_address
-                 << std::dec;
-
-      // TODO(pag): Make call `intrinsics.error`?
-      remill::AddCall(block, intrinsics.function_call);
-    }
   } else {
-    LOG(ERROR) << "Missing type information for function at address "
-               << std::hex << inst.branch_taken_pc << ", called at address "
+
+    // If we don't know a concrete target address, then just try to get the
+    // target given the source.
+    maybe_decl = type_provider.TryGetCalledFunctionType(func_address, inst);
+  }
+
+  if (!maybe_decl) {
+    LOG(ERROR) << "Missing type information for function called at address "
                << inst.pc << " in function at address " << func_address
                << std::dec;
 
     // If we do not have a function declaration, treat this as a call
     // to an unknown address.
     remill::AddCall(block, intrinsics.function_call);
+    return;
   }
+
+
+  llvm::IRBuilder<> ir(block);
+  llvm::Value *dest_addr = nullptr;
+
+  if (target_pc) {
+    dest_addr = options.program_counter_init_procedure(
+        ir, pc_reg, target_pc.value());
+  } else {
+    dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
+  }
+
+  AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+  (void) CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
 }
 
 // Visit a direct function call control-flow instruction. The target is known
@@ -558,7 +586,7 @@ void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  CallFunction(inst, block);
+  CallFunction(inst, block, inst.branch_taken_pc);
   VisitAfterFunctionCall(inst, block);
 }
 
@@ -579,7 +607,7 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  CallFunction(inst, taken_block);
+  CallFunction(inst, taken_block, inst.branch_taken_pc);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   llvm::BranchInst::Create(
@@ -597,13 +625,7 @@ void FunctionLifter::VisitIndirectFunctionCall(
     llvm::BasicBlock *block) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-
-  // See if we can get a callsite-specific function type.
-  auto opt_function_decl = type_provider.TryGetCalledFunctionType(inst);
-  if (opt_function_decl) {
-
-  }
-  remill::AddCall(block, intrinsics.function_call);
+  CallFunction(inst, block, std::nullopt);
   VisitAfterFunctionCall(inst, block);
 }
 
@@ -620,7 +642,7 @@ void FunctionLifter::VisitConditionalIndirectFunctionCall(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  remill::AddCall(taken_block, intrinsics.function_call);
+  CallFunction(inst, taken_block, std::nullopt);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   llvm::BranchInst::Create(
@@ -699,8 +721,8 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   enc.flat |= bytes[3];
 
   // This looks like an `unimp <imm22>` instruction, where the `imm22` encodes
-  // the size of the value to return. See "Specificationming Note" in v8 manual, B.31,
-  // p 137.
+  // the size of the value to return. See "Specificationming Note" in v8 manual,
+  // B.31, p 137.
   //
   // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
   //                     function? Try this on Compiler Explorer!
@@ -717,7 +739,7 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   }
 }
 
-// Enact relevant control-flow changed after a function call. This figures
+// Enact relevant control-flow changes after a function call. This figures
 // out the return address targeted by the callee and links it into the
 // control-flow graph.
 void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
@@ -725,9 +747,13 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
 
   llvm::IRBuilder<> ir(block);
-  ir.CreateStore(ret_pc_val, pc_reg_ref, false);
-  ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
-  ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc));
+  auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
+  auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
+  auto branch_to_next_pc = ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc));
+
+  AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(branch_to_next_pc, pc_annotation_id, pc_annotation);
 }
 
 // Visit a conditional control-flow branch. Both the taken and not taken
@@ -806,10 +832,11 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                                              bool on_taken_path) {
   if (delayed_inst && options.arch->NextInstructionIsDelayed(
                           inst, *delayed_inst, on_taken_path)) {
+    const auto prev_pc_annotation = pc_annotation;
+    pc_annotation = GetPCAnnotation(delayed_inst->pc);
     inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
-
-    const auto inst_annotation = GetPCAnnotation(delayed_inst->pc);
-    AnnotateInstructions(block, pc_annotation_id, inst_annotation);
+    AnnotateInstructions(block, pc_annotation_id, pc_annotation);
+    pc_annotation = prev_pc_annotation;
   }
 }
 
@@ -1059,39 +1086,47 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     //            it means we have a control-flow edge or fall-through edge
     //            back to the entrypoint of our function. In this case, treat it
     //            like a tail-call.
-    if (inst_addr != func_address || from_addr) {
+    if (from_addr) {
+      pc_annotation = GetPCAnnotation(from_addr);
 
-      std::optional<anvill::FunctionDecl> maybe_decl;
+      (void) DecodeInstructionInto(from_addr, false /* is_delayed */, &inst);
+      inst.pc = from_addr;  // Force it in, even if we failed to decode.
+
+      // It's a tail-call back to the containing function.
       if (inst_addr == func_address) {
-        maybe_decl = *curr_decl;
+        llvm::IRBuilder<> ir(block);
+        auto new_mem_ptr = CallCallableDecl(
+            block,
+            options.program_counter_init_procedure(ir, pc_reg, func_address),
+            *curr_decl);
 
-      // Decode the predecessor instruction as the call site.
-      } else if (from_addr) {
-        (void) DecodeInstructionInto(from_addr, false /* is_delayed */, &inst);
-        maybe_decl = TryGetTargetFunctionType(inst, inst_addr);
-        inst.Reset();
-      }
+        auto ret = ir.CreateRet(new_mem_ptr);
+        AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
+        continue;
 
-      if (maybe_decl.has_value()) {
-        auto decl = maybe_decl.value();
-        const auto decl_address = decl.address;
-        llvm::Function *const other_decl = DeclareFunction(decl);
+      // It might be a tail-call or fall-through call into another function.
+      } else {
+        std::uint64_t redir_addr =
+            options.control_flow_provider.GetRedirection(inst, inst_addr);
 
-        if (const auto mem_ptr_from_call =
-                TryCallNativeFunction(std::move(decl), other_decl, block)) {
-          llvm::ReturnInst::Create(llvm_context, mem_ptr_from_call, block);
+        if (std::optional<CallableDecl> maybe_decl = TryGetTargetFunctionType(
+                inst, inst_addr, redir_addr)) {
+          llvm::IRBuilder<> ir(block);
+          auto new_mem_ptr = CallCallableDecl(
+              block,
+              options.program_counter_init_procedure(ir, pc_reg, redir_addr),
+              std::move(maybe_decl.value()));
+
+          auto ret = ir.CreateRet(new_mem_ptr);
+          AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
           continue;
         }
-
-        LOG(ERROR) << "Failed to call native function " << std::hex
-                   << decl_address << " at " << inst_addr
-                   << " via fall-through or tail call from function "
-                   << func_address << std::dec;
-
-        // NOTE(pag): Recover by falling through and just try to decode/lift
-        //            the instructions.
       }
+
+      inst.Reset();
     }
+
+    pc_annotation = GetPCAnnotation(inst_addr);
 
     llvm::BasicBlock *&inst_block = addr_to_block[inst_addr];
     if (!inst_block) {
@@ -1099,7 +1134,8 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
     // We've already lifted this instruction via another control-flow edge.
     } else {
-      llvm::BranchInst::Create(inst_block, block);
+      auto br = llvm::BranchInst::Create(inst_block, block);
+      AnnotateInstruction(br, pc_annotation_id, pc_annotation);
       continue;
     }
 
@@ -1114,8 +1150,9 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         // Failed to decode the first instruction of the function, but we can
         // possibly recover via a tail-call to a redirection address!
         if (inst_addr != func_address) {
-          llvm::BranchInst::Create(GetOrCreateBlock(func_address, inst_addr),
-                                   block);
+          auto br =llvm::BranchInst::Create(
+              GetOrCreateBlock(func_address, inst_addr), block);
+          AnnotateInstruction(br, pc_annotation_id, pc_annotation);
           continue;
         }
       }
@@ -1124,12 +1161,16 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
 
-      MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
+      auto call = remill::AddTerminatingTailCall(block, intrinsics.error);
+      AnnotateInstruction(call, pc_annotation_id, pc_annotation);
+      MuteStateEscape(call);
       continue;
 
     // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
-      MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
+      auto call = remill::AddTerminatingTailCall(block, intrinsics.error);
+      AnnotateInstruction(call, pc_annotation_id, pc_annotation);
+      MuteStateEscape(call);
       continue;
 
     } else {
@@ -1141,8 +1182,9 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         // us lift GOT/PLT thunks into things that aren't just indirect jumps
         // that leak the `State` structure.
         if (inst_addr != func_address) {
-          llvm::BranchInst::Create(GetOrCreateBlock(func_address, inst_addr),
-                                   block);
+          auto br = llvm::BranchInst::Create(
+              GetOrCreateBlock(func_address, inst_addr), block);
+          AnnotateInstruction(br, pc_annotation_id, pc_annotation);
           continue;
         }
       }
@@ -1166,7 +1208,6 @@ llvm::MDNode *FunctionLifter::GetPCAnnotation(uint64_t pc) const {
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
 llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
-
   const auto func_type = llvm::dyn_cast<llvm::FunctionType>(
       remill::RecontextualizeType(decl.type, llvm_context));
 
@@ -1525,14 +1566,6 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
 // not accessible or executable.
 llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 
-  // Not a valid address, or memory isn't executable.
-  auto [first_byte, first_byte_avail, first_byte_perms] =
-      memory_provider.Query(decl.address);
-  if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
-      !MemoryProvider::IsExecutable(first_byte_perms)) {
-    return nullptr;
-  }
-
   // This is our higher-level function, i.e. it presents itself more like
   // a function compiled from C/C++, rather than being a three-argument Remill
   // function. In this function, we will stack-allocate a `State` structure,
@@ -1556,6 +1589,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   mem_ptr_ref = nullptr;
   func_address = decl.address;
   native_func = DeclareFunction(decl);
+  pc_annotation = GetPCAnnotation(func_address);
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =
@@ -1608,7 +1642,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
                                           sp_reg->name);
 
   mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
-
 
   // Force initialize both the `PC` and `NEXT_PC` from the `pc` argument.
   // On some architectures, `NEXT_PC` is a "pseudo-register", i.e. an `alloca`
@@ -1855,7 +1888,7 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
 
   // The function we just lifted may call other functions, so we need to go
   // find those and also use them to update the context.
-  for (auto &inst : llvm::instructions(*func)) {
+  for (auto &inst : llvm::instructions(*new_version)) {
     if (auto call = llvm::dyn_cast<llvm::CallBase>(&inst)) {
       if (auto called_func = call->getCalledFunction()) {
         const auto called_func_name = called_func->getName().str();

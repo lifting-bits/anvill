@@ -509,8 +509,6 @@ llvm::PreservedAnalyses HoistUsersOfSelectsAndPhis::run(
     }
   }
 
-  LOG(INFO) << "HoistUsersOfSelectsAndPhis: changed " << num_changed
-            << " masks with casts";
   return ConvertBoolToPreserved(function_changed);
 }
 
