@@ -322,6 +322,62 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     return spec;
   }
 
+
+  if (auto call_sites_list = spec->getArray("call_sites")) {
+    auto index{0u};
+    for (const llvm::json::Value &cs : *call_sites_list) {
+      if (auto cs_obj = cs.getAsObject()) {
+        auto maybe_cs = translator.DecodeCallSite(cs_obj);
+        if (maybe_cs.Failed()) {
+          auto err = maybe_cs.TakeError();
+          ss << "Unable to decode " << index
+             << "th call site in 'call_sites' list of program specification: "
+             << err.message;
+
+          // Make sure we return non-`nullptr` on failure.
+          return err.object ? err.object : cs_obj;
+
+        } else {
+          auto func = maybe_cs.TakeValue();
+          auto address = func.address;
+          auto func_address = func.function_address;
+          std::pair<std::uint64_t, std::uint64_t> loc{func_address, address};
+          if (loc_to_call_site.count(loc)) {
+            ss << "Duplicate call site for address " << std::hex << address
+               << " in function at address " << func_address
+               << std::dec << " at " << index
+               << "th entry of 'call_sites' list of program specification";
+            return cs_obj;
+          }
+
+          auto cs_ptr = new CallSiteDecl(std::move(func));
+          call_sites.emplace_back(cs_ptr);
+          loc_to_call_site.emplace(std::move(loc), cs_ptr);
+        }
+      } else {
+        ss << index << "th entry of 'call_sites' list of program specification "
+           << "is not an object";
+        return spec;
+      }
+      ++index;
+    }
+
+    std::sort(call_sites.begin(), call_sites.end(),
+              [] (const CallSiteDeclPtr &a, const CallSiteDeclPtr &b) {
+                if (a->function_address < b->function_address) {
+                  return true;
+                } else if (a->function_address > b->function_address) {
+                  return false;
+                } else {
+                  return a->address < b->address;
+                }
+              });
+
+  } else if (spec->find("call_sites") != spec->end()) {
+    ss << "Non-JSON array value for 'call_sites' in program specification";
+    return spec;
+  }
+
   if (auto redirection_list = spec->getArray("control_flow_redirections")) {
     if (!ParseControlFlowRedirection(*redirection_list, ss)) {
       return spec;
@@ -553,6 +609,7 @@ Specification::EncodeToJSON(void) {
   JSONTranslator translator(impl->type_translator, impl->arch.get());
 
   llvm::json::Array functions;
+  llvm::json::Array call_sites;
   llvm::json::Array variables;
   llvm::json::Array symbols;
   llvm::json::Array memory;
@@ -566,6 +623,16 @@ Specification::EncodeToJSON(void) {
       return maybe_func.TakeError();
     } else {
       functions.emplace_back(maybe_func.TakeValue());
+    }
+  }
+
+  for (const auto &cs : impl->call_sites) {
+    Result<llvm::json::Object, JSONEncodeError> maybe_cs =
+        translator.Encode(*cs);
+    if (maybe_cs.Failed()) {
+      return maybe_cs.TakeError();
+    } else {
+      call_sites.emplace_back(maybe_cs.TakeValue());
     }
   }
 
@@ -728,8 +795,12 @@ Specification::EncodeToJSON(void) {
       llvm::json::ObjectKey("os"), os});
 
   json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("address_to_function"),
+      llvm::json::ObjectKey("functions"),
       std::move(functions)});
+
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("call_sites"),
+      std::move(call_sites)});
 
   json.insert(llvm::json::Object::KV{
       llvm::json::ObjectKey("variables"),

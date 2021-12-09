@@ -60,7 +60,7 @@ ConvertSymbolicReturnAddressToConcreteReturnAddress::run(
   }
 
   auto is_pti_of_ra = [] (llvm::ConstantExpr *expr) -> bool {
-    if (expr->getOpcode() != llvm::Instruction::PtrToInt) {
+    if (expr->getOpcode() == llvm::Instruction::PtrToInt) {
       auto base = llvm::dyn_cast<llvm::GlobalValue>(expr->getOperand(0u));
       return base && base->getName() == kSymbolicRAName;
     } else {
@@ -69,7 +69,7 @@ ConvertSymbolicReturnAddressToConcreteReturnAddress::run(
   };
 
   auto is_bc_of_ra = [] (llvm::ConstantExpr *expr) -> bool {
-    if (expr->getOpcode() != llvm::Instruction::BitCast) {
+    if (expr->getOpcode() == llvm::Instruction::BitCast) {
       auto base = llvm::dyn_cast<llvm::GlobalValue>(expr->getOperand(0u));
       return base && base->getName() == kSymbolicRAName;
     } else {
