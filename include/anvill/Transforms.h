@@ -21,6 +21,7 @@ class FunctionPass;
 namespace anvill {
 
 class CrossReferenceResolver;
+class LifterOptions;
 class MemoryProvider;
 class SliceManager;
 class StackFrameRecoveryOptions;
@@ -397,4 +398,10 @@ void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
 // stack pointer values.
 void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm,
                                  const StackFrameRecoveryOptions &options);
+
+// Looks for instructions missing the program counter-specific metadata, and
+// spreads nearby program counter-annotated metadata to those instructions.
+void AddSpreadPCMetadata(llvm::FunctionPassManager &fpm,
+                         const LifterOptions &options);
+
 }  // namespace anvill
