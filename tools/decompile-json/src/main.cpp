@@ -41,6 +41,7 @@
 #include <llvm/Pass.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO.h>
+#include <llvm/ADT/Statistic.h>
 
 // clang-format on
 
@@ -70,6 +71,7 @@ DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
 DEFINE_string(bc_out, "",
               "Path to file where the LLVM bitcode should be "
               "saved.");
+DEFINE_string(stats_out, "", "Path to emit decompilation statistics");
 
 DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
@@ -381,8 +383,8 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
     maybe_decl->address = address;
     decl = std::move(remill::GetReference(maybe_decl));
 
-  // The function is not external and does not have associated type
-  // in the spec. Fallback to processing parameters and return values
+    // The function is not external and does not have associated type
+    // in the spec. Fallback to processing parameters and return values
   } else {
 
     if (auto params = obj->getArray("parameters")) {
@@ -1105,12 +1107,12 @@ int main(int argc, char *argv[]) {
   // Verify the module
   if (!remill::VerifyModule(&module)) {
     std::string json_outs;
-#  if LLVM_VERSION_MAJOR >= 12
+#if LLVM_VERSION_MAJOR >= 12
     llvm::json::Path::Root path("");
     auto ret = llvm::json::fromJSON(json, json_outs, path);
-#  else
+#else
     auto ret = llvm::json::fromJSON(json, json_outs);
-#  endif
+#endif
     if (ret) {
       std::cerr << "Couldn't verify module produced from spec:\n"
                 << json_outs << '\n';
@@ -1122,6 +1124,9 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  if (!FLAGS_stats_out.empty()) {
+    llvm::EnableStatistics();
+  }
   // OLD: Apply optimizations.
   anvill::OptimizeModule(lifter, memory, arch.get(), program, module, options);
 
@@ -1206,6 +1211,19 @@ int main(int argc, char *argv[]) {
   }
 
   int ret = EXIT_SUCCESS;
+
+
+  if (!FLAGS_stats_out.empty()) {
+    std::error_code ec;
+    llvm::raw_fd_ostream stats_out_file(FLAGS_stats_out, ec);
+    if (ec) {
+      std::cerr << "Could not open stats output file " << FLAGS_stats_out
+                << std::endl;
+      ret = EXIT_FAILURE;
+    } else {
+      llvm::PrintStatisticsJSON(stats_out_file);
+    }
+  }
 
   if (!FLAGS_ir_out.empty()) {
     if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {

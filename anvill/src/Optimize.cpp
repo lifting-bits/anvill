@@ -56,6 +56,7 @@
 
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/JumpTableAnalysis.h>
+#include <anvill/CodeQualityStatCollector.h>
 // clang-format on
 
 #include <anvill/Providers/MemoryProvider.h>
@@ -237,7 +238,7 @@ void OptimizeModule(const EntityLifter &lifter_context,
   AddTransformRemillJumpIntrinsics(second_fpm, lifter_context);
   AddRemoveRemillFunctionReturns(second_fpm, lifter_context);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
-
+  second_fpm.addPass(CodeQualityStatCollector());
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
   mpm.run(module, mam);
