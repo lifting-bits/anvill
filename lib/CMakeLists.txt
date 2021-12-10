@@ -45,6 +45,7 @@ set(anvill_passes
   SliceInterpreter
   SliceManager
   SplitStackFrameAtReturnAddress
+  SpreadPCMetadata
   TransformRemillJumpIntrinsics
 )
 

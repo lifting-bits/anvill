@@ -201,6 +201,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddRemoveRemillFunctionReturns(second_fpm, xr);
   AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
+  AddSpreadPCMetadata(second_fpm, options);
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
   mpm.run(module, mam);
