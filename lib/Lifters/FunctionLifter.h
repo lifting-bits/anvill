@@ -40,6 +40,7 @@ namespace anvill {
 class EntityLifterImpl;
 class MemoryProvider;
 class TypeProvider;
+struct ControlFlowTargetList;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
@@ -237,6 +238,11 @@ class FunctionLifter {
   void VisitIndirectJump(const remill::Instruction &inst,
                          remill::Instruction *delayed_inst,
                          llvm::BasicBlock *block);
+
+  // Visit an indirect jump that is a jump table.
+  void DoSwitchBasedIndirectJump(const remill::Instruction &inst,
+                                 llvm::BasicBlock *block,
+                                 const ControlFlowTargetList &target_list);
 
   // Visit a conditional indirect jump control-flow instruction. This is a mix
   // between indirect jumps and conditional jumps that appears on the

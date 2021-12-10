@@ -262,8 +262,9 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
       if (reg_name.empty()) {
         return llvm::None;
       }
-      auto reg = arch->RegisterByName(reg_name);
 
+      auto reg = arch->RegisterByName(reg_name);
+      CHECK_NOTNULL(reg);
       auto &vdecl = ret.emplace_back();
       vdecl.reg = reg;
       vdecl.type = &type;
@@ -468,7 +469,7 @@ llvm::Error AllocationState::CoalescePacking(
 
   // Group the decls together by the register that they are allocated to.
   std::vector<std::vector<ValueDecl>> groups(constraints.size());
-  for (auto decl : vector) {
+  for (const ValueDecl &decl : vector) {
     const std::string name = decl.reg->name;
     for (unsigned i = 0; i < constraints.size(); i++) {
       if (constraints[i].ContainsVariant(name)) {
