@@ -102,6 +102,7 @@ void OptimizeModule(const EntityLifter &lifter,
   }
 
   CHECK(remill::VerifyModule(&module));
+//  remill::StoreModuleToFile(&module, "/tmp/lifted.bc", true);
 
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm(false);
@@ -119,9 +120,9 @@ void OptimizeModule(const EntityLifter &lifter,
   fam.registerPass([&] { return JumpTableAnalysis(slc); });
   fam.registerPass([&] { return BranchAnalysis(); });
 
-  params.DefaultThreshold = 250;
-  auto inliner = llvm::ModuleInlinerWrapperPass(params);
-  mpm.addPass(std::move(inliner));
+//  params.DefaultThreshold = 250;
+//  auto inliner = llvm::ModuleInlinerWrapperPass(params);
+//  mpm.addPass(std::move(inliner));
   mpm.addPass(llvm::GlobalOptPass());
   mpm.addPass(llvm::GlobalDCEPass());
   mpm.addPass(llvm::StripDeadDebugInfoPass());
