@@ -65,6 +65,19 @@
 
 namespace anvill {
 
+// TODO(pag): NewGVN passes in debug build of LLVM on challenge 5.
+// NOTE(pag): Might also require the inliner to be present.
+//
+//class OurGVNPass : public llvm::PassInfoMixin<OurGVNPass> {
+//public:
+//  llvm::NewGVNPass pass;
+//  /// Run the pass over the function.
+//  llvm::PreservedAnalyses run(llvm::Function &F, llvm::AnalysisManager<llvm::Function> &AM) {
+//    LOG(ERROR) << F.getName().str();
+//    return pass.run(F, AM);
+//  }
+//};
+
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
 // When utilizing crossRegisterProxies cleanup triggers asan
@@ -103,7 +116,7 @@ void OptimizeModule(const EntityLifter &lifter,
   llvm::ModuleAnalysisManager mam(false);
   llvm::LoopAnalysisManager lam(false);
   llvm::CGSCCAnalysisManager cam(false);
-  llvm::InlineParams params;
+//  llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam(false);
 
   pb.registerFunctionAnalyses(fam);
@@ -116,6 +129,7 @@ void OptimizeModule(const EntityLifter &lifter,
 //  params.DefaultThreshold = 250;
 //  auto inliner = llvm::ModuleInlinerWrapperPass(params);
 //  mpm.addPass(std::move(inliner));
+
   mpm.addPass(llvm::GlobalOptPass());
   mpm.addPass(llvm::GlobalDCEPass());
   mpm.addPass(llvm::StripDeadDebugInfoPass());
@@ -197,13 +211,13 @@ void OptimizeModule(const EntityLifter &lifter,
         anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), &module);
   }
 
-  CHECK(remill::VerifyModule(&module));
-
-  // manually clear the analyses to prevent ASAN failures in the destructor
+  // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();
   fam.clear();
   cam.clear();
   lam.clear();
+
+  CHECK(remill::VerifyModule(&module));
 }
 
 }  // namespace anvill
