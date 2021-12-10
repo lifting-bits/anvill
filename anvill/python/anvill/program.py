@@ -111,9 +111,9 @@ class Specification(ABC):
         assert isinstance(source_ea, int)
         assert isinstance(destination_ea, int)
 
+        self._control_flow_redirections[source_ea] = destination_ea
         self.try_add_referenced_entity(source_ea, False)
         self.try_add_referenced_entity(destination_ea, False)
-        self._control_flow_redirections[source_ea] = destination_ea
 
     def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)

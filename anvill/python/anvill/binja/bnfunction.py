@@ -192,22 +192,30 @@ class BNFunction(Function):
         for v in call.output:
             rets.append(self._var_to_loc(v, arch, tc, stack_adjust))
 
-        for i, p in enumerate(call.params):
-            if isinstance(p, bn.MediumLevelILVar):
-                v: bn.Variable = cast(bn.MediumLevelILVar, p).src
+        # We can get the parameters as variables.
+        if len(call.params) == len(call.vars_read):
+            for v in call.vars_read:
                 params.append(self._var_to_loc(v, arch, tc, stack_adjust))
-            elif isinstance(p, bn.MediumLevelILSetVar):
-                v: bn.Variable = cast(bn.MediumLevelILSetVar, p).dest
-                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
-            elif isinstance(p, bn.MediumLevelILConstBase):
-                params.append(self._const_to_loc(p, arch, tc.get(p.expr_type), stack_adjust))
-            elif isinstance(p, bn.MediumLevelILVarField):
-                # TODO(pag): This isn't quite right but close enough.
-                v: bn.Variable = cast(bn.MediumLevelILVarField, p).src
-                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
-            else:
-                raise InvalidLocationException(
-                    f"Unsupported parameter {p}:{p.__class__} at index {i} of call at {call.address:08x}")
+
+        # We have to figure out the parameters from the MLIL, LLIL, and
+        # Mapped MLIL. The big issue is often constants.
+        else:
+            for i, p in enumerate(call.params):
+                if isinstance(p, bn.MediumLevelILVar):
+                    v: bn.Variable = cast(bn.MediumLevelILVar, p).src
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                elif isinstance(p, bn.MediumLevelILSetVar):
+                    v: bn.Variable = cast(bn.MediumLevelILSetVar, p).dest
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                elif isinstance(p, bn.MediumLevelILConstBase):
+                    params.append(self._const_to_loc(p, arch, tc.get(p.expr_type), stack_adjust))
+                elif isinstance(p, bn.MediumLevelILVarField):
+                    # TODO(pag): This isn't quite right but close enough.
+                    v: bn.Variable = cast(bn.MediumLevelILVarField, p).src
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                else:
+                    raise InvalidLocationException(
+                        f"Unsupported parameter {p}:{p.__class__} at index {i} of call at {call.address:08x}")
 
         is_variadic: bool = False
         is_noreturn: bool = False
