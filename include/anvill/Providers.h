@@ -114,13 +114,18 @@ class SpecificationTypeProvider : public TypeProvider {
 
   explicit SpecificationTypeProvider(const Specification &spec);
 
+  // Try to return the type of a function that has been called from `from_isnt`.
+  std::optional<CallableDecl> TryGetCalledFunctionType(
+      uint64_t function_address,
+      const remill::Instruction &from_inst) const override;
+
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
   std::optional<anvill::FunctionDecl> TryGetFunctionType(
-      uint64_t address) const final;
+      uint64_t address) const override;
 
   std::optional<anvill::GlobalVarDecl>
-  TryGetVariableType(uint64_t address) const final;
+  TryGetVariableType(uint64_t address) const override;
 
  private:
   SpecificationTypeProvider(void) = delete;

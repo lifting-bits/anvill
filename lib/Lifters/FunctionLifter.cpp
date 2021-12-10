@@ -314,21 +314,10 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                            block);
 }
 
-// Visit an indirect jump control-flow instruction. This may be register- or
-// memory-indirect, e.g. `jmp rax` or `jmp [rax]` on x86. Thus, the target is
-// not know a priori and our default mechanism for handling this is to perform
-// a tail-call to the `__remill_jump` function, whose role is to be a stand-in
-// something that enacts the effect of "transfer to target."
-void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
-                                       remill::Instruction *delayed_inst,
-                                       llvm::BasicBlock *block) {
-
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-
-  // Attempt to get the target list for this control flow instruction
-  // so that we can handle this jump in a less generic way
-  std::optional<ControlFlowTargetList> maybe_target_list =
-      options.control_flow_provider.TryGetControlFlowTargets(inst);
+// Visit an indirect jump that is a jump table.
+void FunctionLifter::DoSwitchBasedIndirectJump(
+    const remill::Instruction &inst,
+    llvm::BasicBlock *block, const ControlFlowTargetList &target_list) {
 
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
@@ -341,76 +330,73 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
   // 4. Single or multiple targets, not complete: switch with default case
   //    containing AddTerminatingTailCall
 
-  if (maybe_target_list.has_value()) {
-    const auto target_list = std::move(maybe_target_list.value());
 
-    // If the target list is complete and has only one destination, then we
-    // can handle it as normal jump
-    if (target_list.target_addresses.size() == 1U && target_list.is_complete) {
+  // If the target list is complete and has only one destination, then we
+  // can handle it as normal jump
+  if (target_list.target_addresses.size() == 1U && target_list.is_complete) {
+    add_remill_jump = false;
+
+    auto destination = *(target_list.target_addresses.begin());
+    llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination),
+                             block);
+
+  // We have multiple destinations. Handle this with a switch. If the target
+  // list is not marked as complete, then we'll still add __remill_jump
+  // inside the default block
+  } else {
+    llvm::BasicBlock *default_case{nullptr};
+
+    // Create a default case that is not reachable
+    if (target_list.is_complete) {
       add_remill_jump = false;
+      default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
 
-      auto destination = *(target_list.target_addresses.begin());
-      llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination),
-                               block);
+      llvm::IRBuilder<> builder(default_case);
+      builder.CreateUnreachable();
 
-    // We have multiple destinations. Handle this with a switch. If the target
-    // list is not marked as complete, then we'll still add __remill_jump
-    // inside the default block
+    // Create a default case that will contain the __remill_jump. For this
+    // to work, we need to update `current_bb`
     } else {
-      llvm::BasicBlock *default_case{nullptr};
+      add_remill_jump = true;
 
-      // Create a default case that is not reachable
-      if (target_list.is_complete) {
-        add_remill_jump = false;
-        default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-
-        llvm::IRBuilder<> builder(default_case);
-        builder.CreateUnreachable();
-
-      // Create a default case that will contain the __remill_jump. For this
-      // to work, we need to update `current_bb`
-      } else {
-        add_remill_jump = true;
-
-        default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-        current_bb = default_case;
-      }
-
-      // Create the parameters for the special anvill switch
-      auto pc = inst_lifter.LoadRegValue(
-          block, state_ptr, options.arch->ProgramCounterRegisterName());
-
-      std::vector<llvm::Value *> switch_parameters;
-      switch_parameters.push_back(pc);
-
-      for (auto destination : target_list.target_addresses) {
-        switch_parameters.push_back(llvm::ConstantInt::get(
-            pc_reg->type, destination));
-      }
-
-      // Invoke the anvill switch
-      auto &module = *block->getModule();
-      auto anvill_switch_func =
-          GetAnvillSwitchFunc(module, address_type, target_list.is_complete);
-
-      llvm::IRBuilder<> ir(block);
-      auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
-
-      // Now use the anvill switch output with a SwitchInst, mapping cases
-      // by index
-      auto dest_count = target_list.target_addresses.size();
-      auto switch_inst = ir.CreateSwitch(next_pc, default_case, dest_count);
-      auto dest_id{0u};
-
-      for (auto dest : target_list.target_addresses) {
-        auto dest_block = GetOrCreateTargetBlock(inst, dest);
-        auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
-        switch_inst->addCase(dest_case, dest_block);
-      }
-
-      AnnotateInstruction(next_pc, pc_annotation_id, pc_annotation);
-      AnnotateInstruction(switch_inst, pc_annotation_id, pc_annotation);
+      default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+      current_bb = default_case;
     }
+
+    // Create the parameters for the special anvill switch
+    auto pc = inst_lifter.LoadRegValue(
+        block, state_ptr, options.arch->ProgramCounterRegisterName());
+
+    std::vector<llvm::Value *> switch_parameters;
+    switch_parameters.push_back(pc);
+
+    for (auto destination : target_list.target_addresses) {
+      switch_parameters.push_back(llvm::ConstantInt::get(
+          pc_reg->type, destination));
+    }
+
+    // Invoke the anvill switch
+    auto &module = *block->getModule();
+    auto anvill_switch_func =
+        GetAnvillSwitchFunc(module, address_type, target_list.is_complete);
+
+    llvm::IRBuilder<> ir(block);
+    auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
+
+    // Now use the anvill switch output with a SwitchInst, mapping cases
+    // by index
+    auto dest_count = target_list.target_addresses.size();
+    auto switch_inst = ir.CreateSwitch(next_pc, default_case, dest_count);
+    auto dest_id{0u};
+
+    for (auto dest : target_list.target_addresses) {
+      auto dest_block = GetOrCreateTargetBlock(inst, dest);
+      auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
+      switch_inst->addCase(dest_case, dest_block);
+    }
+
+    AnnotateInstruction(next_pc, pc_annotation_id, pc_annotation);
+    AnnotateInstruction(switch_inst, pc_annotation_id, pc_annotation);
   }
 
   if (add_remill_jump) {
@@ -418,6 +404,41 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
     // Either we didn't find any target list from the control flow provider, or
     // we did but it wasn't marked as `complete`.
     remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+  }
+}
+
+// Visit an indirect jump control-flow instruction. This may be register- or
+// memory-indirect, e.g. `jmp rax` or `jmp [rax]` on x86. Thus, the target is
+// not know a priori and our default mechanism for handling this is to perform
+// a tail-call to the `__remill_jump` function, whose role is to be a stand-in
+// something that enacts the effect of "transfer to target."
+void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
+                                       remill::Instruction *delayed_inst,
+                                       llvm::BasicBlock *block) {
+
+  VisitDelayedInstruction(inst, delayed_inst, block, true);
+
+  // Try to get the target type given the source. This is like a tail-call,
+  // e.g. `jmp [fseek]`.
+  if (auto maybe_decl =
+          type_provider.TryGetCalledFunctionType(func_address, inst)) {
+    llvm::IRBuilder<> ir(block);
+    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
+    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+    auto new_mem_ptr = CallCallableDecl(
+        block, dest_addr, std::move(maybe_decl.value()));
+    ir.CreateRet(new_mem_ptr);
+
+  // Attempt to get the target list for this control flow instruction
+  // so that we can handle this jump in a less generic way.
+  } else if (auto maybe_target_list =
+      options.control_flow_provider.TryGetControlFlowTargets(inst)) {
+
+    DoSwitchBasedIndirectJump(inst, block, *maybe_target_list);
+
+  // No good info; do an indirect jump.
+  } else {
+    remill::AddTerminatingTailCall(block, intrinsics.jump);
   }
 }
 
@@ -436,7 +457,23 @@ void FunctionLifter::VisitConditionalIndirectJump(
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+
+  // Try to get the target type given the source. This is a conditional tail-
+  // call.
+  if (auto maybe_decl =
+          type_provider.TryGetCalledFunctionType(func_address, inst)) {
+    llvm::IRBuilder<> ir(taken_block);
+    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
+    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+    auto new_mem_ptr = CallCallableDecl(
+        block, dest_addr, std::move(maybe_decl.value()));
+    ir.CreateRet(new_mem_ptr);
+
+  // No target type info.
+  } else {
+    remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+  }
+
   llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
 }

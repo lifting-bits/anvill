@@ -14,6 +14,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
+#include <remill/Arch/Instruction.h>
 #include <remill/BC/Util.h>
 
 #include "Specification.h"
@@ -40,13 +41,13 @@ NullTypeProvider::TryGetVariableType(uint64_t) const {
 std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionType(
     uint64_t function_address, const remill::Instruction &from_inst,
     uint64_t to_address) const {
-  auto decl = TryGetCalledFunctionType(function_address, from_inst);
-  if (!decl) {
-    if (auto func_decl = TryGetFunctionType(to_address)) {
-      return static_cast<CallableDecl &>(func_decl.value());
-    }
+  if (auto decl = TryGetCalledFunctionType(function_address, from_inst)) {
+    return decl;
+  } else if (auto func_decl = TryGetFunctionType(to_address)) {
+    return static_cast<CallableDecl &>(func_decl.value());
+  } else {
+    return std::nullopt;
   }
-  return decl;
 }
 
 // Try to return the type of a function that has been called from `from_isnt`.
@@ -75,6 +76,20 @@ SpecificationTypeProvider::SpecificationTypeProvider(
     const Specification &spec)
     : TypeProvider(spec.impl->type_translator),
       impl(spec.impl) {}
+
+// Try to return the type of a function that has been called from `from_isnt`.
+std::optional<CallableDecl> SpecificationTypeProvider::TryGetCalledFunctionType(
+    uint64_t function_address,
+    const remill::Instruction &from_inst) const {
+  std::pair<std::uint64_t, std::uint64_t> loc{function_address,
+                                              from_inst.pc};
+  auto cs_it = impl->loc_to_call_site.find(loc);
+  if (cs_it == impl->loc_to_call_site.end()) {
+    return std::nullopt;
+  } else {
+    return *(cs_it->second);
+  }
+}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.

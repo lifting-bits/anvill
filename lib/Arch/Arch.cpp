@@ -9,6 +9,7 @@
 #include "Arch.h"
 
 #include <anvill/Decls.h>
+#include <glog/logging.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Instructions.h>
@@ -255,24 +256,35 @@ ApplyX86Ext(const std::vector<RegisterConstraint> &constraints,
   std::vector<RegisterConstraint> ret;
   ret.reserve(constraints.size());
 
+
   for (const auto &c : constraints) {
     if (c.variants.size() == 1 &&
         c.variants.front().register_name.rfind("XMM", 0) == 0) {
 
+      const auto &reg_name = c.variants.front().register_name;
+      unsigned reg_num = 0u;
+
+      if (reg_name.size() == 4) {  // E.g. `XMM0`.
+        reg_num = reg_name[3] - '0';
+
+      } else if (reg_name.size() == 5) {  // E.g. `XMM10`.
+        reg_num = ((reg_name[3] - '0') * 10u) + (reg_name[4] - '0');
+      }
+
       // Assuming the name of the register is of the form XMM_
-      const auto reg_number =
-          std::to_string(c.variants.front().register_name.back());
+      const auto reg_num_str = std::to_string(reg_num);
+
       if (is_avx) {
         ret.push_back(RegisterConstraint({
-            VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
-            VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
+            VariantConstraint("XMM" + reg_num_str, kTypeFloatOrVec, kMaxBit128),
+            VariantConstraint("YMM" + reg_num_str, kTypeFloatOrVec, kMaxBit256),
         }));
 
       } else if (is_avx512) {
         ret.push_back(RegisterConstraint({
-            VariantConstraint("XMM" + reg_number, kTypeFloatOrVec, kMaxBit128),
-            VariantConstraint("YMM" + reg_number, kTypeFloatOrVec, kMaxBit256),
-            VariantConstraint("ZMM" + reg_number, kTypeFloatOrVec, kMaxBit512),
+            VariantConstraint("XMM" + reg_num_str, kTypeFloatOrVec, kMaxBit128),
+            VariantConstraint("YMM" + reg_num_str, kTypeFloatOrVec, kMaxBit256),
+            VariantConstraint("ZMM" + reg_num_str, kTypeFloatOrVec, kMaxBit512),
         }));
 
       } else {
