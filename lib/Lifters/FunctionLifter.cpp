@@ -1112,59 +1112,41 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       continue;  // Already handled.
     }
 
-    // First, try to see if it's actually related to another function. This is
-    // equivalent to a tail-call in the original code. This comes up with fall-
-    // throughs, i.e. where one function is a prologue of another one. It also
-    // happens with tail-calls, i.e. `jmp func` or `jCC func`, where we handle
-    // those by way of enqueuing those addresses with `GetOrCreateTargetBlock`, and
-    // then recover from the tail-calliness here, instead of spreading that
-    // logic into all the control-flow visitors.
-    //
-    // NOTE(pag): In the case of `inst_addr == func_address && from_addr != 0`,
-    //            it means we have a control-flow edge or fall-through edge
-    //            back to the entrypoint of our function. In this case, treat it
-    //            like a tail-call.
-    if (from_addr) {
-      pc_annotation = GetPCAnnotation(from_addr);
+    // Is there a redirection?
+    std::uint64_t redir_addr =
+        options.control_flow_provider.GetRedirection(inst, inst_addr);
 
-      (void) DecodeInstructionInto(from_addr, false /* is_delayed */, &inst);
-      inst.pc = from_addr;  // Force it in, even if we failed to decode.
+    std::optional<FunctionDecl> inst_func;
+    if (redir_addr != func_address) {
+      inst_func = options.type_provider.TryGetFunctionType(redir_addr);
 
-      // It's a tail-call back to the containing function.
-      if (inst_addr == func_address) {
-        llvm::IRBuilder<> ir(block);
-        auto new_mem_ptr = CallCallableDecl(
-            block,
-            options.program_counter_init_procedure(ir, pc_reg, func_address),
-            *curr_decl);
-
-        auto ret = ir.CreateRet(new_mem_ptr);
-        AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
-        continue;
-
-      // It might be a tail-call or fall-through call into another function.
-      } else {
-        std::uint64_t redir_addr =
-            options.control_flow_provider.GetRedirection(inst, inst_addr);
-
-        if (std::optional<CallableDecl> maybe_decl = TryGetTargetFunctionType(
-                inst, inst_addr, redir_addr)) {
-          llvm::IRBuilder<> ir(block);
-          auto new_mem_ptr = CallCallableDecl(
-              block,
-              options.program_counter_init_procedure(ir, pc_reg, redir_addr),
-              std::move(maybe_decl.value()));
-
-          auto ret = ir.CreateRet(new_mem_ptr);
-          AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
-          continue;
-        }
-      }
-
-      inst.Reset();
+    // It looks like a self tail-call.
+    } else if (from_addr) {
+      inst_func = *curr_decl;
     }
 
     pc_annotation = GetPCAnnotation(inst_addr);
+
+    // If it looks like we have a destination function, then see if we have
+    // a call-site specific declaration, and if so, use it, otherwise, use
+    // the destination function type.
+    if (inst_func) {
+      std::optional<CallableDecl> maybe_decl = TryGetTargetFunctionType(
+          inst, inst_addr, redir_addr);
+      if (!maybe_decl) {
+        maybe_decl = std::move(inst_func.value());
+      }
+
+      llvm::IRBuilder<> ir(block);
+      auto new_mem_ptr = CallCallableDecl(
+          block,
+          options.program_counter_init_procedure(ir, pc_reg, redir_addr),
+          std::move(maybe_decl.value()));
+
+      auto ret = ir.CreateRet(new_mem_ptr);
+      AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
+      continue;
+    }
 
     llvm::BasicBlock *&inst_block = addr_to_block[inst_addr];
     if (!inst_block) {
