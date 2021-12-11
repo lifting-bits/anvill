@@ -6,7 +6,7 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
+if(ANVILL_ENABLE_INSTALL AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
   install(
     FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
@@ -22,7 +22,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
                   "anvill to the local machine")
 
   message(WARNING "This is a development setting! Do **NOT** use this to create "
-                  "packages, ANVILL_ENABLE_INSTALL_TARGET already covers this!")
+                  "packages, ANVILL_ENABLE_INSTALL already covers this!")
 
   set(frontend_source_list
     "${setup_file_path}"

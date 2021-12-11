@@ -121,7 +121,6 @@ set(anvill_PUBLIC_HEADERS
   "${anvill_PUBLIC_HEADER_DIR}/Type.h"
   "${anvill_PUBLIC_HEADER_DIR}/Utils.h"
   "${anvill_PUBLIC_HEADER_DIR}/Version.h"
-  ${anvill_passes_HEADERS}
 )
 
 set(anvill_PRIVATE_HEADERS
@@ -149,6 +148,7 @@ add_library(anvill STATIC
   ${anvill_PRIVATE_HEADERS}
   ${anvill_arch_SOURCES}
   ${anvill_lifters_SOURCES}
+  ${anvill_passes_HEADERS}
   ${anvill_passes_SOURCES}
   ${anvill_providers_SOURCES}
   ${anvill_SOURCES}
@@ -168,7 +168,6 @@ target_include_directories(anvill PUBLIC
 
 target_link_libraries(anvill
   PUBLIC
-    remill_settings
     remill
 )
 
@@ -182,7 +181,7 @@ add_dependencies(anvill check_git_anvill)
 #  add_subdirectory("tests")
 #endif()
 
-if(ANVILL_ENABLE_INSTALL_TARGET)
+if(ANVILL_ENABLE_INSTALL)
   install(
     TARGETS
       anvill
@@ -202,4 +201,11 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
     PUBLIC_HEADER DESTINATION
       "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
   )
-endif()
+  
+  install(
+    FILES
+      ${anvill_passes_HEADERS}
+    DESTINATION
+      "${CMAKE_INSTALL_INCLUDEDIR}/anvill/Passes"
+  )
+endif(ANVILL_ENABLE_INSTALL)

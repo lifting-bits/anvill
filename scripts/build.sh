@@ -261,7 +261,7 @@ function Configure
   (
     set -x
     cmake \
-        -DANVILL_ENABLE_INSTALL_TARGET=true \
+        -DANVILL_ENABLE_INSTALL=true \
         -G Ninja \
         -Dremill_DIR:PATH=${INSTALL_DIR}/lib/cmake/remill \
         -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \

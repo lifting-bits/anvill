@@ -23,7 +23,7 @@ target_link_libraries(anvill-decompile-json PRIVATE
 #  add_subdirectory("tests")
 #endif(ANVILL_ENABLE_TESTS)
 
-if(ANVILL_ENABLE_INSTALL_TARGET)
+if(ANVILL_ENABLE_INSTALL)
   install(
     TARGETS
       anvill-decompile-json
@@ -34,4 +34,4 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
     RUNTIME DESTINATION
       bin
   )
-endif(ANVILL_ENABLE_INSTALL_TARGET)
+endif(ANVILL_ENABLE_INSTALL)

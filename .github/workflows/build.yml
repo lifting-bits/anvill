@@ -249,7 +249,7 @@ jobs:
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -DANVILL_ENABLE_TESTS=true \
-              -DANVILL_ENABLE_INSTALL_TARGET=true \
+              -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/anvill
 
@@ -560,7 +560,7 @@ jobs:
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -DANVILL_ENABLE_TESTS=true \
-              -DANVILL_ENABLE_INSTALL_TARGET=true \
+              -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/anvill
 
