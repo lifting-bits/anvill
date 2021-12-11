@@ -425,7 +425,9 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   //                PtrToInt, and BitCast may enter into an infinite loop if
   //                the folding instruction bounce between each other. Disable
   //                them in the map and revisit when we have the fix.
-#if 1
+  //
+  // NOTE(pag): Issue manifests in ARM64 `SMIME_write_ASN1` of challenge 5.
+#if 0
   { llvm::Instruction::PtrToInt, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
   { llvm::Instruction::IntToPtr, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
   { llvm::Instruction::BitCast, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
