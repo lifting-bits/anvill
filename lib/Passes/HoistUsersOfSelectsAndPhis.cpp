@@ -427,7 +427,7 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   //                them in the map and revisit when we have the fix.
   //
   // NOTE(pag): Issue manifests in ARM64 `SMIME_write_ASN1` of challenge 5.
-#if 0
+#if 1
   { llvm::Instruction::PtrToInt, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
   { llvm::Instruction::IntToPtr, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
   { llvm::Instruction::BitCast, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
