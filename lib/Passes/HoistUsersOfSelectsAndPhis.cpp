@@ -425,10 +425,10 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   //                PtrToInt, and BitCast may enter into an infinite loop if
   //                the folding instruction bounce between each other. Disable
   //                them in the map and revisit when we have the fix.
-#if 0
-  { llvm::Instruction::PtrToInt, &HoistUsersOfSelectsAndPhis::FoldPHINodeWithCastInst },
-  { llvm::Instruction::IntToPtr, &HoistUsersOfSelectsAndPhis::FoldPHINodeWithCastInst },
-  { llvm::Instruction::BitCast, &HoistUsersOfSelectsAndPhis::FoldPHINodeWithCastInst },
+#if 1
+  { llvm::Instruction::PtrToInt, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::IntToPtr, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
+  { llvm::Instruction::BitCast, &HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst },
 #endif
 
   // Memory operators

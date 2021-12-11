@@ -77,7 +77,7 @@ bool RunFunctionPass(llvm::Module &module) {
   llvm::FunctionPassManager pass_manager;
   pass_manager.addPass(llvm::DCEPass());
 
-  AddBrightenPointerOperations(pass_manager, 250U);
+  AddConvertIntegerToPointerOperations(pass_manager, 250U);
 
   llvm::FunctionAnalysisManager fam;
 

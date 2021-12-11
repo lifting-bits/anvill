@@ -208,8 +208,7 @@ void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm);
 ////
 //// This function attempts to apply a battery of pattern-based transforms to
 //// brighten integer operations into pointer operations.
-//void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
-//                                  unsigned max_gas = 250);
+void AddConvertIntegerToPointerOperations(llvm::FunctionPassManager &fpm);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is

@@ -43,8 +43,14 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
     if (dest_type->isIntegerTy()) {
       auto src_size = src_type->getPrimitiveSizeInBits();
       auto dest_size = dest_type->getPrimitiveSizeInBits();
+      CHECK_NE(src_size, dest_size);
       if (src_size < dest_size) {
         auto dest = ir.CreateZExt(src, dest_type);
+        CopyMetadataTo(src, dest);
+        return dest;
+      } else if (dest_size == 1u) {
+        auto dest = ir.CreateICmpNE(
+            src, llvm::ConstantInt::getNullValue(src_type));
         CopyMetadataTo(src, dest);
         return dest;
       } else {
@@ -388,8 +394,11 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
             false));
       CopyMetadataTo(mem_ptr, addr);
     }
-    return llvm::dyn_cast<llvm::Instruction>(
-        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr));
+
+    auto val = remill::LoadFromMemory(intrinsics, in_block, decl_type,
+                                      mem_ptr, addr);
+    ir.SetInsertPoint(in_block);
+    return types.ConvertValueToType(ir, val, decl_type);
 
   // Store to memory at an absolute offset.
   } else if (decl.mem_offset) {
@@ -397,8 +406,12 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
     const auto addr = llvm::ConstantInt::get(
         remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
         static_cast<std::uint64_t>(decl.mem_offset), false);
-    return llvm::dyn_cast<llvm::Instruction>(
-        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr));
+    auto val = remill::LoadFromMemory(
+        intrinsics, in_block, decl_type, mem_ptr, addr);
+
+    CopyMetadataTo(mem_ptr, val);
+    ir.SetInsertPoint(in_block);
+    return types.ConvertValueToType(ir, val, decl_type);
 
   } else {
     return llvm::UndefValue::get(decl_type);
