@@ -90,14 +90,16 @@ class BNFunction(Function):
             reg_name = self._arch.register_name(bn_reg_name)
             if reg_name is None:
                 raise InvalidLocationException(
-                    f"Could not locate register {bn_reg_name} in architecture")
+                    f"Could not locate register {bn_reg_name} in function "
+                    f"{self._bn_func.start:08x}")
             loc.set_register(reg_name)
         elif v.source_type == bn.VariableSourceType.StackVariableSourceType:
             loc.set_memory(self._arch.stack_pointer_name(),
                            v.storage + stack_offset)
         else:
             raise InvalidLocationException(
-                f"Unsupported variable type {v.source_type}: {v}")
+                f"Unsupported variable type {v.source_type}: {v} "
+                f"in function {self._bn_func.start:08x}")
 
     def _var_to_loc(self, v: bn.Variable, arch: bn.Architecture, tc: TypeCache,
                     stack_offset: int) -> Location:
@@ -114,7 +116,8 @@ class BNFunction(Function):
             llils: List[bn.LowLevelILInstruction] = p.llils
             if not len(llils):
                 raise InvalidLocationException(
-                    f"Could not create location for {p}:{p.__class__} at {p.address:08x}")
+                    f"Could not create location for {p} at "
+                    f"{p.address:08x} in function {self._bn_func.start:08x}")
             else:
                 ll = llils[-1]
 
@@ -135,14 +138,16 @@ class BNFunction(Function):
             reg_name = self._arch.register_name(bn_reg_name)
             if reg_name is None:
                 raise InvalidLocationException(
-                    f"Could not locate register {bn_reg_name} in "
-                    f"architecture")
+                    f"Could not locate register {bn_reg_name} for operation {p}"
+                    f" at {p.address:08x} in function"
+                    f" {self._bn_func.start:08x}")
             loc.set_register(reg_name)
             return loc
 
         # Constant argument on the stack.
         elif isinstance(ll, bn.LowLevelILStoreSsa):
-            dest: Optional[bn.MediumLevelILInstruction] = ll.mapped_medium_level_il
+            dest: Optional[bn.MediumLevelILInstruction] = \
+                ll.mapped_medium_level_il
             if dest is not None:
                 if isinstance(dest, bn.MediumLevelILVar):
                     v: bn.Variable = cast(bn.MediumLevelILVar, dest).src
@@ -154,11 +159,13 @@ class BNFunction(Function):
                     return loc
                 else:
                     raise InvalidLocationException(
-                        f"Unsupported Mapped MLIL {dest.operation} for constant {p} at "
-                        f"{p.address:08x}")
+                        f"Unsupported Mapped MLIL {dest.operation} for constant"
+                        f" {p} at {p.address:08x} in function"
+                        f" {self._bn_func.start:08x}")
 
         raise InvalidLocationException(
-            f"Unsupported LLIL {ll}:{ll.__class__} for constant {p} at {p.address:08x}")
+            f"Unsupported LLIL {ll}:{ll.__class__} for constant {p} at "
+            f"{p.address:08x} in function {self._bn_func.start:08x}")
 
     def _visit_mlil_call(self, call: bn.MediumLevelILCallBase,
                          spec: Specification, tc: TypeCache,
@@ -173,8 +180,43 @@ class BNFunction(Function):
         elif isinstance(call.dest, bn.MediumLevelILConst):
             called_func_ea = call.dest.constant
 
+        called_func_return_regs: Optional[List[Register]] = None
+        is_variadic: bool = False
+        is_noreturn: bool = False
+        cc: CC = DEFAULT_CC
+        called_func: Optional[Function] = None
         if called_func_ea is not None:
+            spec.add_function_declaration(called_func_ea, False)
+            called_func = spec.get_function(called_func_ea)
+
             ref_eas.add(called_func_ea)
+
+            # Try to collect a list of return registers possibly used by this
+            # function. Some call sites report huge numbers of return values
+            # when there really aren't that many, so we try to fixup here when
+            # we have visibility into the target function.
+            try:
+                target_func = bv.get_function_at(called_func_ea)
+                if target_func is not None:
+                    for bn_reg in target_func.return_regs.regs:
+                        reg = self._arch.register_name(bn_reg)
+                        if reg is not None:
+                            if called_func_return_regs is None:
+                                called_func_return_regs = []
+                            called_func_return_regs.append(reg)
+
+                # It might have been an external function associated with
+                # a `bn.DataVariable`, so no `bn.Function` exists.
+                elif called_func:
+                    ret_locs = called_func.return_values()
+                    for ret_loc in ret_locs:
+                        reg = ret_loc.register()
+                        if reg is not None:
+                            if called_func_return_regs is None:
+                                called_func_return_regs = []
+                            called_func_return_regs.append(reg)
+            except:
+                pass
 
         rets: List[Location] = []
         params: List[Location] = []
@@ -192,13 +234,33 @@ class BNFunction(Function):
         for v in call.output:
             rets.append(self._var_to_loc(v, arch, tc, stack_adjust))
 
-        # We can get the parameters as variables.
+        # Try to reduce the total number of return locations if we have info
+        # about the target function's return registers.
+        #
+        # NOTE(pag): Have observed aarch64 functions that return in `x0` but
+        #            where the call site outputs will be `x0`, `x1`, ..., `xzr`,
+        #            where `xzr` alone is nonsensical as an output location.
+        if called_func_return_regs is not None and \
+           len(rets) > len(called_func_return_regs):
+            new_rets: List[Location] = []
+            for ret_loc in rets:
+                ret_reg = ret_loc.register()
+                if ret_reg is None or ret_reg in called_func_return_regs:
+                    new_rets.append(ret_loc)
+
+            WARN(f"Taking return values/types {new_rets} instead of {rets} "
+                 f"at call site {call.address:08x}")
+            rets = new_rets
+
+        # We can get the parameters as variables. This is our best case because
+        # variables point at registers or stack slots.
         if len(call.params) == len(call.vars_read):
             for v in call.vars_read:
                 params.append(self._var_to_loc(v, arch, tc, stack_adjust))
 
         # We have to figure out the parameters from the MLIL, LLIL, and
-        # Mapped MLIL. The big issue is often constants.
+        # Mapped MLIL. The big issue is often constants. We're not always able
+        # to figure out the provenance of constants.
         else:
             for i, p in enumerate(call.params):
                 if isinstance(p, bn.MediumLevelILVar):
@@ -215,22 +277,31 @@ class BNFunction(Function):
                     params.append(self._var_to_loc(v, arch, tc, stack_adjust))
                 else:
                     raise InvalidLocationException(
-                        f"Unsupported parameter {p}:{p.__class__} at index {i} of call at {call.address:08x}")
-
-        is_variadic: bool = False
-        is_noreturn: bool = False
-        cc: CC = DEFAULT_CC
-        called_func: Optional[Function] = None
-        if called_func_ea is not None:
-            spec.add_function_declaration(called_func_ea, False)
-            called_func = spec.get_function(called_func_ea)
+                        f"Unsupported parameter {p}:{p.__class__} at index {i} "
+                        f"of call at {call.address:08x}")
 
         if called_func is not None:
-            if not len(rets):
-                rets = called_func.return_values()
+
             is_variadic = called_func.is_variadic()
             is_noreturn = called_func.is_noreturn()
             cc = called_func.calling_convention()
+            called_rets = called_func.return_values()
+
+            # NOTE(pag): Sometimes the call outputs won't intersect with
+            #            `called_func_return_regs` (filled above), and so the
+            #            code to get sane return registers will produce an
+            #            empty `rets` list, and here we end up recovering from
+            #            that situation.
+            #
+            # NOTE(pag): Another case is when the returned value of the call
+            #            is unused, and so the `outputs` of the call are empty.
+            #            We prefer to use the "correct" return values so as to
+            #            avoid function pointer casts down the line (in LLVM).
+            if len(rets) < len(called_rets):
+                WARN(f"Taking return values/types from {called_func_ea:08x} "
+                     f"at call site {call.address:08x}")
+                rets = called_rets
+
         else:
             # TODO(pag): Find calling convention.
             pass

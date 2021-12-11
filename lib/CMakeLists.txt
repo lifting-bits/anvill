@@ -24,6 +24,7 @@ include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 # `.cpp` file.
 set(anvill_passes
   ConvertAddressesToEntityUses
+  ConvertIntegerToPointerOperations
   ConvertMasksToCasts
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps

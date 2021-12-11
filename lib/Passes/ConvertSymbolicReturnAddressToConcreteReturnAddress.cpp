@@ -89,6 +89,7 @@ ConvertSymbolicReturnAddressToConcreteReturnAddress::run(
 
   auto ra = ir.CreateCall(ret_addr_func->getFunctionType(),
                           ret_addr_func, args, "return_address");
+  auto ce_insert_loc = ra->getNextNode();
 
   for (auto i = 0ul; i < uses.size(); ++i) {
     llvm::Instruction * const inst = uses[i].first;
@@ -98,29 +99,39 @@ ConvertSymbolicReturnAddressToConcreteReturnAddress::run(
       continue;
     }
 
+    llvm::Type * const ce_type = ce->getType();
+
     if (is_pti_of_ra(ce)) {
-      auto ity = llvm::dyn_cast<llvm::IntegerType>(ce->getType());
-      auto int_ra = llvm::dyn_cast<llvm::Instruction>(
-          ir.CreatePtrToInt(ra, ity));
-
-      CHECK_NOTNULL(int_ra);
-      CopyMetadataTo(inst, int_ra);
-
-      use->set(int_ra);
+      auto pti = llvm::PtrToIntInst::Create(
+          llvm::Instruction::PtrToInt, ra, ce_type);
+      pti->insertAfter(ra);
+      CopyMetadataTo(inst, pti);
+      use->set(pti);
 
     } else if (is_bc_of_ra(ce)) {
-      auto dty = ce->getType();
-      auto bc_ra = llvm::dyn_cast<llvm::Instruction>(
-          ir.CreateBitOrPointerCast(ra, dty));
+      if (ce_type == ra->getType()) {
+        CopyMetadataTo(inst, ra);
+        use->set(ra);
 
-      CHECK_NOTNULL(bc_ra);
-      CopyMetadataTo(inst, bc_ra);
+      } else if (ce_type->isPointerTy()) {
+        auto bc = llvm::BitCastInst::Create(
+            llvm::Instruction::BitCast, ra, ce_type);
+        bc->insertAfter(ra);
+        CopyMetadataTo(inst, bc);
 
-      use->set(bc_ra);
+      } else if (ce_type->isIntegerTy()) {
+        auto pti = llvm::PtrToIntInst::Create(
+            llvm::Instruction::PtrToInt, ra, ce_type);
+        pti->insertAfter(ra);
+        CopyMetadataTo(inst, pti);
+        use->set(pti);
+      }
 
     } else {
       auto ce_inst = ce->getAsInstruction();
-      ce_inst->insertBefore(inst);
+      ce_inst->insertBefore(ce_insert_loc);
+      ce_insert_loc = ce_inst;
+
       CopyMetadataTo(inst, ce_inst);
 
       use->set(ce_inst);

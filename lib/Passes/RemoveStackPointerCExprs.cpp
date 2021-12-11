@@ -84,6 +84,10 @@ llvm::StringRef RemoveStackPointerCExprs::name(void) {
 llvm::PreservedAnalyses
 RemoveStackPointerCExprs::run(llvm::Function &func,
                               llvm::FunctionAnalysisManager &fam) {
+  if (func.isDeclaration()) {
+    return llvm::PreservedAnalyses::all();
+  }
+
   llvm::Module * const module = func.getParent();
   const llvm::DataLayout &dl = module->getDataLayout();
   const auto addr_size = dl.getPointerSizeInBits(0);
@@ -97,6 +101,9 @@ RemoveStackPointerCExprs::run(llvm::Function &func,
   for (auto &insn : llvm::instructions(func)) {
     worklist.push_back(&insn);
   }
+
+  llvm::Instruction *ce_insert_loc =
+      &*func.getEntryBlock().getFirstInsertionPt();
 
   auto changed = false;
   while (!worklist.empty()) {
@@ -132,8 +139,10 @@ RemoveStackPointerCExprs::run(llvm::Function &func,
         //            doing this is much better. createReplacementInstr doesn't
         //            work because it tries to translate the whole instruction.
         auto newi = ce->getAsInstruction();
-        newi->insertBefore(curr);
+        newi->insertBefore(ce_insert_loc);
         use.set(newi);
+
+        ce_insert_loc = newi;
 
         worklist.push_back(newi);
       }

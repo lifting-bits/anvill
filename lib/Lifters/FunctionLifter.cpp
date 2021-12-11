@@ -1131,8 +1131,10 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     // a call-site specific declaration, and if so, use it, otherwise, use
     // the destination function type.
     if (inst_func) {
-      std::optional<CallableDecl> maybe_decl = TryGetTargetFunctionType(
-          inst, inst_addr, redir_addr);
+      std::optional<CallableDecl> maybe_decl;
+      if (from_addr) {
+        maybe_decl = TryGetTargetFunctionType(inst, inst_addr, redir_addr);
+      }
       if (!maybe_decl) {
         maybe_decl = std::move(inst_func.value());
       }

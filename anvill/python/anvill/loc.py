@@ -59,6 +59,9 @@ class Location(object):
     def type(self) -> Optional[Type]:
         return self._type
 
+    def register(self) -> Optional['Register']:
+        return self._register
+
     def proto(self, arch) -> Dict[str, Any]:
         ret: Dict[str, Any] = {}
         if self._register is not None:  # reg

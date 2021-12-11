@@ -65,8 +65,8 @@
 
 namespace anvill {
 
-// TODO(pag): NewGVN passes in debug build of LLVM on challenge 5.
-// NOTE(pag): Might also require the inliner to be present.
+//// TODO(pag): NewGVN passes in debug build of LLVM on challenge 5.
+//// NOTE(pag): Might also require the inliner to be present.
 //
 //class OurGVNPass : public llvm::PassInfoMixin<OurGVNPass> {
 //public:
@@ -74,9 +74,23 @@ namespace anvill {
 //  /// Run the pass over the function.
 //  llvm::PreservedAnalyses run(llvm::Function &F, llvm::AnalysisManager<llvm::Function> &AM) {
 //    LOG(ERROR) << F.getName().str();
+//    remill::StoreModuleToFile(F.getParent(), "/tmp/lifted.bc", true);
 //    return pass.run(F, AM);
 //  }
 //};
+
+class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
+  llvm::VerifierPass pass;
+  const unsigned line;
+ public:
+  inline explicit OurVerifierPass(unsigned line_)
+      : line(line_) {}
+
+  llvm::PreservedAnalyses run(llvm::Function &F, llvm::AnalysisManager<llvm::Function> &AM) {
+    LOG(ERROR) << "Verifier at " << line;
+    return pass.run(F, AM);
+  }
+};
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
@@ -109,7 +123,6 @@ void OptimizeModule(const EntityLifter &lifter,
   }
 
   CHECK(remill::VerifyModule(&module));
-//  remill::StoreModuleToFile(&module, "/tmp/lifted.bc", true);
 
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm(false);
@@ -138,7 +151,10 @@ void OptimizeModule(const EntityLifter &lifter,
 
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SinkingPass());
-  fpm.addPass(llvm::NewGVNPass());
+
+  // NewGVN has bugs with `____strtold_l_internal` from chal5, amd64.
+//  fpm.addPass(llvm::NewGVNPass());
+
   fpm.addPass(llvm::SCCPPass());
   fpm.addPass(llvm::DSEPass());
   fpm.addPass(llvm::SROA());
@@ -157,6 +173,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
   AddHoistUsersOfSelectsAndPhis(fpm);
+  fpm.addPass(llvm::InstCombinePass());
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SROA());
 
@@ -169,7 +186,6 @@ void OptimizeModule(const EntityLifter &lifter,
   AddConvertMasksToCasts(fpm);
 
   AddLowerSwitchIntrinsics(fpm, slc, mp);
-  AddConvertAddressesToEntityUses(fpm, xr);
   AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveTrivialPhisAndSelects(fpm);
 
@@ -186,9 +202,8 @@ void OptimizeModule(const EntityLifter &lifter,
   // but it comes up often enough for lifted code.
   AddConvertXorsToCmps(fpm);
 
-//  if (FLAGS_pointer_brighten_gas) {
-//    AddBrightenPointerOperations(fpm, FLAGS_pointer_brighten_gas);
-//  }
+  AddConvertIntegerToPointerOperations(fpm);
+  AddConvertAddressesToEntityUses(fpm, xr);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
@@ -201,6 +216,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddRemoveRemillFunctionReturns(second_fpm, xr);
   AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
+  second_fpm.addPass(llvm::NewGVNPass());
   AddSpreadPCMetadata(second_fpm, options);
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
