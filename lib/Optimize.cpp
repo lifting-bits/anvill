@@ -172,7 +172,11 @@ void OptimizeModule(const EntityLifter &lifter,
   AddLowerRemillMemoryAccessIntrinsics(fpm);
   AddRemoveCompilerBarriers(fpm);
   AddLowerTypeHintIntrinsics(fpm);
-  AddHoistUsersOfSelectsAndPhis(fpm);
+
+  // TODO(pag): This pass has an issue on the `SMIME_write_ASN1` function
+  //            of the ARM64 variant of Challenge 5.
+  // AddHoistUsersOfSelectsAndPhis(fpm);
+
   fpm.addPass(llvm::InstCombinePass());
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::SROA());

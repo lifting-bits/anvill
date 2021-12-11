@@ -14,7 +14,7 @@ target_link_libraries(anvill-specify-bitcode PRIVATE
   anvill
 )
 
-if(ANVILL_ENABLE_INSTALL_TARGET)
+if(ANVILL_ENABLE_INSTALL)
   install(
     TARGETS
       anvill-specify-bitcode
@@ -25,4 +25,4 @@ if(ANVILL_ENABLE_INSTALL_TARGET)
     RUNTIME DESTINATION
       bin
   )
-endif()
+endif(ANVILL_ENABLE_INSTALL)

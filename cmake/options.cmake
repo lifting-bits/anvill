@@ -16,7 +16,7 @@ endif()
 
 set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Build type")
 
-option(ANVILL_ENABLE_INSTALL_TARGET "Set to ON to enable the install directives. This installs both the native and python components" TRUE)
+option(ANVILL_ENABLE_INSTALL "Set to ON to enable the install directives. This installs both the native and python components" TRUE)
 option(ANVILL_ENABLE_PYTHON3_LIBS "Build Python 3 libraries" TRUE)
 cmake_dependent_option(ANVILL_INSTALL_PYTHON3_LIBS "Install Python 3 libraries to the **local machine** at build time. Mostly used for local development, not required for packaging" FALSE
   "ANVILL_ENABLE_PYTHON3_LIBS" FALSE)

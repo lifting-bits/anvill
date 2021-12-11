@@ -86,7 +86,7 @@ COPY . ./
 # Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
-        -DANVILL_ENABLE_INSTALL_TARGET=true \
+        -DANVILL_ENABLE_INSTALL=true \
         -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
         -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \

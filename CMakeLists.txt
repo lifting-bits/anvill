@@ -6,80 +6,74 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-if(VCPKG_ROOT)
-  message(WARNING "Building with VCPKG")
-  include(cmake/vcpkg_helper.cmake)
-endif()
-
-project(anvill)
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.19)
 
 include("cmake/options.cmake")
+include("cmake/ccache.cmake")
+include("cmake/vcpkg_helper.cmake")
+
+project("anvill")
+
+include(GNUInstallDirs)
+include("cmake/system.cmake")
+include("cmake/llvm.cmake")
+
+if(ANVILL_ENABLE_INSTALL)
+  include("cmake/packaging.cmake")
+endif(ANVILL_ENABLE_INSTALL)
+
+add_subdirectory("libraries")
+
+set(_VCPKG_SHARE_DIR "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/${CMAKE_INSTALL_DATADIR}")
+
+find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(Z3 4.8.12.0 EXACT CONFIG REQUIRED)
+find_llvm(llvm "${_VCPKG_SHARE_DIR}")
+
+find_package(remill CONFIG REQUIRED)
+
+if(ANVILL_ENABLE_INSTALL)
+  export(PACKAGE "${PROJECT_NAME}")
+  
+  set(cmake_install_dir "lib/cmake/${PROJECT_NAME}")
+  
+  include(CMakePackageConfigHelpers)
+  configure_package_config_file("${PROJECT_NAME}Config.cmake.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+      INSTALL_DESTINATION "${cmake_install_dir}"
+  )
+
+  install(
+      FILES
+          "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+      DESTINATION "${cmake_install_dir}"
+  )
+  install(EXPORT "${PROJECT_NAME}Targets"
+      DESTINATION "${cmake_install_dir}"
+      NAMESPACE "${PROJECT_NAME}::"
+  )
+  install(
+    TARGETS
+      "llvm"
+    EXPORT
+      "${PROJECT_NAME}Targets"
+  )
+
+endif(ANVILL_ENABLE_INSTALL)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-if(NOT VCPKG_ROOT)
-  message(WARNING "Running the standard CMake build; if this is a mistake, reconfigure again and pass `-DVCPKG_ROOT=/path/to/vcpkg`")
-  include(cmake/system_build.cmake)
-else()
-  find_package(remill CONFIG REQUIRED)
-endif()
-
-include("cmake/utils.cmake")
-
-include(GNUInstallDirs)
 
 if(ANVILL_ENABLE_TESTS)
   message(STATUS "anvill: Tests have been enabled")
   enable_testing()
 else()
   message(STATUS "anvill: Tests are not enabled")
-endif()
+endif(ANVILL_ENABLE_TESTS)
 
-FindAndSelectClangCompiler()
-
-find_program(ccache_path ccache)
-if("${ccache_path}" STREQUAL "ccache_path-NOTFOUND")
-  message(STATUS "anvill: ccache was not found")
-
-else()
-  message(STATUS "anvill: Enabling ccache support with ${ccache_path}")
-
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${ccache_path}" CACHE FILEPATH "")
-  set(CMAKE_C_COMPILER_LAUNCHER "${ccache_path}" CACHE FILEPATH "")
-endif()
-
-add_subdirectory("libraries")
 add_subdirectory("lib")
 add_subdirectory("bin")
 
-if(ANVILL_ENABLE_SANITIZERS)
-  configureSanitizers("remill_settings")
-endif(ANVILL_ENABLE_SANITIZERS)
-
-if(ANVILL_ENABLE_INSTALL_TARGET)
-
-  set(anvill_cmake_config
-    "${CMAKE_CURRENT_BINARY_DIR}/anvillConfig.cmake"
-  )
-
-  configure_file(
-    "${PROJECT_SOURCE_DIR}/cmake/anvillConfig.cmake.in"
-    "${anvill_cmake_config}"
-    @ONLY
-  )
-  
-  install(FILES "${anvill_cmake_config}"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
-  )
-  
-  install(EXPORT anvillTargets
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/anvill"
-  )
-
-  install(DIRECTORY "${CMAKE_SOURCE_DIR}/anvill/include/anvill/"
-    DESTINATION "include/anvill" FILES_MATCHING PATTERN "*.h"
-   )
-
-endif(ANVILL_ENABLE_INSTALL_TARGET)
