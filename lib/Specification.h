@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 
@@ -56,21 +56,23 @@ class SpecificationImpl
   const TypeDictionary type_dictionary;
   const TypeTranslator type_translator;
 
-  using GlobalVarDeclPtr = std::unique_ptr<GlobalVarDecl>;
+  using VariableDeclPtr = std::unique_ptr<VariableDecl>;
   using FunctionDeclPtr = std::unique_ptr<FunctionDecl>;
   using CallSiteDeclPtr = std::unique_ptr<CallSiteDecl>;
+  using ControlFlowTargetListPtr = std::unique_ptr<ControlFlowTargetList>;
 
   // Sorted list of functions, variables, and call sites.
-  std::vector<GlobalVarDeclPtr> variables;
+  std::vector<VariableDeclPtr> variables;
   std::vector<FunctionDeclPtr> functions;
   std::vector<CallSiteDeclPtr> call_sites;
+  std::vector<ControlFlowTargetListPtr> targets;
 
   // List of functions that have been parsed from the JSON spec.
   std::unordered_map<std::uint64_t, const FunctionDecl *> address_to_function;
 
   // Inverted mapping of byte addresses to the variables containing those
   // addresses.
-  std::unordered_map<std::uint64_t, const GlobalVarDecl *> address_to_var;
+  std::unordered_map<std::uint64_t, const VariableDecl *> address_to_var;
 
 
   // NOTE(pag): We used ordered containers so that any type of round-tripping
@@ -86,7 +88,7 @@ class SpecificationImpl
   std::map<std::uint64_t, std::uint64_t> redirections;
 
   // De-virtualization targets.
-  std::map<std::uint64_t, ControlFlowTargetList> targets;
+  std::map<std::uint64_t, const ControlFlowTargetList *> address_to_targets;
 
   // Call-site specific target information.
   std::map<std::pair<std::uint64_t, std::uint64_t>, const CallSiteDecl *>

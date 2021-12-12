@@ -12,7 +12,6 @@
 #include <sstream>
 
 #include <anvill/JSON.h>
-#include <anvill/Lifters.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/JSON.h>
 #include <remill/Arch/Arch.h>
@@ -196,10 +195,11 @@ bool SpecificationImpl::ParseControlFlowTargets(
 
     const auto source_address = static_cast<uint64_t>(maybe_source.getValue());
 
-    ControlFlowTargetList target_list;
-    target_list.source_address = source_address;
+    std::unique_ptr<ControlFlowTargetList> target_list(
+        new ControlFlowTargetList);
+    target_list->address = source_address;
 
-    if (targets.count(source_address)) {
+    if (address_to_targets.count(source_address)) {
       ss << "Source address of " << index
          << "th entry of 'control_flow_targets' list (source address: "
          << std::hex << source_address
@@ -222,7 +222,7 @@ bool SpecificationImpl::ParseControlFlowTargets(
       return false;
     }
 
-    target_list.is_complete = maybe_complete.getValue();
+    target_list->is_complete = maybe_complete.getValue();
 
     if (entry_as_obj->find("destinations") == entry_as_obj->end()) {
       ss << "Missing 'destinations' list in " << index
@@ -251,7 +251,7 @@ bool SpecificationImpl::ParseControlFlowTargets(
       }
 
       auto destination = maybe_destination.getValue();
-      target_list.target_addresses.insert(destination);
+      target_list->target_addresses.insert(destination);
 
       ++sub_index;
     }
@@ -263,10 +263,17 @@ bool SpecificationImpl::ParseControlFlowTargets(
       return false;
     }
 
-    targets.emplace(source_address, std::move(target_list));
+    address_to_targets.emplace(source_address, target_list.get());
+    targets.emplace_back(std::move(target_list));
 
     ++index;
   }
+
+  std::sort(targets.begin(), targets.end(),
+            [] (const ControlFlowTargetListPtr &a,
+                const ControlFlowTargetListPtr &b) {
+              return a->address < b->address;
+            });
 
   return true;
 }
@@ -416,7 +423,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           return err.object ? err.object : var_obj;
 
         } else {
-          auto var_ptr = new GlobalVarDecl(maybe_var.TakeValue());
+          auto var_ptr = new VariableDecl(maybe_var.TakeValue());
           variables.emplace_back(var_ptr);
 
           auto size = dl.getTypeAllocSize(var_ptr->type).getKnownMinValue();
@@ -442,7 +449,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     }
 
     std::sort(variables.begin(), variables.end(),
-              [] (const GlobalVarDeclPtr &a, const GlobalVarDeclPtr &b) {
+              [] (const VariableDeclPtr &a, const VariableDeclPtr &b) {
                 return a->address < b->address;
               });
 
@@ -733,7 +740,7 @@ Specification::EncodeToJSON(void) {
     memory.emplace_back(std::move(ro));
   }
 
-  for (const auto &[from_address, to_address] : impl->redirections) {
+  for (auto [from_address, to_address] : impl->redirections) {
     if (from_address == to_address) {
       std::stringstream ss;
       ss << "Trivial control-flow redirection cycle on address "
@@ -747,36 +754,27 @@ Specification::EncodeToJSON(void) {
     redirects.emplace_back(std::move(entry));
   }
 
-  for (const auto &[from_address, to_list_] : impl->targets) {
-    const ControlFlowTargetList &to_list = to_list_;
-
-    if (to_list.source_address != from_address) {
-      std::stringstream ss;
-      ss << "Inconsistent control-flow source address for control-flow "
-         << "target list: " << std::hex << from_address << " vs. "
-         << to_list.source_address;
-      return JSONEncodeError(ss.str());
-
-    } else if (to_list.target_addresses.empty()) {
+  for (const auto &to_list : impl->targets) {
+    if (to_list->target_addresses.empty()) {
       std::stringstream ss;
       ss << "Empty destination address list for source address "
-         << std::hex << from_address;
+         << std::hex << to_list->address;
       return JSONEncodeError(ss.str());
     }
 
     llvm::json::Array destinations;
-    for (auto dest_address : to_list.target_addresses) {
+    for (auto dest_address : to_list->target_addresses) {
       destinations.push_back(static_cast<int64_t>(dest_address));
     }
 
     llvm::json::Object tl;
     tl.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("source"),
-        static_cast<int64_t>(from_address)});
+        static_cast<int64_t>(to_list->address)});
 
     tl.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("is_complete"),
-        to_list.is_complete});
+        to_list->is_complete});
 
     tl.insert(llvm::json::Object::KV{
         llvm::json::ObjectKey("destinations"),
@@ -837,39 +835,79 @@ std::shared_ptr<const FunctionDecl> Specification::FunctionAt(
 }
 
 // Return the global variable beginning at `address`, or an empty `shared_ptr`.
-std::shared_ptr<const GlobalVarDecl> Specification::GlobalVarAt(
+std::shared_ptr<const VariableDecl> Specification::VariableAt(
     std::uint64_t address) const {
   auto it = impl->address_to_var.find(address);
   if (it != impl->address_to_var.end()) {
     if (it->second->address == address) {
-      return std::shared_ptr<const GlobalVarDecl>(impl, it->second);
+      return std::shared_ptr<const VariableDecl>(impl, it->second);
     }
   }
   return {};
 }
 
 // Return the global variable containing `address`, or an empty `shared_ptr`.
-std::shared_ptr<const GlobalVarDecl> Specification::GlobalVarContaining(
+std::shared_ptr<const VariableDecl> Specification::VariableContaining(
     std::uint64_t address) const {
   auto it = impl->address_to_var.find(address);
   if (it != impl->address_to_var.end()) {
-    return std::shared_ptr<const GlobalVarDecl>(impl, it->second);
+    return std::shared_ptr<const VariableDecl>(impl, it->second);
   } else {
     return {};
   }
 }
 
-// Lift all functions.
-void Specification::LiftAllFunctions(EntityLifter &lifter) const {
-  for (const auto &func : impl->functions) {
-    lifter.LiftEntity(*func);
+// Call `cb` on each function in the spec, until `cb` returns `false`.
+void Specification::ForEachFunction(
+    std::function<bool(std::shared_ptr<const FunctionDecl>)> cb) const {
+  for (const auto &ent : impl->functions) {
+    std::shared_ptr<const FunctionDecl> ptr(impl, ent.get());
+    if (!cb(std::move(ptr))) {
+      return;
+    }
   }
 }
 
-// Lift all variables.
-void Specification::LiftAllVariables(EntityLifter &lifter) const {
-  for (const auto &var : impl->variables) {
-    lifter.LiftEntity(*var);
+// Call `cb` on each variable in the spec, until `cb` returns `false`.
+void Specification::ForEachVariable(
+    std::function<bool(std::shared_ptr<const VariableDecl>)> cb) const {
+  for (const auto &ent : impl->variables) {
+    std::shared_ptr<const VariableDecl> ptr(impl, ent.get());
+    if (!cb(std::move(ptr))) {
+      return;
+    }
+  }
+}
+
+// Call `cb` on each call site in the spec, until `cb` returns `false`.
+void Specification::ForEachCallSite(
+    std::function<bool(std::shared_ptr<const CallSiteDecl>)> cb) const {
+  for (const auto &ent : impl->call_sites) {
+    std::shared_ptr<const CallSiteDecl> ptr(impl, ent.get());
+    if (!cb(std::move(ptr))) {
+      return;
+    }
+  }
+}
+
+// Call `cb` on each control-flow target list, until `cb` returns `false`.
+void Specification::ForEachControlFlowTargetList(
+    std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb) const {
+  for (const auto &ent : impl->targets) {
+    std::shared_ptr<const ControlFlowTargetList> ptr(impl, ent.get());
+    if (!cb(std::move(ptr))) {
+      return;
+    }
+  }
+}
+
+// Call `cb` on each control-flow redirection, until `cb` returns `false`.
+void Specification::ForEachControlFlowRedirect(
+    std::function<bool(std::uint64_t, std::uint64_t)> cb) const {
+  for (auto [from, to] : impl->redirections) {
+    if (!cb(from, to)) {
+      return;
+    }
   }
 }
 

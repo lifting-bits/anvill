@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/JSON.h>
 #include <anvill/Type.h>
 #include <gflags/gflags.h>

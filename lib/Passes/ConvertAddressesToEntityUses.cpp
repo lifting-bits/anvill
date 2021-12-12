@@ -9,7 +9,7 @@
 #include <anvill/Passes/ConvertAddressesToEntityUses.h>
 
 #include <anvill/CrossReferenceResolver.h>
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Utils.h>

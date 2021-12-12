@@ -28,7 +28,7 @@ class LifterOptions;
 class MemoryProvider;
 class TypeProvider;
 
-struct GlobalVarDecl;
+struct VariableDecl;
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class DataLifter {
@@ -38,11 +38,11 @@ class DataLifter {
   DataLifter(const LifterOptions &options_);
 
   // Lift a function. Will return `nullptr` if the memory is not accessible.
-  llvm::Constant *LiftData(const GlobalVarDecl &decl,
+  llvm::Constant *LiftData(const VariableDecl &decl,
                            EntityLifterImpl &lifter_context);
 
   // Declare a lifted a variable. Will not return `nullptr`.
-  llvm::Constant *GetOrDeclareData(const GlobalVarDecl &decl,
+  llvm::Constant *GetOrDeclareData(const VariableDecl &decl,
                                    EntityLifterImpl &lifter_context);
 
  private:

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>

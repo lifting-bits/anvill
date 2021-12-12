@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 
 #include <anvill/Utils.h>
 #include <anvill/Type.h>
@@ -36,7 +36,7 @@ namespace anvill {
 
 // Declare this global variable in an LLVM module.
 llvm::GlobalVariable *
-GlobalVarDecl::DeclareInModule(const std::string &name,
+VariableDecl::DeclareInModule(const std::string &name,
                                llvm::Module &target_module) const {
   auto &context = target_module.getContext();
   auto var_type = remill::RecontextualizeType(type, context);

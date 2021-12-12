@@ -96,7 +96,7 @@ struct TypedRegisterDecl {
 // A typed location in memory, that isn't actually code. This roughly
 // corresponds with the concept of a global variable, though it doesn't
 // actually need to represent data with any kind of "global" visibility.
-struct GlobalVarDecl {
+struct VariableDecl {
 
   // The type of the memory beginning at `address`. For example, if `address`
   // is `0x10` and the type is a structure containing two integers, then we

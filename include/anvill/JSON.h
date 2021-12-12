@@ -33,7 +33,7 @@ class TypeTranslator;
 
 struct CallSiteDecl;
 struct FunctionDecl;
-struct GlobalVarDecl;
+struct VariableDecl;
 struct ParameterDecl;
 struct ValueDecl;
 
@@ -115,7 +115,7 @@ class JSONTranslator {
 
   // Try to decode global variable information from a JSON specification. These
   // are really variable prototypes / declarations.
-  Result<GlobalVarDecl, JSONDecodeError>
+  Result<VariableDecl, JSONDecodeError>
   DecodeGlobalVar(const llvm::json::Object *obj) const;
 
   // Encode a function declaration.
@@ -128,7 +128,7 @@ class JSONTranslator {
 
   // Encode a variable declaration.
   Result<llvm::json::Object, JSONEncodeError>
-  Encode(const GlobalVarDecl &decl) const;
+  Encode(const VariableDecl &decl) const;
 };
 
 }  // namespace anvill

@@ -44,9 +44,9 @@ std::uint64_t SpecificationControlFlowProvider::GetRedirection(
 std::optional<anvill::ControlFlowTargetList>
 SpecificationControlFlowProvider::TryGetControlFlowTargets(
     const remill::Instruction &inst) const {
-  auto it = impl->targets.find(inst.pc);
-  if (it != impl->targets.end()) {
-    return it->second;
+  auto it = impl->address_to_targets.find(inst.pc);
+  if (it != impl->address_to_targets.end()) {
+    return *(it->second);
   } else {
     return std::nullopt;
   }

@@ -9,7 +9,7 @@
 #include "DataLifter.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
@@ -35,7 +35,7 @@ DataLifter::DataLifter(const LifterOptions &options_)
       context(options.module->getContext()) {}
 
 // Declare a lifted a variable. Will not return `nullptr`.
-llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
+llvm::Constant *DataLifter::GetOrDeclareData(const VariableDecl &decl,
                                              EntityLifterImpl &lifter_context) {
 
   const auto &dl = options.module->getDataLayout();
@@ -133,7 +133,7 @@ llvm::Constant *DataLifter::GetOrDeclareData(const GlobalVarDecl &decl,
   return gv;
 }
 
-llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
+llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
                                      EntityLifterImpl &lifter_context) {
   const auto &dl = options.module->getDataLayout();
   const auto type = remill::RecontextualizeType(decl.type, context);
@@ -201,7 +201,7 @@ llvm::Constant *DataLifter::LiftData(const GlobalVarDecl &decl,
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
 // not accessible.
-llvm::Constant *EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
+llvm::Constant *EntityLifter::DeclareEntity(const VariableDecl &decl) const {
 
   // Not a valid address, or memory isn't executable.
   auto [first_byte, first_byte_avail, first_byte_perms] =
@@ -214,7 +214,7 @@ llvm::Constant *EntityLifter::DeclareEntity(const GlobalVarDecl &decl) const {
 }
 
 // Lift a function. Will return `nullptr` if the memory is not accessible.
-llvm::Constant *EntityLifter::LiftEntity(const GlobalVarDecl &decl) const {
+llvm::Constant *EntityLifter::LiftEntity(const VariableDecl &decl) const {
 
   // TODO(pag,alessandro): Inspect the pointer returned from `DeclareData`.
   //                       Use `FindBaseAndOffset` to find the base. If the

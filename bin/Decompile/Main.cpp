@@ -133,8 +133,17 @@ int main(int argc, char *argv[]) {
       "stack_offset";
 
   anvill::EntityLifter lifter(options);
-  spec.LiftAllFunctions(lifter);
-  spec.LiftAllVariables(lifter);
+
+  spec.ForEachFunction([&lifter] (auto decl) {
+    lifter.LiftEntity(*decl);
+    return true;
+  });
+
+  spec.ForEachVariable([&lifter] (auto decl) {
+    lifter.LiftEntity(*decl);
+    return true;
+  });
+
   anvill::OptimizeModule(lifter, module);
 
   int ret = EXIT_SUCCESS;
