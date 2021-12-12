@@ -115,6 +115,10 @@ class Specification {
   std::shared_ptr<const VariableDecl> VariableContaining(
       std::uint64_t address) const;
 
+  // Call `cb` on each symbol in the spec, until `cb` returns `false`.
+  void ForEachSymbol(std::function<bool(std::uint64_t,
+                                        const std::string &)> cb);
+
   // Call `cb` on each function in the spec, until `cb` returns `false`.
   void ForEachFunction(
       std::function<bool(std::shared_ptr<const FunctionDecl>)> cb) const;
