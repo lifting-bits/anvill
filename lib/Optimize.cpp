@@ -57,7 +57,7 @@
 #include <anvill/Lifters.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
 #include <remill/BC/ABI.h>

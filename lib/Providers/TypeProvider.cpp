@@ -8,7 +8,7 @@
 
 #include <anvill/Providers.h>
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -30,7 +30,7 @@ NullTypeProvider::TryGetFunctionType(uint64_t) const {
   return std::nullopt;
 }
 
-std::optional<GlobalVarDecl>
+std::optional<VariableDecl>
 NullTypeProvider::TryGetVariableType(uint64_t) const {
   return std::nullopt;
 }
@@ -103,7 +103,7 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
   }
 }
 
-std::optional<anvill::GlobalVarDecl>
+std::optional<anvill::VariableDecl>
 SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
   auto var_it = impl->address_to_var.find(address);
   if (var_it != impl->address_to_var.end()) {

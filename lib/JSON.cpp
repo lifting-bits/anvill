@@ -10,7 +10,7 @@
 
 #include <sstream>
 
-#include <anvill/Decls.h>
+#include <anvill/Declarations.h>
 #include <anvill/Type.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/Support/JSON.h>
@@ -660,7 +660,7 @@ JSONTranslator::DecodeCallSite(const llvm::json::Object *obj) const {
 
 // Try to decode global variable information from a JSON specification. These
 // are really variable prototypes / declarations.
-Result<GlobalVarDecl, JSONDecodeError>
+Result<VariableDecl, JSONDecodeError>
 JSONTranslator::DecodeGlobalVar(const llvm::json::Object *obj) const {
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
@@ -711,7 +711,7 @@ JSONTranslator::DecodeGlobalVar(const llvm::json::Object *obj) const {
     return JSONDecodeError(ss.str(), obj);
   }
 
-  anvill::GlobalVarDecl decl;
+  anvill::VariableDecl decl;
   decl.type = type;
   decl.address = address;
   return decl;
@@ -1006,7 +1006,7 @@ JSONTranslator::Encode(const CallSiteDecl &decl) const {
 
 // Encode a variable declaration.
 Result<llvm::json::Object, JSONEncodeError>
-JSONTranslator::Encode(const GlobalVarDecl &decl) const {
+JSONTranslator::Encode(const VariableDecl &decl) const {
   if (!decl.type) {
     return JSONEncodeError(
         "Cannot encode variable declaration with no type");

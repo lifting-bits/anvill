@@ -23,7 +23,7 @@ class Type;
 namespace anvill {
 
 struct FunctionDecl;
-struct GlobalVarDecl;
+struct VariableDecl;
 class TypeProvider;
 
 class EntityLifterImpl;

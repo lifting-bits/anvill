@@ -33,7 +33,7 @@ struct Register;
 namespace anvill {
 
 struct FunctionDecl;
-struct GlobalVarDecl;
+struct VariableDecl;
 
 class ControlFlowProvider;
 class EntityLifterImpl;
@@ -310,10 +310,10 @@ class EntityLifter {
   llvm::Function *DeclareEntity(const FunctionDecl &decl) const;
 
   // Lift a variable and return it. Returns `nullptr` if there was a failure.
-  llvm::Constant *LiftEntity(const GlobalVarDecl &decl) const;
+  llvm::Constant *LiftEntity(const VariableDecl &decl) const;
 
   // Lift a variable and return it. Returns `nullptr` if there was a failure.
-  llvm::Constant *DeclareEntity(const GlobalVarDecl &decl) const;
+  llvm::Constant *DeclareEntity(const VariableDecl &decl) const;
 
   EntityLifter(const EntityLifter &) = default;
   EntityLifter(EntityLifter &&) noexcept = default;

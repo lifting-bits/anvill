@@ -89,14 +89,14 @@ llvm::Constant *EntityCrossReferenceResolver::EntityAtAddress(
 //  llvm::Constant *entity = nullptr;
 //  std::uint64_t entity_addr = addr;
 //
-//  if (std::optional<GlobalVarDecl> maybe_var_decl =
+//  if (std::optional<VariableDecl> maybe_var_decl =
 //                 type_provider.TryGetVariableType(addr)) {
 //    entity_addr = maybe_var_decl->address;
 //    entity_type = maybe_var_decl->type;
 //    entity = entity_lifter.DeclareEntity(*maybe_var_decl);
 //
 //  // Try to see if it's one past the end of a known entity.
-//  } else if (std::optional<GlobalVarDecl> maybe_prev_var_decl =
+//  } else if (std::optional<VariableDecl> maybe_prev_var_decl =
 //                 type_provider.TryGetVariableType(addr - 1u);
 //             maybe_prev_var_decl && addr) {
 //
