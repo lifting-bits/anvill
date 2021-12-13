@@ -117,7 +117,7 @@ class Specification {
 
   // Call `cb` on each symbol in the spec, until `cb` returns `false`.
   void ForEachSymbol(std::function<bool(std::uint64_t,
-                                        const std::string &)> cb);
+                                        const std::string &)> cb) const;
 
   // Call `cb` on each function in the spec, until `cb` returns `false`.
   void ForEachFunction(

@@ -859,7 +859,7 @@ std::shared_ptr<const VariableDecl> Specification::VariableContaining(
 
 // Call `cb` on each symbol in the spec, until `cb` returns `false`.
 void Specification::ForEachSymbol(std::function<bool(std::uint64_t,
-                                      const std::string &)> cb) {
+                                      const std::string &)> cb) const {
   for (const auto &[ea, name] : impl->symbols) {
     if (!cb(ea, name)) {
       return;
