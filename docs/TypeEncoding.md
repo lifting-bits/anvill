@@ -37,7 +37,7 @@ The basic elements of the type encoding follows.
 | `e` | 2 | `float16_t` (IEEE754 half-precision floating point, or `binary16`) |
 | `f` | 4 | `float` (IEEE754 single-precision floating point) |
 | `F` | 8 | `double` (IEEE754 double-precision floating point) |
-| `D` | 10 | `long double` (IEEE754 extended precision floating point) |
+| `d` | 10 | `long double` (IEEE754 extended precision floating point) |
 | `D` | 12 | `long double` (IEEE754 extended precision floating point) |
 | `M` | 8 | `__m64` (x86 MMX vector type) |
 | `Q` | 16 | `__float128` (IEEE754 quadruple-precision floating point) |
