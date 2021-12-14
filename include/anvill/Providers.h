@@ -36,15 +36,13 @@ namespace anvill {
 class TypeProvider {
  protected:
   llvm::LLVMContext &context;
-  llvm::DataLayout data_layout;
   const TypeDictionary type_dictionary;
 
  public:
-  explicit TypeProvider(const ::anvill::TypeDictionary &type_dictionary_,
-                        const llvm::DataLayout &dl_);
+  explicit TypeProvider(const ::anvill::TypeDictionary &type_dictionary_);
 
   inline explicit TypeProvider(const TypeTranslator &tt)
-      : TypeProvider(tt.Dictionary(), tt.DataLayout()) {}
+      : TypeProvider(tt.Dictionary()) {}
 
   inline const ::anvill::TypeDictionary &Dictionary(void) const {
     return type_dictionary;

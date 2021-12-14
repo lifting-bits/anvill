@@ -56,10 +56,8 @@ std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionType(
   return std::nullopt;
 }
 
-TypeProvider::TypeProvider(const ::anvill::TypeDictionary &type_dictionary_,
-                           const llvm::DataLayout &dl_)
+TypeProvider::TypeProvider(const ::anvill::TypeDictionary &type_dictionary_)
     : context(type_dictionary_.u.named.bool_->getContext()),
-      data_layout(dl_),
       type_dictionary(type_dictionary_) {}
 
 // Try to get the type of the register named `reg_name` on entry to the

@@ -138,6 +138,14 @@ class Specification {
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(
       std::function<bool(std::uint64_t, std::uint64_t)> cb) const;
+
+  inline bool operator==(const Specification &that) const noexcept {
+    return impl.get() == that.impl.get();
+  }
+
+  inline bool operator!=(const Specification &that) const noexcept {
+    return impl.get() == that.impl.get();
+  }
 };
 
 }  // namespace anvill
