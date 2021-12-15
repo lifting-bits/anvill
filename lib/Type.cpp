@@ -892,7 +892,7 @@ TypeDictionary::TypeDictionary(llvm::LLVMContext &context) {
   u.named.void_ = GetOrCreateInt(context, "void", 8);
   u.named.padding = GetOrCreateInt(context, "padding", 8);
 #else
-  u.named.bool_ = llvm::Type::getInt1Ty(context);
+  u.named.bool_ = llvm::Type::getInt8Ty(context);
   u.named.char_ = llvm::Type::getInt8Ty(context);
   u.named.schar = u.named.char_;
   u.named.uchar = u.named.char_;
