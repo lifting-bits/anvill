@@ -43,7 +43,6 @@ SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   std::for_each(slice.begin(), slice.end(),
                 [this, &mapper, &cloned_insns](llvm::Instruction *insn) {
                   auto cloned = insn->clone();
-                  cloned->dump();
                   remill::MoveInstructionIntoModule(cloned, this->mod.get(), this->vm_map, this->ty_map);
                   // This is bad, ideally we wouldn't do this.
                   if (&insn->getType()->getContext() != &this->context) {
@@ -181,7 +180,7 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   }
 
   std::for_each(cloned.begin(), cloned.end(),
-                [&mapper, this](llvm::Instruction *insn) {
+                [&mapper](llvm::Instruction *insn) {
                   llvm::RemapInstruction(insn, mapper);
 
                 });
@@ -198,9 +197,8 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   }
 
   this->slices.insert({id.id, SliceManager::Slice(slice_repr, id)});
-  //this->mod->dump();
+  
   assert(remill::VerifyModule(this->mod.get()));
-  std::cout << "done func" << std::endl;
   return {id};
 }
 
