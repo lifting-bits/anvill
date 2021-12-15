@@ -13,7 +13,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Operator.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
-
+#include <remill/BC/Util.h>
 #include <exception>
 #include <iostream>
 
@@ -23,14 +23,15 @@ llvm::Function *SliceManager::createFunctionForCurrentID(
     SliceID id, llvm::ArrayRef<llvm::Value *> arguments,
     llvm::Value *returnVal) {
   llvm::SmallVector<llvm::Type *> arg_types;
+
   std::transform(
       arguments.begin(), arguments.end(), std::back_inserter(arg_types),
-      [](llvm::Value *arg) -> llvm::Type * { return arg->getType(); });
+      [this](llvm::Value *arg) -> llvm::Type * { return remill::RecontextualizeType(arg->getType(),context); });
   llvm::FunctionType *ty =
-      llvm::FunctionType::get(returnVal->getType(), arg_types, false);
+      llvm::FunctionType::get(remill::RecontextualizeType(returnVal->getType(),context) , arg_types, false);
   auto f = llvm::Function::Create(
       ty, llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-      SliceManager::getFunctionName(id), *this->mod);
+      SliceManager::getFunctionName(id), this->mod.get());
   return f;
 }
 
@@ -40,8 +41,15 @@ SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   llvm::SmallVector<llvm::Instruction *> cloned_insns;
 
   std::for_each(slice.begin(), slice.end(),
-                [&mapper, &cloned_insns](llvm::Instruction *insn) {
+                [this, &mapper, &cloned_insns](llvm::Instruction *insn) {
                   auto cloned = insn->clone();
+                  cloned->dump();
+                  remill::MoveInstructionIntoModule(cloned, this->mod.get(), this->vm_map, this->ty_map);
+                  // This is bad, ideally we wouldn't do this.
+                  if (&insn->getType()->getContext() != &this->context) {
+                    cloned->dropUnknownNonDebugMetadata();
+                    cloned->mutateType(remill::RecontextualizeType(cloned->getType(), this->context));
+                  }
                   cloned_insns.push_back(cloned);
                   mapper.insert({insn, cloned});
                 });
@@ -52,7 +60,7 @@ SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 void SliceManager::insertClonedSliceIntoFunction(
     SliceID id, llvm::Function *targetFunc, llvm::Value *newReturn,
     llvm::ArrayRef<llvm::Instruction *> slice) {
-  auto bb = llvm::BasicBlock::Create(targetFunc->getParent()->getContext(),
+  auto bb = llvm::BasicBlock::Create(this->mod.get()->getContext(),
                                      "slicebasicblock." + std::to_string(id.id),
                                      targetFunc);
 
@@ -61,7 +69,7 @@ void SliceManager::insertClonedSliceIntoFunction(
   });
 
 
-  llvm::ReturnInst::Create(targetFunc->getParent()->getContext(), newReturn,
+  llvm::ReturnInst::Create(this->mod.get()->getContext(), newReturn,
                            bb);
   return;
 }
@@ -173,8 +181,9 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   }
 
   std::for_each(cloned.begin(), cloned.end(),
-                [&mapper](llvm::Instruction *insn) {
+                [&mapper, this](llvm::Instruction *insn) {
                   llvm::RemapInstruction(insn, mapper);
+
                 });
 
 
@@ -189,6 +198,9 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   }
 
   this->slices.insert({id.id, SliceManager::Slice(slice_repr, id)});
+  //this->mod->dump();
+  assert(remill::VerifyModule(this->mod.get()));
+  std::cout << "done func" << std::endl;
   return {id};
 }
 

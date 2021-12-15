@@ -189,7 +189,6 @@ void OptimizeModule(const EntityLifter &lifter,
   // stack analysis.
   AddConvertMasksToCasts(fpm);
 
-  AddLowerSwitchIntrinsics(fpm, slc, mp);
   AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveTrivialPhisAndSelects(fpm);
 
@@ -208,6 +207,9 @@ void OptimizeModule(const EntityLifter &lifter,
 
   AddConvertIntegerToPointerOperations(fpm);
   AddConvertAddressesToEntityUses(fpm, xr);
+
+
+  AddLowerSwitchIntrinsics(fpm, slc, mp);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

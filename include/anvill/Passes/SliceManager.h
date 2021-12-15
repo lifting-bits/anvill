@@ -14,6 +14,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
+#include <remill/BC/Util.h>
 
 #include <functional>
 #include <memory>
@@ -22,11 +23,6 @@
 #include "SliceInterpreter.h"
 
 namespace anvill {
-
-struct ClonedInstructions {
-  llvm::ValueMap<llvm::Value *, llvm::Value *> mappingOldToNew;
-  llvm::SmallVector<llvm::Instruction *> copied;
-};
 
 class SliceManager;
 class SliceID {
@@ -72,8 +68,11 @@ class SliceManager {
   // NOTE(ian): perhaps at some point we should split modules to prevent large numbers of slices in a single
   // module.
 
+  remill::TypeMap ty_map;
+  remill::ValueMap vm_map;
   SliceID next_id;
   std::map<uint64_t, Slice> slices;
+
 
   llvm::SmallVector<llvm::Instruction *>
   createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
