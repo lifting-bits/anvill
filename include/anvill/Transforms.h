@@ -375,12 +375,6 @@ void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 // Removes calls to `__remill_error`.
 void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
-
-void AddSwitchLoweringPass(llvm::FunctionPassManager &fpm,
-                           const MemoryProvider &memprov,
-                           SliceManager &slc);
-
-
 void AddSimplifyStackArithFlags(llvm::FunctionPassManager &fpm,
                                 bool stack_pointer_is_signed);
 
@@ -391,6 +385,7 @@ void AddRemoveFailedBranchHints(llvm::FunctionPassManager &fpm);
 
 void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
                               SliceManager &slc, const MemoryProvider &memprov);
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov,const CrossReferenceResolver &xref_resolver);
 
 // Remove constant expressions of the stack pointer that are not themselves
 // resolvable to references. For example, comparisons between one or two

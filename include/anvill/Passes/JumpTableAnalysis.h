@@ -70,6 +70,7 @@ struct JumpTableResult {
   IndexRel indexRel;
   Bound bounds;
   llvm::BasicBlock *defaultOut;
+  SliceInterpreter interp;
 };
 
 class JumpTableAnalysis
@@ -78,14 +79,13 @@ class JumpTableAnalysis
       public llvm::AnalysisInfoMixin<JumpTableAnalysis> {
 
  private:
+  const CrossReferenceResolver &xref_resolver;
   friend llvm::AnalysisInfoMixin<JumpTableAnalysis>;
   static llvm::AnalysisKey Key;
-  SliceManager &slices;
 
  public:
-  JumpTableAnalysis(SliceManager &slices)
-      : IndirectJumpPass(),
-        slices(slices) {}
+  JumpTableAnalysis()
+      : IndirectJumpPass() {}
 
   static llvm::StringRef name(void);
 

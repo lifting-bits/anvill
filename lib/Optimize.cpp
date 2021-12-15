@@ -107,7 +107,7 @@ void OptimizeModule(const EntityLifter &lifter,
 
   const LifterOptions &options = lifter.Options();
   const MemoryProvider &mp = lifter.MemoryProvider();
-  SliceManager slc(lifter);
+
   EntityCrossReferenceResolver xr(lifter);
 
   if (auto err = module.materializeAll(); remill::IsError(err)) {
@@ -216,7 +216,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddConvertAddressesToEntityUses(fpm, xr);
 
 
-  AddLowerSwitchIntrinsics(fpm, slc, mp);
+  AddLowerSwitchIntrinsics(fpm, mp, xr);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

@@ -202,9 +202,9 @@ llvm::StringRef LowerSwitchIntrinsics::name() {
 llvm::PreservedAnalyses LowerSwitchIntrinsics::INIT_RES =
     llvm::PreservedAnalyses::all();
 
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
-                              SliceManager &slc, const MemoryProvider &memprov) {
-  fpm.addPass(LowerSwitchIntrinsics(memprov, slc));
+
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov,const CrossReferenceResolver &xref_resolver) {
+  fpm.addPass(LowerSwitchIntrinsics(memprov, xref_resolver));
 }
 
 }  // namespace anvill
