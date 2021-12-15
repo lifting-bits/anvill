@@ -29,7 +29,7 @@ set(_VCPKG_SHARE_DIR "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/${CMAKE_IN
 find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
-find_package(Z3 4.8.12.0 EXACT CONFIG REQUIRED)
+find_package(Z3 4.8 CONFIG REQUIRED)
 find_llvm(llvm "${_VCPKG_SHARE_DIR}")
 
 find_package(remill CONFIG REQUIRED)
