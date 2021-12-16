@@ -205,4 +205,13 @@ InterpreterBuilder SliceManager::IntoInterpreterBuilder(SliceManager&& x) {
   return InterpreterBuilder(std::move(x.mod));
 }
 
+InterpreterBuilder::Slice InterpreterBuilder::getSlice(SliceID i) const {
+  auto repr = this->mod->getFunction(SliceManager::getFunctionName(i));
+  return InterpreterBuilder::Slice(repr,i);
+}
+
+SliceInterpreter InterpreterBuilder::getInterp() const {
+  return SliceInterpreter(*this->mod.get());
+}
+
 }  // namespace anvill

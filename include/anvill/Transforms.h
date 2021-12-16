@@ -383,9 +383,8 @@ void AddBranchRecovery(llvm::FunctionPassManager &fpm);
 
 void AddRemoveFailedBranchHints(llvm::FunctionPassManager &fpm);
 
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
-                              SliceManager &slc, const MemoryProvider &memprov);
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov,const CrossReferenceResolver &xref_resolver);
+
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov);
 
 // Remove constant expressions of the stack pointer that are not themselves
 // resolvable to references. For example, comparisons between one or two

@@ -216,7 +216,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddConvertAddressesToEntityUses(fpm, xr);
 
 
-  AddLowerSwitchIntrinsics(fpm, mp, xr);
+  AddLowerSwitchIntrinsics(fpm, mp);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
