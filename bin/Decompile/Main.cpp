@@ -28,6 +28,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
+#include <llvm/ADT/Statistic.h>
 
 DECLARE_string(arch);
 DECLARE_string(os);
@@ -145,9 +146,27 @@ int main(int argc, char *argv[]) {
     return true;
   });
 
+  if (!FLAGS_stats_out.empty()) {
+    llvm::EnableStatistics();
+  }
+
   anvill::OptimizeModule(lifter, module);
 
   int ret = EXIT_SUCCESS;
+
+
+  if (!FLAGS_stats_out.empty()) {
+    std::error_code ec;
+    llvm::raw_fd_ostream stats_out_file(FLAGS_stats_out, ec);
+    if (ec) {
+      std::cerr << "Could not open stats output file " << FLAGS_stats_out
+                << std::endl;
+      ret = EXIT_FAILURE;
+    } else {
+      llvm::PrintStatisticsJSON(stats_out_file);
+    }
+  }
+
 
   if (!FLAGS_ir_out.empty()) {
     if (!remill::StoreModuleIRToFile(&module, FLAGS_ir_out, true)) {
