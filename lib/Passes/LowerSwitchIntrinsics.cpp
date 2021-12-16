@@ -70,7 +70,6 @@ class PcBinding {
 class SwitchBuilder {
  private:
   llvm::LLVMContext &context;
-  SliceManager &slm;
   const MemoryProvider &mem_prov;
   const llvm::DataLayout &dl;
 
@@ -107,11 +106,10 @@ class SwitchBuilder {
   }
 
  public:
-  SwitchBuilder(llvm::LLVMContext &context, SliceManager &slm,
+  SwitchBuilder(llvm::LLVMContext &context,
                 const MemoryProvider &memProv,
                 const llvm::DataLayout &dl)
       : context(context),
-        slm(slm),
         mem_prov(memProv),
         dl(dl) {}
 
@@ -120,11 +118,11 @@ class SwitchBuilder {
   // based compiler implementations of this construct back into simple switch
   // cases over an integer index that directly jumps to known labels.
   std::optional<llvm::SwitchInst *>
-  CreateNativeSwitch(JumpTableResult jt, const PcBinding &binding,
+  CreateNativeSwitch(const JumpTableResult& jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
     auto min_index = jt.bounds.lower;
     auto number_of_cases = (jt.bounds.upper - min_index) + 1;
-    auto interp = this->slm.getInterp();
+    auto interp = jt.interp.getInterp();
     llvm::SwitchInst *new_switch =
         llvm::SwitchInst::Create(jt.indexRel.getIndex(), jt.defaultOut,
                                  number_of_cases.getLimitedValue());
@@ -133,7 +131,7 @@ class SwitchBuilder {
          curr_ind_value += 1) {
       auto read_address = jt.indexRel.apply(interp, curr_ind_value);
       std::optional<llvm::APInt> jmp_off =
-          this->ReadIntFrom(jt.pcRel.getExpectedType(slm), read_address);
+          this->ReadIntFrom(jt.pcRel.getExpectedType(jt.interp), read_address);
       if (!jmp_off.has_value()) {
         delete new_switch;
         return std::nullopt;
@@ -177,7 +175,7 @@ LowerSwitchIntrinsics::runOnIndirectJump(llvm::CallInst *targetCall,
   auto dl = f.getParent()->getDataLayout();
   llvm::LLVMContext &context = f.getParent()->getContext();
 
-  SwitchBuilder sbuilder(context, this->slm, this->memProv, dl);
+  SwitchBuilder sbuilder(context, this->memProv, dl);
   auto following_switch = targetCall->getParent()->getTerminator();
 
   if (auto *follower = llvm::dyn_cast<llvm::SwitchInst>(following_switch)) {
@@ -199,12 +197,13 @@ llvm::StringRef LowerSwitchIntrinsics::name() {
   return "LowerSwitchIntrinsics";
 }
 
-llvm::PreservedAnalyses LowerSwitchIntrinsics::INIT_RES =
-    llvm::PreservedAnalyses::all();
+llvm::PreservedAnalyses LowerSwitchIntrinsics::BuildInitialResult() {
+    return llvm::PreservedAnalyses::all();
+}
 
 
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov,const CrossReferenceResolver &xref_resolver) {
-  fpm.addPass(LowerSwitchIntrinsics(memprov, xref_resolver));
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov) {
+  fpm.addPass(LowerSwitchIntrinsics(memprov));
 }
 
 }  // namespace anvill

@@ -65,7 +65,7 @@ template <typename UserFunctionPass, typename Result>
 Result IndirectJumpPass<UserFunctionPass, Result>::run(
     llvm::Function &F, llvm::FunctionAnalysisManager &am) {
   auto &function_pass = *static_cast<UserFunctionPass *>(this);
-  Result total = function_pass.INIT_RES;
+  Result total = UserFunctionPass::BuildInitialResult();
   for (auto targetCall : getTargetCalls(F)) {
     total = function_pass.runOnIndirectJump(targetCall, am, std::move(total));
   }

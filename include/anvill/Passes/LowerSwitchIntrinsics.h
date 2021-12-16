@@ -33,12 +33,10 @@ class LowerSwitchIntrinsics
 
  private:
   const MemoryProvider &memProv;
-  SliceManager &slm;
 
  public:
-  LowerSwitchIntrinsics(const MemoryProvider &memProv, SliceManager &slm)
-      : memProv(memProv),
-        slm(slm) {}
+  LowerSwitchIntrinsics(const MemoryProvider &memProv)
+      : memProv(memProv) {}
 
   static llvm::StringRef name(void);
 
@@ -47,6 +45,6 @@ class LowerSwitchIntrinsics
                                             llvm::PreservedAnalyses);
 
 
-  static llvm::PreservedAnalyses INIT_RES;
+  static llvm::PreservedAnalyses BuildInitialResult();
 };
 }  // namespace anvill

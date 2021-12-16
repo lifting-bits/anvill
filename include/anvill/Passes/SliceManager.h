@@ -40,7 +40,9 @@ class SliceID {
   }
 };
 class SliceInterpreter;
-class SliceManager {
+
+
+class InterpreterBuilder {
 
  public:
   class Slice {
@@ -59,6 +61,24 @@ class SliceManager {
   };
 
 
+  public:
+    InterpreterBuilder(std::unique_ptr<llvm::Module> mod): mod(std::move(mod)) {
+
+    }
+
+    SliceInterpreter getInterp() const;
+
+    Slice getSlice(SliceID id) const;
+
+  private:
+    std::unique_ptr<llvm::Module> mod;
+
+};
+
+
+class SliceManager {
+
+
  protected:
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> mod;
@@ -70,8 +90,8 @@ class SliceManager {
 
   remill::TypeMap ty_map;
   remill::ValueMap vm_map;
+
   SliceID next_id;
-  std::map<uint64_t, Slice> slices;
 
 
   llvm::SmallVector<llvm::Instruction *>
@@ -112,7 +132,6 @@ class SliceManager {
                                   llvm::Value *returnValue);
 
 
-  Slice getSlice(SliceID id);
 
   SliceManager(const EntityLifter &lifter)
       : context(),
@@ -130,6 +149,8 @@ class SliceManager {
     this->mod.reset();
   }
 
-  SliceInterpreter getInterp();
+
+  static InterpreterBuilder IntoInterpreterBuilder(SliceManager&& x);
+
 };
 }  // namespace anvill
