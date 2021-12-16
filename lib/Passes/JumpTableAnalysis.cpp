@@ -210,6 +210,12 @@ static bool IsValidRelType(llvm::FunctionType *ty) {
   return ty->params().size() == 1 && ty->params()[0]->isIntegerTy() &&
          ty->getReturnType()->isIntegerTy();
 }
+}  // namespace
+
+llvm::Value *IndexRel::getIndex() const {
+  return this->index;
+}
+
 
 namespace pats = llvm::PatternMatch;
 
@@ -383,8 +389,7 @@ class JumpTableDiscovery {
   std::optional<Bound> bounds;
   std::optional<llvm::BasicBlock *> default_out;
   const llvm::DominatorTree &dt;
-  SliceManager &slices;
-
+   const EntityLifter& lifter;
 
  private:
   // Determines the bounds check on an index that is used to compute an indirect
@@ -490,13 +495,13 @@ class JumpTableDiscovery {
 
 
  public:
-  JumpTableDiscovery(const llvm::DominatorTree &DT, SliceManager &slices)
+  JumpTableDiscovery(const llvm::DominatorTree &DT, const EntityLifter& lifter)
       : pc_rel_slice(std::nullopt),
         index_rel_slice(std::nullopt),
         index(std::nullopt),
         bounds(std::nullopt),
-        dt(DT),
-        slices(slices) {}
+        dt(DT), lifter(lifter) {
+        }
 
 
   // Definition a jump table bounds compare is a compare that uses the index and is used by a break that jumps to a block that may reach the indirect jump block or *must* not. the comparing block should dominate the indirect jump
@@ -550,13 +555,14 @@ class JumpTableDiscovery {
   }
 
   std::optional<JumpTableResult> RunPattern(llvm::CallInst *pcCall) {
+    SliceManager slices(this->lifter);
     auto computed_pc = pcCall->getArgOperand(0);
 
     if (this->RunIndexPattern(computed_pc) &&
         this->RunBoundsCheckPattern(pcCall)) {
       std::optional<SliceID> pc_rel_id =
-          this->slices.addSlice(*this->pc_rel_slice, computed_pc);
-      std::optional<SliceID> index_rel_id = this->slices.addSlice(
+          slices.addSlice(*this->pc_rel_slice, computed_pc);
+      std::optional<SliceID> index_rel_id = slices.addSlice(
           *this->index_rel_slice, *this->loaded_expression);
 
 
@@ -564,8 +570,10 @@ class JumpTableDiscovery {
         return std::nullopt;
       }
 
-      auto pc_rel_repr = this->slices.getSlice(*pc_rel_id).getRepr();
-      auto index_rel_repr = this->slices.getSlice(*index_rel_id).getRepr();
+
+      auto interp_builder = SliceManager::IntoInterpreterBuilder(std::move(slices));
+      auto pc_rel_repr = interp_builder.getSlice(*pc_rel_id).getRepr();
+      auto index_rel_repr = interp_builder.getSlice(*index_rel_id).getRepr();
       if (!IsValidRelType(pc_rel_repr->getFunctionType()) ||
           !IsValidRelType(index_rel_repr->getFunctionType())) {
         return std::nullopt;
@@ -573,24 +581,24 @@ class JumpTableDiscovery {
 
       PcRel pc(*pc_rel_id);
       IndexRel index_relation(*index_rel_id, *this->index);
-      return {{pc, index_relation, *this->bounds, *this->default_out}};
+      return {{pc, index_relation, *this->bounds, *this->default_out, std::move(interp_builder)}};
     }
 
     return std::nullopt;
   }
 };
 
-llvm::IntegerType *PcRel::getExpectedType(SliceManager &slm) {
+llvm::IntegerType *PcRel::getExpectedType(const InterpreterBuilder &slm) const {
   auto slc = slm.getSlice(this->slice);
   return llvm::cast<llvm::IntegerType>(
       slc.getRepr()->getFunctionType()->params()[0]);
 }
 
-llvm::APInt PcRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
+llvm::APInt PcRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) const {
   return RunSingleIntFunc(interp, this->slice, indexValue);
 }
 
-llvm::APInt IndexRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) {
+llvm::APInt IndexRel::apply(SliceInterpreter &interp, llvm::APInt indexValue) const {
   return RunSingleIntFunc(interp, this->slice, indexValue);
 }
 
@@ -600,12 +608,10 @@ JumpTableAnalysis::runOnIndirectJump(llvm::CallInst *indirectJump,
                                      Result agg) {
   auto &func = *(indirectJump->getFunction());
   auto &dt = am.getResult<llvm::DominatorTreeAnalysis>(func);
-
-  llvm::DenseMap<llvm::CallInst *, JumpTableResult> results;
-  JumpTableDiscovery jtdisc(dt, this->slices);
+  JumpTableDiscovery jtdisc(dt,this->ent_lifter);
   auto res = jtdisc.RunPattern(indirectJump);
   if (res.has_value()) {
-    agg.insert({indirectJump, *res});
+    agg.insert({indirectJump, std::move(*res)});
   }
   return agg;
 }
@@ -615,8 +621,10 @@ llvm::StringRef JumpTableAnalysis::name(void) {
   return "JumpTableAnalysis";
 }
 
-llvm::DenseMap<llvm::CallInst *, JumpTableResult> JumpTableAnalysis::INIT_RES =
-    llvm::DenseMap<llvm::CallInst *, JumpTableResult>();
+llvm::DenseMap<llvm::CallInst *, JumpTableResult> JumpTableAnalysis::BuildInitialResult() {
+ return llvm::DenseMap<llvm::CallInst *, JumpTableResult>();
+}
+    
 
 
 llvm::AnalysisKey JumpTableAnalysis::Key;

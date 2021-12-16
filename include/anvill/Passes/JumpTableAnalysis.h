@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <anvill/CrossReferenceFolder.h>
 #include <anvill/Passes/IndirectJumpPass.h>
 #include <anvill/Passes/SliceInterpreter.h>
 #include <anvill/Passes/SliceManager.h>
@@ -28,9 +29,9 @@ class PcRel {
   PcRel(SliceID slice) : slice(slice) {}
 
   // Interprets the slice, providing loadedVal as the argument.
-  llvm::APInt apply(SliceInterpreter &interp, llvm::APInt loadedVal);
+  llvm::APInt apply(SliceInterpreter &interp, llvm::APInt loadedVal) const;
 
-  llvm::IntegerType *getExpectedType(SliceManager &);
+  llvm::IntegerType *getExpectedType(const InterpreterBuilder &) const;
 };
 
 // A slice that represents the computation from an index (some non-constant
@@ -42,11 +43,11 @@ class IndexRel {
   llvm::Value *index;
 
  public:
-  llvm::Value *getIndex();
+  llvm::Value *getIndex() const;
 
   // Interprets the slice, substituting indexValue for the index, retrieving a
   // jump table address.
-  llvm::APInt apply(SliceInterpreter &interp, llvm::APInt indexValue);
+  llvm::APInt apply( SliceInterpreter &, llvm::APInt indexValue) const;
 
   IndexRel(SliceID slice, llvm::Value *index) : slice(slice), index(index) {}
 };
@@ -56,7 +57,7 @@ struct Bound {
   llvm::APInt upper;
   bool isSigned;
 
-  bool lessThanOrEqual(llvm::APInt lhs, llvm::APInt rhs) {
+  bool lessThanOrEqual(llvm::APInt lhs, llvm::APInt rhs) const {
     if (isSigned) {
       return lhs.sle(rhs);
     } else {
@@ -70,7 +71,7 @@ struct JumpTableResult {
   IndexRel indexRel;
   Bound bounds;
   llvm::BasicBlock *defaultOut;
-  SliceInterpreter interp;
+  InterpreterBuilder interp;
 };
 
 class JumpTableAnalysis
@@ -79,19 +80,19 @@ class JumpTableAnalysis
       public llvm::AnalysisInfoMixin<JumpTableAnalysis> {
 
  private:
-  const CrossReferenceResolver &xref_resolver;
+  const EntityLifter &ent_lifter;
   friend llvm::AnalysisInfoMixin<JumpTableAnalysis>;
   static llvm::AnalysisKey Key;
 
  public:
-  JumpTableAnalysis()
-      : IndirectJumpPass() {}
+  JumpTableAnalysis(const EntityLifter &ent_lifter)
+      : IndirectJumpPass(), ent_lifter(ent_lifter) {}
 
   static llvm::StringRef name(void);
 
   using Result = llvm::DenseMap<llvm::CallInst *, JumpTableResult>;
 
-  static Result INIT_RES;
+  static Result BuildInitialResult();
 
   Result runOnIndirectJump(llvm::CallInst *indirectJump,
                            llvm::FunctionAnalysisManager &am, Result agg);

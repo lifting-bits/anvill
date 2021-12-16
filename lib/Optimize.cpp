@@ -143,8 +143,8 @@ void OptimizeModule(const EntityLifter &lifter,
   pb.registerCGSCCAnalyses(cam);
   pb.registerLoopAnalyses(lam);
 
-  fam.registerPass([&] { return JumpTableAnalysis(slc); });
   fam.registerPass([&] { return BranchAnalysis(); });
+  fam.registerPass([&] { return JumpTableAnalysis(lifter); });
 
 //  params.DefaultThreshold = 250;
 //  auto inliner = llvm::ModuleInlinerWrapperPass(params);

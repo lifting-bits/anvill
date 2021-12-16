@@ -195,20 +195,14 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
     slice_repr->eraseFromParent();
     return std::nullopt;
   }
-
-  this->slices.insert({id.id, SliceManager::Slice(slice_repr, id)});
   
   assert(remill::VerifyModule(this->mod.get()));
   return {id};
 }
 
-SliceManager::Slice SliceManager::getSlice(SliceID id) {
-  return this->slices.find(id.id)->second;
-}
 
-
-SliceInterpreter SliceManager::getInterp() {
-  return SliceInterpreter(*this->mod.get());
+InterpreterBuilder SliceManager::IntoInterpreterBuilder(SliceManager&& x) {
+  return InterpreterBuilder(std::move(x.mod));
 }
 
 }  // namespace anvill
