@@ -80,16 +80,10 @@ class SliceManager {
 
 
  protected:
-  llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> mod;
   std::optional<std::reference_wrapper<const EntityLifter>> lifter;
 
  private:
-  // NOTE(ian): perhaps at some point we should split modules to prevent large numbers of slices in a single
-  // module.
-
-  remill::TypeMap ty_map;
-  remill::ValueMap vm_map;
 
   SliceID next_id;
 
@@ -133,15 +127,14 @@ class SliceManager {
 
 
 
-  SliceManager(const EntityLifter &lifter)
-      : context(),
-        mod(std::make_unique<llvm::Module>("slicemodule", this->context)),
+  SliceManager(const EntityLifter &lifter, llvm::LLVMContext& cont)
+      :
+        mod(std::make_unique<llvm::Module>("slicemodule", cont)),
         lifter({std::cref(lifter)}),
         next_id(SliceID()) {}
 
-  SliceManager()
-      : context(),
-        mod(std::make_unique<llvm::Module>("slicemodule", this->context)),
+  SliceManager( llvm::LLVMContext& cont):
+        mod(std::make_unique<llvm::Module>("slicemodule", cont)),
         lifter(std::nullopt),
         next_id(SliceID()) {}
 

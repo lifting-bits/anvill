@@ -747,7 +747,7 @@ class JumpTableDiscovery {
   }
 
   std::optional<JumpTableResult> RunPattern(llvm::CallInst *pcCall) {
-    SliceManager slices(this->lifter);
+    SliceManager slices(this->lifter, pcCall->getContext());
     auto computed_pc = pcCall->getArgOperand(0);
 
     if (this->RunIndexPattern(computed_pc) &&
