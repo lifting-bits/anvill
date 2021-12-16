@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <anvill/IntrinsicPass.h>
+#include <anvill/Passes/IntrinsicPass.h>
 
 namespace anvill {
 

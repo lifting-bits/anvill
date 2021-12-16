@@ -2,7 +2,7 @@
 #define DEBUG_TYPE "code_quality"
 
 #include <anvill/ABI.h>
-#include <anvill/CodeQualityStatCollector.h>
+#include <anvill/Passes/CodeQualityStatCollector.h>
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/InstVisitor.h>

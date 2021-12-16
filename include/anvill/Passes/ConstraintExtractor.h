@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <anvill/Constraints.h>
-#include <anvill/SliceManager.h>
+#include <anvill/Passes/Constraints.h>
+#include <anvill/Passes/SliceManager.h>
 #include <anvill/Transforms.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/ADT/SmallVector.h>

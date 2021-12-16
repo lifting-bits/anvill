@@ -1,6 +1,6 @@
-#include <anvill/BranchAnalysis.h>
-#include <anvill/BranchHintPass.h>
-#include <anvill/IntrinsicPass.h>
+#include <anvill/Passes/BranchAnalysis.h>
+#include <anvill/Passes/BranchHintPass.h>
+#include <anvill/Passes/IntrinsicPass.h>
 
 
 namespace anvill {

@@ -7,10 +7,10 @@
  */
 
 #include <anvill/ABI.h>
-#include <anvill/ConstraintExtractor.h>
-#include <anvill/Constraints.h>
-#include <anvill/JumpTableAnalysis.h>
-#include <anvill/SliceManager.h>
+#include <anvill/Passes/ConstraintExtractor.h>
+#include <anvill/Passes/Constraints.h>
+#include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/SliceManager.h>
 
 #include <anvill/Passes/JumpTableAnalysis.h>
 

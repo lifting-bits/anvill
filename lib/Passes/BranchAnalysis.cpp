@@ -16,9 +16,9 @@
  */
 
 
-#include <anvill/BranchAnalysis.h>
-#include <anvill/ConstraintExtractor.h>
-#include <anvill/Constraints.h>
+#include <anvill/Passes/BranchAnalysis.h>
+#include <anvill/Passes/ConstraintExtractor.h>
+#include <anvill/Passes/Constraints.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <remill/BC/IntrinsicTable.h>

@@ -30,6 +30,8 @@ set(anvill_passes
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis
   JumpTableAnalysis
+  BranchAnalysis
+  Constraints
   LowerRemillMemoryAccessIntrinsics
   LowerRemillUndefinedIntrinsics
   LowerSwitchIntrinsics
@@ -45,6 +47,8 @@ set(anvill_passes
   SinkSelectionsIntoBranchTargets
   SliceInterpreter
   SliceManager
+  CodeQualityStatCollector
+  RemoveUnusedBranchHints
   SplitStackFrameAtReturnAddress
   SpreadPCMetadata
   TransformRemillJumpIntrinsics

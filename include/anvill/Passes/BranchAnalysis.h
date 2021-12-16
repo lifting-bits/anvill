@@ -18,9 +18,9 @@
 #pragma once
 
 #include <anvill/ABI.h>
-#include <anvill/BranchHintPass.h>
-#include <anvill/Constraints.h>
-#include <anvill/IntrinsicPass.h>
+#include <anvill/Passes/BranchHintPass.h>
+#include <anvill/Passes/Constraints.h>
+#include <anvill/Passes/IntrinsicPass.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
