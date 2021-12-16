@@ -17,8 +17,8 @@
 
 #pragma once
 
-#include <anvill/BranchAnalysis.h>
-#include <anvill/BranchHintPass.h>
+#include <anvill/Passes/BranchAnalysis.h>
+#include <anvill/Passes/BranchHintPass.h>
 
 
 namespace anvill {

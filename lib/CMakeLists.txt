@@ -49,6 +49,7 @@ set(anvill_passes
   SliceManager
   CodeQualityStatCollector
   RemoveUnusedBranchHints
+  BranchRecovery
   SplitStackFrameAtReturnAddress
   SpreadPCMetadata
   TransformRemillJumpIntrinsics

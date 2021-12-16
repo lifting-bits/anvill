@@ -205,6 +205,7 @@ void OptimizeModule(const EntityLifter &lifter,
   fpm.addPass(llvm::SROA());
   AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROA());
+  AddBranchRecovery(fpm);
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
