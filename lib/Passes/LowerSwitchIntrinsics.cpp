@@ -161,7 +161,6 @@ LowerSwitchIntrinsics::runOnIndirectJump(llvm::CallInst *targetCall,
                                          llvm::FunctionAnalysisManager &am,
                                          llvm::PreservedAnalyses agg) {
 
-
   const auto &jt_analysis =
       am.getResult<JumpTableAnalysis>(*targetCall->getFunction());
   auto jresult = jt_analysis.find(targetCall);
