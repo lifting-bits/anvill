@@ -26,9 +26,9 @@ llvm::Function *SliceManager::createFunctionForCurrentID(
 
   std::transform(
       arguments.begin(), arguments.end(), std::back_inserter(arg_types),
-      [this](llvm::Value *arg) -> llvm::Type * { return remill::RecontextualizeType(arg->getType(),context); });
+      [](llvm::Value *arg) -> llvm::Type * { return arg->getType(); });
   llvm::FunctionType *ty =
-      llvm::FunctionType::get(remill::RecontextualizeType(returnVal->getType(),context) , arg_types, false);
+      llvm::FunctionType::get(returnVal->getType(), arg_types, false);
   auto f = llvm::Function::Create(
       ty, llvm::GlobalValue::LinkageTypes::ExternalLinkage,
       SliceManager::getFunctionName(id), this->mod.get());
@@ -41,14 +41,8 @@ SliceManager::createMapperFromSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   llvm::SmallVector<llvm::Instruction *> cloned_insns;
 
   std::for_each(slice.begin(), slice.end(),
-                [this, &mapper, &cloned_insns](llvm::Instruction *insn) {
+                [&mapper, &cloned_insns](llvm::Instruction *insn) {
                   auto cloned = insn->clone();
-                  remill::MoveInstructionIntoModule(cloned, this->mod.get(), this->vm_map, this->ty_map);
-                  // This is bad, ideally we wouldn't do this.
-                  if (&insn->getType()->getContext() != &this->context) {
-                    cloned->dropUnknownNonDebugMetadata();
-                    cloned->mutateType(remill::RecontextualizeType(cloned->getType(), this->context));
-                  }
                   cloned_insns.push_back(cloned);
                   mapper.insert({insn, cloned});
                 });
