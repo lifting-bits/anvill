@@ -41,7 +41,12 @@ class BNSpecification(Specification):
         Specification.__init__(self, _get_arch(bv), _get_os(bv))
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
-        self._is_ELF: Final[bool] = "ELF" in str(bv.view_type)
+
+        # If it's an ELF with type ET_EXEC (2) then handle the return address
+        # of `_start` specially.
+        self._is_ELF_exe: Final[bool] = "ELF" in str(bv.view_type) and \
+                                        bv.data_vars[bv.start].value['type'] == 2
+
         self._type_cache: Final[TypeCache] = TypeCache(self._arch, self._bv)
 
         try:
@@ -187,9 +192,9 @@ class BNSpecification(Specification):
         #            libraries.
         is_entrypoint = False
         try:
-            is_entrypoint = self._is_ELF and self._bv.entry_function.start == ea
+            is_entrypoint = self._is_ELF_exe and self._bv.entry_point == ea
         except:
-            DEBUG(traceback.format_exc())
+            pass
 
         if is_entrypoint:
             DEBUG(f"Found entrypoint {ea:08x}")
