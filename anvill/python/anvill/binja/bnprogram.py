@@ -41,6 +41,7 @@ class BNSpecification(Specification):
         Specification.__init__(self, _get_arch(bv), _get_os(bv))
         self._path: Final[str] = path
         self._bv: Final[bn.BinaryView] = bv
+        self._is_ELF: Final[bool] = "ELF" in str(bv.view_type)
         self._type_cache: Final[TypeCache] = TypeCache(self._arch, self._bv)
 
         try:
@@ -186,10 +187,12 @@ class BNSpecification(Specification):
         #            libraries.
         is_entrypoint = False
         try:
-            is_entrypoint = "ELF" in str(self._bv.file.view) and \
-                            self._bv.entry_function == bn_func
+            is_entrypoint = self._is_ELF and self._bv.entry_function.start == ea
         except:
-            pass
+            DEBUG(traceback.format_exc())
+
+        if is_entrypoint:
+            DEBUG(f"Found entrypoint {ea:08x}")
 
         is_external = False
         bn_sym = self._bv.get_symbol_at(ea)
