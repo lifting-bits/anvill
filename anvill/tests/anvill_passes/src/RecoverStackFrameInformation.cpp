@@ -39,7 +39,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
         for (auto padding_bytes : kTestPaddingSettings) {
           llvm::LLVMContext context;
           auto module =
-              LoadTestData(context, "RecoverBasicStackFrame.ll");
+              LoadTestData(context, "RecoverStackFrameInformation.ll");
 
           REQUIRE(module != nullptr);
 
@@ -76,7 +76,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
     GIVEN("a lifted function without stack information") {
       llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverBasicStackFrame.ll");
+      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 
 
@@ -173,7 +173,9 @@ TEST_SUITE("RecoverBasicStackFrame") {
           REQUIRE(byte_array_type != nullptr);
 
           auto byte_array_size = byte_array_type->getNumElements();
-          CHECK(byte_array_size == 44U);
+          std::cout << byte_array_size << std::endl;
+          // type is always address size
+          CHECK(byte_array_size == 11U);
 
           auto module = function.getParent();
           auto data_layout = module->getDataLayout();
@@ -207,7 +209,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
           REQUIRE(byte_array_type != nullptr);
 
           auto byte_array_size = byte_array_type->getNumElements();
-          CHECK(byte_array_size == 172U);
+          CHECK(byte_array_size == 43);
 
           auto module = function.getParent();
           auto data_layout = module->getDataLayout();
@@ -221,7 +223,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
   SCENARIO("Applying stack frame recovery") {
     GIVEN("a well formed function") {
       llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverBasicStackFrame.ll");
+      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 
       auto &function_list = module->getFunctionList();

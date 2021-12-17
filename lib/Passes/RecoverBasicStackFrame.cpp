@@ -197,6 +197,7 @@ static llvm::StructType *GenerateStackFrameType(
 
   // Round the stack frame to a multiple of the address size.
   auto address_size = dl.getPointerSize(0);
+
   const auto num_slots = (stack_frame_size + (address_size - 1u)) /
                          address_size;
   stack_frame_size = num_slots * address_size;
