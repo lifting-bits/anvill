@@ -16,6 +16,7 @@
 #include <remill/BC/Util.h>
 #include <exception>
 #include <iostream>
+#include <anvill/ABI.h>
 
 namespace anvill {
 
@@ -184,8 +185,14 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
 
 
   this->insertClonedSliceIntoFunction(id, slice_repr, new_ret, cloned);
+
+  // Remove anvill pc to make interpretable
+  if (auto anvill_pc = this->mod.get()->getGlobalVariable(::anvill::kSymbolicPCName)) {
+    remill::ReplaceAllUsesOfConstant(
+        anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), this->mod.get());
+  }
+
   if (!this->replaceAllGVConstantsWithInterpretableValue(cloned)) {
-    assert(false);
     slice_repr->eraseFromParent();
     return std::nullopt;
   }

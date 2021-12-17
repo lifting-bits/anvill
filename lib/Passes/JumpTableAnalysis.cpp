@@ -31,7 +31,6 @@
 
 #include <numeric>
 #include <optional>
-
 #include "SlicerVisitor.h"
 
 // The goal of this analysis pass is to recover the structure of jump tables for

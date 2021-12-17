@@ -22,6 +22,7 @@ add_executable(test_anvill_passes
   src/XorConversionPass.cpp
   src/BranchRecoveryPass.cpp
   src/RemoveStackPointerCExprs.cpp
+  src/RecoverEntityUses.cpp
 )
 
 target_link_libraries(test_anvill_passes PRIVATE

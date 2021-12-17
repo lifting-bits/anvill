@@ -18,7 +18,6 @@
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 #include <unordered_set>
-
 #include "Utils.h"
 
 namespace anvill {
@@ -73,6 +72,7 @@ llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
 
     entity = xref_resolver.EntityAtAddress(ra.u.address, pointee_type,
                                            address_space);
+
     if (!entity) {
       continue;
     }
