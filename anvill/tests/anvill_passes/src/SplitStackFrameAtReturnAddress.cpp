@@ -6,8 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "SplitStackFrameAtReturnAddress.h"
-
+#include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
+#include <anvill/Lifters.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -26,16 +26,10 @@ TEST_SUITE("SplitStackFrameAtReturnAddress") {
         LoadTestData(llvm_context, "SplitStackFrameAtReturnAddress.ll");
 
     REQUIRE(module != nullptr);
-
-    auto error_manager = ITransformationErrorManager::Create();
+    StackFrameRecoveryOptions opt;
     CHECK(RunFunctionPass(
-        module.get(), SplitStackFrameAtReturnAddress(*error_manager.get())));
+        module.get(), SplitStackFrameAtReturnAddress(opt)));
 
-    for (const auto &error : error_manager->ErrorList()) {
-      CHECK_MESSAGE(false, error.description);
-    }
-
-    REQUIRE(error_manager->ErrorList().empty());
   }
 }
 

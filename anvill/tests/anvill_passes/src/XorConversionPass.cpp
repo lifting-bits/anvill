@@ -15,10 +15,11 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-
+#include <anvill/Lifters.h>
+#include <anvill/Providers.h>
 #include <iostream>
 
-#include "ConvertXorsToCmps.h"
+#include <anvill/Passes/ConvertXorsToCmps.h>
 #include "Utils.h"
 
 namespace anvill {
@@ -29,13 +30,8 @@ TEST_SUITE("XorConversion") {
     auto module = LoadTestData(llvm_context, "xor_conversion.ll");
 
     auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+                                    remill::GetArchName("amd64")); 
     REQUIRE(arch != nullptr);
-
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
-
-    // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass<ConvertXorsToCmps>(module.get(), ConvertXorsToCmps()));
 
@@ -63,10 +59,6 @@ TEST_SUITE("XorConversion") {
                                     remill::GetArchName("amd64"));
     REQUIRE(arch != nullptr);
 
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
-
-    // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(), ConvertXorsToCmps()));
 

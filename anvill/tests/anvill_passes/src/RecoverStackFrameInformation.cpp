@@ -6,8 +6,6 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "RecoverBasicStackFrame.h"
-
 #include <anvill/ABI.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -15,11 +13,12 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-
+#include <anvill/Lifters.h>
 #include <array>
 #include <sstream>
-
-#include "RecoverBasicStackFrame.h"
+#include <anvill/Providers.h>
+#include <anvill/Passes/RecoverBasicStackFrame.h>
+#include "RecoverBasicStackFrame.cpp"
 #include "Utils.h"
 
 namespace anvill {
@@ -34,8 +33,6 @@ TEST_SUITE("RecoverBasicStackFrame") {
             StackFrameStructureInitializationProcedure::kSymbolic};
 
     static const std::size_t kTestPaddingSettings[] = {0, 32, 64};
-
-    auto error_manager = ITransformationErrorManager::Create();
 
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto init_strategy : kInitStackSettings) {
@@ -53,25 +50,22 @@ TEST_SUITE("RecoverBasicStackFrame") {
           REQUIRE(arch != nullptr);
 
           auto ctrl_flow_provider =
-              anvill::ControlFlowProvider::CreateNull();
+              anvill::NullControlFlowProvider();
 
+          TypeDictionary tyDict(context);
+
+          NullTypeProvider ty_prov(tyDict);
+          NullMemoryProvider mem_prov;
           anvill::LifterOptions lift_options(
-              arch.get(), *module, std::move(ctrl_flow_provider));
-
-          lift_options.stack_frame_struct_init_procedure = init_strategy;
-          lift_options.stack_frame_lower_padding =
-              lift_options.stack_frame_higher_padding = padding_bytes / 2U;
+              arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+          
+          lift_options.stack_frame_recovery_options.stack_frame_struct_init_procedure = init_strategy;
+          lift_options.stack_frame_recovery_options.stack_frame_lower_padding =
+              lift_options.stack_frame_recovery_options.stack_frame_higher_padding = padding_bytes / 2U;
 
           CHECK(RunFunctionPass(
-              module.get(), RecoverBasicStackFrame(*error_manager.get(),
-                                                         lift_options)));
+              module.get(), RecoverBasicStackFrame(lift_options.stack_frame_recovery_options)));
 
-
-          for (const auto &error : error_manager->ErrorList()) {
-            CHECK_MESSAGE(false, error.description);
-          }
-
-          REQUIRE(error_manager->ErrorList().empty());
         }
       }
     }
@@ -79,10 +73,27 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
 
   SCENARIO("Function analysis can recreate a simple, byte-array frame type") {
+
     GIVEN("a lifted function without stack information") {
       llvm::LLVMContext context;
       auto module = LoadTestData(context, "RecoverBasicStackFrame.ll");
       REQUIRE(module != nullptr);
+
+
+      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+                                      remill::GetArchName("amd64"));
+      REQUIRE(arch != nullptr);
+
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+
+      TypeDictionary tyDict(context);
+
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
 
       auto &function_list = module->getFunctionList();
       auto function_it =
@@ -95,10 +106,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
       REQUIRE(function_it != function_list.end());
       auto &function = *function_it;
       WHEN("enumerating stack pointer usages") {
-        auto stack_ptr_usages_res =
-            RecoverBasicStackFrame::EnumerateStackPointerUsages(function);
-
-        REQUIRE(stack_ptr_usages_res.Succeeded());
+        auto stack_ptr_usages =
+            EnumerateStackPointerUsages(function);
 
         THEN(
             "all the uses for the instruction operands referencing the __anvill_sp symbol are returned") {
@@ -106,16 +115,13 @@ TEST_SUITE("RecoverBasicStackFrame") {
           // From the test data, you can see we have 12 instructions referencing
           // the `__anvill_sp` symbol. Two of these, are `store` instructions
           // that have the symbol on both operands.
-          auto stack_ptr_usages = stack_ptr_usages_res.TakeValue();
           CHECK(stack_ptr_usages.size() == 14U);
         }
       }
 
       WHEN("analyzing the stack frame") {
-        auto stack_frame_analysis_res =
-            RecoverBasicStackFrame::AnalyzeStackFrame(function);
-
-        REQUIRE(stack_frame_analysis_res.Succeeded());
+        auto stack_frame_analysis =
+            AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
 
         THEN("lowest and highest relative offsets are returned") {
 
@@ -133,7 +139,6 @@ TEST_SUITE("RecoverBasicStackFrame") {
           // high = 16
           // size = 44
 
-          auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
           CHECK(stack_frame_analysis.lowest_offset == -28);
           CHECK(stack_frame_analysis.highest_offset == 16);
           CHECK(stack_frame_analysis.size == 44U);
@@ -146,27 +151,12 @@ TEST_SUITE("RecoverBasicStackFrame") {
       }
 
       WHEN("creating a new stack frame with no padding bytes") {
-        auto stack_frame_analysis_res =
-            RecoverBasicStackFrame::AnalyzeStackFrame(function);
-
-        REQUIRE(stack_frame_analysis_res.Succeeded());
-
-        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
-                                        remill::kArchAMD64);
-        auto ctrl_flow_provider =
-            anvill::ControlFlowProvider::CreateNull();
-
-        anvill::LifterOptions lift_options(
-            arch.get(), *module, std::move(ctrl_flow_provider));
-
-        auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-        auto stack_frame_type_res =
-            RecoverBasicStackFrame::GenerateStackFrameType(
-                function, lift_options, stack_frame_analysis, 0);
-        REQUIRE(stack_frame_type_res.Succeeded());
+        auto stack_frame_analysis =AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
+        
+        auto stack_frame_type = GenerateStackFrameType(
+                function, lift_options.stack_frame_recovery_options, stack_frame_analysis, 0);
 
         THEN("a StructType containing a byte array is returned") {
-          auto stack_frame_type = stack_frame_type_res.TakeValue();
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
@@ -193,28 +183,14 @@ TEST_SUITE("RecoverBasicStackFrame") {
       }
 
       WHEN("creating a new stack frame with additional padding bytes") {
-        auto stack_frame_analysis_res =
-            RecoverBasicStackFrame::AnalyzeStackFrame(function);
+        auto stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
 
-        REQUIRE(stack_frame_analysis_res.Succeeded());
-
-        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
-                                        remill::kArchAMD64);
-        auto ctrl_flow_provider =
-            anvill::ControlFlowProvider::CreateNull();
-
-        anvill::LifterOptions lift_options(
-            arch.get(), *module, std::move(ctrl_flow_provider));
-
-        auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-        auto stack_frame_type_res =
-            RecoverBasicStackFrame::GenerateStackFrameType(
-                function, lift_options, stack_frame_analysis, 128U);
-        REQUIRE(stack_frame_type_res.Succeeded());
+      
+        auto stack_frame_type = GenerateStackFrameType(
+                function, lift_options.stack_frame_recovery_options, stack_frame_analysis, 128U);
 
         THEN(
             "a StructType containing a byte array along with the padding is returned") {
-          auto stack_frame_type = stack_frame_type_res.TakeValue();
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
@@ -259,28 +235,30 @@ TEST_SUITE("RecoverBasicStackFrame") {
       REQUIRE(function_it != function_list.end());
       auto &function = *function_it;
 
+
+      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+                                      remill::GetArchName("amd64"));
+      REQUIRE(arch != nullptr);
+
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+
+      TypeDictionary tyDict(context);
+
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
       WHEN("recovering the stack frame") {
-        auto stack_frame_analysis_res =
-            RecoverBasicStackFrame::AnalyzeStackFrame(function);
-
-        REQUIRE(stack_frame_analysis_res.Succeeded());
-
-        auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
-
+        auto stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
         auto arch = remill::Arch::Build(&context, remill::kOSLinux,
                                         remill::kArchAMD64);
-        auto ctrl_flow_provider =
-            anvill::ControlFlowProvider::CreateNull();
 
-        anvill::LifterOptions lift_options(
-            arch.get(), *module, std::move(ctrl_flow_provider));
-
-        lift_options.stack_frame_struct_init_procedure =
+        lift_options.stack_frame_recovery_options.stack_frame_struct_init_procedure =
             StackFrameStructureInitializationProcedure::kZeroes;
-
-        auto update_res = RecoverBasicStackFrame::UpdateFunction(
-            function, lift_options, stack_frame_analysis);
-        REQUIRE(update_res.Succeeded());
+        UpdateFunction(
+            function, lift_options.stack_frame_recovery_options, stack_frame_analysis);
 
         THEN("the function is updated to use the new stack frame structure") {
           auto &entry_block = function.getEntryBlock();
@@ -318,14 +296,9 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
           // If we run a second stack analysis, we should no longer find any
           // stack frame operation to recover
-          stack_frame_analysis_res =
-              RecoverBasicStackFrame::AnalyzeStackFrame(function);
-          REQUIRE(stack_frame_analysis_res.Succeeded());
+          stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
 
-          auto second_stack_frame_analysis =
-              stack_frame_analysis_res.TakeValue();
-
-          CHECK(second_stack_frame_analysis.instruction_uses.empty());
+          CHECK(stack_frame_analysis.instruction_uses.empty());
         }
       }
     }

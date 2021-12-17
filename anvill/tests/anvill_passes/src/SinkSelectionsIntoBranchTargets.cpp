@@ -6,12 +6,11 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "SinkSelectionsIntoBranchTargets.h"
-
+#include <anvill/Passes/SinkSelectionsIntoBranchTargets.h>
+#include <llvm/IR/Dominators.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
-
 #include "Utils.h"
 
 namespace anvill {
@@ -22,17 +21,11 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
     auto module =
         LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
-    REQUIRE(module != nullptr);
+    REQUIRE(module.get() != nullptr);
 
-    auto error_manager = ITransformationErrorManager::Create();
     CHECK(RunFunctionPass(
-        module.get(), SinkSelectionsIntoBranchTargets(*error_manager.get())));
+        module.get(), SinkSelectionsIntoBranchTargets()));
 
-    for (const auto &error : error_manager->ErrorList()) {
-      CHECK_MESSAGE(false, error.description);
-    }
-
-    REQUIRE(error_manager->ErrorList().empty());
   }
 
   TEST_CASE("SimpleCase") {
@@ -40,12 +33,17 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
     auto module =
         LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
-    REQUIRE(module != nullptr);
+    REQUIRE(module.get() != nullptr);
 
     auto function = module->getFunction("SimpleCase");
     REQUIRE(function != nullptr);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(*function);
+    llvm::DominatorTreeAnalysis dt;
+    llvm::FunctionAnalysisManager fam;
+
+    auto dt_res = dt.run(*function, fam);
+
+    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 2U);
     CHECK(analysis.disposable_instruction_list.size() == 1U);
@@ -56,12 +54,17 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
     auto module =
         LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
-    REQUIRE(module != nullptr);
+    REQUIRE(module.get() != nullptr);
 
     auto function = module->getFunction("MultipleSelects");
     REQUIRE(function != nullptr);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(*function);
+    llvm::DominatorTreeAnalysis dt;
+    llvm::FunctionAnalysisManager fam;
+
+    auto dt_res = dt.run(*function, fam);
+
+    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 6U);
     CHECK(analysis.disposable_instruction_list.size() == 3U);
@@ -72,12 +75,17 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
     auto module =
         LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
-    REQUIRE(module != nullptr);
+    REQUIRE(module.get() != nullptr);
 
     auto function = module->getFunction("MultipleSelectUsages");
     REQUIRE(function != nullptr);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(*function);
+    llvm::DominatorTreeAnalysis dt;
+    llvm::FunctionAnalysisManager fam;
+
+    auto dt_res = dt.run(*function, fam);
+
+    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 6U);
     CHECK(analysis.disposable_instruction_list.size() == 1U);

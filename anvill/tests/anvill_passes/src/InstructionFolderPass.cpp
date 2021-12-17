@@ -6,7 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include "InstructionFolderPass.h"
+#include <anvill/Passes/HoistUsersOfSelectsAndPhis.h>
 
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -32,16 +32,10 @@ TEST_SUITE("InstructionFolderPass") {
 
     REQUIRE(arch != nullptr);
 
-    auto error_manager = ITransformationErrorManager::Create();
-
     CHECK(RunFunctionPass(module.get(),
-                          SinkSelectsAndPhis(*error_manager.get())));
+                          HoistUsersOfSelectsAndPhis()));
 
-    for (const auto &error : error_manager->ErrorList()) {
-      CHECK_MESSAGE(false, error.description);
-    }
 
-    REQUIRE(error_manager->ErrorList().empty());
   }
 }
 

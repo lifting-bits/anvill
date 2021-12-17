@@ -1,4 +1,4 @@
-#include <anvill/BranchAnalysis.h>
+#include <anvill/Passes/BranchAnalysis.h>
 #include <anvill/Providers/MemoryProvider.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-#include "BranchRecovery.h"
+#include <anvill/Passes/BranchRecovery.h>
 #include "Utils.h"
 namespace anvill {
 
@@ -29,7 +29,6 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 TEST_SUITE("BranchRecoveryPass") {
   TEST_CASE("Run analysis on aarch64") {
     llvm::LLVMContext context;
-    SliceManager slc;
     auto mod = LoadTestData(context, "BranchRecoveryAarch64.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
@@ -111,7 +110,6 @@ TEST_SUITE("BranchRecoveryPass") {
 
   TEST_CASE("Run analysis sliced function sub") {
     llvm::LLVMContext context;
-    SliceManager slc;
     auto mod = LoadTestData(context, "RecoverSubBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
@@ -194,7 +192,6 @@ TEST_SUITE("BranchRecoveryPass") {
 
   TEST_CASE("Run on sliced function sub") {
     llvm::LLVMContext context;
-    SliceManager slc;
     auto mod = LoadTestData(context, "UnrecoverableBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);

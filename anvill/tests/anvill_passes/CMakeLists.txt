@@ -12,8 +12,7 @@ add_executable(test_anvill_passes
   src/Utils.h
   src/Utils.cpp
 
-  src/BaseFunctionPass.cpp
-  src/RecoverBasicStackFrame.cpp
+  src/RecoverStackFrameInformation.cpp
   src/SinkSelectionsIntoBranchTargets.cpp
   src/SplitStackFrameAtReturnAddress.cpp
   src/InstructionFolderPass.cpp
@@ -28,7 +27,7 @@ add_executable(test_anvill_passes
 target_link_libraries(test_anvill_passes PRIVATE
   remill_settings
   remill
-  anvill_passes
+  anvill
   thirdparty_doctest
 )
 
@@ -38,6 +37,7 @@ target_compile_definitions(test_anvill_passes PRIVATE
 
 target_include_directories(test_anvill_passes PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+  "${CMAKE_SOURCE_DIR}/lib/Passes"
 )
 
 add_test(

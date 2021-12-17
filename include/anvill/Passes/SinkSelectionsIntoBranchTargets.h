@@ -9,8 +9,25 @@
 #pragma once
 
 #include <llvm/IR/PassManager.h>
+#include <unordered_set>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Dominators.h>
 
 namespace anvill {
+
+struct FunctionAnalysis final {
+  struct Replacement final {
+    llvm::Use *use_to_replace{nullptr};
+    llvm::Value *replace_with{nullptr};
+  };
+
+  using ReplacementList = std::vector<Replacement>;
+  using DisposableInstructionList = std::unordered_set<llvm::SelectInst *>;
+
+  ReplacementList replacement_list;
+  DisposableInstructionList disposable_instruction_list;
+};
 
 // When lifting conditional control-flow, we end up with the following pattern:
 //
@@ -47,6 +64,10 @@ class SinkSelectionsIntoBranchTargets final
 
   // Returns the pass name
   static llvm::StringRef name(void);
+
+  static FunctionAnalysis AnalyzeFunction(const llvm::DominatorTreeAnalysis::Result &dt,llvm::Function &function);
 };
+
+
 
 }  // namespace anvill

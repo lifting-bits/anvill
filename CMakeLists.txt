@@ -76,4 +76,5 @@ endif(ANVILL_ENABLE_TESTS)
 
 add_subdirectory("lib")
 add_subdirectory("bin")
+add_subdirectory("anvill")
 

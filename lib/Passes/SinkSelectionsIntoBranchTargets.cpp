@@ -31,20 +31,32 @@ using BranchList = std::vector<llvm::BranchInst *>;
 
 using SelectListMap = std::unordered_map<llvm::SelectInst *, BranchList>;
 
-struct FunctionAnalysis final {
-  struct Replacement final {
-    llvm::Use *use_to_replace{nullptr};
-    llvm::Value *replace_with{nullptr};
-  };
 
-  using ReplacementList = std::vector<Replacement>;
-  using DisposableInstructionList = std::unordered_set<llvm::SelectInst *>;
 
-  ReplacementList replacement_list;
-  DisposableInstructionList disposable_instruction_list;
-};
 
-static FunctionAnalysis AnalyzeFunction(
+
+static bool SinkSelectInstructions(const FunctionAnalysis &analysis) {
+
+  auto changed = false;
+  for (const auto &replacement : analysis.replacement_list) {
+    CopyMetadataTo(replacement.use_to_replace->get(), replacement.replace_with);
+    replacement.use_to_replace->set(replacement.replace_with);
+    changed = true;
+  }
+
+  for (auto select_inst : analysis.disposable_instruction_list) {
+    if (select_inst->use_empty()) {
+      select_inst->eraseFromParent();
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+}  // namespace
+
+FunctionAnalysis SinkSelectionsIntoBranchTargets::AnalyzeFunction(
     const llvm::DominatorTreeAnalysis::Result &dt, llvm::Function &function) {
 
   // Collect all the applicable instructions
@@ -131,27 +143,6 @@ static FunctionAnalysis AnalyzeFunction(
   return output;
 }
 
-static bool SinkSelectInstructions(const FunctionAnalysis &analysis) {
-
-  auto changed = false;
-  for (const auto &replacement : analysis.replacement_list) {
-    CopyMetadataTo(replacement.use_to_replace->get(), replacement.replace_with);
-    replacement.use_to_replace->set(replacement.replace_with);
-    changed = true;
-  }
-
-  for (auto select_inst : analysis.disposable_instruction_list) {
-    if (select_inst->use_empty()) {
-      select_inst->eraseFromParent();
-      changed = true;
-    }
-  }
-
-  return changed;
-}
-
-}  // namespace
-
 llvm::PreservedAnalyses SinkSelectionsIntoBranchTargets::run(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
@@ -159,7 +150,7 @@ llvm::PreservedAnalyses SinkSelectionsIntoBranchTargets::run(
   }
 
   const auto &dt = fam.getResult<llvm::DominatorTreeAnalysis>(function);
-  auto function_analysis = AnalyzeFunction(dt, function);
+  auto function_analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt, function);
   if (function_analysis.replacement_list.empty()) {
     return llvm::PreservedAnalyses::all();
   }

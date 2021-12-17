@@ -13,10 +13,12 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-
+#include <anvill/Lifters.h>
+#include <anvill/Providers.h>
 #include <iostream>
 
-#include "TransformRemillJumpIntrinsics.h"
+#include <anvill/Passes/TransformRemillJumpIntrinsics.h>
+#include <anvill/CrossReferenceResolver.h>
 #include "Utils.h"
 
 namespace anvill {
@@ -30,12 +32,23 @@ TEST_SUITE("TransformRemillJump_Test0") {
                                     remill::GetArchName("amd64"));
     REQUIRE(arch != nullptr);
 
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+      TypeDictionary tyDict(llvm_context);
+
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
+    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options);
 
-    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
+    EntityCrossReferenceResolver xref(lifter);
+
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(xref)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -53,13 +66,23 @@ TEST_SUITE("TransformRemillJump_Test1") {
     auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
     REQUIRE(arch != nullptr);
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+      TypeDictionary tyDict(llvm_context);
 
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
+    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options);
 
-    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
+    EntityCrossReferenceResolver xref(lifter);
+
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(xref)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -80,12 +103,23 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
                                     remill::GetArchName("aarch32"));
     REQUIRE(arch != nullptr);
 
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+      TypeDictionary tyDict(llvm_context);
+
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
+    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options);
 
-    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
+    EntityCrossReferenceResolver xref(lifter);
+
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(xref)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -106,12 +140,23 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
                                     remill::GetArchName("aarch32"));
     REQUIRE(arch != nullptr);
 
-    anvill::LifterOptions options(arch.get(), *module.get(), nullptr);
+      auto ctrl_flow_provider =
+          anvill::NullControlFlowProvider();
+      TypeDictionary tyDict(llvm_context);
+
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(
+          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+
+    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
 
     // memory and types will not get used and create lifter with null
-    anvill::EntityLifter lifter(options, nullptr, nullptr);
+    anvill::EntityLifter lifter(options);
 
-    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(lifter)));
+    EntityCrossReferenceResolver xref(lifter);
+
+    CHECK(RunFunctionPass(module.get(), TransformRemillJumpIntrinsics(xref)));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");

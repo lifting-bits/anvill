@@ -1,6 +1,5 @@
-#include "SwitchLoweringPass.h"
-
-#include <anvill/JumpTableAnalysis.h>
+#include <anvill/Passes/LowerSwitchIntrinsics.h>
+#include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -12,7 +11,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-
+#include <remill/OS/OS.h>
 #include <iostream>
 
 #include "Utils.h"
@@ -29,9 +28,9 @@ class MockMemProv : public MemoryProvider {
   MockMemProv(const llvm::DataLayout &dl) : dl(dl), curr_base(0) {}
 
   std::tuple<uint8_t, ByteAvailability, BytePermission>
-  Query(uint64_t address) {
+  Query(uint64_t address) const {
     if (this->memmap.find(address) != this->memmap.end()) {
-      auto val = this->memmap[address];
+      auto val = this->memmap.find(address)->second;
       return std::make_tuple(val, ByteAvailability::kAvailable,
                              BytePermission::kReadable);
     }
@@ -78,7 +77,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
   TEST_CASE("Run on large function") {
     llvm::LLVMContext context;
 
-    SliceManager slc;
     auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
     auto target_function =
         FindFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
@@ -98,7 +96,18 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    fam.registerPass([&] { return JumpTableAnalysis(slc); });
+    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+                                    remill::GetArchName("amd64"));
+    auto ctrl_flow_provider =
+        anvill::NullControlFlowProvider();
+    TypeDictionary tyDict(context);
+    
+    NullTypeProvider ty_prov(tyDict);
+    NullMemoryProvider null_mem_prov;
+    anvill::LifterOptions lift_options(
+        arch.get(), *mod,ty_prov,std::move(ctrl_flow_provider),null_mem_prov);
+    EntityLifter lifter(lift_options);
+    fam.registerPass([&] { return JumpTableAnalysis(lifter); });
 
     fpm.addPass(llvm::InstCombinePass());
     auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
@@ -121,7 +130,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(-1153287);
     mem_prov->AddJumpTableOffset(-1153278);
 
-    fpm.addPass(LowerSwitchIntrinsics(mem_prov, slc));
+    fpm.addPass(LowerSwitchIntrinsics(*mem_prov.get()));
     fpm.run(*target_function, fam);
 
 
@@ -131,13 +140,13 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(analysis_results.size() ==
             3);  // check that we resolve all the switches
 
-    auto interp = slc.getInterp();
-    std::optional<JumpTableResult> recovered_switch = std::nullopt;
+    std::optional<std::reference_wrapper<const JumpTableResult>> recovered_switch = std::nullopt;
     llvm::CallInst *instrinsic = nullptr;
-    for (auto jumpres : analysis_results) {
+    for (const auto& jumpres : analysis_results) {
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
       llvm::Value *v = jumpres.first->getArgOperand(2);
-      JumpTableResult res = jumpres.second;
+      const JumpTableResult& res = jumpres.second;
+      auto interp = res.interp.getInterp();
       REQUIRE(llvm::isa<llvm::ConstantInt>(v));
       auto pc1 = llvm::cast<llvm::ConstantInt>(v);
       switch (pc1->getValue().getLimitedValue()) {
@@ -171,7 +180,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     CHECK(lowered_switch->getNumCases() == 5);
     CHECK(lowered_switch->getCondition() ==
-          recovered_switch->indexRel.getIndex());
+          recovered_switch->get().indexRel.getIndex());
 
     llvm::SmallSet<uint64_t, 10> allowed_indices;
     allowed_indices.insert(6);
@@ -193,7 +202,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
   TEST_CASE("Try negative Index") {
     llvm::LLVMContext context;
-    SliceManager slc;
     auto mod = LoadTestData(context, "SwitchLoweringNeg.ll");
     auto target_function = FindFunction(mod.get(), "_start");
     CHECK(target_function != nullptr);
@@ -212,7 +220,19 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    fam.registerPass([&] { return JumpTableAnalysis(slc); });
+    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+                                    remill::GetArchName("amd64"));
+    auto ctrl_flow_provider =
+        anvill::NullControlFlowProvider();
+    TypeDictionary tyDict(context);
+    
+    NullTypeProvider ty_prov(tyDict);
+    NullMemoryProvider null_mem_prov;
+    anvill::LifterOptions lift_options(
+        arch.get(), *mod,ty_prov,std::move(ctrl_flow_provider),null_mem_prov);
+    EntityLifter lifter(lift_options);
+
+    fam.registerPass([&] { return JumpTableAnalysis(lifter); });
 
 
     auto mem_prov = std::make_shared<MockMemProv>(mod->getDataLayout());
@@ -229,7 +249,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(0x30);
 
     fpm.addPass(llvm::InstCombinePass());
-    fpm.addPass(LowerSwitchIntrinsics(mem_prov, slc));
+    fpm.addPass(LowerSwitchIntrinsics(*mem_prov));
 
     fpm.run(*target_function, fam);
 
@@ -240,13 +260,13 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(analysis_results.size() ==
             1);  // check that we resolve all the switches
 
-    auto interp = slc.getInterp();
-    std::optional<JumpTableResult> recovered_switch = std::nullopt;
+    std::optional<std::reference_wrapper<const JumpTableResult>> recovered_switch = std::nullopt;
     llvm::CallInst *instrinsic = nullptr;
-    for (auto jumpres : analysis_results) {
+    for (const auto& jumpres : analysis_results) {
+      auto interp = jumpres.second.interp.getInterp();
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
       llvm::Value *v = jumpres.first->getArgOperand(2);
-      JumpTableResult res = jumpres.second;
+      const JumpTableResult& res = jumpres.second;
       REQUIRE(llvm::isa<llvm::ConstantInt>(v));
       auto pc1 = llvm::cast<llvm::ConstantInt>(v);
       switch (pc1->getValue().getLimitedValue()) {
@@ -269,7 +289,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     CHECK(lowered_switch->getNumCases() == 4);
     CHECK(lowered_switch->getCondition() ==
-          recovered_switch->indexRel.getIndex());
+          recovered_switch->get().indexRel.getIndex());
 
     llvm::SmallSet<uint64_t, 10> allowed_indices;
     allowed_indices.insert(llvm::APInt(32, -4).getLimitedValue());

@@ -1,4 +1,4 @@
-#include "RemoveStackPointerCExprs.h"
+#include <anvill/Passes/RemoveStackPointerCExprs.h>
 
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -10,7 +10,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-
+#include <anvill/Lifters.h>
 #include <iostream>
 
 #include "Utils.h"
@@ -46,8 +46,8 @@ TEST_SUITE("RemoveStackPointerCExprs") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-
-    fpm.addPass(RemoveStackPointerCExprs());
+    StackFrameRecoveryOptions opt;
+    fpm.addPass(RemoveStackPointerCExprs(opt));
     fpm.run(*target_function, fam);
 
     target_function->dump();
