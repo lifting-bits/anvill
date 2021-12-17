@@ -148,7 +148,12 @@ z3::expr UnopExpr::BuildExpression(z3::context &c,
                                    const Environment &env) const {
   auto e1 = this->lhs->BuildExpression(c, env);
   switch (this->opcode) {
-    case Z3Unop::LOGNOT: return z3::operator!(e1);
+      case Z3Unop::LOGNOT:
+        if (e1.get_sort().is_bool()) {
+          return z3::operator!(e1);
+        } else {
+          return z3::operator==(e1, 0);
+        }
     default: throw std::invalid_argument("unknown opcode unop");
   }
 }
