@@ -1642,13 +1642,11 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Every lifted function starts as a clone of __remill_basic_block. That
   // prototype has multiple arguments (memory pointer, state pointer, program
   // counter). This extracts the state pointer.
-  lifted_func = remill::DeclareLiftedFunction(
-      semantics_module.get(), native_func->getName().str() + ".lifted");
+  lifted_func = options.arch->DefineLiftedFunction(
+      native_func->getName().str() + ".lifted", semantics_module.get());
 
   state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
-  CHECK(lifted_func->isDeclaration());
 
-  remill::CloneBlockFunctionInto(lifted_func);
   lifted_func->removeFnAttr(llvm::Attribute::NoInline);
   lifted_func->addFnAttr(llvm::Attribute::InlineHint);
   lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
