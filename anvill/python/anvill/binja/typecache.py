@@ -273,10 +273,11 @@ class TypeCache:
         ret.set_underlying_type(self._convert_bn_type(ref_type))
         return ret
 
-    def _convert_array(self, tinfo: bn.Type) -> Type:
+    def _convert_array(self, tinfo_: bn.Type) -> Type:
         """ Convert bn pointer type into a `Type` instance"""
 
-        assert tinfo.type_class == bn.TypeClass.ArrayTypeClass
+        assert tinfo_.type_class == bn.TypeClass.ArrayTypeClass
+        tinfo = cast(bn.types.ArrayType, tinfo_)
 
         ret = ArrayType()
         self._cache[_cache_key(tinfo)] = ret

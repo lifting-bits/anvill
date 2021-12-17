@@ -403,7 +403,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
     // Either we didn't find any target list from the control flow provider, or
     // we did but it wasn't marked as `complete`.
-    remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 }
 
@@ -438,7 +439,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
 
   // No good info; do an indirect jump.
   } else {
-    remill::AddTerminatingTailCall(block, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(block, intrinsics.jump);
+    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 }
 
@@ -454,7 +456,9 @@ void FunctionLifter::VisitConditionalIndirectJump(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+
+  auto br1 = llvm::BranchInst::Create(
+      taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
 
@@ -471,11 +475,15 @@ void FunctionLifter::VisitConditionalIndirectJump(
 
   // No target type info.
   } else {
-    remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
+
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
 }
 
 // Visit a function return control-flow instruction, which is a form of
@@ -486,8 +494,10 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                          remill::Instruction *delayed_inst,
                                          llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  MuteStateEscape(
-      remill::AddTerminatingTailCall(block, intrinsics.function_return));
+  auto func_return = remill::AddTerminatingTailCall(
+      block, intrinsics.function_return);
+  AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
+  MuteStateEscape(func_return);
 }
 
 // Visit a conditional function return control-flow instruction, which is a
@@ -502,13 +512,18 @@ void FunctionLifter::VisitConditionalFunctionReturn(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  auto br1 = llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  MuteStateEscape(
-      remill::AddTerminatingTailCall(taken_block, intrinsics.function_return));
+  auto func_return = remill::AddTerminatingTailCall(
+      taken_block, intrinsics.function_return);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
+
+  MuteStateEscape(func_return);
+  AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
 }
 
 std::optional<CallableDecl>
@@ -597,7 +612,8 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
 
     // If we do not have a function declaration, treat this as a call
     // to an unknown address.
-    remill::AddCall(block, intrinsics.function_call);
+    auto call = remill::AddCall(block, intrinsics.function_call);
+    AnnotateInstruction(call, pc_annotation_id, pc_annotation);
     return;
   }
 
@@ -643,13 +659,17 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  auto br1 = llvm::BranchInst::Create(
+      taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   CallFunction(inst, taken_block, inst.branch_taken_pc);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
+
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
 }
 
 // Visit an indirect function call control-flow instruction. Similar to
@@ -678,13 +698,17 @@ void FunctionLifter::VisitConditionalIndirectFunctionCall(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  auto br1 = llvm::BranchInst::Create(
+      taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   CallFunction(inst, taken_block, std::nullopt);
   VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
+
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
 }
 
 // Helper to figure out the address where execution will resume after a
@@ -817,13 +841,18 @@ void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
       llvm::BasicBlock::Create(llvm_context, taken_ss.str(), lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, not_taken_ss.str(), lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  auto br1 = llvm::BranchInst::Create(
+      taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_taken_pc), taken_block);
-  llvm::BranchInst::Create(
+  auto br3 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
+
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br3, pc_annotation_id, pc_annotation);
 }
 
 // Visit an asynchronous hyper call control-flow instruction. These are non-
@@ -847,15 +876,20 @@ void FunctionLifter::VisitConditionalAsyncHyperCall(
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
   const auto not_taken_block =
       llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+  auto br1 = llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
 
-  remill::AddTerminatingTailCall(taken_block, intrinsics.async_hyper_call);
+  auto hc = remill::AddTerminatingTailCall(
+      taken_block, intrinsics.async_hyper_call);
 
-  llvm::BranchInst::Create(
+  auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc),
       not_taken_block);
+
+  AnnotateInstruction(br1, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(br2, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(hc, pc_annotation_id, pc_annotation);
 }
 
 // Visit (and thus lift) a delayed instruction. When lifting a delayed
@@ -1009,8 +1043,8 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
   // Do an initial annotation of instructions injected by `LiftIntoBlock`,
   // and prior to any lifting of a delayed instruction that might happen
   // in any of the below `Visit*` calls.
-  const auto inst_annotation = GetPCAnnotation(inst.pc);
-  AnnotateInstructions(block, pc_annotation_id, inst_annotation);
+  pc_annotation = GetPCAnnotation(inst.pc);
+  AnnotateInstructions(block, pc_annotation_id, pc_annotation);
 
   switch (inst.category) {
 
@@ -1066,7 +1100,7 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
 
   // Do a second pass of annotations to apply to the control-flow branching
   // instructions added in by the above `Visit*` calls.
-  AnnotateInstructions(block, pc_annotation_id, inst_annotation);
+  AnnotateInstructions(block, pc_annotation_id, pc_annotation);
 
   if (delayed_inst) {
     delayed_inst->~Instruction();
