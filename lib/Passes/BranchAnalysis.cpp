@@ -285,6 +285,12 @@ BranchAnalysis::analyzeComparison(llvm::CallInst *intrinsic_call) {
       auto env = env_and_symbols->first;
       auto symbols = env_and_symbols->second;
       auto exp = expr->get()->BuildExpression(c, env);
+
+      if (exp.is_bv()) {
+        assert(exp.get_sort().bv_size() == 1);
+        exp = exp == 1;
+      }
+
       for (const auto &strat : this->guess_generation_strategies) {
         auto res = strat(pred.pred);
         if (res.AttemptToProve(exp, s, c, env)) {
