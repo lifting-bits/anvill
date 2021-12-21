@@ -1,5 +1,5 @@
 #include <anvill/Passes/BranchAnalysis.h>
-#include <anvill/Providers/MemoryProvider.h>
+#include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/ADT/SmallSet.h>
