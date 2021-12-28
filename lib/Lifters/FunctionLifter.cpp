@@ -530,7 +530,6 @@ std::optional<CallableDecl>
 FunctionLifter::TryGetTargetFunctionType(
     const remill::Instruction &from_inst, std::uint64_t address,
     std::uint64_t redirected_address) {
-
   std::optional<CallableDecl> opt_callable_decl =
       type_provider.TryGetCalledFunctionType(
           func_address, from_inst, redirected_address);
@@ -1169,6 +1168,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       if (from_addr) {
         maybe_decl = TryGetTargetFunctionType(inst, inst_addr, redir_addr);
       }
+      
       if (!maybe_decl) {
         maybe_decl = std::move(inst_func.value());
       }

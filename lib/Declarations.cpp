@@ -98,7 +98,6 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     llvm::Value *target, const anvill::TypeDictionary &types,
     const remill::IntrinsicTable &intrinsics,
     llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
-
   auto module = block->getModule();
   auto &context = module->getContext();
   CHECK_EQ(&context, &(target->getContext()));

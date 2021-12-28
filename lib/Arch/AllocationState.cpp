@@ -20,33 +20,57 @@
 namespace anvill {
 namespace {
 
-// Converts size constraints to reasonable sizes.
-static uint64_t SizeConstraintToSize(const SizeConstraint &sc) {
-  switch (sc) {
-    case kMaxBit512:
-    case kMinBit512: return 512;
-    case kMaxBit256:
-    case kMinBit256: return 256;
-    case kMaxBit128:
-    case kMinBit128: return 128;
-    case kMaxBit80:
-    case kMinBit80: return 80;
-    case kMaxBit64:
-    case kMinBit64: return 64;
-    case kMaxBit32:
-    case kMinBit32: return 32;
-    case kMaxBit16:
-    case kMinBit16: return 16;
-    case kMaxBit8:
-      return 8;
-
-      // kMinBit8 is a duplicate so it is not included here.
-    default: {
-      LOG(FATAL) << "Could not handle size constraint";
-      return 0;
-    }
+// Converts size constraints to max size.
+static uint64_t SizeConstraintToMinSize(const SizeConstraint &sc) {
+  if (sc & kBit8) {
+    return 8;
+  } else if (sc & kBit16) {
+    return 16;
+  } else if (sc & kBit32) {
+    return 32;
+  } else if (sc & kBit64) {
+    return 64;
+  } else if (sc & kBit80) {
+    return 80;
+  } else if (sc & kBit128) {
+    return 128;
+  } else if (sc & kBit256) {
+    return 256;
+  } else if (sc & kBit512) {
+    return 512;
+  } else {
+    return 512;
   }
+
+
 }
+
+
+// Converts size constraints to reasonable sizes.
+static uint64_t SizeConstraintToMaxSize(const SizeConstraint &sc) {
+  if (sc & kBit512) {
+    return 512;
+  } else if (sc & kBit256) {
+    return 256;
+  } else if (sc & kBit128) {
+    return 128;
+  } else if (sc & kBit80) {
+    return 80;
+  } else if (sc & kBit64) {
+    return 64;
+  } else if (sc & kBit32) {
+    return 32;
+  } else if (sc & kBit16) {
+    return 16;
+  } else if (sc & kBit8) {
+    return 8;
+  } else {
+    return 0;
+  }
+
+
+}
+
 
 static const std::string kEmptyRegName;
 
@@ -55,7 +79,7 @@ static const std::string &
 GetSmallestVariantName(const std::vector<VariantConstraint> &variants,
                        uint64_t size) {
   for (const auto &vc : variants) {
-    if (SizeConstraintToSize(vc.size_constraint) >= size) {
+    if (SizeConstraintToMaxSize(vc.size_constraint) >= size) {
       return vc.register_name;
     }
   }
@@ -84,7 +108,7 @@ bool AllocationState::IsFilled(size_t i) {
 // Gets the remaining space left in register at index i. Assume that the
 // largest register variant is at the back of the variants vector.
 uint64_t AllocationState::RemainingSpace(size_t i) {
-  return SizeConstraintToSize(constraints[i].variants.back().size_constraint) -
+  return SizeConstraintToMaxSize(constraints[i].variants.back().size_constraint) -
          fill[i];
 }
 
@@ -223,10 +247,11 @@ AllocationState::TryCompositeRegisterAllocate(llvm::Type &type) {
 llvm::Optional<std::vector<ValueDecl>>
 AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
                                           llvm::Optional<SizeAndType> hint) {
+
   DCHECK(!(type.isStructTy() || type.isArrayTy() || type.isVectorTy()));
   std::vector<ValueDecl> ret;
   SizeAndType st = (hint) ? hint.getValue() : AssignSizeAndType(type);
-  uint64_t size = SizeConstraintToSize(st.sc);
+  uint64_t size = SizeConstraintToMinSize(st.sc);
 
   auto has_free_regs = false;
   for (size_t i = 0; i < constraints.size(); i++) {
@@ -234,6 +259,7 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
     // Assume for now that the type constraints are uniform across variants.
     // Skip if register is already reserved, or filled, or if types don't match.
     TypeConstraint tc = constraints[i].variants.front().type_constraint;
+
     if (reserved[i] || IsFilled(i) || !(tc & st.tc)) {
       continue;
     }
@@ -281,7 +307,6 @@ AllocationState::TryBasicRegisterAllocate(llvm::Type &type,
       return TryRegisterAllocate(*split_type);
     }
   }
-
   return llvm::None;
 }
 

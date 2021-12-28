@@ -7,7 +7,6 @@
  */
 
 #include <anvill/Providers.h>
-
 #include <anvill/Declarations.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
@@ -81,6 +80,7 @@ std::optional<CallableDecl> SpecificationTypeProvider::TryGetCalledFunctionType(
     const remill::Instruction &from_inst) const {
   std::pair<std::uint64_t, std::uint64_t> loc{function_address,
                                               from_inst.pc};
+
   auto cs_it = impl->loc_to_call_site.find(loc);
   if (cs_it == impl->loc_to_call_site.end()) {
     return std::nullopt;
