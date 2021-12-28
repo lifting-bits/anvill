@@ -182,6 +182,12 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
   if (remill::IsError(maybe_decl)) {
     return remill::GetErrorString(maybe_decl);
   } else {
+    // Here we override the return type of the extern declaration to match how it was allocated 
+    // In the future instead of doing this we should store information about how to extract return values at the llvm
+    // level into the abi returns.
+    // TODO(ian): Dont dont do this.
+    decl.OverrideFunctionTypeWithABIReturnLayout();
+
     return decl;
   }
 }

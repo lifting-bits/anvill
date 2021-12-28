@@ -153,8 +153,10 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
 
   // There is a single return value, store it to the lifted state.
   if (returns.size() == 1) {
+    auto call_ret = ret_val;
+
     mem_ptr = StoreNativeValue(
-        ret_val, returns.front(), types, intrinsics, block, state_ptr, mem_ptr);
+        call_ret, returns.front(), types, intrinsics, block, state_ptr, mem_ptr);
 
   // There are possibly multiple return values (or zero). Unpack the
   // return value (it will be a struct type) into its components and
@@ -212,6 +214,27 @@ Result<FunctionDecl, std::string> FunctionDecl::Create(
   }
 
   return cc->AllocateSignature(func);
+}
+
+void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
+  if (this->returns.size() < 1) {
+    return;
+  } else if (this->returns.size() == 1) {
+    // Override the return type with the type of the last return 
+    auto new_func_type = llvm::FunctionType::get(this->returns.front().type, this->type->params(), this->type->isVarArg());
+    this->type = new_func_type;
+  } else {
+    // Create a structure that has a field for each return
+    std::vector<llvm::Type*> elems;
+    for (const auto& ret : this->returns) {
+      elems.push_back(ret.type);
+    }
+
+    auto ret_type_struct = llvm::StructType::create(elems);
+
+    auto new_func_type = llvm::FunctionType::get(ret_type_struct, this->type->params(), this->type->isVarArg());
+    this->type = new_func_type;
+  }
 }
 
 }  // namespace anvill

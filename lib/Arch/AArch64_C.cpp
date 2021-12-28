@@ -206,6 +206,7 @@ AArch64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
                             std::vector<anvill::ValueDecl> &ret_values) {
 
   llvm::Type *ret_type = function.getReturnType();
+  LOG(INFO) << "Binding on return " << remill::LLVMThingToString(ret_type);
   injected_sret = false;
 
   // If there is an sret parameter then it is a special case.
