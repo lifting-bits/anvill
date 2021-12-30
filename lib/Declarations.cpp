@@ -216,6 +216,18 @@ Result<FunctionDecl, std::string> FunctionDecl::Create(
   return cc->AllocateSignature(func);
 }
 
+
+void CallableDecl::OverrideFunctionTypeWithABIParamLayout() {
+  llvm::SmallVector<llvm::Type*> new_args;
+  for (const auto& par : this->params ) {
+    new_args.push_back(par.type);
+  }
+
+  this->type = llvm::FunctionType::get(this->type->getReturnType(),new_args, this->type->isVarArg());
+
+  return;
+}
+
 void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
   if (this->returns.size() < 1) {
     return;

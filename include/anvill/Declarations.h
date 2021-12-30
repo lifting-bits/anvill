@@ -114,8 +114,10 @@ struct VariableDecl {
 
 // A declaration for a callable entity.
 struct CallableDecl {
+ private:
  public:
   void OverrideFunctionTypeWithABIReturnLayout();
+  void OverrideFunctionTypeWithABIParamLayout();
 
   // The architecture from which this function's code derives.
   const remill::Arch *arch{nullptr};

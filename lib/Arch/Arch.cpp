@@ -187,7 +187,7 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
     // level into the abi returns.
     // TODO(ian): Dont dont do this.
     decl.OverrideFunctionTypeWithABIReturnLayout();
-
+    decl.OverrideFunctionTypeWithABIParamLayout();
     return decl;
   }
 }
