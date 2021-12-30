@@ -119,11 +119,11 @@ TEST_SUITE("TypeSpecifier") {
          "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
     auto variadic_function_type =
-        llvm::FunctionType::get(array_type, {struct_type2}, false);
+        llvm::FunctionType::get(array_type, {struct_type2}, true);
 
     kTestEntryList.push_back(
-        {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
-         "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
+        {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}&[%1x100])",
+         "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_V_C_M1x100_D_B"});
 
       anvill::TypeDictionary type_dict(llvm_context);
       anvill::TypeTranslator specifier(type_dict, data_layout);
