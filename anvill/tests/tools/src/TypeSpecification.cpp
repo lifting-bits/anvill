@@ -41,7 +41,9 @@ TEST_SUITE("TypeSpecifier") {
     for (const auto &test_entry : kTestEntryList) {
       llvm::LLVMContext llvm_context;
       llvm::DataLayout dl("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
-      anvill::TypeTranslator specifier(llvm_context, dl);
+
+      anvill::TypeDictionary type_dict(llvm_context);
+      anvill::TypeTranslator specifier(type_dict, dl);
 
       auto context_res = specifier.DecodeFromString(test_entry.spec);
 
@@ -123,11 +125,12 @@ TEST_SUITE("TypeSpecifier") {
         {variadic_function_type, "(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])",
          "_A_X0_E_C_X1_Ehhhhhhhhhh_Fx100_D_M1_F_C_M1x100_D_B"});
 
-    anvill::TypeTranslator specifier(llvm_context, data_layout);
+      anvill::TypeDictionary type_dict(llvm_context);
+      anvill::TypeTranslator specifier(type_dict, data_layout);
 
     for (const auto &test_entry : kTestEntryList) {
-      auto without_alphanum = specifier.EncodeToString(test_entry.type, false);
-      auto with_alphanum = specifier.EncodeToString(test_entry.type, true);
+      auto without_alphanum = specifier.EncodeToString(test_entry.type, anvill::EncodingFormat::kDefault);
+      auto with_alphanum = specifier.EncodeToString(test_entry.type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
 
       auto decoded_without_alphanum = specifier.DecodeFromString(test_entry.expected_non_alphanum_output);
@@ -136,8 +139,8 @@ TEST_SUITE("TypeSpecifier") {
       auto decoded_with_alphanum = specifier.DecodeFromString(test_entry.expected_alphanum_output);
       CHECK(decoded_with_alphanum.Succeeded());
 
-      auto encoded_without_alphanum = specifier.EncodeToString(decoded_without_alphanum.TakeValue(), false);
-      auto encoded_with_alphanum = specifier.EncodeToString(decoded_with_alphanum.TakeValue(), true);
+      auto encoded_without_alphanum = specifier.EncodeToString(decoded_without_alphanum.TakeValue(), anvill::EncodingFormat::kDefault);
+      auto encoded_with_alphanum = specifier.EncodeToString(decoded_with_alphanum.TakeValue(), anvill::EncodingFormat::kValidSymbolCharsOnly);
 
       CHECK_EQ(without_alphanum, encoded_without_alphanum);
       WARN_EQ(with_alphanum, encoded_with_alphanum);
@@ -150,18 +153,18 @@ TEST_SUITE("TypeSpecifier") {
     // variadic function vs non-variadic
 
     auto variadic_func_description =
-        specifier.EncodeToString(variadic_function_type, false);
+        specifier.EncodeToString(variadic_function_type, anvill::EncodingFormat::kDefault);
 
     auto non_variadic_func_description =
-        specifier.EncodeToString(function_type, false);
+        specifier.EncodeToString(function_type, anvill::EncodingFormat::kDefault);
 
     WARN_NE(variadic_func_description, non_variadic_func_description);
 
     auto variadic_alphanum_func_description =
-        specifier.EncodeToString(variadic_function_type, true);
+        specifier.EncodeToString(variadic_function_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
     auto non_variadic_alphanum_func_description =
-        specifier.EncodeToString(function_type, true);
+        specifier.EncodeToString(function_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
     WARN_NE(variadic_alphanum_func_description,
             non_variadic_alphanum_func_description);
@@ -177,16 +180,16 @@ TEST_SUITE("TypeSpecifier") {
         llvm::StructType::create(struct_part_list3, "", true);
 
     auto non_packed_struct =
-        specifier.EncodeToString(non_packed_struct_type, false);
-    auto packed_struct = specifier.EncodeToString(packed_struct_type, false);
+        specifier.EncodeToString(non_packed_struct_type,  anvill::EncodingFormat::kDefault);
+    auto packed_struct = specifier.EncodeToString(packed_struct_type,  anvill::EncodingFormat::kDefault);
 
     WARN_NE(non_packed_struct, packed_struct);
 
     auto alphanum_non_packed_struct =
-        specifier.EncodeToString(non_packed_struct_type, true);
+        specifier.EncodeToString(non_packed_struct_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
     auto alphanum_packed_struct =
-        specifier.EncodeToString(packed_struct_type, true);
+        specifier.EncodeToString(packed_struct_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
     WARN_NE(alphanum_non_packed_struct, alphanum_packed_struct);
   }
@@ -220,8 +223,9 @@ TEST_SUITE("TypeSpecifier") {
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
-    TypeTranslator specifier(llvm_context, data_layout);
-
+    anvill::TypeDictionary type_dict(llvm_context);
+    anvill::TypeTranslator specifier(type_dict, data_layout);
+    
     for (auto [test_spec, ll_type] : kTestSpecList) {
       auto context_res = specifier.DecodeFromString(test_spec);
       REQUIRE(context_res.Succeeded());

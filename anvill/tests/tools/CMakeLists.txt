@@ -15,7 +15,7 @@ add_executable(test_anvill
 target_link_libraries(test_anvill PRIVATE
   remill_settings
   remill
-  anvill_passes
+  anvill
   thirdparty_doctest
 )
 

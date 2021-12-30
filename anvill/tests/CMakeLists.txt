@@ -6,6 +6,5 @@
 # the LICENSE file found in the root directory of this source tree.
 #
 
-# TODO(ian) reenable these tests
-#add_subdirectory("tools")
+add_subdirectory("tools")
 add_subdirectory("anvill_passes")
