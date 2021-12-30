@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
   auto maybe_spec = anvill::Specification::DecodeFromJSON(
       context, remill::GetReference(maybe_json));
 
-  if (maybe_spec.Failed()) {
+  if (!maybe_spec.Succeeded()) {
     std::cerr << maybe_spec.TakeError().message << std::endl;
     return EXIT_FAILURE;
   }

@@ -1,51 +1,39 @@
 /*
- * Copyright (c) 2019-present, Trail of Bits, Inc.
- * All rights reserved.
+ * Copyright (c) 2021 Trail of Bits, Inc.
  *
- * This source code is licensed in accordance with the terms specified in
- * the LICENSE file found in the root directory of this source tree.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
-#include <new>
 #include <stdexcept>
-#include <utility>
+#include <variant>
 
 namespace anvill {
 
 template <typename ValueType, typename ErrorType>
 class Result final {
  private:
-
-  static constexpr auto kMaxAlign = alignof(ValueType) > alignof(ErrorType) ?
-                                    alignof(ValueType) : alignof(ErrorType);
-
-
-  static constexpr auto kMaxSize = sizeof(ValueType) > sizeof(ErrorType) ?
-                                   sizeof(ValueType) : sizeof(ErrorType);
-
-  alignas(kMaxAlign) uint8_t data[kMaxSize];
-  ValueType *value{nullptr};
-  ErrorType *error{nullptr};
   bool destroyed{true};
   mutable bool checked{false};
+  std::variant<ValueType, ErrorType> data;
 
  public:
   Result(void);
-  ~Result(void) {
-    if (value) {
-      value->~ValueType();
-    } else if (error) {
-      error->~ErrorType();
-    }
-  }
+  ~Result(void) = default;
 
   bool Succeeded(void) const;
-
-  inline bool Failed(void) const {
-    return !Succeeded();
-  }
 
   const ErrorType &Error(void) const;
   ErrorType TakeError(void);
@@ -55,11 +43,11 @@ class Result final {
 
   const ValueType *operator->(void) const;
 
-  Result(const ValueType &value) noexcept;
-  Result(ValueType &&value) noexcept;
+  Result(const ValueType &value);
+  Result(ValueType &&value): destroyed(false), data(std::move(value)) {}
 
-  Result(const ErrorType &error) noexcept;
-  Result(ErrorType &&error) noexcept;
+  Result(const ErrorType &error);
+  Result(ErrorType &&error):  destroyed(false), data(std::move(error)) {}
 
   Result(Result &&other) noexcept;
   Result &operator=(Result &&other) noexcept;
@@ -77,14 +65,15 @@ class Result final {
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(void) {
   checked = true;
-  error = new (data) ErrorType;
+  data = ErrorType();
 }
 
 template <typename ValueType, typename ErrorType>
 bool Result<ValueType, ErrorType>::Succeeded(void) const {
   VerifyState();
+
   checked = true;
-  return value != nullptr;
+  return std::holds_alternative<ValueType>(data);
 }
 
 template <typename ValueType, typename ErrorType>
@@ -92,7 +81,8 @@ const ErrorType &Result<ValueType, ErrorType>::Error(void) const {
   VerifyState();
   VerifyChecked();
   VerifyFailed();
-  return *error;
+
+  return std::get<ErrorType>(data);
 }
 
 template <typename ValueType, typename ErrorType>
@@ -100,8 +90,11 @@ ErrorType Result<ValueType, ErrorType>::TakeError(void) {
   VerifyState();
   VerifyChecked();
   VerifyFailed();
+
+  auto error = std::move(std::get<ErrorType>(data));
   destroyed = true;
-  return std::move(*error);
+
+  return error;
 }
 
 template <typename ValueType, typename ErrorType>
@@ -109,7 +102,8 @@ const ValueType &Result<ValueType, ErrorType>::Value(void) const {
   VerifyState();
   VerifyChecked();
   VerifySucceeded();
-  return std::move(*value);
+
+  return std::get<ValueType>(data);
 }
 
 template <typename ValueType, typename ErrorType>
@@ -117,8 +111,11 @@ ValueType Result<ValueType, ErrorType>::TakeValue(void) {
   VerifyState();
   VerifyChecked();
   VerifySucceeded();
+
+  auto value = std::move(std::get<ValueType>(data));
   destroyed = true;
-  return std::move(*value);
+
+  return value;
 }
 
 template <typename ValueType, typename ErrorType>
@@ -127,36 +124,21 @@ const ValueType *Result<ValueType, ErrorType>::operator->(void) const {
 }
 
 template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(const ValueType &value_) noexcept
-    : value(new (data) ValueType(value_)) {
+Result<ValueType, ErrorType>::Result(const ValueType &value) {
+  data = value;
   destroyed = false;
 }
 
-template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(ValueType &&value_) noexcept
-    : value(new (data) ValueType(std::forward<ValueType>(value_))) {
-  destroyed = false;
-}
 
 template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(const ErrorType &error_) noexcept
-    : error(new (data) ErrorType(error_)) {
-  destroyed = false;
-}
-
-template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(ErrorType &&error_) noexcept
-    : error(new (data) ErrorType(std::forward<ErrorType>(error_))) {
+Result<ValueType, ErrorType>::Result(const ErrorType &error) {
+  data = error;
   destroyed = false;
 }
 
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(Result &&other) noexcept {
-  if (other.error) {
-    error = new (data) ErrorType(*(other.error));
-  } else if (other.value) {
-    value = new (data) ValueType(*(other.value));
-  }
+  data = std::exchange(other.data, ErrorType());
   checked = std::exchange(other.checked, true);
   destroyed = std::exchange(other.destroyed, false);
 }
@@ -165,18 +147,7 @@ template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType> &
 Result<ValueType, ErrorType>::operator=(Result &&other) noexcept {
   if (this != &other) {
-    if (error) {
-      error->~ErrorType();
-    } else if (value) {
-      value->~ValueType();
-    }
-
-    if (other.error) {
-      error = new (data) ErrorType(std::move(*(other.error)));
-    } else if (other.value) {
-      value = new (data) ValueType(std::move(*(other.value)));
-    }
-
+    data = std::exchange(other.data, ErrorType());
     checked = std::exchange(other.checked, true);
     destroyed = std::exchange(other.destroyed, false);
   }
@@ -206,7 +177,7 @@ void Result<ValueType, ErrorType>::VerifyChecked(void) const {
 
 template <typename ValueType, typename ErrorType>
 void Result<ValueType, ErrorType>::VerifySucceeded(void) const {
-  if (value != nullptr) {
+  if (std::holds_alternative<ValueType>(data)) {
     return;
   }
 
@@ -216,7 +187,7 @@ void Result<ValueType, ErrorType>::VerifySucceeded(void) const {
 
 template <typename ValueType, typename ErrorType>
 void Result<ValueType, ErrorType>::VerifyFailed(void) const {
-  if (error != nullptr) {
+  if (std::holds_alternative<ErrorType>(data)) {
     return;
   }
 

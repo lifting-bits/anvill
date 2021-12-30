@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     }
 
     auto maybe_func = anvill::FunctionDecl::Create(function, arch);
-    if (maybe_func.Failed()) {
+    if (!maybe_func.Succeeded()) {
       std::cerr << maybe_func.TakeError() << std::endl;
       return EXIT_FAILURE;
     } else {

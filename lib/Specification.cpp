@@ -288,7 +288,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     for (const llvm::json::Value &func : *funcs) {
       if (auto func_obj = func.getAsObject()) {
         auto maybe_func = translator.DecodeFunction(func_obj);
-        if (maybe_func.Failed()) {
+        if (!maybe_func.Succeeded()) {
           auto err = maybe_func.TakeError();
           ss << "Unable to decode " << index
              << "th function in 'functions' list of program specification: "
@@ -335,7 +335,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     for (const llvm::json::Value &cs : *call_sites_list) {
       if (auto cs_obj = cs.getAsObject()) {
         auto maybe_cs = translator.DecodeCallSite(cs_obj);
-        if (maybe_cs.Failed()) {
+        if (!maybe_cs.Succeeded()) {
           auto err = maybe_cs.TakeError();
           ss << "Unable to decode " << index
              << "th call site in 'call_sites' list of program specification: "
@@ -413,7 +413,7 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     for (const llvm::json::Value &var : *vars) {
       if (auto var_obj = var.getAsObject()) {
         auto maybe_var = translator.DecodeGlobalVar(var_obj);
-        if (maybe_var.Failed()) {
+        if (!maybe_var.Succeeded()) {
           auto err = maybe_var.TakeError();
           ss << "Unable to decode " << index
              << "th variable in 'variables' list of program specification: "
@@ -555,6 +555,10 @@ const ::anvill::TypeTranslator &Specification::TypeTranslator(void) const {
 // if something went wrong.
 anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
     llvm::LLVMContext &context, const llvm::json::Value &json) {
+      auto dec_error =  JSONDecodeError("test");
+      auto cpy = dec_error;
+      return cpy;
+      /*
   const auto spec = json.getAsObject();
   if (!spec) {
     return JSONDecodeError("Could not interpret json value as an object");
@@ -607,6 +611,7 @@ anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
   }
 
   return Specification(std::move(pimpl));
+  */
 }
 
 // Try to encode the specification into JSON.
@@ -626,7 +631,7 @@ Specification::EncodeToJSON(void) {
   for (const auto &func : impl->functions) {
     Result<llvm::json::Object, JSONEncodeError> maybe_func =
         translator.Encode(*func);
-    if (maybe_func.Failed()) {
+    if (!maybe_func.Succeeded()) {
       return maybe_func.TakeError();
     } else {
       functions.emplace_back(maybe_func.TakeValue());
@@ -636,7 +641,7 @@ Specification::EncodeToJSON(void) {
   for (const auto &cs : impl->call_sites) {
     Result<llvm::json::Object, JSONEncodeError> maybe_cs =
         translator.Encode(*cs);
-    if (maybe_cs.Failed()) {
+    if (!maybe_cs.Succeeded()) {
       return maybe_cs.TakeError();
     } else {
       call_sites.emplace_back(maybe_cs.TakeValue());
@@ -646,7 +651,7 @@ Specification::EncodeToJSON(void) {
   for (const auto &var : impl->variables) {
     Result<llvm::json::Object, JSONEncodeError> maybe_var =
         translator.Encode(*var);
-    if (maybe_var.Failed()) {
+    if (!maybe_var.Succeeded()) {
       return maybe_var.TakeError();
     } else {
       variables.emplace_back(maybe_var.TakeValue());
