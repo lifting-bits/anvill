@@ -720,7 +720,7 @@ jobs:
 
     - name: Integration Decompile and Specify Decompiled Bitcode
       run: |
-        docker run --rm -v $(pwd):/workspace -w /workspace --entrypoint "/bin/bash" docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -c "anvill-decompile-json -spec /workspace/bin/Decompile/tests/specs/ret0.json -bc_out /tmp/ret0.bc && anvill-specify-bitcode --bc_file /tmp/ret0.bc"
+        docker run --rm -v $(pwd):/workspace -w /workspace --entrypoint "/bin/bash" docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -c "anvill-decompile-json -spec /workspace/bin/Decompile/tests/specs/ret0.json -bc_out /tmp/ret0.bc && anvill-specify-bitcode --bc_in /tmp/ret0.bc"
 
     - name: Build with Binja
       run: |

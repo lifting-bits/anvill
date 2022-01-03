@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 
   if (FLAGS_bc_in.empty()) {
     std::cerr
-        << "Please specify a path to a BITcode input file in --bc_file"
+        << "Please specify a path to a BITcode input file in --bc_in"
         << std::endl;
     return EXIT_FAILURE;
   }
