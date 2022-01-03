@@ -8,7 +8,7 @@
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/lib/python3.8/dist-packages")
+set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/../lib/python3/dist-packages")
 
 # Redirect the whole installation if DESTDIR is specified
 if(DEFINED ENV{DESTDIR})
