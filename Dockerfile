@@ -86,12 +86,12 @@ COPY . ./
 # Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
-        -DANVILL_ENABLE_INSTALL=true \
-        -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
-        -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
-        -DCMAKE_VERBOSE_MAKEFILE=True \
-        -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
-        && \
+    -DANVILL_ENABLE_INSTALL=true \
+    -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
+    -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
+    -DCMAKE_VERBOSE_MAKEFILE=True \
+    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+    && \
     cmake --build build --target install
 
 FROM base AS dist
@@ -106,18 +106,7 @@ WORKDIR /anvill/local
 
 COPY --from=build ${LIBRARIES} ${LIBRARIES}
 
-# set up a symlink to invoke without a version
-RUN update-alternatives --install \
-    /opt/trailofbits/bin/anvill-decompile-json \
-    anvill-decompile-json \
-    /opt/trailofbits/bin/anvill-decompile-json-${LLVM_VERSION_NUM} \
-    100 \
-    && \
-    update-alternatives --install \
-    /opt/trailofbits/bin/anvill-specify-bitcode \
-    anvill-specify-bitcode \
-    /opt/trailofbits/bin/anvill-specify-bitcode-${LLVM_VERSION_NUM} \
-    100
+# Target no longer installs at a version
 
 ENTRYPOINT ["anvill-decompile-json"]
 
