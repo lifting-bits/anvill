@@ -292,7 +292,7 @@ jobs:
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
         run: |
-          python3 ./switcher --version_string ${{ matrix.binja.version }} ${{ matrix.binja.channel }}
+          python3 ./switcher.py --version_string ${{ matrix.binja.version }} ${{ matrix.binja.channel }}
 
       - name: Run the tests
 
