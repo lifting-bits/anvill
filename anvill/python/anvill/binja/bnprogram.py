@@ -44,8 +44,8 @@ class BNSpecification(Specification):
 
         # If it's an ELF with type ET_EXEC (2) then handle the return address
         # of `_start` specially.
-        self._is_ELF_exe: Final[bool] = "ELF" in str(bv.view_type) and \
-                                        bv.data_vars[bv.start].value['type'] == 2
+        self._is_ELF_exe: Final[bool] = "ELF" in str(
+            bv.view_type) and bv.executable
 
         self._type_cache: Final[TypeCache] = TypeCache(self._arch, self._bv)
 
@@ -154,7 +154,8 @@ class BNSpecification(Specification):
                         f"Void type parameter for function at {bn_func.start:x}: {bn_func.name}"
                     )
 
-                param_reg: Optional[Register] = self._arch.register_name(storage_reg_name)
+                param_reg: Optional[Register] = self._arch.register_name(
+                    storage_reg_name)
                 if param_reg is None:
                     raise InvalidParameterException(
                         f"Unrecognized parameter register name {storage_reg_name} in {bn_func.start:x}: {bn_func.name}"
@@ -281,7 +282,8 @@ class BNSpecification(Specification):
 
         # Try to see if this is actually a variable/external with function type
         # that we should interpret as being a function.
-        bn_sym: Optional[bn.Symbol] = cast(Optional[bn.Symbol], self._bv.get_symbol_at(ea))
+        bn_sym: Optional[bn.Symbol] = cast(
+            Optional[bn.Symbol], self._bv.get_symbol_at(ea))
         if bn_sym is not None:
             if bn_sym.type == bn.SymbolType.ExternalSymbol:
                 bn_var: Optional[bn.DataVariable] = \
