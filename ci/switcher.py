@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 
 from binaryninja.update import UpdateChannel, set_auto_updates_enabled, is_update_installation_pending, install_pending_update
