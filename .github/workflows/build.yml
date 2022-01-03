@@ -344,7 +344,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
+            --decompile-cmd "anvill-decompile-json"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
 
@@ -355,7 +355,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-angha-1k.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
+            --decompile-cmd "anvill-decompile-json"
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
