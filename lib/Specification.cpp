@@ -555,10 +555,7 @@ const ::anvill::TypeTranslator &Specification::TypeTranslator(void) const {
 // if something went wrong.
 anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
     llvm::LLVMContext &context, const llvm::json::Value &json) {
-      auto dec_error =  JSONDecodeError("test");
-      auto cpy = dec_error;
-      return cpy;
-      /*
+     
   const auto spec = json.getAsObject();
   if (!spec) {
     return JSONDecodeError("Could not interpret json value as an object");
@@ -611,7 +608,7 @@ anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
   }
 
   return Specification(std::move(pimpl));
-  */
+
 }
 
 // Try to encode the specification into JSON.
