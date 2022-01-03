@@ -53,6 +53,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/var.py
   )
 
+  # TODO(ian): If we are using this as a development setting maybe this should be installed as a development package.
   if(NOT DEFINED ENV{VIRTUAL_ENV})
     # NOT a venv install, specify --user and --prefix
     set(extra_install_flags --force --user --prefix=)
