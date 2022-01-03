@@ -60,7 +60,7 @@ jobs:
           - { name: 'ubuntu', tag: '20.04' }
 
         llvm: [ '12' ]
-        cxxcommon_version: [ 'v0.1.5' ]
+        cxxcommon_version: [ 'v0.1.7' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -383,7 +383,7 @@ jobs:
       matrix:
         os: [ 'macos-11' ]
         llvm: [ '12' ]
-        cxxcommon_version: [ 'v0.1.5' ]
+        cxxcommon_version: [ 'v0.1.7' ]
 
     runs-on: ${{ matrix.os }}
 
