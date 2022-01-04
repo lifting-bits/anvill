@@ -185,7 +185,6 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
   }
 
   const auto address = static_cast<uint64_t>(*maybe_ea);
-  LOG(INFO) << "Decoding spec function " << std::hex << address;
   decl.arch = arch;
   decl.address = address;
 
@@ -252,9 +251,6 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
     // Create a FunctionDecl object from the dummy function. This will set
     // the correct function types, bind the parameters & return values
     // with the architectural registers, and set the calling convention
-
-    LOG(INFO) << "Creating function decl for " << remill::LLVMThingToString(dummy_function) << " Ty: "
-     << remill::LLVMThingToString(dummy_function->getType());
 
     auto maybe_decl = FunctionDecl::Create(*dummy_function, arch);
     if (!maybe_decl.Succeeded()) {
@@ -417,11 +413,9 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
     // values.
     llvm::Type *ret_type = nullptr;
     if (decl.returns.empty()) {
-      LOG(INFO) << "Function has a void return";
       ret_type = llvm::Type::getVoidTy(context);
 
     } else if (decl.returns.size() == 1) {
-      LOG(INFO) << "Function has a single return";
       ret_type = decl.returns[0].type;
 
     // The multiple return value case is most interesting, and somewhere
@@ -431,7 +425,6 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
     // represent it as a structure if two 32-bit ints, and make sure to say
     // that one part is in EAX, and the other is in EDX.
     } else {
-      LOG(INFO) << "Function has multireturn";
       llvm::SmallVector<llvm::Type *, 8> ret_types;
       for (auto &ret_val : decl.returns) {
         ret_types.push_back(ret_val.type);
@@ -446,10 +439,6 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
     decl.type = llvm::FunctionType::get(
         ret_type, param_types, decl.is_variadic);
-  }
-  LOG(INFO) << "Function " << std::hex << decl.address << " has returns: " << decl.returns.size();
-  if (decl.returns.size() == 1) {
-    LOG(INFO) << "Function returns " << remill::LLVMThingToString(decl.returns[0].type);
   }
 
   return decl;
