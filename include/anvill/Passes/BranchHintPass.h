@@ -24,14 +24,14 @@ namespace anvill {
 
 static constexpr auto kFlagIntrinsicPrefix = "__remill_flag_computation";
 static constexpr auto kCompareInstrinsicPrefix = "__remill_compare";
-
+static constexpr auto kCompareExchangePrefix = "__remill_compare_exchange";
 
 template <typename UserFunctionPass, typename Result>
 class BranchHintPass : public IntrinsicPass<UserFunctionPass, Result> {
  public:
   static bool isTargetInstrinsic(const llvm::CallInst *callinsn) {
     if (const auto *callee = callinsn->getCalledFunction()) {
-      return callee->getName().startswith(kCompareInstrinsicPrefix);
+      return callee->getName().startswith(kCompareInstrinsicPrefix) && !callee->getName().startswith(kCompareExchangePrefix);
     }
 
     return false;
