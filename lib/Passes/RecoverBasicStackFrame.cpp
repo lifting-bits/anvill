@@ -478,7 +478,7 @@ static void UpdateFunction(
           stack_frame_ptr, ptr_type);
       CopyMetadataTo(from_val, stack_frame_ptr);
       stack_frame_ptr = builder.CreateGEP(
-          stack_frame_alloca, builder.getInt32(missing / scale));
+          stack_frame_ptr, builder.getInt32(missing / scale));
       CopyMetadataTo(from_val, stack_frame_ptr);
     }
 
