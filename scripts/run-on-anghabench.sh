@@ -4,6 +4,8 @@
 export ANVILL_BRANCH=__ANVILL_BRANCH__
 export RUN_SIZE=__RUN_SIZE__
 export BINJA_DECODE_KEY=__BINJA_DECODE_KEY__
+export BINJA_CHANNEL=__BINJA_CHANNEL__
+export BINJA_VERSION=__BINJA_VERSION__
 
 export LLVM_VERSION=12
 export CC=clang-12 CXX=clang++-12
@@ -37,7 +39,7 @@ python3 setup.py install
 
 # install binja
 ci/install_binja.sh
-python3 ci/switcher.py --version 2.5.3126 headless-dev
+python3 ci/switcher.py --version ${BINJA_VERSION} ${BINJA_CHANNEL}
 popd
 
 pushd ci

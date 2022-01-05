@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        llvm: ["12"]
+        llvm: ["12"],
+        binja:
+          - {channel: 'headless-dev', version: '2.5.3126'}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -23,7 +25,7 @@ jobs:
       id: extract_branch
     - name: Small Run (1K) against LLVM ${{ matrix.llvm }}
       run: |
-        libraries/lifting-tools-ci/cloud/run-do-droplet.py --name "Anvill CI 1K Run" --script scripts/run-on-anghabench.sh --env-vars RUN_SIZE=1k,ANVILL_BRANCH=${BRANCH},LLVM_VERSION=${{ matrix.llvm }}
+        libraries/lifting-tools-ci/cloud/run-do-droplet.py --name "Anvill CI 1K Run" --script scripts/run-on-anghabench.sh --env-vars RUN_SIZE=1k,ANVILL_BRANCH=${BRANCH},LLVM_VERSION=${{ matrix.llvm }},BINJA_CHANNEL=${{ matrix.binja.channel }},BINJA_VERSION=${{ matrix.binja.version }}
       env:
         SLACK_HOOK: ${{ secrets.SLACK_HOOK }}
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
