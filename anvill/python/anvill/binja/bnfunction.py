@@ -1,21 +1,12 @@
-# Copyright (c) 2020-present Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-
-from typing import Tuple, Optional
-
+import traceback
+from typing import Tuple, Optional, Iterator, Set, Union, cast
 
 import binaryninja as bn
 from binaryninja import MediumLevelILInstruction as mlinst
@@ -24,55 +15,325 @@ from binaryninja import LowLevelILInstruction as llinst
 from .bninstruction import *
 from .table import *
 from .xreftype import *
+from .typecache import to_bool, TypeCache
 
-from anvill.function import *
-from anvill.type import *
+from ..call import CallSite
+from ..program import Specification
+from ..arch import Arch, Register
+from ..loc import Location
+from ..function import Function
+from ..os import CC, DEFAULT_CC
+from ..type import *
 
 
-def should_ignore_register(bv, reg_name):
+def should_ignore_register(bv, reg_name: Optional[Register]):
     _IGNORE_REGS_LIST = {"aarch64": ["XZR", "WZR"]}
     try:
         return reg_name.upper() in _IGNORE_REGS_LIST[bv.arch.name]
-    except KeyError:
+    except:
         return False
+
+
+class BNExternalFunction(Function):
+    def __init__(self, bn_sym: bn.Symbol, bn_var: bn.DataVariable,
+                 arch: Arch, address: int, func_type: Type):
+        super(BNExternalFunction, self).__init__(arch, address, [], [], func_type,
+                                                 False)
+        self._bn_sym: bn.Symbol = bn_sym
+        self._bn_var: bn.DataVariable = bn_var
+
+    def name(self) -> str:
+        return self._bn_sym.name
+
+    def is_external(self) -> bool:
+        return True
+
+    def is_noreturn(self) -> bool:
+        ftype = cast(bn.FunctionType, self._bn_var.type)
+        return not to_bool(ftype.can_return)
+
+    def visit(self, program, is_definition, add_refs_as_defs):
+        pass
 
 
 class BNFunction(Function):
     def __init__(
         self,
-        bn_func_or_var,
-        arch,
-        address,
-        param_list,
-        ret_list,
-        func_type,
+        bn_func: bn.Function,
+        arch: Arch,
+        address: int,
+        param_list: List[Location],
+        ret_list: List[Location],
+        func_type: FunctionType,
         is_entrypoint=False,
-        is_external=False,
+        is_external=False
     ):
-        super(BNFunction, self).__init__(arch, address,
-                                         param_list, ret_list, func_type, is_entrypoint)
-        self._bn_func = None
-        self._is_external = is_external
+        super(BNFunction, self).__init__(arch, address, param_list, ret_list,
+                                         func_type, is_entrypoint=is_entrypoint)
+        self._is_external: bool = is_external
+        self._bn_func: bn.Function = bn_func
 
-        # initialize bn_func if the binja object is of type `Function`
-        self._bn_func_or_var = bn_func_or_var
-        if isinstance(bn_func_or_var, bn.Function):
-            self._bn_func = bn_func_or_var
+    def name(self) -> str:
+        return self._bn_func.name
 
-    def name(self):
-        return self._bn_func_or_var.name
-
-    def is_external(self):
+    def is_external(self) -> bool:
         return self._is_external
 
-    def is_noreturn(self):
-        if self._bn_func != None:
-            return self._bn_func.can_return.value == False
-        return False
+    def is_noreturn(self) -> bool:
+        return not to_bool(self._bn_func.can_return)
 
-    def visit(self, program, is_definition, add_refs_as_defs):
+    def _set_loc(self, loc: Location, arch: bn.Architecture,
+                    v: bn.Variable, stack_offset: int):
+        if v.source_type == bn.VariableSourceType.RegisterVariableSourceType:
+            reg_id = cast(bn.RegisterIndex, v.storage)
+            bn_reg_name = arch.get_reg_name(reg_id)
+            reg_name = self._arch.register_name(bn_reg_name)
+            if reg_name is None:
+                raise InvalidLocationException(
+                    f"Could not locate register {bn_reg_name} in function "
+                    f"{self._bn_func.start:08x}")
+            loc.set_register(reg_name)
+        elif v.source_type == bn.VariableSourceType.StackVariableSourceType:
+            loc.set_memory(self._arch.stack_pointer_name(),
+                           v.storage + stack_offset)
+        else:
+            raise InvalidLocationException(
+                f"Unsupported variable type {v.source_type}: {v} "
+                f"in function {self._bn_func.start:08x}")
+
+    def _var_to_loc(self, v: bn.Variable, arch: bn.Architecture, tc: TypeCache,
+                    stack_offset: int) -> Location:
+        loc = Location()
+        loc.set_type(tc.get(v.type))
+        self._set_loc(loc, arch, v, stack_offset)
+        return loc
+
+    def _const_to_loc(self, p: bn.MediumLevelILConstBase,
+                      arch: bn.Architecture, type: Type,
+                      stack_offset: int) -> Location:
+        ll: Optional[bn.LowLevelILInstruction] = p.llil
+        if ll is None:
+            llils: List[bn.LowLevelILInstruction] = p.llils
+            if not len(llils):
+                raise InvalidLocationException(
+                    f"Could not create location for {p} at "
+                    f"{p.address:08x} in function {self._bn_func.start:08x}")
+            else:
+                ll = llils[-1]
+
+        assert ll is not None
+
+        loc = Location()
+        loc.set_type(type)
+
+        # Constant argument through a register.
+        if isinstance(ll, bn.LowLevelILSetRegSsa):
+            dest: bn.ILRegister = ll.dest.reg
+            if dest.temp:
+                raise InvalidLocationException(
+                    f"Could not infer register location from temporary "
+                    f"register {ll}:{ll.__class__}")
+
+            bn_reg_name = dest.arch.get_reg_name(dest.index)
+            reg_name = self._arch.register_name(bn_reg_name)
+            if reg_name is None:
+                raise InvalidLocationException(
+                    f"Could not locate register {bn_reg_name} for operation {p}"
+                    f" at {p.address:08x} in function"
+                    f" {self._bn_func.start:08x}")
+            loc.set_register(reg_name)
+            return loc
+
+        # Constant argument on the stack.
+        elif isinstance(ll, bn.LowLevelILStoreSsa):
+            dest: Optional[bn.MediumLevelILInstruction] = \
+                ll.mapped_medium_level_il
+            if dest is not None:
+                if isinstance(dest, bn.MediumLevelILVar):
+                    v: bn.Variable = cast(bn.MediumLevelILVar, dest).src
+                    self._set_loc(loc, arch, v, stack_offset)
+                    return loc
+                elif isinstance(dest, bn.MediumLevelILSetVar):
+                    v: bn.Variable = cast(bn.MediumLevelILSetVar, dest).dest
+                    self._set_loc(loc, arch, v, stack_offset)
+                    return loc
+                else:
+                    raise InvalidLocationException(
+                        f"Unsupported Mapped MLIL {dest.operation} for constant"
+                        f" {p} at {p.address:08x} in function"
+                        f" {self._bn_func.start:08x}")
+
+        raise InvalidLocationException(
+            f"Unsupported LLIL {ll}:{ll.__class__} for constant {p} at "
+            f"{p.address:08x} in function {self._bn_func.start:08x}")
+
+    def _visit_mlil_call(self, call: bn.MediumLevelILCallBase,
+                         spec: Specification, tc: TypeCache,
+                         ref_eas: Set[int]):
+        bv: bn.BinaryView = self._bn_func.view
+        arch: bn.Architecture = self._bn_func.arch or bv.arch
+        called_func_ea: Optional[int] = None
+        if isinstance(call.dest, int):
+            called_func_ea = call.dest
+        elif isinstance(call.dest, bn.MediumLevelILConstPtr):
+            called_func_ea = call.dest.constant
+        elif isinstance(call.dest, bn.MediumLevelILConst):
+            called_func_ea = call.dest.constant
+
+        called_func_return_regs: Optional[List[Register]] = None
+        is_variadic: bool = False
+        is_noreturn: bool = False
+        cc: CC = DEFAULT_CC
+        called_func: Optional[Function] = None
+        if called_func_ea is not None:
+            spec.add_function_declaration(called_func_ea, False)
+            called_func = spec.get_function(called_func_ea)
+
+            ref_eas.add(called_func_ea)
+
+            # Try to collect a list of return registers possibly used by this
+            # function. Some call sites report huge numbers of return values
+            # when there really aren't that many, so we try to fixup here when
+            # we have visibility into the target function.
+            try:
+                target_func = bv.get_function_at(called_func_ea)
+                if target_func is not None:
+                    for bn_reg in target_func.return_regs.regs:
+                        reg = self._arch.register_name(bn_reg)
+                        if reg is not None:
+                            if called_func_return_regs is None:
+                                called_func_return_regs = []
+                            called_func_return_regs.append(reg)
+
+                # It might have been an external function associated with
+                # a `bn.DataVariable`, so no `bn.Function` exists.
+                elif called_func:
+                    ret_locs = called_func.return_values()
+                    for ret_loc in ret_locs:
+                        reg = ret_loc.register()
+                        if reg is not None:
+                            if called_func_return_regs is None:
+                                called_func_return_regs = []
+                            called_func_return_regs.append(reg)
+            except:
+                pass
+
+        rets: List[Location] = []
+        params: List[Location] = []
+        stack_offset = self._bn_func.get_reg_value_at(
+            call.address, arch.stack_pointer, arch)
+        stack_adjust: int = abs(stack_offset.value)
+
+        rap = self._arch.return_address_proto()
+        if "memory" in rap:
+            stack_adjust += arch.address_size
+
+        if 0 < stack_offset.value:  # Stack grows up.
+            stack_adjust = -stack_adjust
+
+        for v in call.output:
+            rets.append(self._var_to_loc(v, arch, tc, stack_adjust))
+
+        # Try to reduce the total number of return locations if we have info
+        # about the target function's return registers.
+        #
+        # NOTE(pag): Have observed aarch64 functions that return in `x0` but
+        #            where the call site outputs will be `x0`, `x1`, ..., `xzr`,
+        #            where `xzr` alone is nonsensical as an output location.
+        if called_func_return_regs is not None and \
+           len(rets) > len(called_func_return_regs):
+            new_rets: List[Location] = []
+            for ret_loc in rets:
+                ret_reg = ret_loc.register()
+                if ret_reg is None or ret_reg in called_func_return_regs:
+                    new_rets.append(ret_loc)
+
+            WARN(f"Taking return values/types {new_rets} instead of {rets} "
+                 f"at call site {call.address:08x}")
+            rets = new_rets
+
+        # We can get the parameters as variables. This is our best case because
+        # variables point at registers or stack slots.
+        if len(call.params) == len(call.vars_read):
+            for v in call.vars_read:
+                params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+
+        # We have to figure out the parameters from the MLIL, LLIL, and
+        # Mapped MLIL. The big issue is often constants. We're not always able
+        # to figure out the provenance of constants.
+        else:
+            for i, p in enumerate(call.params):
+                if isinstance(p, bn.MediumLevelILVar):
+                    v: bn.Variable = cast(bn.MediumLevelILVar, p).src
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                elif isinstance(p, bn.MediumLevelILSetVar):
+                    v: bn.Variable = cast(bn.MediumLevelILSetVar, p).dest
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                elif isinstance(p, bn.MediumLevelILConstBase):
+                    params.append(self._const_to_loc(p, arch, tc.get(p.expr_type), stack_adjust))
+                elif isinstance(p, bn.MediumLevelILVarField):
+                    # TODO(pag): This isn't quite right but close enough.
+                    v: bn.Variable = cast(bn.MediumLevelILVarField, p).src
+                    params.append(self._var_to_loc(v, arch, tc, stack_adjust))
+                else:
+                    raise InvalidLocationException(
+                        f"Unsupported parameter {p}:{p.__class__} at index {i} "
+                        f"of call at {call.address:08x}")
+
+        if called_func is not None:
+
+            is_variadic = called_func.is_variadic()
+            is_noreturn = called_func.is_noreturn()
+            cc = called_func.calling_convention()
+            called_rets = called_func.return_values()
+
+            # NOTE(pag): Sometimes the call outputs won't intersect with
+            #            `called_func_return_regs` (filled above), and so the
+            #            code to get sane return registers will produce an
+            #            empty `rets` list, and here we end up recovering from
+            #            that situation.
+            #
+            # NOTE(pag): Another case is when the returned value of the call
+            #            is unused, and so the `outputs` of the call are empty.
+            #            We prefer to use the "correct" return values so as to
+            #            avoid function pointer casts down the line (in LLVM).
+            if len(rets) < len(called_rets):
+                WARN(f"Taking return values/types from {called_func_ea:08x} "
+                     f"at call site {call.address:08x}")
+                rets = called_rets
+
+        else:
+            # TODO(pag): Find calling convention.
+            pass
+
+        DEBUG(f"Call at 0x{call.address:08x} params:{params} returns:{rets} is_variadic:{is_variadic} is_noreturn:{is_noreturn} cc:{cc}")
+        cs = CallSite(self._arch, call.address, self._bn_func.start, params,
+                      rets, is_variadic, is_noreturn, cc,
+                      self._bn_func.get_call_stack_adjustment(call.address).value)
+        spec._call_sites[cs.function_address(), cs.address()] = cs
+
+    def _visit_calls(self, spec: Specification, tc: TypeCache, ref_eas: Set[int]):
+        mlil_func: Optional[bn.MediumLevelILFunction] = None
+        try:
+            mlil_func = self._bn_func.mlil
+        except:
+            return
+
+        for mlil_block in mlil_func:
+            for mlil_inst_ in mlil_block:
+                mlil_inst = cast(bn.MediumLevelILInstruction, mlil_inst_)
+                if isinstance(mlil_inst_, bn.MediumLevelILCallBase):
+                    try:
+                        self._visit_mlil_call(mlil_inst, spec, tc, ref_eas)
+                    except:
+                        ERROR(traceback.format_exc())
+
+
+    def visit(self, program_: 'Specification', is_definition, add_refs_as_defs):
         if not is_definition:
             return
+
+        program = cast('BNSpecification', program_)
 
         # The lifter does not support thumb2 instruction set. If the function
         # is of arch type `thumb2` then don't visit them and fill the memory
@@ -91,107 +352,55 @@ class BNFunction(Function):
         # Collect typed register info for this function
         for block in self._bn_func.llil:
             for inst in block:
-                register_information = self._extract_types(
-                    program, inst.operands, inst)
-                for reg_info in register_information:
-                    if should_ignore_register(
-                        program.bv, self._arch.register_name(reg_info[0])
-                    ):
-                        continue
+                for ref_ea in self._extract_types(program, inst.operands, inst):
+                    ref_eas.add(ref_ea)
 
-                    loc = Location()
-                    loc.set_register(self._arch.register_name(reg_info[0]))
-                    loc.set_type(reg_info[1])
-                    if reg_info[2] is not None:
-                        # fill_bytes misses some references, catch what we can
-                        ref_eas.add(reg_info[2])
-                        # print(f"inst_addr: {hex(inst.address)}, reg_info[2]: {reg_info[2]}, ref_eas: {ref_eas}")
-                        # assert reg_info[2] in ref_eas
-                        # assert reg_info 1 is a pointer, then reg2 should be in ea
-                        loc.set_value(reg_info[2])
-                    loc.set_address(inst.address)
-                    self._register_info.append(loc)
-        # ea = effective_address
-        # there is a distinction between declaration and definition
-        # if the function is a declaration, then Anvill only needs to know its symbols and prototypes
-        # if its a definition, then Anvill will perform analysis of the function and produce information for the func
+        # Collect call site types.
+        tc: TypeCache = program._type_cache
+        self._visit_calls(program, tc, ref_eas)
+
+        # There is a distinction between declaration and definition. If the
+        # function is a declaration, then Anvill only needs to know its symbols
+        # and prototypes if its a definition, then Anvill will perform analysis
+        # of the function and produce information for the function.
         for ref_ea in ref_eas:
             # If ref_ea is an invalid address
             seg = program.bv.get_segment_at(ref_ea)
-            if seg is None:
-                continue
-            program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
-
-    def _extract_types_mlil(
-        self, program, item_or_list, initial_inst: mlinst
-    ) -> List[Tuple[str, Type, Optional[int]]]:
-        """
-        This function decomposes a list of MLIL instructions and variables into a list of tuples
-        that associate registers with pointer information if it exists.
-        """
-        results = []
-        if isinstance(item_or_list, list):
-            for item in item_or_list:
-                results.extend(self._extract_types_mlil(
-                    program, item, initial_inst))
-        elif isinstance(item_or_list, mlinst):
-            results.extend(
-                self._extract_types_mlil(
-                    program, item_or_list.operands, initial_inst)
-            )
-        elif isinstance(item_or_list, bn.Variable):
-            if item_or_list.type is None:
-                return results
-            # Sometimes the backing storage is a `temp` register, and not a real
-            # register. If so, ignore it.
-            # The use of LLIL_REG_IS_TEMP is correct here, as there is no MLIL equivalent
-            # and it seem to use the same underlying data
-            if bn.LLIL_REG_IS_TEMP(item_or_list.storage):
-                return results
-            # We only care about registers that represent pointers.
-            if item_or_list.type.type_class == bn.TypeClass.PointerTypeClass:
-                if (
-                    item_or_list.source_type
-                    == bn.VariableSourceType.RegisterVariableSourceType
-                ):
-                    reg_name = program.bv.arch.get_reg_name(
-                        item_or_list.storage)
-                    results.append(
-                        (reg_name, program.type_cache.get(item_or_list.type), None)
-                    )
-        return results
+            if seg is not None:
+                program.try_add_referenced_entity(ref_ea, add_refs_as_defs)
 
     def _extract_types(
         self, program, item_or_list, initial_inst: llinst
-    ) -> List[Tuple[str, Type, Optional[int]]]:
+    ) -> Iterator[int]:
         """
-        This function decomposes a list of LLIL instructions and associates registers with pointer values
-        if they exist. If an MLIL instruction exists for the current instruction, it uses the MLIL to get more
-        information about otherwise implicit operands and their types if available. (ex, a call instruction has
-        rdi, rsi as operands in the MLIL, we should check if they have pointer information)
+        This function decomposes a list of LLIL instructions and associates
+        registers with pointer values if they exist. If an MLIL instruction
+        exists for the current instruction, it uses the MLIL to get more
+        information about otherwise implicit operands and their types if
+        available. (ex, a call instruction has rdi, rsi as operands in the
+        MLIL, we should check if they have pointer information)
         """
-        results = []
 
-        # item_or_list could be empty string, return early in such cases. The unimplemented
-        # operand shows up as empty string.
-        if not (item_or_list and str(item_or_list)):
-            return results
+        # `item_or_list` could be empty string, return early in such cases. The
+        # unimplemented operand shows up as empty string.
+        try:
+            if not (item_or_list and str(item_or_list)):
+                return
+        except:
+            return  # Tokenizing the LLIL can raise exceptions.
 
         if isinstance(item_or_list, list):
             for item in item_or_list:
-                results.extend(self._extract_types(
-                    program, item, initial_inst))
+                yield from self._extract_types(program, item, initial_inst)
         elif isinstance(item_or_list, llinst):
-            results.extend(
-                self._extract_types(
-                    program, item_or_list.operands, initial_inst)
-            )
+            yield from self._extract_types(program, item_or_list.operands,
+                                           initial_inst)
         elif isinstance(item_or_list, bn.lowlevelil.ILRegister):
             # Check if the register is not temp. Need to check if the temp register is
             # associated to pointer?? Look into MLIL to get more information
-            if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and (
-                item_or_list.name not in ["x87control", "x87status"]
-            ):
+            if (not bn.LLIL_REG_IS_TEMP(item_or_list.index)) and \
+                item_or_list.name != "x87control" and \
+                item_or_list.name != "x87status":
                 try:
                     # For every register, is it a pointer?
                     possible_pointer: bn.function.RegisterValue = (
@@ -202,24 +411,12 @@ class BNFunction(Function):
                         == bn.function.RegisterValueType.ConstantPointerValue
                         or possible_pointer.type
                         == bn.function.RegisterValueType.ExternalPointerValue
-                    ):  # or
-                        # possible_pointer.type == bn.function.RegisterValueType.ConstantValue:
-                        # Is there a scenario where a register has a ConstantValue type thats used as a pointer?
-                        val_type = _convert_bn_llil_type(
-                            possible_pointer, item_or_list.info.size
-                        )
-                        results.append(
-                            (item_or_list.name, val_type, possible_pointer.value)
-                        )
-                except KeyError:
-                    DEBUG(f"Unsupported register {item_or_list.name}")
+                    ):
+                        if possible_pointer.value:
+                            yield possible_pointer.value
 
-                if initial_inst.mlil is not None:
-                    mlil_results = self._extract_types_mlil(
-                        program, initial_inst.mlil, initial_inst.mlil
-                    )
-                    results.extend(mlil_results)
-        return results
+                except KeyError:
+                    pass
 
     def _fill_bytes(self, program, memory, start, end, ref_eas):
         br = bn.BinaryReader(program.bv)
@@ -312,9 +509,12 @@ def _collect_xrefs_from_inst(
         _collect_xrefs_from_inst(bv, program, opnd, ref_eas, reftype)
 
     if isinstance(inst, bn.LowLevelILInstruction):
-        mlil_inst = inst.mlil
-        if mlil_inst is not None:
-            _collect_xrefs_from_inst(bv, program, mlil_inst, ref_eas)
+        try:
+            mlil_inst = inst.mlil
+            if mlil_inst is not None:
+                _collect_xrefs_from_inst(bv, program, mlil_inst, ref_eas)
+        except:
+            pass
 
 
 def is_code(bv, addr):

@@ -1,18 +1,10 @@
-# Copyright (c) 2020-present Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 
 from typing import Optional, Union
 
@@ -23,46 +15,40 @@ import binaryninja as bn
 from .bnprogram import *
 
 
-from anvill.util import *
-from anvill.program import *
+from ..util import *
+from ..program import *
 
 
 def get_program(
-    binary_path_or_bv: Union[str, bn.BinaryView],
-    maybe_base_address: Optional[int] = None,
-    cache: bool = False,
-) -> Optional[Program]:
-    if cache:
-        DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
-
-    bv: Optional[bv.BinaryView] = None
-    binary_path: str = ""
-
-    if isinstance(binary_path_or_bv, bn.BinaryView):
-        bv = binary_path_or_bv
-        try:
-            binary_path = bv.file.filename
-        except:
-            pass
-        assert maybe_base_address is None
-
-    elif isinstance(binary_path_or_bv, str):
-        binary_path: str = binary_path_or_bv
-        if maybe_base_address is not None:
-            # Force the new image base address; according to the documentation, we will
-            # not inherit any of the default load options that we get when calling the
+    binary_path: Optional[str] = None,
+    binary_view: Optional[bn.BinaryView] = None,
+    base_address: Optional[int] = None,
+) -> Optional[Specification]:
+    if isinstance(binary_path, str):
+        if isinstance(base_address, int):
+            # Force the new image base address; according to the
+            # documentation, we will
+            # not inherit any of the default load options that we get when
+            # calling the
             # get_view_of_file method
-            bv = bn.BinaryViewType.get_view_of_file_with_options(
-                binary_path, options={"loader.imageBase": maybe_base_address}
+            binary_view = bn.BinaryViewType.get_view_of_file_with_options(
+                binary_path, options={"loader.imageBase": base_address}
             )
 
         else:
             # Use the auto-generated load options
-            bv = bn.BinaryViewType.get_view_of_file(binary_path)
+            binary_view = bn.BinaryViewType.get_view_of_file(binary_path)
+    elif isinstance(binary_view, bn.BinaryView):
+        try:
+            binary_path = binary_view.file.filename
+        except:
+            pass
+        assert base_address is None
 
-    if bv is None:
+
+    if binary_view is None:
         DEBUG("Failed to create the BinaryView")
         return None
 
     DEBUG("Recovering program {}".format(binary_path))
-    return BNProgram(bv, binary_path)
+    return BNSpecification(binary_view, binary_path)

@@ -1,18 +1,10 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 
 class AnvillException(Exception):
     pass
@@ -23,7 +15,7 @@ class UnhandledArchitectureType(AnvillException):
 
 
 class UnhandledTypeException(AnvillException):
-    def __init__(self, msg, ty):
+    def __init__(self, msg, ty=None):
         super(UnhandledTypeException, self).__init__(msg)
         self.type = ty
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-present, Trail of Bits, Inc.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
@@ -58,9 +58,10 @@ jobs:
       matrix:
         image:
           - { name: 'ubuntu', tag: '20.04' }
-
+        binja:
+          - {channel: 'headless-dev', version: '2.5.3126'}
         llvm: [ '12' ]
-        cxxcommon_version: [ 'v0.1.5' ]
+        cxxcommon_version: [ 'v0.1.7' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -249,7 +250,7 @@ jobs:
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -DANVILL_ENABLE_TESTS=true \
-              -DANVILL_ENABLE_INSTALL_TARGET=true \
+              -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/anvill
 
@@ -287,6 +288,11 @@ jobs:
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
         run: |
           ./install_binja.sh
+      - name: Update Binary Ninja
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
+        run: |
+          python3 ./switcher.py --version_string ${{ matrix.binja.version }} ${{ matrix.binja.channel }}
 
       - name: Run the tests
 
@@ -338,7 +344,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
+            --decompile-cmd "anvill-decompile-json"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
 
@@ -349,7 +355,7 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-angha-1k.sh \
             --python-cmd "python3 -m anvill" \
-            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}"
+            --decompile-cmd "anvill-decompile-json"
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
@@ -383,7 +389,7 @@ jobs:
       matrix:
         os: [ 'macos-11' ]
         llvm: [ '12' ]
-        cxxcommon_version: [ 'v0.1.5' ]
+        cxxcommon_version: [ 'v0.1.7' ]
 
     runs-on: ${{ matrix.os }}
 
@@ -560,7 +566,7 @@ jobs:
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -DANVILL_ENABLE_TESTS=true \
-              -DANVILL_ENABLE_INSTALL_TARGET=true \
+              -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/anvill
 
@@ -704,7 +710,8 @@ jobs:
       matrix:
         llvm: ["12"]
         ubuntu: ["18.04", "20.04"]
-
+        binja:
+          - {channel: 'headless-dev', version: '2.5.3126'}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -714,17 +721,17 @@ jobs:
         docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
     - name: Test Docker image
       run: |
-        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/ret0.json -bc_out /tmp/ret0.bc -ir_out /tmp/ret0.ir
-        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret0.json -bc_out /tmp/jmp_ret0.bc -ir_out /tmp/jmp_ret0.ir
-        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/tools/decompile-json/tests/specs/jmp_ret1.json -bc_out /tmp/jmp_ret1.bc -ir_out /tmp/jmp_ret1.ir
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/bin/Decompile/tests/specs/ret0.json -bc_out /tmp/ret0.bc -ir_out /tmp/ret0.ir
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/bin/Decompile/tests/specs/jmp_ret0.json -bc_out /tmp/jmp_ret0.bc -ir_out /tmp/jmp_ret0.ir
+        docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/bin/Decompile/tests/specs/jmp_ret1.json -bc_out /tmp/jmp_ret1.bc -ir_out /tmp/jmp_ret1.ir
 
     - name: Integration Decompile and Specify Decompiled Bitcode
       run: |
-        docker run --rm -v $(pwd):/workspace -w /workspace --entrypoint "/bin/bash" docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -c "anvill-decompile-json -spec /workspace/tools/decompile-json/tests/specs/ret0.json -bc_out /tmp/ret0.bc && anvill-specify-bitcode --bc_file /tmp/ret0.bc"
+        docker run --rm -v $(pwd):/workspace -w /workspace --entrypoint "/bin/bash" docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -c "anvill-decompile-json -spec /workspace/bin/Decompile/tests/specs/ret0.json -bc_out /tmp/ret0.bc && anvill-specify-bitcode --bc_in /tmp/ret0.bc"
 
     - name: Build with Binja
       run: |
-        docker build . -t anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }} --build-arg BINJA_DECODE_KEY=${{ secrets.BINJA_DECODE_KEY }} --target binja
+        docker build . -t anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg BINJA_VERSION=${{ matrix.binja.version }} --build-arg BINJA_CHANNEL=${{ matrix.binja.channel }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }} --build-arg BINJA_DECODE_KEY=${{ secrets.BINJA_DECODE_KEY }} --target binja
     - name: Test with Binja
       run: |
         docker run --rm -v $(pwd):/workspace -w /workspace anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest --bin_in /usr/bin/yes --spec_out /tmp/yes.json

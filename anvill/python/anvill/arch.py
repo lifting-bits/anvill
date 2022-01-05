@@ -1,25 +1,16 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, NewType, Optional, cast
 
-ArchName = str
-
-Register = str
-
+ArchName = NewType('ArchName', str)
+Register = NewType('Register', str)
 RegisterBounds = Tuple[Register, int, int]
 
 
@@ -55,7 +46,7 @@ class Arch(ABC):
         ...
 
     @abstractmethod
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         ...
 
     @abstractmethod
@@ -348,10 +339,10 @@ class AMD64Arch(Arch):
             return "amd64"
 
     def program_counter_name(self) -> Register:
-        return "RIP"
+        return cast(Register, "RIP")
 
     def stack_pointer_name(self) -> Register:
-        return "RSP"
+        return cast(Register, "RSP")
 
     def return_address_proto(self) -> Dict:
         return {"memory": {"register": "RSP", "offset": 0}, "type": "L"}
@@ -365,10 +356,10 @@ class AMD64Arch(Arch):
     def stack_offset(self) -> int:
         return 8
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
             reg_name = reg_name[1:].upper()
         else:
@@ -379,7 +370,10 @@ class AMD64Arch(Arch):
         elif reg_name.startswith("YMM"):
             self._has_avx = True
 
-        return reg_name
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None
 
 
 class X86Arch(Arch):
@@ -625,10 +619,10 @@ class X86Arch(Arch):
     def stack_offset(self) -> int:
         return 4
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
             reg_name = reg_name[1:].upper()
         else:
@@ -639,7 +633,10 @@ class X86Arch(Arch):
         elif reg_name.startswith("YMM"):
             self._has_avx = True
 
-        return reg_name
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None
 
 
 class AArch64Arch(Arch):
@@ -1014,14 +1011,19 @@ class AArch64Arch(Arch):
     def stack_offset(self) -> int:
         return 0
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
-            return reg_name[1:].upper()
+            reg_name = reg_name[1:].upper()
         else:
-            return reg_name.upper()
+            reg_name = reg_name.upper()
+
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None
 
 
 class AArch32Arch(Arch):
@@ -1195,14 +1197,19 @@ class AArch32Arch(Arch):
     def stack_offset(self) -> int:
         return 0
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
-            return reg_name[1:].upper()
+            reg_name = reg_name[1:].upper()
         else:
-            return reg_name.upper()
+            reg_name = reg_name.upper()
+
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None
 
 
 class Sparc32Arch(Arch):
@@ -1352,14 +1359,19 @@ class Sparc32Arch(Arch):
     def stack_offset(self) -> int:
         return 92
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
-            return reg_name[1:].lower()
+            reg_name = reg_name[1:].lower()
         else:
-            return reg_name.lower()
+            reg_name = reg_name.lower()
+
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None
 
 
 class Sparc64Arch(Arch):
@@ -1550,11 +1562,16 @@ class Sparc64Arch(Arch):
     def stack_offset(self) -> int:
         return 2227
 
-    def register_family(self, reg_name) -> Tuple[RegisterBounds, ...]:
+    def register_family(self, reg_name: Register) -> Tuple[RegisterBounds, ...]:
         return self._REG_FAMILY[self.register_name(reg_name)]
 
-    def register_name(self, reg_name) -> Register:
+    def register_name(self, reg_name: str) -> Optional[Register]:
         if reg_name.startswith("%"):
-            return reg_name[1:].lower()
+            reg_name = reg_name[1:].lower()
         else:
-            return reg_name.lower()
+            reg_name = reg_name.lower()
+
+        if reg_name in self._REG_FAMILY:
+            return cast(Register, reg_name)
+        else:
+            return None

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-present, Trail of Bits, Inc.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
@@ -8,7 +8,7 @@
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/lib/python3/dist-packages")
+set(pure_lib_dest "${CMAKE_INSTALL_PREFIX}/../lib/python3/dist-packages")
 
 # Redirect the whole installation if DESTDIR is specified
 if(DEFINED ENV{DESTDIR})

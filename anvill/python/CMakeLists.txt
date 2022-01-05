@@ -1,12 +1,12 @@
 #
-# Copyright (c) 2021-present, Trail of Bits, Inc.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
 # the LICENSE file found in the root directory of this source tree.
 #
 
-if(ANVILL_ENABLE_INSTALL_TARGET AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
+if(ANVILL_ENABLE_INSTALL AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
   install(
     FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
@@ -22,7 +22,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
                   "anvill to the local machine")
 
   message(WARNING "This is a development setting! Do **NOT** use this to create "
-                  "packages, ANVILL_ENABLE_INSTALL_TARGET already covers this!")
+                  "packages, ANVILL_ENABLE_INSTALL already covers this!")
 
   set(frontend_source_list
     "${setup_file_path}"
@@ -53,6 +53,7 @@ if(ANVILL_INSTALL_PYTHON3_LIBS)
     anvill/var.py
   )
 
+  # TODO(ian): If we are using this as a development setting maybe this should be installed as a development package.
   if(NOT DEFINED ENV{VIRTUAL_ENV})
     # NOT a venv install, specify --user and --prefix
     set(extra_install_flags --force --user --prefix=)

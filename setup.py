@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2021-present Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import setuptools
 import sys
@@ -34,7 +27,7 @@ setuptools.setup(
         "anvill.__init__", "anvill.__main__", "anvill.arch", "anvill.binja.__init__",
         "anvill.binja.bnfunction", "anvill.binja.bninstruction", "anvill.binja.bnprogram",
         "anvill.binja.bnvariable", "anvill.binja.callingconvention", "anvill.binja.typecache",
-        "anvill.binja.xreftype", "anvill.binja.table", "anvill.exc", "anvill.function",
+        "anvill.binja.xreftype", "anvill.binja.table", "anvill.call", "anvill.exc", "anvill.function",
         "anvill.ida.__init__", "anvill.ida.idafunction", "anvill.ida.idaprogram",
         "anvill.ida.idavariable", "anvill.ida.utils", "anvill.imageparser.__init__",
         "anvill.imageparser.elfparser", "anvill.loc", "anvill.mem", "anvill.os", "anvill.program",

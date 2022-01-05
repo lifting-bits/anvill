@@ -4,6 +4,8 @@
 export ANVILL_BRANCH=__ANVILL_BRANCH__
 export RUN_SIZE=__RUN_SIZE__
 export BINJA_DECODE_KEY=__BINJA_DECODE_KEY__
+export BINJA_CHANNEL=__BINJA_CHANNEL__
+export BINJA_VERSION=__BINJA_VERSION__
 
 export LLVM_VERSION=12
 export CC=clang-12 CXX=clang++-12
@@ -13,6 +15,10 @@ apt-get update
 apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-12 g++-multilib unzip
 apt-get install -yqq libc6-dev:i386 libstdc++-*-dev:i386
 python3 -m pip install requests
+
+#install new cmake
+curl -LO https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-x86_64.sh
+sh ./cmake-3.22.1-linux-x86_64.sh --skip-license --prefix=/usr
 
 git clone --recursive --shallow-submodules --depth=1 -b ${ANVILL_BRANCH}  https://github.com/lifting-bits/anvill anvill
 # CI Branch is defined by the CI system
@@ -33,6 +39,7 @@ python3 setup.py install
 
 # install binja
 ci/install_binja.sh
+python3 ci/switcher.py --version ${BINJA_VERSION} ${BINJA_CHANNEL}
 popd
 
 pushd ci
@@ -63,7 +70,7 @@ tool_run_scripts/anvill.py \
     --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
     --input-dir $(pwd)/binaries \
     --output-dir $(pwd)/anvill_bitcode \
-    --anvill-decompile /usr/local/bin/anvill-decompile-json-${LLVM_VERSION} \
+    --anvill-decompile /usr/local/bin/anvill-decompile-json \
     --slack-notify
 
 # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY passed in from original invocation environment

@@ -1,25 +1,21 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
 
-from .type import Type, FunctionType, StructureType
+from .arch import Arch
+from .os import CC
+from .type import Type, FunctionType, StructureType, VoidType
 from .loc import Location
-from typing import List
+from typing import List, Dict, Any, Final, Optional, cast
 
 
-class Function(object):
+class Function(ABC):
     """Represents a generic function."""
 
     __slots__ = (
@@ -29,33 +25,37 @@ class Function(object):
         "_return_values",
         "_type",
         "_cc",
-        "_register_info",
         "_is_entrypoint",
     )
 
     def __init__(
-        self, arch, address, parameters, return_values, func_type, is_entrypoint, cc=0
+        self, arch: Arch, address: int, parameters: List[Location],
+        return_values: List[Location], func_type: FunctionType,
+        is_entrypoint: bool = False, cc: CC = 0
     ):
         assert isinstance(func_type, FunctionType)
-        self._arch = arch
-        self._address = address
-        self._parameters = parameters
-        self._return_values = return_values
-        self._type = func_type
-        self._cc = cc
-        self._register_info: List[Location] = []
-        self._is_entrypoint = is_entrypoint
+        self._arch: Final[Arch] = arch
+        self._address: Final[int] = address
+        self._parameters: Final[List[Location]] = parameters
+        self._return_values: Final[List[Location]] = return_values
+        self._type: Final[Optional[FunctionType]] = func_type
+        self._cc: Final[CC] = cc
+        self._is_entrypoint: Final[bool] = is_entrypoint
 
         for param in self._parameters:
             assert isinstance(param, Location)
-            param_type = param.type()
+            param_type: Type = param.type()
             assert isinstance(param_type, Type)
+            assert not isinstance(param_type, VoidType)
+            assert not isinstance(param_type, FunctionType)
 
         if len(self._return_values) == 1:
             ret_val = self._return_values[0]
             assert isinstance(ret_val, Location)
             ret_type = ret_val.type()
             assert isinstance(ret_type, Type)
+            assert not isinstance(ret_type, VoidType)
+            assert not isinstance(ret_type, FunctionType)
 
         elif len(self._return_values):
             str_type = StructureType()
@@ -63,62 +63,59 @@ class Function(object):
                 assert isinstance(ret_val, Location)
                 ret_type = ret_val.type()
                 assert isinstance(ret_type, Type)
+                assert not isinstance(ret_type, VoidType)
+                assert not isinstance(ret_type, FunctionType)
                 str_type.add_element_type(ret_type)
 
-    def address(self):
+    def address(self) -> int:
         return self._address
 
-    def type(self):
+    def type(self) -> Optional[FunctionType]:
         return self._type
 
-    def calling_convention(self):
+    def calling_convention(self) -> CC:
         return self._cc
 
+    @abstractmethod
     def visit(self, program, is_definition: bool, add_refs_as_defs: bool):
-        raise NotImplementedError()
+        ...
 
-    def is_declaration(self):
-        raise NotImplementedError()
-
-    def is_variadic(self):
+    def is_variadic(self) -> bool:
         return self._type.is_variadic()
 
-    def is_noreturn(self):
+    def is_noreturn(self) -> bool:
         return False
 
-    def is_external(self):
+    def is_external(self) -> bool:
         return False
 
-    def proto(self):
-        proto = {}
-        proto["address"] = self.address()
+    def return_values(self) -> List[Location]:
+        return self._return_values[:]
+
+    def parameters(self) -> List[Location]:
+        return self._parameters[:]
+
+    def proto(self) -> Dict[str, Any]:
+        proto: Dict[str, Any] = {
+            "address": self.address(),
+            "return_stack_pointer": self._arch.return_stack_pointer_proto(
+                self.type().num_bytes_popped_off_stack()),
+            "is_variadic": self.is_variadic(),
+            "is_noreturn": self.is_noreturn(),
+            "calling_convention": cast(int, self._cc)
+        }
+
         if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()
-        proto["return_stack_pointer"] = self._arch.return_stack_pointer_proto(
-            self.type().num_bytes_popped_off_stack()
-        )
-        if self._parameters:
+
+        func_type = self.type()
+        if len(self._parameters) or len(self._return_values):
             proto["parameters"] = [loc.proto(self._arch)
                                    for loc in self._parameters]
-        if self._return_values:
             proto["return_values"] = [
                 loc.proto(self._arch) for loc in self._return_values
             ]
-        if self.is_variadic():
-            proto["is_variadic"] = True
-        if self.is_noreturn():
-            proto["is_noreturn"] = True
-        if self._cc:
-            proto["calling_convention"] = self._cc
-        if self._register_info:
-            proto["register_info"] = [
-                loc.proto(self._arch) for loc in self._register_info
-            ]
-
-        # The function type information is only available with the
-        # functions that are external. The lifter will handle the function
-        # types and ignore params and return values
-        if self.is_external():
-            proto["type"] = self.type().proto(self._arch)
+        else:
+            proto["type"] = func_type.proto(self._arch)
 
         return proto

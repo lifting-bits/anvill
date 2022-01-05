@@ -1,24 +1,18 @@
-# Copyright (c) 2020 Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 
 from abc import ABC, abstractmethod
 import collections
 from dataclasses import dataclass, field
-from typing import List, DefaultDict, Dict, Iterator, Optional, Set
+from typing import List, DefaultDict, Dict, Iterator, Optional, Set, Final
 
+from .call import *
+from .os import *
 from .function import *
 from .var import *
 from .mem import *
@@ -34,13 +28,13 @@ class ControlFlowTargetList:
     complete: bool = False
 
 
-class Program(ABC):
+class Specification(ABC):
     """Represents a program."""
 
-    def __init__(self, arch, os):
-        self._arch = arch
-        self._os = os
-        self._memory = Memory()
+    def __init__(self, arch: Arch, os: OS):
+        self._arch: Final[Arch] = arch
+        self._os: Final[OS] = os
+        self._memory: Final[Memory] = Memory()
         self._var_defs: Dict[int, Variable] = {}
         self._var_decls: Dict[int, Variable] = {}
         self._func_defs: Dict[int, Function] = {}
@@ -48,36 +42,31 @@ class Program(ABC):
         self._control_flow_redirections: Dict[int, int] = {}
         self._control_flow_targets: Dict[int, ControlFlowTargetList] = {}
         self._symbols: DefaultDict[int, Set[str]] = collections.defaultdict(set)
+        self._call_sites: Dict[Tuple[int, int], CallSite] = {}
 
-    def get_symbols(self, ea) -> Iterator[str]:
-        syms = self._symbols[ea]
+    def get_symbols(self, ea: int) -> Iterator[str]:
         if ea in self._symbols:
-            yield from iter(syms)
+            for sym in self._symbols[ea]:
+                yield sym
         else:
+            syms: Set[str] = self._symbols[ea]
             for name in self.get_symbols_impl(ea):
                 old_len = len(syms)
                 syms.add(name)
                 if old_len < len(syms):
                     yield name
 
-    @abstractmethod
-    def function_from_addr(self, ea: int):
-        ...
-
     def get_function(self, ea: int) -> Optional[Function]:
-        bn_func = self.function_from_addr(ea)
-
-        # If this address is already in a function, then
-        # check if we processed it already
-        if bn_func:
-            ea = bn_func.start
         if ea in self._func_defs:
             assert ea not in self._func_decls
             return self._func_defs[ea]
         elif ea in self._func_decls:
             return self._func_decls[ea]
         else:
-            return self.get_function_impl(ea)
+            try:
+                return self.get_function_impl(ea)
+            except Exception as e:
+                raise type(e)(f"Error when trying to get function {ea:x}: {str(e)}") from e
 
     def get_variable(self, ea: int) -> Optional[Variable]:
         if ea in self._var_defs:
@@ -86,7 +75,10 @@ class Program(ABC):
         elif ea in self._var_decls:
             return self._var_decls[ea]
         else:
-            return self.get_variable_impl(ea)
+            try:
+                return self.get_variable_impl(ea)
+            except Exception as e:
+                raise type(e)(f"Error when trying to get variable {ea:x}: {str(e)}") from e
 
     @abstractmethod
     def get_symbols_impl(self, ea: int) -> Iterator[str]:
@@ -105,9 +97,9 @@ class Program(ABC):
             self._symbols[ea].add(name)
 
     def add_variable_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
-        var = self.get_variable(ea)
-        if isinstance(var, Variable):
-            ea = var.address()
+        var: Optional[Variable] = self.get_variable(ea)
+        if var is not None and isinstance(var, Variable):
+            ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs and ea not in self._var_decls:
                 self._var_decls[ea] = var
                 var.visit(self, False, add_refs_as_defs)
@@ -119,14 +111,14 @@ class Program(ABC):
         assert isinstance(source_ea, int)
         assert isinstance(destination_ea, int)
 
+        self._control_flow_redirections[source_ea] = destination_ea
         self.try_add_referenced_entity(source_ea, False)
         self.try_add_referenced_entity(destination_ea, False)
-        self._control_flow_redirections[source_ea] = destination_ea
 
     def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
-        var = self.get_variable(ea)
-        if isinstance(var, Variable):
-            ea = var.address()
+        var: Optional[Variable] = self.get_variable(ea)
+        if var is not None and isinstance(var, Variable):
+            ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs:
                 if ea in self._var_decls:
                     del self._var_decls[ea]
@@ -137,9 +129,9 @@ class Program(ABC):
             return False
 
     def add_function_definition(self, ea: int, add_refs_as_defs=False) -> bool:
-        func = self.get_function(ea)
-        if isinstance(func, Function):
-            ea = func.address()
+        func: Optional[Function] = self.get_function(ea)
+        if func is not None and isinstance(func, Function):
+            ea = func.address()  # Argument `ea` might be inside the function.
             if ea not in self._func_defs:
                 if ea in self._func_decls:
                     del self._func_decls[ea]
@@ -150,9 +142,9 @@ class Program(ABC):
             return False
 
     def add_function_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
-        func = self.get_function(ea)
-        if isinstance(func, Function):
-            ea = func.address()
+        func: Optional[Function] = self.get_function(ea)
+        if func is not None and isinstance(func, Function):
+            ea = func.address()  # Argument `ea` might be inside the function.
             if ea not in self._func_defs and ea not in self._func_decls:
                 self._func_decls[ea] = func
                 func.visit(self, False, add_refs_as_defs)
@@ -204,46 +196,64 @@ class Program(ABC):
     def memory(self) -> Memory:
         return self._memory
 
-    def proto(self) -> Dict:
-        proto = {}
-        proto["arch"] = self._arch.name()
-        proto["os"] = self._os.name()
-        proto["functions"] = []
-        proto["control_flow_redirections"] = []
-        proto["control_flow_targets"] = []
-        proto["variables"] = []
-        proto["symbols"] = []
+    def proto(self) -> Dict[str, Any]:
+        funcs: List[Dict[str, Any]] = []
+        symbols: List[Tuple[int, str]] = []
+        variables: List[Dict[str, Any]] = []
+        redirects: List[Tuple[int, int]] = []
+        targets: List[Dict[str, Any]] = []
+        call_sites: List[Dict[str, Any]] = []
 
         for ea, names in self._symbols.items():
             for name in names:
-                proto["symbols"].append([ea, name])
+                if len(name):
+                    symbols.append((ea, name))
 
         for func in self._func_decls.values():
-            proto["functions"].append(func.proto())
+            funcs.append(func.proto())
 
         for func in self._func_defs.values():
-            proto["functions"].append(func.proto())
-
-        for source, target in self._control_flow_redirections.items():
-            # Use 2-entry lists so that we don't use 'source' as a key. That
-            # would turn it into a string in the final JSON forcing us to
-            # handle integers in two different ways
-            proto["control_flow_redirections"].append([source, target])
-
-        for entry in self._control_flow_targets.values():
-            obj = {}
-            obj["complete"] = entry.complete
-            obj["source"] = entry.source
-            obj["destination_list"] = entry.destination_list
-
-            proto["control_flow_targets"].append(obj)
+            funcs.append(func.proto())
 
         for var in self._var_decls.values():
-            proto["variables"].append(var.proto())
+            variables.append(var.proto())
 
         for var in self._var_defs.values():
-            proto["variables"].append(var.proto())
+            variables.append(var.proto())
 
-        proto["memory"] = self._memory.proto()
+        for cs in self._call_sites.values():
+            call_sites.append(cs.proto())
 
-        return proto
+        # Use two entry lists so that we don't use 'source' as a key. That
+        # would turn it into a string in the final JSON forcing us to
+        # handle integers in two different ways
+        for source, target in self._control_flow_redirections.items():
+            redirects.append((source, target))
+
+        for entry in self._control_flow_targets.values():
+            destinations = entry.destination_list[:]
+            destinations.sort()
+            targets.append({
+                "source": entry.source,
+                "is_complete": entry.complete,
+                "destinations": destinations
+            })
+
+        funcs.sort(key=lambda o: o["address"])
+        variables.sort(key=lambda o: o["address"])
+        symbols.sort(key=lambda t: t[0])  # Sort by symbol address.
+        redirects.sort(key=lambda t: t[0])  # Sort by source address.
+        targets.sort(key=lambda o: o["source"])
+        call_sites.sort(key=lambda o: (o["function_address"], o["address"]))
+
+        return {
+            "arch": self._arch.name(),
+            "os": self._os.name(),
+            "functions": funcs,
+            "variables": variables,
+            "symbols": symbols,
+            "memory": self._memory.proto(),
+            "control_flow_redirections": redirects,
+            "control_flow_targets": targets,
+            "call_sites": call_sites,
+        }

@@ -1,17 +1,10 @@
-# Copyright (c) 2020-present Trail of Bits, Inc.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Copyright (c) 2019-present, Trail of Bits, Inc.
+# All rights reserved.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# This source code is licensed in accordance with the terms specified in
+# the LICENSE file found in the root directory of this source tree.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from typing import Optional
 
@@ -26,9 +19,9 @@ import ida_nalt
 from .idaprogram import *
 
 
-from anvill.arch import *
-from anvill.os import *
-from anvill.program import *
+from ..arch import *
+from ..os import *
+from ..program import *
 
 
 def _guess_os():
@@ -135,7 +128,7 @@ def get_program(
     os: Optional[str] = None,
     maybe_base_address: Optional[int] = None,
     cache: bool = False,
-) -> Optional[Program]:
+) -> Optional[Specification]:
     if cache:
         DEBUG("Ignoring deprecated `cache` parameter to anvill.get_program")
 
@@ -145,4 +138,4 @@ def get_program(
     if not os:
         os = _get_os()
 
-    return IDAProgram(arch, os, maybe_base_address)
+    return IDASpecification(arch, os, maybe_base_address)
