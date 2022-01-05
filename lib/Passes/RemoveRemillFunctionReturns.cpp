@@ -27,7 +27,6 @@
 
 #include <utility>
 #include <vector>
-
 #include "Utils.h"
 
 namespace anvill {
@@ -111,7 +110,6 @@ llvm::StringRef RemoveRemillFunctionReturns::name(void) {
 llvm::PreservedAnalyses
 RemoveRemillFunctionReturns::run(llvm::Function &func,
                                  llvm::FunctionAnalysisManager &AM) {
-
   const auto module = func.getParent();
   CrossReferenceFolder xref_folder(xref_resolver, module->getDataLayout());
   StackPointerResolver sp_resolver(module);

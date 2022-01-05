@@ -497,6 +497,7 @@ static void UpdateFunction(
 
 llvm::PreservedAnalyses RecoverBasicStackFrame::run(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
+
   if (function.isDeclaration()) {
     return llvm::PreservedAnalyses::all();
   }

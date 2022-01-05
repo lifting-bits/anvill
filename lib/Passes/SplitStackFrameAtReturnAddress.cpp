@@ -22,7 +22,6 @@
 
 #include <unordered_map>
 #include <unordered_set>
-
 #include "Utils.h"
 
 namespace anvill {
@@ -505,8 +504,9 @@ static void SplitStackFrameAround(
   //            in the presence of a non-`nullptr` `store_use`, which should
   //            probably often be 0.
   const FixedOffsetUse *store_use = FindReturnAddressStore(uses, options);
+
   uint64_t offset_of_ra = 0;
-  uint64_t end_of_ra = 0;
+  uint64_t end_of_ra = 1;
   if (store_use) {
     offset_of_ra = store_use->offset.getZExtValue();
     end_of_ra = offset_of_ra + addr_size;
@@ -602,6 +602,7 @@ static void SplitStackFrameAround(
 
 }  // namespace
 
+
 llvm::PreservedAnalyses
 SplitStackFrameAtReturnAddress::run(llvm::Function &function,
                                     llvm::FunctionAnalysisManager &fam) {
@@ -624,7 +625,7 @@ SplitStackFrameAtReturnAddress::run(llvm::Function &function,
   }
 
   SplitStackFrameAround(frame_alloca, std::move(uses), options);
-
+  
   return llvm::PreservedAnalyses::none();
 }
 

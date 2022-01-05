@@ -193,13 +193,12 @@ class BNSpecification(Specification):
         #            libraries.
         is_entrypoint = False
         try:
-            is_entrypoint = self._is_ELF_exe and self._bv.entry_point == ea
+            is_entrypoint = self._is_ELF_exe and self._bv.entry_function == bn_func
         except:
             pass
-
+        
         if is_entrypoint:
             DEBUG(f"Found entrypoint {ea:08x}")
-
         is_external = False
         bn_sym = self._bv.get_symbol_at(ea)
         if bn_sym is not None:
