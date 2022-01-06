@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        llvm: ["12"],
         binja:
           - {channel: 'headless-dev', version: '2.5.3126'}
+        llvm: [ '12' ]
     steps:
     - uses: actions/checkout@v2
       with:
