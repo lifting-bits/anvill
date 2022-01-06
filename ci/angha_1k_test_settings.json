@@ -5,6 +5,7 @@
         "armv7/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
         "amd64/python/success/reactos/drivers/filesystems/ext2/src/extr_linux.c_wait_queue_create.elf/output.json",
         "x86/python/success/reactos/drivers/filesystems/ext2/src/extr_linux.c_wait_queue_create.elf/output.json",
-        "armv7/python/success/reactos/sdk/lib/crt/misc/extr_getargs.c_aexpand.elf/output.json"
+        "armv7/python/success/reactos/sdk/lib/crt/misc/extr_getargs.c_aexpand.elf/output.json",
+        "armv7/python/success/FFmpeg/libavformat/extr_libmodplug.c_modplug_read_packet.elf/output.json"
     ]
 }
