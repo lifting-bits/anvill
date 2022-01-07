@@ -121,6 +121,12 @@ SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
 std::optional<CallableDecl>
 DefaultCallableTypeProvider::TryGetCalledFunctionType(
     uint64_t function_address, const remill::Instruction &from_inst) const {
+  auto maybe_res =
+      ProxyTypeProvider::TryGetCalledFunctionType(function_address, from_inst);
+  if (maybe_res.has_value()) {
+    return maybe_res;
+  }
+
   return this->decl;
 }
 
