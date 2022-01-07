@@ -124,7 +124,8 @@ int main(int argc, char *argv[]) {
 
   anvill::SpecificationTypeProvider spec_tp(spec);
 
-  anvill::ProxyTypeProvider tp(spec_tp);
+  std::unique_ptr<anvill::TypeProvider> tp =
+      std::make_unique<anvill::ProxyTypeProvider>(spec_tp);
   if (!FLAGS_default_callable_spec.empty()) {
     anvill::TypeDictionary ty_dict(context);
     anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
@@ -167,13 +168,15 @@ int main(int argc, char *argv[]) {
 
     auto default_callable = maybe_default_callable.TakeValue();
 
-    anvill::DefaultCallableTypeProvider def_prov(default_callable, tp);
+
+    tp = std::make_unique<anvill::DefaultCallableTypeProvider>(default_callable,
+                                                               spec_tp);
   }
 
 
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);
-  anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
+  anvill::LifterOptions options(spec.Arch().get(), module, *tp.get(), cfp, mp);
 
   //  options.state_struct_init_procedure =
   //      anvill::StateStructureInitializationProcedure::kNone;
