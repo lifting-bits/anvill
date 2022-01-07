@@ -99,6 +99,27 @@ class NullTypeProvider : public TypeProvider {
   std::optional<VariableDecl> TryGetVariableType(uint64_t) const override;
 };
 
+class DefaultCallableTypeProvider : public TypeProvider {
+  private: 
+    CallableDecl decl;
+  public:
+    explicit DefaultCallableTypeProvider(CallableDecl decl, const TypeTranslator &tt);
+
+    // Try to return the type of a function that has been called from `from_isnt`.
+    std::optional<CallableDecl> TryGetCalledFunctionType(
+        uint64_t function_address,
+        const remill::Instruction &from_inst) const override;
+
+
+    // Try to return the type of a function starting at address `address`. This
+    // type is the prototype of the function.
+    std::optional<anvill::FunctionDecl> TryGetFunctionType(
+        uint64_t address) const override;
+
+    std::optional<anvill::VariableDecl>
+      TryGetVariableType(uint64_t address) const override;
+};
+
 // Provides the types of functions, called functions, and accessed data.
 class SpecificationTypeProvider : public TypeProvider {
  private:

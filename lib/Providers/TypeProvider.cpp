@@ -111,4 +111,29 @@ SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
   }
 }
 
+
+    // Try to return the type of a function that has been called from `from_isnt`.
+    std::optional<CallableDecl> DefaultCallableTypeProvider::TryGetCalledFunctionType(
+        uint64_t function_address,
+        const remill::Instruction &from_inst) const {
+          return this->decl;
+        }
+
+
+    // Try to return the type of a function starting at address `address`. This
+    // type is the prototype of the function.
+    std::optional<anvill::FunctionDecl> DefaultCallableTypeProvider::TryGetFunctionType(
+        uint64_t address) const {
+          return std::nullopt;
+        }
+
+    std::optional<anvill::VariableDecl>
+      DefaultCallableTypeProvider::TryGetVariableType(uint64_t address) const {
+        return std::nullopt;
+      }
+
+      DefaultCallableTypeProvider::DefaultCallableTypeProvider(CallableDecl decl, const TypeTranslator &tt): TypeProvider(tt), decl(decl) {
+
+      }
+
 }  // namespace anvill

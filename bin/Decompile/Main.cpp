@@ -29,7 +29,7 @@
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
 #include <llvm/ADT/Statistic.h>
-
+#include <anvill/JSON.h>
 DECLARE_string(arch);
 DECLARE_string(os);
 
@@ -43,6 +43,8 @@ DEFINE_string(stats_out, "", "Path to emit decompilation statistics");
 DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
+
+DEFINE_string(default_callable_spec,"", "a default specification for functions for which we dont have a type");
 
 static void SetVersion(void) {
   std::stringstream ss;
@@ -115,7 +117,49 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+
+
   anvill::Specification spec = maybe_spec.TakeValue();
+
+    if (!FLAGS_default_callable_spec.empty()) {
+      anvill::TypeDictionary ty_dict(context);
+      anvill::TypeTranslator ty_trans(ty_dict,spec.Arch().get());
+      anvill::JSONTranslator trans(ty_trans,spec.Arch().get());
+
+
+      auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
+      if (remill::IsError(maybe_buff)) {
+        std::cerr << "Unable to read JSON default callable_spec file '" << FLAGS_default_callable_spec
+                  << "': " << remill::GetErrorString(maybe_buff) << std::endl;
+        return EXIT_FAILURE;
+      }
+
+      const std::unique_ptr<llvm::MemoryBuffer> &buff =
+      remill::GetReference(maybe_buff);
+      auto maybe_json = llvm::json::parse(buff->getBuffer());
+      if (remill::IsError(maybe_json)) {
+        std::cerr << "Unable to parse default callable_spec file '" << FLAGS_default_callable_spec
+              << "': " << remill::GetErrorString(maybe_json) << std::endl;
+        return EXIT_FAILURE;
+      }
+      const llvm::json::Value& json = remill::GetReference(maybe_json);
+      auto obj = json.getAsObject();
+      if(obj == nullptr) {
+         std::cerr << "default callable_spec file is not a json object'" << FLAGS_default_callable_spec
+              << "': " << remill::GetErrorString(maybe_json) << std::endl;
+        return EXIT_FAILURE;
+      }
+      
+      auto maybe_default_callable = trans.DecodeDefaultCallableDecl(obj);
+      if(!maybe_default_callable.Succeeded()) {
+        std::cerr << "default callable_spec did not parse as callable decl: " << FLAGS_default_callable_spec << " " << maybe_default_callable.TakeError().message << std::endl;
+      }
+
+      auto default_callable = maybe_default_callable.TakeValue();
+
+      anvill::DefaultCallableTypeProvider def_prov(default_callable, ty_trans);
+  }
+
   anvill::SpecificationTypeProvider tp(spec);
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);

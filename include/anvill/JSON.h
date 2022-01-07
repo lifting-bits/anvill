@@ -12,6 +12,8 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <optional>
+#include <anvill/Declarations.h>
 
 #include "Result.h"
 
@@ -79,6 +81,9 @@ class JSONTranslator {
   DecodeValue(const llvm::json::Object *obj, const char *desc,
               bool allow_void=false) const;
 
+
+  Result<std::monostate, JSONDecodeError> ParseJsonIntoCallableDecl(const llvm::json::Object* obj, std::optional<uint64_t> address, CallableDecl& decl)  const;
+
  public:
   explicit JSONTranslator(const anvill::TypeTranslator &type_translator_,
                           const remill::Arch *arch_);
@@ -129,6 +134,9 @@ class JSONTranslator {
   // Encode a variable declaration.
   Result<llvm::json::Object, JSONEncodeError>
   Encode(const VariableDecl &decl) const;
+
+  Result<CallableDecl, JSONDecodeError>
+  DecodeDefaultCallableDecl(const llvm::json::Object *obj);
 };
 
 }  // namespace anvill

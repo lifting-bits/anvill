@@ -10,7 +10,6 @@
 
 #include <sstream>
 
-#include <anvill/Declarations.h>
 #include <anvill/Type.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/Support/JSON.h>
@@ -22,6 +21,277 @@
 #include <glog/logging.h>
 
 namespace anvill {
+
+ 
+     Result<std::monostate, JSONDecodeError> JSONTranslator::ParseJsonIntoCallableDecl(const llvm::json::Object* obj, std::optional<uint64_t> address, CallableDecl& decl)  const {
+        decl.arch = arch;
+
+
+        if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
+          decl.is_noreturn = *maybe_is_noreturn;
+        }
+
+        if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
+          decl.is_variadic = *maybe_is_variadic;
+        }
+
+        if (auto maybe_cc = obj->getInteger("calling_convention")) {
+          decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
+        }
+
+
+        std::stringstream address_stream;
+        
+        if (address) {
+          address_stream << std::hex << *address;
+        } else {
+          address_stream << "dummyfunc";
+        }
+
+        std::string address_str(address_stream.str());
+
+      // NOTE (akshayk): An external function can have function type in the spec. If
+      //                 the function type is available, it will have precedence over
+      //                 the parameter variables and return values. If the function
+      //                 type is not available it will fallback to processing params
+      //                 and return values
+
+      auto maybe_type = obj->getString("type");
+      if (maybe_type) {
+        std::string spec = maybe_type->str();
+        auto type_spec_result = type_translator.DecodeFromString(spec);
+        if (!type_spec_result.Succeeded()) {
+          std::stringstream ss;
+          ss << "Unable to parse manually-specified type for function at address "
+            << address_str
+            << " specification with type '" << spec << "': "
+            << type_spec_result.TakeError().message;
+          return JSONDecodeError(ss.str(), obj);
+        }
+
+        auto func_type = llvm::dyn_cast<llvm::FunctionType>(
+            remill::RecontextualizeType(type_spec_result.TakeValue(), context));
+        if (!func_type) {
+          std::stringstream ss;
+          ss << "Type associated with function at address "
+            << address_str << " and type specification '" << spec
+            << "' is not a function type";
+          return JSONDecodeError(ss.str(), obj);
+        }
+
+        if (decl.is_variadic != func_type->isVarArg()) {
+          std::stringstream ss;
+          ss << "Type associated with function at address "
+            << address_str << " and type specification '" << spec
+            << "' has a different variadic nature than the function "
+            << "specification itself";
+          return JSONDecodeError(ss.str(), obj);
+        }
+
+        llvm::Module module("", context);
+        arch->PrepareModule(&module);
+
+        llvm::Function *dummy_function = llvm::Function::Create(
+            func_type, llvm::Function::ExternalLinkage, "dummy", module);
+
+        dummy_function->setCallingConv(decl.calling_convention);
+        if (decl.is_noreturn) {
+          dummy_function->addFnAttr(llvm::Attribute::NoReturn);
+        }
+
+        // Create a FunctionDecl object from the dummy function. This will set
+        // the correct function types, bind the parameters & return values
+        // with the architectural registers, and set the calling convention
+
+        auto maybe_decl = FunctionDecl::Create(*dummy_function, arch);
+        if (!maybe_decl.Succeeded()) {
+          std::stringstream ss;
+          ss << "Could not create function specification for function at address " << address_str << ": " << maybe_decl.TakeError();
+          return JSONDecodeError(ss.str(), obj);
+        }
+
+        decl = maybe_decl.TakeValue();
+
+      // The function is not external and does not have associated type
+      // in the spec. Fallback to processing parameters and return values
+      } else {
+
+        if (auto params = obj->getArray("parameters")) {
+          auto i = 0u;
+          for (const llvm::json::Value &maybe_param : *params) {
+            if (auto param_obj = maybe_param.getAsObject()) {
+              auto maybe_param = DecodeParameter(param_obj);
+              if (maybe_param.Succeeded()) {
+                decl.params.emplace_back(maybe_param.TakeValue());
+              } else {
+                auto err = maybe_param.TakeError();
+                std::stringstream ss;
+                ss << "Could not parse " << i
+                  << "th parameter of function at address " << address_str
+                  << ": " << err.message;
+                return JSONDecodeError(ss.str(), err.object);
+              }
+            } else {
+              std::stringstream ss;
+              ss << "Could not parse " << i
+                << "th parameter of function at address " << address_str
+                << ": not a JSON object";
+              return JSONDecodeError(ss.str(), obj);
+            }
+
+            ++i;
+          }
+        }
+
+        // Get the return address location.
+        if (auto ret_addr = obj->getObject("return_address")) {
+          auto maybe_ret = DecodeValue(ret_addr, "return address",
+                                      true  /* allow_void */);
+          if (!maybe_ret.Succeeded()) {
+            auto err = maybe_ret.TakeError();
+            std::stringstream ss;
+            ss << "Could not parse return address of function at address "
+              << address_str << ": " << err.message;
+            return JSONDecodeError(ss.str(), err.object);
+
+          } else {
+            decl.return_address = maybe_ret.TakeValue();
+
+            // Looks like a void return type, i.e. function with no return address,
+            // so make sure there's no location/value info.
+            if (decl.return_address.type == void_type ||
+                decl.return_address.type == dict_void_type) {
+              if (decl.return_address.mem_offset ||
+                  decl.return_address.mem_reg ||
+                  decl.return_address.reg) {
+                std::stringstream ss;
+                ss << "Return address of function at address "
+                  << address_str
+                  << " is marked as having a void type, but a location was "
+                  << "specified";
+                return JSONDecodeError(ss.str(), ret_addr);
+              }
+
+              decl.return_address.type = void_type;
+
+            // Make sure the return address is address-sized.
+            } else {
+              auto dl = arch->DataLayout();
+              if (auto num_bits = dl.getTypeAllocSizeInBits(decl.return_address.type);
+                  num_bits != arch->address_size) {
+                std::stringstream ss;
+                ss << "Return address of function at address "
+                  << address_str << std::dec
+                  << " is a " << num_bits << "-bit value, but address size for "
+                  << remill::GetArchName(arch->arch_name) << " is "
+                  << arch->address_size;
+                return JSONDecodeError(ss.str(), ret_addr);
+              }
+            }
+          }
+
+        // A lack of a return address suggests that this function has no return
+        // address, e.g. is something like `_start` on Linux, where there is no
+        // logical place to return, and no return address is initialized in the
+        // appropriate place in a register / on the stack by the kernel.
+        } else {
+          decl.return_address.type = void_type;
+        }
+
+        // Decode the value of the stack pointer on exit from the function, which is
+        // defined in terms of `reg + offset` for a value of a register `reg`
+        // on entry to the function.
+        if (auto ret_sp = obj->getObject("return_stack_pointer")) {
+          auto maybe_reg = ret_sp->getString("register");
+          if (maybe_reg) {
+            std::string reg_name = maybe_reg->str();
+            decl.return_stack_pointer = arch->RegisterByName(reg_name);
+            if (!decl.return_stack_pointer) {
+              std::stringstream ss;
+              ss << "Unable to locate register '" << reg_name
+                << "' used computing the exit value of the "
+                << "stack pointer in function at "
+                << address_str;
+              return JSONDecodeError(ss.str(), ret_sp);
+            }
+          } else {
+            std::stringstream ss;
+            ss << "Non-present or non-string 'register' in 'return_stack_pointer' "
+              << "object of function specification at " << address_str;
+            return JSONDecodeError(ss.str(), ret_sp);
+          }
+
+          auto maybe_offset = ret_sp->getInteger("offset");
+          if (maybe_offset) {
+            decl.return_stack_pointer_offset = *maybe_offset;
+          }
+        } else {
+          std::stringstream ss;
+          ss << "Non-present or non-object 'return_stack_pointer' in function "
+            << "specification at " << address_str;
+          return JSONDecodeError(ss.str(), obj);
+        }
+
+        if (auto returns = obj->getArray("return_values")) {
+          auto i = 0u;
+          for (const llvm::json::Value &maybe_ret : *returns) {
+            if (auto ret_obj = maybe_ret.getAsObject()) {
+              auto maybe_ret = DecodeReturnValue(ret_obj);
+              if (maybe_ret.Succeeded()) {
+                decl.returns.emplace_back(maybe_ret.TakeValue());
+              } else {
+                auto err = maybe_ret.TakeError();
+                std::stringstream ss;
+                ss << "Could not decode " << i << "th return value in function at "
+                  << address_str << ": " << err.message;
+                return JSONDecodeError(ss.str(), err.object);
+              }
+            } else {
+              std::stringstream ss;
+              ss << "Could not decode " << i << "th return value in function at "
+                << address_str
+                << ": non-object found in 'return_values' list";
+              return JSONDecodeError(ss.str(), obj);
+            }
+            ++i;
+          }
+        }
+
+        // Figure out the return type of this function based off the return
+        // values.
+        llvm::Type *ret_type = nullptr;
+        if (decl.returns.empty()) {
+          ret_type = llvm::Type::getVoidTy(context);
+
+        } else if (decl.returns.size() == 1) {
+          ret_type = decl.returns[0].type;
+
+        // The multiple return value case is most interesting, and somewhere
+        // where we see some divergence between C and what we will decompile.
+        // For example, on 32-bit x86, a 64-bit return value might be spread
+        // across EAX:EDX. Instead of representing this by a single value, we
+        // represent it as a structure if two 32-bit ints, and make sure to say
+        // that one part is in EAX, and the other is in EDX.
+        } else {
+          llvm::SmallVector<llvm::Type *, 8> ret_types;
+          for (auto &ret_val : decl.returns) {
+            ret_types.push_back(ret_val.type);
+          }
+          ret_type = llvm::StructType::get(context, ret_types, false);
+        }
+
+        llvm::SmallVector<llvm::Type *, 8> param_types;
+        for (auto &param_val : decl.params) {
+          param_types.push_back(param_val.type);
+        }
+
+        decl.type = llvm::FunctionType::get(
+            ret_type, param_types, decl.is_variadic);
+      }
+
+      return std::monostate();
+    }
+  
 
 JSONTranslator::JSONTranslator(const TypeTranslator &type_translator_,
                                const remill::Arch *arch_)
@@ -171,6 +441,19 @@ JSONTranslator::DecodeReturnValue(const llvm::json::Object *obj) const {
   return DecodeValue(obj, "function return value");
 }
 
+
+
+Result<CallableDecl, JSONDecodeError>
+  JSONTranslator::DecodeDefaultCallableDecl(const llvm::json::Object *obj) {
+    CallableDecl decl;
+    
+      auto parse_res = this->ParseJsonIntoCallableDecl(obj, std::nullopt, decl);
+      if (!parse_res.Succeeded()) {
+        return parse_res.TakeError();
+      }
+      return decl;
+  }
+
 // Try to unserialize function info from a JSON specification. These
 // are really function prototypes / declarations, and not any isntruction
 // data (that is separate, if present).
@@ -185,262 +468,14 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
   }
 
   const auto address = static_cast<uint64_t>(*maybe_ea);
-  decl.arch = arch;
   decl.address = address;
 
-  if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
-    decl.is_noreturn = *maybe_is_noreturn;
+
+
+  auto parse_res = this->ParseJsonIntoCallableDecl(obj, {address}, decl);
+  if (!parse_res.Succeeded()) {
+    return parse_res.TakeError();
   }
-
-  if (auto maybe_is_variadic = obj->getBoolean("is_variadic")) {
-    decl.is_variadic = *maybe_is_variadic;
-  }
-
-  if (auto maybe_cc = obj->getInteger("calling_convention")) {
-    decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
-  }
-
-  // NOTE (akshayk): An external function can have function type in the spec. If
-  //                 the function type is available, it will have precedence over
-  //                 the parameter variables and return values. If the function
-  //                 type is not available it will fallback to processing params
-  //                 and return values
-
-  auto maybe_type = obj->getString("type");
-  if (maybe_type) {
-    std::string spec = maybe_type->str();
-    auto type_spec_result = type_translator.DecodeFromString(spec);
-    if (!type_spec_result.Succeeded()) {
-      std::stringstream ss;
-      ss << "Unable to parse manually-specified type for function at address "
-         << std::hex << address << " specification with type '" << spec << "': "
-         << type_spec_result.TakeError().message;
-      return JSONDecodeError(ss.str(), obj);
-    }
-
-    auto func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(type_spec_result.TakeValue(), context));
-    if (!func_type) {
-      std::stringstream ss;
-      ss << "Type associated with function at address " << std::hex
-         << address << " and type specification '" << spec
-         << "' is not a function type";
-      return JSONDecodeError(ss.str(), obj);
-    }
-
-    if (decl.is_variadic != func_type->isVarArg()) {
-      std::stringstream ss;
-      ss << "Type associated with function at address " << std::hex
-         << address << " and type specification '" << spec
-         << "' has a different variadic nature than the function "
-         << "specification itself";
-      return JSONDecodeError(ss.str(), obj);
-    }
-
-    llvm::Module module("", context);
-    arch->PrepareModule(&module);
-
-    llvm::Function *dummy_function = llvm::Function::Create(
-        func_type, llvm::Function::ExternalLinkage, "dummy", module);
-
-    dummy_function->setCallingConv(decl.calling_convention);
-    if (decl.is_noreturn) {
-      dummy_function->addFnAttr(llvm::Attribute::NoReturn);
-    }
-
-    // Create a FunctionDecl object from the dummy function. This will set
-    // the correct function types, bind the parameters & return values
-    // with the architectural registers, and set the calling convention
-
-    auto maybe_decl = FunctionDecl::Create(*dummy_function, arch);
-    if (!maybe_decl.Succeeded()) {
-      std::stringstream ss;
-      ss << "Could not create function specification for function at address "
-         << std::hex << address << ": " << maybe_decl.TakeError();
-      return JSONDecodeError(ss.str(), obj);
-    }
-
-    decl = maybe_decl.TakeValue();
-    decl.address = address;
-
-  // The function is not external and does not have associated type
-  // in the spec. Fallback to processing parameters and return values
-  } else {
-
-    if (auto params = obj->getArray("parameters")) {
-      auto i = 0u;
-      for (const llvm::json::Value &maybe_param : *params) {
-        if (auto param_obj = maybe_param.getAsObject()) {
-          auto maybe_param = DecodeParameter(param_obj);
-          if (maybe_param.Succeeded()) {
-            decl.params.emplace_back(maybe_param.TakeValue());
-          } else {
-            auto err = maybe_param.TakeError();
-            std::stringstream ss;
-            ss << "Could not parse " << i
-               << "th parameter of function at address " << std::hex << address
-               << ": " << err.message;
-            return JSONDecodeError(ss.str(), err.object);
-          }
-        } else {
-          std::stringstream ss;
-          ss << "Could not parse " << i
-             << "th parameter of function at address " << std::hex << address
-             << ": not a JSON object";
-          return JSONDecodeError(ss.str(), obj);
-        }
-
-        ++i;
-      }
-    }
-
-    // Get the return address location.
-    if (auto ret_addr = obj->getObject("return_address")) {
-      auto maybe_ret = DecodeValue(ret_addr, "return address",
-                                   true  /* allow_void */);
-      if (!maybe_ret.Succeeded()) {
-        auto err = maybe_ret.TakeError();
-        std::stringstream ss;
-        ss << "Could not parse return address of function at address "
-           << std::hex << address << ": " << err.message;
-        return JSONDecodeError(ss.str(), err.object);
-
-      } else {
-        decl.return_address = maybe_ret.TakeValue();
-
-        // Looks like a void return type, i.e. function with no return address,
-        // so make sure there's no location/value info.
-        if (decl.return_address.type == void_type ||
-            decl.return_address.type == dict_void_type) {
-          if (decl.return_address.mem_offset ||
-              decl.return_address.mem_reg ||
-              decl.return_address.reg) {
-            std::stringstream ss;
-            ss << "Return address of function at address "
-               << std::hex << address
-               << " is marked as having a void type, but a location was "
-               << "specified";
-            return JSONDecodeError(ss.str(), ret_addr);
-          }
-
-          decl.return_address.type = void_type;
-
-        // Make sure the return address is address-sized.
-        } else {
-          auto dl = arch->DataLayout();
-          if (auto num_bits = dl.getTypeAllocSizeInBits(decl.return_address.type);
-              num_bits != arch->address_size) {
-            std::stringstream ss;
-            ss << "Return address of function at address "
-               << std::hex << address << std::dec
-               << " is a " << num_bits << "-bit value, but address size for "
-               << remill::GetArchName(arch->arch_name) << " is "
-               << arch->address_size;
-            return JSONDecodeError(ss.str(), ret_addr);
-          }
-        }
-      }
-
-    // A lack of a return address suggests that this function has no return
-    // address, e.g. is something like `_start` on Linux, where there is no
-    // logical place to return, and no return address is initialized in the
-    // appropriate place in a register / on the stack by the kernel.
-    } else {
-      decl.return_address.type = void_type;
-    }
-
-    // Decode the value of the stack pointer on exit from the function, which is
-    // defined in terms of `reg + offset` for a value of a register `reg`
-    // on entry to the function.
-    if (auto ret_sp = obj->getObject("return_stack_pointer")) {
-      auto maybe_reg = ret_sp->getString("register");
-      if (maybe_reg) {
-        std::string reg_name = maybe_reg->str();
-        decl.return_stack_pointer = arch->RegisterByName(reg_name);
-        if (!decl.return_stack_pointer) {
-          std::stringstream ss;
-          ss << "Unable to locate register '" << reg_name
-             << "' used computing the exit value of the "
-             << "stack pointer in function at "
-             << std::hex << address;
-          return JSONDecodeError(ss.str(), ret_sp);
-        }
-      } else {
-        std::stringstream ss;
-        ss << "Non-present or non-string 'register' in 'return_stack_pointer' "
-           << "object of function specification at " << std::hex
-           << decl.address;
-        return JSONDecodeError(ss.str(), ret_sp);
-      }
-
-      auto maybe_offset = ret_sp->getInteger("offset");
-      if (maybe_offset) {
-        decl.return_stack_pointer_offset = *maybe_offset;
-      }
-    } else {
-      std::stringstream ss;
-      ss << "Non-present or non-object 'return_stack_pointer' in function "
-         << "specification at " << std::hex << address;
-      return JSONDecodeError(ss.str(), obj);
-    }
-
-    if (auto returns = obj->getArray("return_values")) {
-      auto i = 0u;
-      for (const llvm::json::Value &maybe_ret : *returns) {
-        if (auto ret_obj = maybe_ret.getAsObject()) {
-          auto maybe_ret = DecodeReturnValue(ret_obj);
-          if (maybe_ret.Succeeded()) {
-            decl.returns.emplace_back(maybe_ret.TakeValue());
-          } else {
-            auto err = maybe_ret.TakeError();
-            std::stringstream ss;
-            ss << "Could not decode " << i << "th return value in function at "
-               << std::hex << address << ": " << err.message;
-            return JSONDecodeError(ss.str(), err.object);
-          }
-        } else {
-          std::stringstream ss;
-          ss << "Could not decode " << i << "th return value in function at "
-             << std::hex << address
-             << ": non-object found in 'return_values' list";
-          return JSONDecodeError(ss.str(), obj);
-        }
-        ++i;
-      }
-    }
-
-    // Figure out the return type of this function based off the return
-    // values.
-    llvm::Type *ret_type = nullptr;
-    if (decl.returns.empty()) {
-      ret_type = llvm::Type::getVoidTy(context);
-
-    } else if (decl.returns.size() == 1) {
-      ret_type = decl.returns[0].type;
-
-    // The multiple return value case is most interesting, and somewhere
-    // where we see some divergence between C and what we will decompile.
-    // For example, on 32-bit x86, a 64-bit return value might be spread
-    // across EAX:EDX. Instead of representing this by a single value, we
-    // represent it as a structure if two 32-bit ints, and make sure to say
-    // that one part is in EAX, and the other is in EDX.
-    } else {
-      llvm::SmallVector<llvm::Type *, 8> ret_types;
-      for (auto &ret_val : decl.returns) {
-        ret_types.push_back(ret_val.type);
-      }
-      ret_type = llvm::StructType::get(context, ret_types, false);
-    }
-
-    llvm::SmallVector<llvm::Type *, 8> param_types;
-    for (auto &param_val : decl.params) {
-      param_types.push_back(param_val.type);
-    }
-
-    decl.type = llvm::FunctionType::get(
-        ret_type, param_types, decl.is_variadic);
-  }
-
   return decl;
 }
 
@@ -1025,3 +1060,4 @@ JSONTranslator::Encode(const VariableDecl &decl) const {
 }
 
 }  // namespace anvill
+
