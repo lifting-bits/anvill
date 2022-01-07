@@ -6,8 +6,21 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/JSON.h>
+#include <anvill/Lifters.h>
+#include <anvill/Optimize.h>
+#include <anvill/Providers.h>
+#include <anvill/Specification.h>
+#include <anvill/Version.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <llvm/ADT/Statistic.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Support/JSON.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Util.h>
 
 #include <cstdint>
 #include <iomanip>
@@ -16,20 +29,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-
-#include <anvill/Lifters.h>
-#include <anvill/Optimize.h>
-#include <anvill/Providers.h>
-#include <anvill/Specification.h>
-#include <anvill/Version.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Support/JSON.h>
-#include <llvm/Support/MemoryBuffer.h>
-#include <remill/BC/Compat/Error.h>
-#include <remill/BC/Util.h>
-#include <llvm/ADT/Statistic.h>
-#include <anvill/JSON.h>
 DECLARE_string(arch);
 DECLARE_string(os);
 
@@ -44,7 +43,9 @@ DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
 
-DEFINE_string(default_callable_spec,"", "a default specification for functions for which we dont have a type");
+DEFINE_string(
+    default_callable_spec, "",
+    "a default specification for functions for which we dont have a type");
 
 static void SetVersion(void) {
   std::stringstream ss;
@@ -118,55 +119,64 @@ int main(int argc, char *argv[]) {
   }
 
 
-
   anvill::Specification spec = maybe_spec.TakeValue();
 
-    if (!FLAGS_default_callable_spec.empty()) {
-      anvill::TypeDictionary ty_dict(context);
-      anvill::TypeTranslator ty_trans(ty_dict,spec.Arch().get());
-      anvill::JSONTranslator trans(ty_trans,spec.Arch().get());
+
+  anvill::SpecificationTypeProvider spec_tp(spec);
+
+  anvill::ProxyTypeProvider tp(spec_tp);
+  if (!FLAGS_default_callable_spec.empty()) {
+    anvill::TypeDictionary ty_dict(context);
+    anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
+    anvill::JSONTranslator trans(ty_trans, spec.Arch().get());
 
 
-      auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
-      if (remill::IsError(maybe_buff)) {
-        std::cerr << "Unable to read JSON default callable_spec file '" << FLAGS_default_callable_spec
-                  << "': " << remill::GetErrorString(maybe_buff) << std::endl;
-        return EXIT_FAILURE;
-      }
+    auto maybe_buff =
+        llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
+    if (remill::IsError(maybe_buff)) {
+      std::cerr << "Unable to read JSON default callable_spec file '"
+                << FLAGS_default_callable_spec
+                << "': " << remill::GetErrorString(maybe_buff) << std::endl;
+      return EXIT_FAILURE;
+    }
 
-      const std::unique_ptr<llvm::MemoryBuffer> &buff =
-      remill::GetReference(maybe_buff);
-      auto maybe_json = llvm::json::parse(buff->getBuffer());
-      if (remill::IsError(maybe_json)) {
-        std::cerr << "Unable to parse default callable_spec file '" << FLAGS_default_callable_spec
-              << "': " << remill::GetErrorString(maybe_json) << std::endl;
-        return EXIT_FAILURE;
-      }
-      const llvm::json::Value& json = remill::GetReference(maybe_json);
-      auto obj = json.getAsObject();
-      if(obj == nullptr) {
-         std::cerr << "default callable_spec file is not a json object'" << FLAGS_default_callable_spec
-              << "': " << remill::GetErrorString(maybe_json) << std::endl;
-        return EXIT_FAILURE;
-      }
-      
-      auto maybe_default_callable = trans.DecodeDefaultCallableDecl(obj);
-      if(!maybe_default_callable.Succeeded()) {
-        std::cerr << "default callable_spec did not parse as callable decl: " << FLAGS_default_callable_spec << " " << maybe_default_callable.TakeError().message << std::endl;
-      }
+    const std::unique_ptr<llvm::MemoryBuffer> &buff =
+        remill::GetReference(maybe_buff);
+    auto maybe_json = llvm::json::parse(buff->getBuffer());
+    if (remill::IsError(maybe_json)) {
+      std::cerr << "Unable to parse default callable_spec file '"
+                << FLAGS_default_callable_spec
+                << "': " << remill::GetErrorString(maybe_json) << std::endl;
+      return EXIT_FAILURE;
+    }
+    const llvm::json::Value &json = remill::GetReference(maybe_json);
+    auto obj = json.getAsObject();
+    if (obj == nullptr) {
+      std::cerr << "default callable_spec file is not a json object'"
+                << FLAGS_default_callable_spec
+                << "': " << remill::GetErrorString(maybe_json) << std::endl;
+      return EXIT_FAILURE;
+    }
 
-      auto default_callable = maybe_default_callable.TakeValue();
+    auto maybe_default_callable = trans.DecodeDefaultCallableDecl(obj);
+    if (!maybe_default_callable.Succeeded()) {
+      std::cerr << "default callable_spec did not parse as callable decl: "
+                << FLAGS_default_callable_spec << " "
+                << maybe_default_callable.TakeError().message << std::endl;
+    }
 
-      anvill::DefaultCallableTypeProvider def_prov(default_callable, ty_trans);
+    auto default_callable = maybe_default_callable.TakeValue();
+
+    anvill::DefaultCallableTypeProvider def_prov(default_callable, tp);
   }
 
-  anvill::SpecificationTypeProvider tp(spec);
+
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);
   anvill::LifterOptions options(spec.Arch().get(), module, tp, cfp, mp);
 
-//  options.state_struct_init_procedure =
-//      anvill::StateStructureInitializationProcedure::kNone;
+  //  options.state_struct_init_procedure =
+  //      anvill::StateStructureInitializationProcedure::kNone;
 
   // Annotate instructions with `!pc` metadata that (approximately) tells us
   // where they are from.
@@ -180,12 +190,12 @@ int main(int argc, char *argv[]) {
 
   anvill::EntityLifter lifter(options);
 
-  spec.ForEachFunction([&lifter] (auto decl) {
+  spec.ForEachFunction([&lifter](auto decl) {
     lifter.LiftEntity(*decl);
     return true;
   });
 
-  spec.ForEachVariable([&lifter] (auto decl) {
+  spec.ForEachVariable([&lifter](auto decl) {
     lifter.LiftEntity(*decl);
     return true;
   });
