@@ -131,6 +131,31 @@ DefaultCallableTypeProvider::TryGetCalledFunctionType(
 }
 
 
+std::optional<anvill::FunctionDecl>
+DefaultCallableTypeProvider::TryGetFunctionType(uint64_t address) const {
+  auto maybe_res = ProxyTypeProvider::TryGetFunctionType(address);
+  if (maybe_res.has_value()) {
+    return maybe_res;
+  }
+
+  FunctionDecl fdecl;
+  fdecl.address = address;
+
+
+  fdecl.calling_convention = this->decl.calling_convention;
+  fdecl.arch = this->decl.arch;
+  fdecl.is_noreturn = this->decl.is_noreturn;
+  fdecl.is_variadic = this->decl.is_variadic;
+  fdecl.params = this->decl.params;
+  fdecl.return_address = this->decl.return_address;
+  fdecl.return_stack_pointer = this->decl.return_stack_pointer;
+  fdecl.return_stack_pointer_offset = this->decl.return_stack_pointer_offset;
+  fdecl.returns = this->decl.returns;
+
+  return fdecl;
+}
+
+
 DefaultCallableTypeProvider::DefaultCallableTypeProvider(CallableDecl decl,
                                                          const TypeProvider &tt)
     : ProxyTypeProvider(tt),

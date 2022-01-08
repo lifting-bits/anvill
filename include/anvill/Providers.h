@@ -172,6 +172,9 @@ class DefaultCallableTypeProvider : public ProxyTypeProvider {
   std::optional<CallableDecl>
   TryGetCalledFunctionType(uint64_t function_address,
                            const remill::Instruction &from_inst) const override;
+
+  std::optional<anvill::FunctionDecl>
+  TryGetFunctionType(uint64_t address) const override;
 };
 
 // Provides the types of functions, called functions, and accessed data.
