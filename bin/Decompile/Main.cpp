@@ -19,6 +19,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <remill/Arch/Arch.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
 
@@ -29,6 +30,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+
 DECLARE_string(arch);
 DECLARE_string(os);
 
@@ -118,10 +120,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-
   anvill::Specification spec = maybe_spec.TakeValue();
-
-
   anvill::SpecificationTypeProvider spec_tp(spec);
 
   std::unique_ptr<anvill::TypeProvider> tp =
@@ -130,7 +129,6 @@ int main(int argc, char *argv[]) {
     anvill::TypeDictionary ty_dict(context);
     anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
     anvill::JSONTranslator trans(ty_trans, spec.Arch().get());
-
 
     auto maybe_buff =
         llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
@@ -166,13 +164,13 @@ int main(int argc, char *argv[]) {
                 << maybe_default_callable.TakeError().message << std::endl;
     }
 
-    auto default_callable = maybe_default_callable.TakeValue();
+    remill::ArchName arch_name = spec.Arch().get()->arch_name;
+    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(
+        arch_name, spec_tp);
+    dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
 
-
-    tp = std::make_unique<anvill::DefaultCallableTypeProvider>(default_callable,
-                                                               spec_tp);
+    tp = std::move(dtp);
   }
-
 
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);

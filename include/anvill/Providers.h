@@ -29,9 +29,9 @@ class Type;
 }  // namespace llvm
 namespace remill {
 class Instruction;
+enum ArchName : uint32_t;
 }  // namespace remill
 namespace anvill {
-
 
 class TypeProvider {
  public:
@@ -90,7 +90,7 @@ class BaseTypeProvider : public TypeProvider {
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
   // `func_address`.
-  virtual void QueryRegisterStateAtInstruction(
+  void QueryRegisterStateAtInstruction(
       uint64_t func_address, uint64_t inst_address,
       std::function<void(const std::string &, llvm::Type *,
                          std::optional<uint64_t>)>
@@ -114,7 +114,8 @@ class NullTypeProvider : public BaseTypeProvider {
   std::optional<VariableDecl> TryGetVariableType(uint64_t) const override;
 };
 
-
+// Delegates to an underlying tye provider to provide the data. Derived from
+// this class to stack one provider on top of another.
 class ProxyTypeProvider : public TypeProvider {
  private:
   const TypeProvider &deleg;
@@ -126,47 +127,60 @@ class ProxyTypeProvider : public TypeProvider {
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  virtual std::optional<FunctionDecl>
+  std::optional<FunctionDecl>
   TryGetFunctionType(uint64_t address) const override;
 
   // Try to return the type of a function that has been called from `from_isnt`.
-  virtual std::optional<CallableDecl>
+  std::optional<CallableDecl>
   TryGetCalledFunctionType(uint64_t function_address,
                            const remill::Instruction &from_inst) const override;
 
   // Try to return the type of a function starting at address `to_address`. This
   // type is the prototype of the function. The type can be call site specific,
   // where the call site is `from_inst`.
-  virtual std::optional<CallableDecl>
+  std::optional<CallableDecl>
   TryGetCalledFunctionType(uint64_t function_address,
                            const remill::Instruction &from_inst,
                            uint64_t to_address) const override;
 
   // Try to return the variable at given address or containing the address
-  virtual std::optional<VariableDecl>
+  std::optional<VariableDecl>
   TryGetVariableType(uint64_t address) const override;
 
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
   // `func_address`.
-  virtual void QueryRegisterStateAtInstruction(
+  void QueryRegisterStateAtInstruction(
       uint64_t func_address, uint64_t inst_address,
       std::function<void(const std::string &, llvm::Type *,
                          std::optional<uint64_t>)>
           typed_reg_cb) const override;
 
-  virtual const ::anvill::TypeDictionary &Dictionary(void) const override;
+  const ::anvill::TypeDictionary &Dictionary(void) const override;
 };
 
+// Allow for one to specify "reasonable" default declarations for call sites.
+//
+// NOTE(pag): This class does *not* bring in any smarts in terms of determining
+//            if what's being asked of it /should/ be a function. A higher-level
+//            type provider ought to delegate to the `SpecificationTypeProvider`
+//            on whether or not the queried function addresses are "viable
+//            functions."
+class DefaultCallableTypeProviderImpl;
 class DefaultCallableTypeProvider : public ProxyTypeProvider {
  private:
-  CallableDecl decl;
+  const std::unique_ptr<DefaultCallableTypeProviderImpl> impl;
 
  public:
-  virtual ~DefaultCallableTypeProvider(void) = default;
+  virtual ~DefaultCallableTypeProvider(void);
 
-  explicit DefaultCallableTypeProvider(CallableDecl decl,
+  // Initialize this type provider with a default architecture and a preferred
+  // type provider `deleg`.
+  explicit DefaultCallableTypeProvider(remill::ArchName default_arch,
                                        const TypeProvider &deleg);
+
+  // Set `decl` to the default callable type for `arch`.
+  void SetDefault(remill::ArchName arch, CallableDecl decl);
 
   // Try to return the type of a function that has been called from `from_isnt`.
   std::optional<CallableDecl>

@@ -10,15 +10,38 @@
 #include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
 #include <remill/Arch/Instruction.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
+#include <type_traits>
 
 #include "Specification.h"
 
 namespace anvill {
+
+using ArchNameUT = std::underlying_type_t<remill::ArchName>;
+
+class DefaultCallableTypeProviderImpl {
+ public:
+  const remill::ArchName default_arch;
+  llvm::SmallDenseMap<ArchNameUT, CallableDecl, 16> decls;
+
+  inline DefaultCallableTypeProviderImpl(remill::ArchName default_arch_)
+      : default_arch(default_arch_) {}
+
+  const CallableDecl *TryGetDeclForArch(remill::ArchName arch_) const {
+    const auto arch = static_cast<ArchNameUT>(arch_);
+    if (auto it = decls.find(arch); it != decls.end()) {
+      return &(it->second);
+    } else {
+      return nullptr;
+    }
+  }
+};
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
@@ -56,7 +79,6 @@ TypeProvider::TryGetCalledFunctionType(uint64_t function_address,
 }
 
 BaseTypeProvider::~BaseTypeProvider() {}
-
 
 const ::anvill::TypeDictionary &BaseTypeProvider::Dictionary(void) const {
   return this->type_dictionary;
@@ -116,7 +138,6 @@ SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
   }
 }
 
-
 // Try to return the type of a function that has been called from `from_isnt`.
 std::optional<CallableDecl>
 DefaultCallableTypeProvider::TryGetCalledFunctionType(
@@ -127,9 +148,18 @@ DefaultCallableTypeProvider::TryGetCalledFunctionType(
     return maybe_res;
   }
 
-  return this->decl;
-}
+  if (auto arch_decl = impl->TryGetDeclForArch(from_inst.arch_name)) {
+    return *arch_decl;
+  }
 
+  if (from_inst.arch_name != from_inst.sub_arch_name) {
+    if (auto sub_arch_decl = impl->TryGetDeclForArch(from_inst.sub_arch_name)) {
+      return *sub_arch_decl;
+    }
+  }
+
+  return std::nullopt;
+}
 
 std::optional<anvill::FunctionDecl>
 DefaultCallableTypeProvider::TryGetFunctionType(uint64_t address) const {
@@ -138,29 +168,32 @@ DefaultCallableTypeProvider::TryGetFunctionType(uint64_t address) const {
     return maybe_res;
   }
 
+  auto arch_decl = impl->TryGetDeclForArch(impl->default_arch);
+  if (!arch_decl) {
+    return std::nullopt;
+  }
+
   FunctionDecl fdecl;
+  reinterpret_cast<CallableDecl &>(fdecl) = *arch_decl;
   fdecl.address = address;
-
-
-  fdecl.calling_convention = this->decl.calling_convention;
-  fdecl.arch = this->decl.arch;
-  fdecl.is_noreturn = this->decl.is_noreturn;
-  fdecl.is_variadic = this->decl.is_variadic;
-  fdecl.params = this->decl.params;
-  fdecl.return_address = this->decl.return_address;
-  fdecl.return_stack_pointer = this->decl.return_stack_pointer;
-  fdecl.return_stack_pointer_offset = this->decl.return_stack_pointer_offset;
-  fdecl.returns = this->decl.returns;
 
   return fdecl;
 }
 
+DefaultCallableTypeProvider::~DefaultCallableTypeProvider(void) {}
 
-DefaultCallableTypeProvider::DefaultCallableTypeProvider(CallableDecl decl,
-                                                         const TypeProvider &tt)
-    : ProxyTypeProvider(tt),
-      decl(decl) {}
+// Initialize this type provider with a default architecture and a preferred
+// type provider `deleg`.
+DefaultCallableTypeProvider::DefaultCallableTypeProvider(
+    remill::ArchName default_arch, const TypeProvider &deleg)
+    : ProxyTypeProvider(deleg),
+      impl(new DefaultCallableTypeProviderImpl(default_arch)){}
 
+// Set `decl` to the default callable type for `arch`.
+void DefaultCallableTypeProvider::SetDefault(
+    remill::ArchName arch, CallableDecl decl) {
+  impl->decls[arch] = std::move(decl);
+}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
