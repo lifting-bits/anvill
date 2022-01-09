@@ -8,7 +8,10 @@
 
 #pragma once
 
+#include <anvill/Declarations.h>
+
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -40,28 +43,28 @@ struct ValueDecl;
 class JSONDecodeError {
  public:
   inline JSONDecodeError(std::string message_,
-                         const llvm::json::Object *object_=nullptr)
+                         const llvm::json::Object *object_ = nullptr)
       : message(std::move(message_)),
         object(object_) {}
 
   const std::string message;
-  const llvm::json::Object * const object;
+  const llvm::json::Object *const object;
 };
 
 class JSONEncodeError {
  public:
-  inline JSONEncodeError(std::string message_, const ValueDecl *decl_=nullptr)
+  inline JSONEncodeError(std::string message_, const ValueDecl *decl_ = nullptr)
       : message(std::move(message_)),
         decl(decl_) {}
 
   const std::string message;
-  const ValueDecl * const decl;
+  const ValueDecl *const decl;
 };
 
 // Parse JSON specifications into declarations.
 class JSONTranslator {
  private:
-  const remill::Arch * const arch;
+  const remill::Arch *const arch;
 
   // Type translator, which can encode/decode types.
   const anvill::TypeTranslator &type_translator;
@@ -70,14 +73,20 @@ class JSONTranslator {
   llvm::LLVMContext &context;
 
   // Two different void type interpretations. May be the same.
-  llvm::Type * const void_type;
-  llvm::Type * const dict_void_type;
+  llvm::Type *const void_type;
+  llvm::Type *const dict_void_type;
 
   // Parse the location of a value. This applies to both parameters and
   // return values.
   anvill::Result<ValueDecl, JSONDecodeError>
   DecodeValue(const llvm::json::Object *obj, const char *desc,
-              bool allow_void=false) const;
+              bool allow_void = false) const;
+
+
+  Result<std::monostate, JSONDecodeError>
+  ParseJsonIntoCallableDecl(const llvm::json::Object *obj,
+                            std::optional<uint64_t> address,
+                            CallableDecl &decl) const;
 
  public:
   explicit JSONTranslator(const anvill::TypeTranslator &type_translator_,
@@ -129,6 +138,9 @@ class JSONTranslator {
   // Encode a variable declaration.
   Result<llvm::json::Object, JSONEncodeError>
   Encode(const VariableDecl &decl) const;
+
+  Result<CallableDecl, JSONDecodeError>
+  DecodeDefaultCallableDecl(const llvm::json::Object *obj) const;
 };
 
 }  // namespace anvill

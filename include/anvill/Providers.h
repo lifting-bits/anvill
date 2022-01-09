@@ -29,44 +29,29 @@ class Type;
 }  // namespace llvm
 namespace remill {
 class Instruction;
+enum ArchName : uint32_t;
 }  // namespace remill
 namespace anvill {
 
-// Provides the types of functions, called functions, and accessed data.
 class TypeProvider {
- protected:
-  llvm::LLVMContext &context;
-  const TypeDictionary type_dictionary;
-
  public:
-  explicit TypeProvider(const ::anvill::TypeDictionary &type_dictionary_);
-
-  inline explicit TypeProvider(const TypeTranslator &tt)
-      : TypeProvider(tt.Dictionary()) {}
-
-  inline const ::anvill::TypeDictionary &Dictionary(void) const {
-    return type_dictionary;
-  }
-
-  virtual ~TypeProvider(void);
-
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  virtual std::optional<FunctionDecl> TryGetFunctionType(
-      uint64_t address) const = 0;
+  virtual std::optional<FunctionDecl>
+  TryGetFunctionType(uint64_t address) const = 0;
 
   // Try to return the type of a function that has been called from `from_isnt`.
-  virtual std::optional<CallableDecl> TryGetCalledFunctionType(
-      uint64_t function_address,
-      const remill::Instruction &from_inst) const;
+  virtual std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst) const;
 
   // Try to return the type of a function starting at address `to_address`. This
   // type is the prototype of the function. The type can be call site specific,
   // where the call site is `from_inst`.
-  virtual std::optional<CallableDecl> TryGetCalledFunctionType(
-      uint64_t function_address,
-      const remill::Instruction &from_inst,
-      uint64_t to_address) const;
+  virtual std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst,
+                           uint64_t to_address) const;
 
   // Try to return the variable at given address or containing the address
   virtual std::optional<VariableDecl>
@@ -79,28 +64,135 @@ class TypeProvider {
       uint64_t func_address, uint64_t inst_address,
       std::function<void(const std::string &, llvm::Type *,
                          std::optional<uint64_t>)>
-          typed_reg_cb) const;
+          typed_reg_cb) const = 0;
 
- private:
-  TypeProvider(const TypeProvider &) = delete;
-  TypeProvider(TypeProvider &&) noexcept = delete;
-  TypeProvider &operator=(const TypeProvider &) = delete;
-  TypeProvider &operator=(TypeProvider &&) noexcept = delete;
-  TypeProvider(void) = delete;
+  virtual const ::anvill::TypeDictionary &Dictionary(void) const = 0;
+
+  virtual ~TypeProvider() = default;
 };
 
-class NullTypeProvider : public TypeProvider {
+// Provides the types of functions, called functions, and accessed data.
+class BaseTypeProvider : public TypeProvider {
+ protected:
+  llvm::LLVMContext &context;
+  const TypeDictionary type_dictionary;
+
+ public:
+  explicit BaseTypeProvider(const ::anvill::TypeDictionary &type_dictionary_);
+
+  inline explicit BaseTypeProvider(const TypeTranslator &tt)
+      : BaseTypeProvider(tt.Dictionary()) {}
+
+  const ::anvill::TypeDictionary &Dictionary(void) const override;
+
+  virtual ~BaseTypeProvider(void);
+
+  // Try to get the type of the register named `reg_name` on entry to the
+  // instruction at `inst_address` inside the function beginning at
+  // `func_address`.
+  void QueryRegisterStateAtInstruction(
+      uint64_t func_address, uint64_t inst_address,
+      std::function<void(const std::string &, llvm::Type *,
+                         std::optional<uint64_t>)>
+          typed_reg_cb) const override;
+
+ private:
+  BaseTypeProvider(const TypeProvider &) = delete;
+  BaseTypeProvider(TypeProvider &&) noexcept = delete;
+  BaseTypeProvider &operator=(const TypeProvider &) = delete;
+  BaseTypeProvider &operator=(TypeProvider &&) noexcept = delete;
+  BaseTypeProvider(void) = delete;
+};
+
+class NullTypeProvider : public BaseTypeProvider {
  public:
   virtual ~NullTypeProvider(void) = default;
 
-  using TypeProvider::TypeProvider;
+  using BaseTypeProvider::BaseTypeProvider;
 
   std::optional<FunctionDecl> TryGetFunctionType(uint64_t) const override;
   std::optional<VariableDecl> TryGetVariableType(uint64_t) const override;
 };
 
+// Delegates to an underlying tye provider to provide the data. Derived from
+// this class to stack one provider on top of another.
+class ProxyTypeProvider : public TypeProvider {
+ private:
+  const TypeProvider &deleg;
+
+ public:
+  explicit ProxyTypeProvider(const TypeProvider &deleg);
+
+  virtual ~ProxyTypeProvider(void) = default;
+
+  // Try to return the type of a function starting at address `address`. This
+  // type is the prototype of the function.
+  std::optional<FunctionDecl>
+  TryGetFunctionType(uint64_t address) const override;
+
+  // Try to return the type of a function that has been called from `from_isnt`.
+  std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst) const override;
+
+  // Try to return the type of a function starting at address `to_address`. This
+  // type is the prototype of the function. The type can be call site specific,
+  // where the call site is `from_inst`.
+  std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst,
+                           uint64_t to_address) const override;
+
+  // Try to return the variable at given address or containing the address
+  std::optional<VariableDecl>
+  TryGetVariableType(uint64_t address) const override;
+
+  // Try to get the type of the register named `reg_name` on entry to the
+  // instruction at `inst_address` inside the function beginning at
+  // `func_address`.
+  void QueryRegisterStateAtInstruction(
+      uint64_t func_address, uint64_t inst_address,
+      std::function<void(const std::string &, llvm::Type *,
+                         std::optional<uint64_t>)>
+          typed_reg_cb) const override;
+
+  const ::anvill::TypeDictionary &Dictionary(void) const override;
+};
+
+// Allow for one to specify "reasonable" default declarations for call sites.
+//
+// NOTE(pag): This class does *not* bring in any smarts in terms of determining
+//            if what's being asked of it /should/ be a function. A higher-level
+//            type provider ought to delegate to the `SpecificationTypeProvider`
+//            on whether or not the queried function addresses are "viable
+//            functions."
+class DefaultCallableTypeProviderImpl;
+class DefaultCallableTypeProvider : public ProxyTypeProvider {
+ private:
+  const std::unique_ptr<DefaultCallableTypeProviderImpl> impl;
+
+ public:
+  virtual ~DefaultCallableTypeProvider(void);
+
+  // Initialize this type provider with a default architecture and a preferred
+  // type provider `deleg`.
+  explicit DefaultCallableTypeProvider(remill::ArchName default_arch,
+                                       const TypeProvider &deleg);
+
+  // Set `decl` to the default callable type for `arch`.
+  void SetDefault(remill::ArchName arch, CallableDecl decl);
+
+  // Try to return the type of a function that has been called from `from_isnt`.
+  std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst) const override;
+
+  std::optional<anvill::FunctionDecl>
+  TryGetFunctionType(uint64_t address) const override;
+};
+
 // Provides the types of functions, called functions, and accessed data.
-class SpecificationTypeProvider : public TypeProvider {
+class SpecificationTypeProvider : public BaseTypeProvider {
  private:
   std::shared_ptr<SpecificationImpl> impl;
 
@@ -110,14 +202,14 @@ class SpecificationTypeProvider : public TypeProvider {
   explicit SpecificationTypeProvider(const Specification &spec);
 
   // Try to return the type of a function that has been called from `from_isnt`.
-  std::optional<CallableDecl> TryGetCalledFunctionType(
-      uint64_t function_address,
-      const remill::Instruction &from_inst) const override;
+  std::optional<CallableDecl>
+  TryGetCalledFunctionType(uint64_t function_address,
+                           const remill::Instruction &from_inst) const override;
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
-  std::optional<anvill::FunctionDecl> TryGetFunctionType(
-      uint64_t address) const override;
+  std::optional<anvill::FunctionDecl>
+  TryGetFunctionType(uint64_t address) const override;
 
   std::optional<anvill::VariableDecl>
   TryGetVariableType(uint64_t address) const override;
@@ -216,8 +308,8 @@ class ControlFlowProvider {
 
   // Returns a possible redirection for the given target. If there is no
   // redirection then `address` should be returned.
-  virtual std::uint64_t GetRedirection(
-      const remill::Instruction &from_inst, std::uint64_t to_address) const = 0;
+  virtual std::uint64_t GetRedirection(const remill::Instruction &from_inst,
+                                       std::uint64_t to_address) const = 0;
 
   // Returns a list of targets reachable from the given address
   virtual std::optional<ControlFlowTargetList>
@@ -238,8 +330,8 @@ class NullControlFlowProvider : public ControlFlowProvider {
  public:
   virtual ~NullControlFlowProvider(void) = default;
 
-  std::uint64_t GetRedirection(
-      const remill::Instruction &, std::uint64_t address) const override;
+  std::uint64_t GetRedirection(const remill::Instruction &,
+                               std::uint64_t address) const override;
 
   std::optional<ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &) const override;
@@ -254,12 +346,12 @@ class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
 
   explicit SpecificationControlFlowProvider(const Specification &spec);
 
-  std::uint64_t GetRedirection(
-      const remill::Instruction &from_inst,
-      std::uint64_t address) const final;
+  std::uint64_t GetRedirection(const remill::Instruction &from_inst,
+                               std::uint64_t address) const final;
 
   std::optional<anvill::ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
 };
+
 
 }  // namespace anvill

@@ -1,0 +1,28 @@
+{
+    "calling_convention": 0,
+    "is_noreturn": false,
+    "is_variadic": false,
+    "parameters": [],
+    "return_address": {
+        "memory": {
+            "offset": 0,
+            "register": "ESP"
+        },
+        "type": "i"
+    },
+    "return_stack_pointer": {
+        "offset": 0,
+        "register": "ESP",
+        "type": "i"
+    },
+    "return_values": [
+        {
+            "register": "ST0",
+            "type": "d"
+        },
+        {
+            "register": "EAX",
+            "type": "i"
+        }
+    ]
+}

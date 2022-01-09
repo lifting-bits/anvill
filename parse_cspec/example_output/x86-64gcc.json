@@ -1,0 +1,85 @@
+{
+    "calling_convention": 0,
+    "is_noreturn": false,
+    "is_variadic": false,
+    "parameters": [
+        {
+            "register": "XMM0",
+            "type": "F"
+        },
+        {
+            "register": "XMM1",
+            "type": "F"
+        },
+        {
+            "register": "XMM2",
+            "type": "F"
+        },
+        {
+            "register": "XMM3",
+            "type": "F"
+        },
+        {
+            "register": "XMM4",
+            "type": "F"
+        },
+        {
+            "register": "XMM5",
+            "type": "F"
+        },
+        {
+            "register": "XMM6",
+            "type": "F"
+        },
+        {
+            "register": "XMM7",
+            "type": "F"
+        },
+        {
+            "register": "RDI",
+            "type": "l"
+        },
+        {
+            "register": "RSI",
+            "type": "l"
+        },
+        {
+            "register": "RDX",
+            "type": "l"
+        },
+        {
+            "register": "RCX",
+            "type": "l"
+        },
+        {
+            "register": "R8",
+            "type": "l"
+        },
+        {
+            "register": "R9",
+            "type": "l"
+        }
+    ],
+    "return_address": {
+        "memory": {
+            "offset": 0,
+            "register": "RSP"
+        },
+        "type": "l"
+    },
+    "return_stack_pointer": {
+        "offset": 0,
+        "register": "RSP",
+        "type": "l"
+    },
+    "return_values": [
+        {
+            "register": "XMM0",
+            "type": "F"
+        },
+        {
+            "register": "RAX",
+            "type": "l"
+        }
+    ]
+}
