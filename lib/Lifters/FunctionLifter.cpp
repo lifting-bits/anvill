@@ -1943,6 +1943,10 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
   // just in case it will be needed in future lifts.
   EraseFunctionBody(func);
 
+  if (auto func_annotation = GetPCAnnotation(address)) {
+    new_version->setMetadata(pc_annotation_id, func_annotation);
+  }
+
   // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
   lifter_context.AddEntity(new_version, address);

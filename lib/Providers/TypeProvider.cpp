@@ -51,7 +51,7 @@ NullTypeProvider::TryGetFunctionType(uint64_t) const {
 }
 
 std::optional<VariableDecl>
-NullTypeProvider::TryGetVariableType(uint64_t) const {
+NullTypeProvider::TryGetVariableType(uint64_t, llvm::Type *) const {
   return std::nullopt;
 }
 
@@ -129,7 +129,8 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
 }
 
 std::optional<anvill::VariableDecl>
-SpecificationTypeProvider::TryGetVariableType(uint64_t address) const {
+SpecificationTypeProvider::TryGetVariableType(
+    uint64_t address, llvm::Type *) const {
   auto var_it = impl->address_to_var.find(address);
   if (var_it != impl->address_to_var.end()) {
     return *(var_it->second);
@@ -220,8 +221,9 @@ std::optional<CallableDecl> ProxyTypeProvider::TryGetCalledFunctionType(
 
 // Try to return the variable at given address or containing the address
 std::optional<VariableDecl>
-ProxyTypeProvider::TryGetVariableType(uint64_t address) const {
-  return this->deleg.TryGetVariableType(address);
+ProxyTypeProvider::TryGetVariableType(
+    uint64_t address, llvm::Type *hinted_value_type) const {
+  return this->deleg.TryGetVariableType(address, hinted_value_type);
 }
 
 // Try to get the type of the register named `reg_name` on entry to the

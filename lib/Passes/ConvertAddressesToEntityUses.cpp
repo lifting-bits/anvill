@@ -21,6 +21,20 @@
 #include "Utils.h"
 
 namespace anvill {
+namespace {
+
+// Get the annotation for the program counter `pc`.
+static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
+  auto &dl = module->getDataLayout();
+  auto &context = module->getContext();
+  auto address_type = llvm::Type::getIntNTy(
+      context, dl.getPointerSizeInBits(0));
+  auto pc_val = llvm::ConstantInt::get(address_type, pc);
+  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
+  return llvm::MDNode::get(context, pc_md);
+}
+
+}  // namespace
 
 llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
@@ -75,6 +89,17 @@ llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
 
     if (!entity) {
       continue;
+    }
+
+    entity = entity->stripPointerCasts();
+
+    // Apply the PC metadata annotation to all resolved addresses.
+    if (pc_metadata_id) {
+      if (auto obj = llvm::dyn_cast<llvm::GlobalObject>(entity)) {
+        auto module = function.getParent();
+        obj->setMetadata(
+            *pc_metadata_id, GetPCAnnotation(module, ra.u.address));
+      }
     }
 
     auto ent_type = llvm::dyn_cast<llvm::PointerType>(entity->getType());
@@ -157,8 +182,10 @@ EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
 }
 
 ConvertAddressesToEntityUses::ConvertAddressesToEntityUses(
-    const CrossReferenceResolver &xref_resolver_)
-    : xref_resolver(xref_resolver_) {}
+    const CrossReferenceResolver &xref_resolver_,
+    std::optional<unsigned> pc_metadata_id_)
+    : xref_resolver(xref_resolver_),
+      pc_metadata_id(std::move(pc_metadata_id_)) {}
 
 // Anvill-lifted code is full of references to constant expressions related
 // to `__anvill_pc`. These constant expressions exist to "taint" values as
@@ -171,8 +198,9 @@ ConvertAddressesToEntityUses::ConvertAddressesToEntityUses(
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
 void AddConvertAddressesToEntityUses(llvm::FunctionPassManager &fpm,
-                                    const CrossReferenceResolver &resolver) {
-  fpm.addPass(ConvertAddressesToEntityUses(resolver));
+                                     const CrossReferenceResolver &resolver,
+                                     std::optional<unsigned> pc_annot_id) {
+  fpm.addPass(ConvertAddressesToEntityUses(resolver, std::move(pc_annot_id)));
 }
 
 }  // namespace anvill

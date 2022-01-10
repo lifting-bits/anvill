@@ -130,6 +130,12 @@ void OptimizeModule(const EntityLifter &lifter,
 
   CHECK(remill::VerifyModule(&module));
 
+  std::optional<unsigned> pc_metadata_id;
+  if (options.pc_metadata_name) {
+    auto &context = options.module->getContext();
+    pc_metadata_id = context.getMDKindID(options.pc_metadata_name);
+  }
+
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm(false);
   llvm::ModuleAnalysisManager mam(false);
@@ -205,7 +211,6 @@ void OptimizeModule(const EntityLifter &lifter,
   AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROA());
   
-
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
   // makes code easier to read and analyze. This is a fairly narrow optimization
@@ -213,7 +218,7 @@ void OptimizeModule(const EntityLifter &lifter,
   AddConvertXorsToCmps(fpm);
 
   AddConvertIntegerToPointerOperations(fpm);
-  AddConvertAddressesToEntityUses(fpm, xr);
+  AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
   AddBranchRecovery(fpm);
 
   AddLowerSwitchIntrinsics(fpm, mp);
