@@ -215,7 +215,6 @@ void OptimizeModule(const EntityLifter &lifter,
   // conditions or other targets. Try to fix these to be CMPs, since it
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
-  AddConvertXorsToCmps(fpm);
 
   AddConvertIntegerToPointerOperations(fpm);
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
@@ -238,6 +237,8 @@ void OptimizeModule(const EntityLifter &lifter,
   second_fpm.addPass(llvm::NewGVNPass());
   AddSpreadPCMetadata(second_fpm, options);
   second_fpm.addPass(CodeQualityStatCollector());
+  AddConvertXorsToCmps(second_fpm);
+  second_fpm.addPass(llvm::DCEPass());
 
 
 
