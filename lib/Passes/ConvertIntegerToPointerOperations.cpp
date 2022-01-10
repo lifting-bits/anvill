@@ -36,7 +36,46 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
     llvm::IntToPtrInst *itp;
   };
 
+
+  struct SignExtendMatch {
+    uint64_t shift_left;
+    uint64_t shift_right;
+    llvm::Value *int_ptr;
+    llvm::IntegerType *truncating_type;
+    llvm::Value *ashr;
+  };
+
   std::vector<Match> matches;
+
+  std::vector<SignExtendMatch> sem_matches;
+  for (auto &insn : llvm::instructions(func)) {
+    SignExtendMatch sem;
+    if (pats::match(
+            &insn,
+            pats::m_AShr(pats::m_Shl(pats::m_Value(sem.int_ptr),
+                                     pats::m_ConstantInt(sem.shift_right)),
+                         pats::m_ConstantInt(sem.shift_left)))) {
+      if (sem.shift_left > sem.shift_right) {
+
+        auto ty = sem.int_ptr->getType();
+        if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(ty)) {
+          auto orig_size = int_ty->getIntegerBitWidth();
+          if (orig_size <= sem.shift_left) {
+            continue;
+          }
+          sem.truncating_type = llvm::IntegerType::get(
+              func.getContext(), orig_size - sem.shift_left);
+          sem.ashr = &insn;
+          sem_matches.push_back(sem);
+        }
+      }
+    }
+  }
+
+  for (auto mat : sem_matches) {
+    auto diff = mat.shift_left - mat.shift_right;
+    llvm::TruncInst(mat.int_ptr, mat.truncating_type, "", mat.ashr);
+  }
 
   for (auto &insn : llvm::instructions(func)) {
     Match match;
