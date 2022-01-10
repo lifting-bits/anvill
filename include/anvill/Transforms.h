@@ -263,8 +263,9 @@ void AddRecoverBasicStackFrame(llvm::FunctionPassManager &fpm,
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-void AddConvertAddressesToEntityUses(llvm::FunctionPassManager &fpm,
-                                    const CrossReferenceResolver &resolver);
+void AddConvertAddressesToEntityUses(
+    llvm::FunctionPassManager &fpm, const CrossReferenceResolver &resolver,
+    std::optional<unsigned> pc_annot_id=std::nullopt);
 
 // Some machine code instructions explicitly introduce undefined values /
 // behavior. Often, this is a result of the CPUs of different steppings of
@@ -384,7 +385,8 @@ void AddBranchRecovery(llvm::FunctionPassManager &fpm);
 void AddRemoveFailedBranchHints(llvm::FunctionPassManager &fpm);
 
 
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov);
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
+                              const MemoryProvider &memprov);
 
 // Remove constant expressions of the stack pointer that are not themselves
 // resolvable to references. For example, comparisons between one or two

@@ -177,6 +177,7 @@ class LifterOptions {
   static llvm::Value *ConcreteReturnAddressInit(
       llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
 
+
   inline explicit LifterOptions(
       const remill::Arch *arch_, llvm::Module &module_,
       const TypeProvider &type_provider_,

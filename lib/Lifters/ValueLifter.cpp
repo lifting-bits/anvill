@@ -58,8 +58,10 @@ llvm::Constant *
 ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
                                EntityLifterImpl &ent_lifter,
                                llvm::PointerType *opt_ptr_type) const {
-
-  auto maybe_var = ent_lifter.type_provider->TryGetVariableType(search_ea);
+  llvm::Type *opt_elem_type =
+      opt_ptr_type ? opt_ptr_type->getElementType() : nullptr;
+  auto maybe_var = ent_lifter.type_provider->TryGetVariableType(
+      search_ea, opt_elem_type);
   if (!maybe_var) {
     return nullptr;
   }
@@ -204,12 +206,12 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     }
   }
 
-  auto ret = GetVarPointer(ea, ea, ent_lifter);
+  auto ret = GetVarPointer(ea, ea, ent_lifter, hinted_type);
 
   // `ea` could be just after the section for symbols e.g `__text_end`;
   // get variable decl for `ea - 1` and build pointers with the offset.
   if (!ret) {
-    ret = GetVarPointer(ea, ea - 1u, ent_lifter);
+    ret = GetVarPointer(ea, ea - 1u, ent_lifter, hinted_type);
   }
 
   return ret ? unwrap_zero_indices(ret) : nullptr;

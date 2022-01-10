@@ -10,6 +10,7 @@
 
 #include <anvill/CrossReferenceFolder.h>
 #include <llvm/IR/PassManager.h>
+#include <optional>
 #include <vector>
 
 namespace llvm {
@@ -47,6 +48,9 @@ class ConvertAddressesToEntityUses final
   // Resolve addresses to entities and vice versa.
   const CrossReferenceResolver &xref_resolver;
 
+  // The metadata ID to annotation recovered entities with.
+  const std::optional<unsigned> pc_metadata_id;
+
  public:
 
   // Function pass entry point
@@ -60,7 +64,9 @@ class ConvertAddressesToEntityUses final
   // specific instruction operand uses.
   EntityUsages EnumeratePossibleEntityUsages(llvm::Function &function);
 
-  ConvertAddressesToEntityUses(const CrossReferenceResolver &xref_resolver_);
+  ConvertAddressesToEntityUses(
+      const CrossReferenceResolver &xref_resolver_,
+      std::optional<unsigned> pc_metadata_id_=std::nullopt);
 };
 
 }  // namespace anvill

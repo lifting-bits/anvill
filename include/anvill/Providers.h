@@ -55,7 +55,8 @@ class TypeProvider {
 
   // Try to return the variable at given address or containing the address
   virtual std::optional<VariableDecl>
-  TryGetVariableType(uint64_t address) const = 0;
+  TryGetVariableType(uint64_t address,
+                     llvm::Type *hinted_value_type=nullptr) const = 0;
 
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
@@ -111,7 +112,8 @@ class NullTypeProvider : public BaseTypeProvider {
   using BaseTypeProvider::BaseTypeProvider;
 
   std::optional<FunctionDecl> TryGetFunctionType(uint64_t) const override;
-  std::optional<VariableDecl> TryGetVariableType(uint64_t) const override;
+  std::optional<VariableDecl> TryGetVariableType(
+      uint64_t, llvm::Type *hinted_value_type=nullptr) const override;
 };
 
 // Delegates to an underlying tye provider to provide the data. Derived from
@@ -145,7 +147,8 @@ class ProxyTypeProvider : public TypeProvider {
 
   // Try to return the variable at given address or containing the address
   std::optional<VariableDecl>
-  TryGetVariableType(uint64_t address) const override;
+  TryGetVariableType(
+      uint64_t address, llvm::Type *hinted_value_type=nullptr) const override;
 
   // Try to get the type of the register named `reg_name` on entry to the
   // instruction at `inst_address` inside the function beginning at
@@ -212,7 +215,8 @@ class SpecificationTypeProvider : public BaseTypeProvider {
   TryGetFunctionType(uint64_t address) const override;
 
   std::optional<anvill::VariableDecl>
-  TryGetVariableType(uint64_t address) const override;
+  TryGetVariableType(uint64_t address,
+                     llvm::Type *hinted_value_type=nullptr) const override;
 
  private:
   SpecificationTypeProvider(void) = delete;
