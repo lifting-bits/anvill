@@ -51,6 +51,25 @@ getComparisonOperands(llvm::BinaryOperator *op) {
   return std::nullopt;
 }
 
+static std::optional<std::tuple<llvm::Value *, llvm::ConstantInt *>>
+getVariableOperand(llvm::BinaryOperator *op) {
+
+  auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
+  auto lhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(0));
+
+  auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
+  auto rhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(1));
+
+  if (lhs_c && !rhs_c) {
+    return {{rhs_val, lhs_c}};
+  }
+
+  if (rhs_c && !lhs_c) {
+    return {{lhs_val, rhs_c}};
+  }
+
+  return std::nullopt;
+}
 
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   auto pred = cmp->getPredicate();
@@ -67,6 +86,7 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
 llvm::PreservedAnalyses
 ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
+  std::vector<llvm::BinaryOperator *> noncmp_xors;
 
   for (auto &inst : llvm::instructions(func)) {
 
@@ -88,7 +108,21 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
               cnst_int->isAllOnesValue()) {
             xors.emplace_back(binop);
           }
+          continue;
         }
+        
+        auto xor_ops = getVariableOperand(binop);
+        if(xor_ops.has_value()) {
+          auto [_, cnst_int] = xor_ops.value();
+
+          // ensure that the constant int is 'true', or an i1 with the value 1
+          // this (currently) the only supported value
+          if (cnst_int->getType()->getBitWidth() == 1 &&
+              cnst_int->isAllOnesValue()) {
+            noncmp_xors.emplace_back(binop);
+          }
+        }
+        
       }
     }
   }
@@ -98,6 +132,24 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
 
   std::vector<llvm::BranchInst *> brs_to_invert;
   std::vector<llvm::SelectInst *> selects_to_invert;
+
+  for (auto ncmp_xor : noncmp_xors) {
+    // Just invert the branch and make it use the lhs of the xor
+    // as the branch condition (just to get rid of a xor)
+    auto ops = getVariableOperand(ncmp_xor);
+    auto [var_op, _] = ops.value();
+
+    for (auto &U : ncmp_xor->uses()) {
+      llvm::BranchInst *br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser());
+
+      if (!br_inst) {
+        continue;
+      }
+
+      br_inst->setCondition(var_op);
+      br_inst->swapSuccessors();
+    }
+  }
 
   for (auto xori : xors) {
 
@@ -209,9 +261,9 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
       // delte xor
       xori->eraseFromParent();
       changed = true;
-    }
+    } 
   }
-
+  
   return ConvertBoolToPreserved(changed);
 }
 
