@@ -22,37 +22,13 @@
 #include <vector>
 
 #include "Utils.h"
+#include <remill/BC/Util.h>
 
 namespace anvill {
 namespace {
 
-// If the operator (op) is between an ICmpInst and a ConstantInt, return a
-// tuple representing the ICmpInst and ConstantInt with tuple[0] holding the
-// ICmpInst. Otherwise return `nullopt`.
-static std::optional<std::tuple<llvm::ICmpInst *, llvm::ConstantInt *>>
-getComparisonOperands(llvm::BinaryOperator *op) {
-
-  auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
-  auto lhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(op->getOperand(0));
-
-  auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
-  auto rhs_cmp = llvm::dyn_cast<llvm::ICmpInst>(op->getOperand(1));
-
-  // right side: predicate, left side; constant int;
-  if (rhs_cmp && lhs_c) {
-    return {{rhs_cmp, lhs_c}};
-  }
-
-  // right side: constant int, left side: cmp
-  if (rhs_c && lhs_cmp) {
-    return {{lhs_cmp, rhs_c}};
-  }
-
-  return std::nullopt;
-}
-
 static std::optional<std::tuple<llvm::Value *, llvm::ConstantInt *>>
-getVariableOperand(llvm::BinaryOperator *op) {
+getVariableOperands(llvm::BinaryOperator *op) {
 
   auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
   auto lhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(0));
@@ -60,6 +36,9 @@ getVariableOperand(llvm::BinaryOperator *op) {
   auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
   auto rhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(1));
 
+  // check for an operation between a constant and a variable
+  // and return the variable as the left op, and constant as the right op
+  // regardless of how they appear in the original
   if (lhs_c && !rhs_c) {
     return {{rhs_val, lhs_c}};
   }
@@ -70,6 +49,32 @@ getVariableOperand(llvm::BinaryOperator *op) {
 
   return std::nullopt;
 }
+
+// If the operator (op) is between an ICmpInst and a ConstantInt, return a
+// tuple representing the ICmpInst and ConstantInt with tuple[0] holding the
+// ICmpInst. Otherwise return `nullopt`.
+static std::optional<std::tuple<llvm::ICmpInst *, llvm::ConstantInt *>>
+getComparisonOperands(llvm::BinaryOperator *op) {
+
+  // get the operands of this binaryop, and check that one is a constant int
+  // and one is a variable
+  auto ops = getVariableOperands(op);
+
+  if(!ops.has_value()) {
+    return std::nullopt;
+  }
+
+  auto [var_op, const_op] = ops.value();
+  // check if the variable op is a ICmp, if yes, succeed
+  auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op);
+  if(cmp) {
+    return {{cmp, const_op}};
+  }
+
+  return std::nullopt;
+
+}
+
 
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   auto pred = cmp->getPredicate();
@@ -111,7 +116,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
           continue;
         }
         
-        auto xor_ops = getVariableOperand(binop);
+        auto xor_ops = getVariableOperands(binop);
         if(xor_ops.has_value()) {
           auto [_, cnst_int] = xor_ops.value();
 
@@ -133,10 +138,20 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
   std::vector<llvm::BranchInst *> brs_to_invert;
   std::vector<llvm::SelectInst *> selects_to_invert;
 
+  // look for things in the following pattern:
+  // %20 = or i1 %19, i1 %18
+  // %21 = xor i1 %20, i1 true
+  // br i1 %21, label <left>, label <right>
+  //
+  // and change it to:
+  //
+  // %20 = or i1 %19, i1 %18
+  // br i1 %20, label <right>, label <left>
+  //
   for (auto ncmp_xor : noncmp_xors) {
-    // Just invert the branch and make it use the lhs of the xor
-    // as the branch condition (just to get rid of a xor)
-    auto ops = getVariableOperand(ncmp_xor);
+    // These uses of xor followed by a branch can be simply replaced by switching branch conditions.
+    // We invert the branch, and get rid of the xor, if it is unused.
+    auto ops = getVariableOperands(ncmp_xor);
     auto [var_op, _] = ops.value();
 
     for (auto &U : ncmp_xor->uses()) {
@@ -146,11 +161,20 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
         continue;
       }
 
+      // invert the condition and swap the branch.
       br_inst->setCondition(var_op);
       br_inst->swapSuccessors();
+      changed = true;
     }
+
+    if (0 == ncmp_xor->getNumUses()) {
+      // this xor is no longer used, remove it
+      ncmp_xor->eraseFromParent();
+    }
+
   }
 
+  // Look for xors specifically used in a comparison, and invert the comparison
   for (auto xori : xors) {
 
     // find predicate from xor's operands
