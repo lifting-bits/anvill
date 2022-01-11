@@ -25,6 +25,33 @@
 namespace anvill {
 
 TEST_SUITE("XorConversion") {
+  TEST_CASE("Remove Xor Flip Branch") {
+    llvm::LLVMContext llvm_context;
+    auto module = LoadTestData(llvm_context, "xor_removal.ll");
+
+    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
+                                    remill::GetArchName("amd64"));
+    REQUIRE(arch != nullptr);
+
+    CHECK(RunFunctionPass<ConvertXorsToCmps>(module.get(), ConvertXorsToCmps()));
+
+    const auto flip_branch = module->getFunction("xor_removal");
+    int xor_count = 0;
+    for (auto &inst : llvm::instructions(flip_branch)) {
+      if (auto binop = llvm::dyn_cast<llvm::BinaryOperator>(&inst)) {
+
+        // binary op is a xor
+        if (binop->getOpcode() == llvm::Instruction::Xor) {
+          xor_count += 1;
+        }
+      }
+    }
+
+    REQUIRE(flip_branch);
+    // one xor should be removed
+    REQUIRE(xor_count == 0);
+  }
+
   TEST_CASE("Convert a Xor used in a BranchInst and SelectInst") {
     llvm::LLVMContext llvm_context;
     auto module = LoadTestData(llvm_context, "xor_conversion.ll");
