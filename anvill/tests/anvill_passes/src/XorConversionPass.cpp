@@ -24,20 +24,22 @@
 
 namespace anvill {
 
-TEST_SUITE("XorConversion") {
-  TEST_CASE("Remove Xor Flip Branch") {
+  static int runXorRemovalPassCountXors(
+      const std::string &module_name, const std::string &function_name) {
+
     llvm::LLVMContext llvm_context;
-    auto module = LoadTestData(llvm_context, "xor_removal.ll");
+    auto module = LoadTestData(llvm_context, module_name);
 
     auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+        remill::GetArchName("amd64"));
+
     REQUIRE(arch != nullptr);
 
     CHECK(RunFunctionPass<ConvertXorsToCmps>(module.get(), ConvertXorsToCmps()));
 
-    const auto flip_branch = module->getFunction("xor_removal");
+    const auto fn_repr = module->getFunction(function_name);
     int xor_count = 0;
-    for (auto &inst : llvm::instructions(flip_branch)) {
+    for (auto &inst : llvm::instructions(fn_repr)) {
       if (auto binop = llvm::dyn_cast<llvm::BinaryOperator>(&inst)) {
 
         // binary op is a xor
@@ -46,62 +48,39 @@ TEST_SUITE("XorConversion") {
         }
       }
     }
+    
+    return xor_count;
+  }
 
-    REQUIRE(flip_branch);
-    // one xor should be removed
+
+TEST_SUITE("XorConversion") {
+  TEST_CASE("Remove Xor Flip Branch -- Not Removed (compare w/ false)") {
+    int xor_count = runXorRemovalPassCountXors(
+        "xor_removal_noremove.ll", "xor_removal_noremove_false");
+    REQUIRE(xor_count == 1);
+  }
+
+  TEST_CASE("Remove Xor Flip Branch -- Not Removed (xor not used in branch)") {
+    int xor_count = runXorRemovalPassCountXors(
+        "xor_removal_noremove.ll", "xor_removal_noremove_notused");
+    REQUIRE(xor_count == 1);
+  }
+
+  TEST_CASE("Remove Xor Flip Branch") {
+    int xor_count = runXorRemovalPassCountXors(
+        "xor_removal.ll", "xor_removal");
     REQUIRE(xor_count == 0);
   }
 
   TEST_CASE("Convert a Xor used in a BranchInst and SelectInst") {
-    llvm::LLVMContext llvm_context;
-    auto module = LoadTestData(llvm_context, "xor_conversion.ll");
-
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64")); 
-    REQUIRE(arch != nullptr);
-
-    CHECK(RunFunctionPass<ConvertXorsToCmps>(module.get(), ConvertXorsToCmps()));
-
-    const auto xor_as_not = module->getFunction("xor_as_not");
-    int xor_count = 0;
-    for (auto &inst : llvm::instructions(xor_as_not)) {
-      if (auto binop = llvm::dyn_cast<llvm::BinaryOperator>(&inst)) {
-
-        // binary op is a xor
-        if (binop->getOpcode() == llvm::Instruction::Xor) {
-          xor_count += 1;
-        }
-      }
-    }
-
-    REQUIRE(xor_as_not);
+    int xor_count = runXorRemovalPassCountXors(
+        "xor_conversion.ll", "xor_as_not");
     REQUIRE(xor_count == 0);
   }
 
   TEST_CASE("DO NOT convert a xor used as a branch/select") {
-    llvm::LLVMContext llvm_context;
-    auto module = LoadTestData(llvm_context, "xor_conversion_nochange.ll");
-
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
-    REQUIRE(arch != nullptr);
-
-
-    CHECK(RunFunctionPass(module.get(), ConvertXorsToCmps()));
-
-    const auto xor_as_not_nochange = module->getFunction("xor_as_not_nochange");
-    int xor_count = 0;
-    for (auto &inst : llvm::instructions(xor_as_not_nochange)) {
-      if (auto binop = llvm::dyn_cast<llvm::BinaryOperator>(&inst)) {
-
-        // binary op is a xor
-        if (binop->getOpcode() == llvm::Instruction::Xor) {
-          xor_count += 1;
-        }
-      }
-    }
-
-    REQUIRE(xor_as_not_nochange);
+    int xor_count = runXorRemovalPassCountXors(
+        "xor_conversion_nochange.ll", "xor_as_not_nochange");
     REQUIRE(xor_count == 1);
   }
 }
