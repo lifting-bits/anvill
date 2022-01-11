@@ -60,14 +60,13 @@ getComparisonOperands(llvm::BinaryOperator *op) {
   // and one is a variable
   auto ops = getVariableOperands(op);
 
-  if(!ops.has_value()) {
+  if(!ops) {
     return std::nullopt;
   }
 
   auto [var_op, const_op] = ops.value();
   // check if the variable op is a ICmp, if yes, succeed
-  auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op);
-  if(cmp) {
+  if( auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op) ) {
     return {{cmp, const_op}};
   }
 
@@ -122,8 +121,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
 
         // Get comparison operands of the xor. The caller ensures that one is a
         // compare and the other is a constant integer.
-        auto cmp_ops = getComparisonOperands(binop);
-        if (cmp_ops.has_value()) {
+        if (auto cmp_ops = getComparisonOperands(binop)) {
           auto [_, cnst_int] = cmp_ops.value();
 
           // ensure that the constant int is 'true', or an i1 with the value 1
@@ -135,8 +133,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
           continue;
         }
         
-        auto xor_ops = getVariableOperands(binop);
-        if(xor_ops.has_value()) {
+        if(auto xor_ops = getVariableOperands(binop)) {
           auto [_, cnst_int] = xor_ops.value();
 
           // ensure that the constant int is 'true', or an i1 with the value 1
@@ -169,9 +166,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
   for (auto ncmp_xor : noncmp_xors) {
     // These uses of xor followed by a branch can be simply replaced by switching branch conditions.
     // We invert the branch, and get rid of the xor, if it is unused.
-    auto ops = getVariableOperands(ncmp_xor);
-
-    auto [var_op, _] = ops.value();
+    auto [var_op, _] = getVariableOperands(ncmp_xor).value();
 
     for (auto &U : ncmp_xor->uses()) {
       llvm::BranchInst *br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser());
@@ -186,7 +181,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
       changed = true;
     }
 
-    if (0 == ncmp_xor->getNumUses()) {
+    if (ncmp_xor->use_empty()) {
       // this xor is no longer used, remove it
       ncmp_xor->eraseFromParent();
     }
@@ -199,7 +194,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
 
     // find predicate from xor's operands
     auto cmp_ops = getComparisonOperands(xori);
-    if (!cmp_ops.has_value()) {
+    if (!cmp_ops) {
       continue;
     }
     auto [cmp, _] = cmp_ops.value();
@@ -278,8 +273,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     }
 
     // negate predicate
-    auto neg_cmp = negateCmpPredicate(cmp);
-    if (neg_cmp) {
+    if (auto neg_cmp = negateCmpPredicate(cmp)) {
       CopyMetadataTo(xori, neg_cmp);
       replaced_items += 1;
 
