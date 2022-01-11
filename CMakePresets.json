@@ -56,7 +56,8 @@
               "CMAKE_C_COMPILER": "$env{VCPKG_ROOT}/installed/$env{VCPKG_TARGET_TRIPLET}/tools/llvm/clang",
               "CMAKE_CXX_COMPILER": "$env{VCPKG_ROOT}/installed/$env{VCPKG_TARGET_TRIPLET}/tools/llvm/clang++",
               "CMAKE_BUILD_WITH_INSTALL_RPATH": "ON",
-              "ANVILL_ENABLE_TESTS": "true"
+              "ANVILL_ENABLE_TESTS": "true",
+              "ANVILL_ENABLE_INSTALL": "true"
           }
         },
         {
