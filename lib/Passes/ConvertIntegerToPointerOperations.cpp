@@ -169,6 +169,7 @@ static bool FoldBasePlusScaledIndex(llvm::Function &func) {
 // replacement loads, but we don't want to introduce more loads than were
 // originally in the program.
 static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
+  auto &dl = func.getParent()->getDataLayout();
 
   struct LoadPtrMatch {
     llvm::IntToPtrInst *itp;
@@ -187,6 +188,14 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
 
     match.load = llvm::dyn_cast<llvm::LoadInst>(match.itp->getOperand(0u));
     if (!match.load) {
+      continue;
+    }
+
+    // Make sure that the loaded integral type is the same size as
+    // the casted pointer type, so that if we load a pointer-to-pointer,
+    // then it will be a same-sized load.
+    if (dl.getTypeStoreSize(match.itp->getType()) !=
+        dl.getTypeStoreSize(match.load->getType())) {
       continue;
     }
 
