@@ -58,20 +58,15 @@ getComparisonOperands(llvm::BinaryOperator *op) {
 
   // get the operands of this binaryop, and check that one is a constant int
   // and one is a variable
-  auto ops = getVariableOperands(op);
+  if(auto ops = getVariableOperands(op)) {
+    auto [var_op, const_op] = ops.value();
+    // check if the variable op is a ICmp, if yes, succeed
+    if( auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op) ) {
+      return {{cmp, const_op}};
+    }
 
-  if(!ops) {
     return std::nullopt;
   }
-
-  auto [var_op, const_op] = ops.value();
-  // check if the variable op is a ICmp, if yes, succeed
-  if( auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op) ) {
-    return {{cmp, const_op}};
-  }
-
-  return std::nullopt;
-
 }
 
 static std::optional<std::tuple<llvm::Value *, llvm::ConstantInt *>>
