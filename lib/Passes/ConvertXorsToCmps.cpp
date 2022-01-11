@@ -75,6 +75,25 @@ getComparisonOperands(llvm::BinaryOperator *op) {
 
 }
 
+static std::optional<std::tuple<llvm::Value *, llvm::ConstantInt *>>
+getVariableOperand(llvm::BinaryOperator *op) {
+
+  auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
+  auto lhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(0));
+
+  auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
+  auto rhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(1));
+
+  if (lhs_c && !rhs_c) {
+    return {{rhs_val, lhs_c}};
+  }
+
+  if (rhs_c && !lhs_c) {
+    return {{lhs_val, rhs_c}};
+  }
+
+  return std::nullopt;
+}
 
 static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   auto pred = cmp->getPredicate();
@@ -127,7 +146,6 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
             noncmp_xors.emplace_back(binop);
           }
         }
-        
       }
     }
   }
@@ -152,6 +170,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     // These uses of xor followed by a branch can be simply replaced by switching branch conditions.
     // We invert the branch, and get rid of the xor, if it is unused.
     auto ops = getVariableOperands(ncmp_xor);
+
     auto [var_op, _] = ops.value();
 
     for (auto &U : ncmp_xor->uses()) {
@@ -175,6 +194,7 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
   }
 
   // Look for xors specifically used in a comparison, and invert the comparison
+
   for (auto xori : xors) {
 
     // find predicate from xor's operands
