@@ -159,15 +159,18 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
   // br i1 %20, label <right>, label <left>
   //
   for (auto ncmp_xor : noncmp_xors) {
+    bool changed_this_xor = false;
     // These uses of xor followed by a branch can be simply replaced by switching branch conditions.
     // We invert the branch, and get rid of the xor, if it is unused.
     auto [var_op, _] = getVariableOperands(ncmp_xor).value();
 
+    DLOG(INFO) << "Processing Xor: " << remill::LLVMThingToString(ncmp_xor) << "\n";
     // collect branches that use this xor
     llvm::SmallVector<llvm::BranchInst*, 2> brs_to_flip;
     for (auto &U : ncmp_xor->uses()) {
       if (auto br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser())) {
         brs_to_flip.emplace_back(br_inst);
+        DLOG(INFO) << "Will flip branch: " << remill::LLVMThingToString(br_inst) << "\n";
       }
     }
 
@@ -176,10 +179,13 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     for (auto BR : brs_to_flip) {
       BR->setCondition(var_op);
       BR->swapSuccessors();
+      // changed code globally
       changed = true;
+      // changed this specific xor
+      changed_this_xor = true;
     }
 
-    if (ncmp_xor->use_empty()) {
+    if (changed_this_xor && ncmp_xor->use_empty()) {
       // this xor is no longer used, remove it
       ncmp_xor->eraseFromParent();
     }
