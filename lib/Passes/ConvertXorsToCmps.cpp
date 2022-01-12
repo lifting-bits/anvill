@@ -163,16 +163,19 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     // We invert the branch, and get rid of the xor, if it is unused.
     auto [var_op, _] = getVariableOperands(ncmp_xor).value();
 
+    // collect branches that use this xor
+    llvm::SmallVector<llvm::BranchInst*, 2> brs_to_flip;
     for (auto &U : ncmp_xor->uses()) {
-      llvm::BranchInst *br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser());
-
-      if (!br_inst) {
-        continue;
+      if (auto br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser())) {
+        brs_to_flip.emplace_back(br_inst);
       }
+    }
 
-      // invert the condition and swap the branch.
-      br_inst->setCondition(var_op);
-      br_inst->swapSuccessors();
+    // invert the condition and swap the branch.
+    // then we can remove the xors
+    for (auto BR : brs_to_flip) {
+      BR->setCondition(var_op);
+      BR->swapSuccessors();
       changed = true;
     }
 
