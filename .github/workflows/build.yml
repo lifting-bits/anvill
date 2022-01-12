@@ -248,7 +248,7 @@ jobs:
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
-          scripts/build-preset.sh x64-dbg
+          scripts/build-preset.sh debug
 
       - name: Configure anvill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -302,7 +302,7 @@ jobs:
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
-          scripts/build-preset.sh x64-dbg
+          scripts/build-preset.sh debug
 
       - name: Install Binary Ninja
 
@@ -589,7 +589,7 @@ jobs:
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
-          scripts/build-preset.sh x64-dbg
+          scripts/build-preset.sh debug
 
       - name: Configure anvill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -643,7 +643,7 @@ jobs:
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
-          scripts/build-preset.sh x64-dbg
+          scripts/build-preset.sh debug
 
       - name: Run the tests not requiring Binary Ninja
 
