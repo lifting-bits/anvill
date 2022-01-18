@@ -6,9 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/ConvertXorsToCmps.h>
-
 #include <anvill/ABI.h>
+#include <anvill/Passes/ConvertXorsToCmps.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/IRBuilder.h>
@@ -16,13 +15,13 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Pass.h>
+#include <remill/BC/Util.h>
 
 #include <optional>
 #include <tuple>
 #include <vector>
 
 #include "Utils.h"
-#include <remill/BC/Util.h>
 
 namespace anvill {
 namespace {
@@ -58,32 +57,14 @@ getComparisonOperands(llvm::BinaryOperator *op) {
 
   // get the operands of this binaryop, and check that one is a constant int
   // and one is a variable
-  if(auto ops = getVariableOperands(op)) {
+  if (auto ops = getVariableOperands(op)) {
     auto [var_op, const_op] = ops.value();
     // check if the variable op is a ICmp, if yes, succeed
-    if( auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op) ) {
+    if (auto cmp = llvm::dyn_cast<llvm::ICmpInst>(var_op)) {
       return {{cmp, const_op}};
     }
 
     return std::nullopt;
-  }
-}
-
-static std::optional<std::tuple<llvm::Value *, llvm::ConstantInt *>>
-getVariableOperand(llvm::BinaryOperator *op) {
-
-  auto lhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(0));
-  auto lhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(0));
-
-  auto rhs_c = llvm::dyn_cast<llvm::ConstantInt>(op->getOperand(1));
-  auto rhs_val = llvm::dyn_cast<llvm::Value>(op->getOperand(1));
-
-  if (lhs_c && !rhs_c) {
-    return {{rhs_val, lhs_c}};
-  }
-
-  if (rhs_c && !lhs_c) {
-    return {{lhs_val, rhs_c}};
   }
 
   return std::nullopt;
@@ -102,7 +83,8 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
 
 
 llvm::PreservedAnalyses
-ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) {
+ConvertXorsToCmps::run(llvm::Function &func,
+                       llvm::FunctionAnalysisManager &AM) {
   std::vector<llvm::BinaryOperator *> xors;
   std::vector<llvm::BinaryOperator *> noncmp_xors;
 
@@ -127,8 +109,8 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
           }
           continue;
         }
-        
-        if(auto xor_ops = getVariableOperands(binop)) {
+
+        if (auto xor_ops = getVariableOperands(binop)) {
           auto [_, cnst_int] = xor_ops.value();
 
           // ensure that the constant int is 'true', or an i1 with the value 1
@@ -164,13 +146,15 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
     // We invert the branch, and get rid of the xor, if it is unused.
     auto [var_op, _] = getVariableOperands(ncmp_xor).value();
 
-    DLOG(INFO) << "Processing Xor: " << remill::LLVMThingToString(ncmp_xor) << "\n";
+    DLOG(INFO) << "Processing Xor: " << remill::LLVMThingToString(ncmp_xor)
+               << "\n";
     // collect branches that use this xor
-    llvm::SmallVector<llvm::BranchInst*, 2> brs_to_flip;
+    llvm::SmallVector<llvm::BranchInst *, 2> brs_to_flip;
     for (auto &U : ncmp_xor->uses()) {
       if (auto br_inst = llvm::dyn_cast<llvm::BranchInst>(U.getUser())) {
         brs_to_flip.emplace_back(br_inst);
-        DLOG(INFO) << "Will flip branch: " << remill::LLVMThingToString(br_inst) << "\n";
+        DLOG(INFO) << "Will flip branch: " << remill::LLVMThingToString(br_inst)
+                   << "\n";
       }
     }
 
@@ -189,7 +173,6 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
       // this xor is no longer used, remove it
       ncmp_xor->eraseFromParent();
     }
-
   }
 
   // Look for xors specifically used in a comparison, and invert the comparison
@@ -303,9 +286,9 @@ ConvertXorsToCmps::run(llvm::Function &func, llvm::FunctionAnalysisManager &AM) 
       // delte xor
       xori->eraseFromParent();
       changed = true;
-    } 
+    }
   }
-  
+
   return ConvertBoolToPreserved(changed);
 }
 
