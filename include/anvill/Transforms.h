@@ -399,4 +399,6 @@ void AddRemoveStackPointerCExprs(llvm::FunctionPassManager &fpm,
 void AddSpreadPCMetadata(llvm::FunctionPassManager &fpm,
                          const LifterOptions &options);
 
+
+void AddCombineAdjacentShifts(llvm::FunctionPassManager &fpm);
 }  // namespace anvill

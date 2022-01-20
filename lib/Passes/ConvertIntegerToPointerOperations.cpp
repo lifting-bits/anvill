@@ -20,78 +20,6 @@
 namespace anvill {
 namespace {
 
-// Identify `(ashr (shl V, A), B)` and try to convert to
-//
-//        V_short = trunc V to iA
-//        V_signed = sext V_short
-//        res = shl V_signed, A - B
-static bool FoldAshrSlh(llvm::Function &func) {
-  struct SignExtendMatch {
-    uint64_t shift_left;
-    uint64_t shift_right;
-    llvm::IntegerType *full_type;
-    llvm::Value *int_ptr;
-    llvm::Instruction *ashr;
-  };
-
-  auto &context = func.getContext();
-
-  std::vector<SignExtendMatch> matches;
-  for (auto &insn : llvm::instructions(func)) {
-    namespace pats = llvm::PatternMatch;
-
-    SignExtendMatch sem;
-    if (!pats::match(
-            &insn,
-            pats::m_AShr(pats::m_Shl(pats::m_Value(sem.int_ptr),
-                                     pats::m_ConstantInt(sem.shift_right)),
-                         pats::m_ConstantInt(sem.shift_left)))) {
-      continue;
-    }
-
-    sem.full_type = llvm::dyn_cast<llvm::IntegerType>(sem.int_ptr->getType());
-    if (!sem.full_type) {
-      continue;
-    }
-
-    // Make sure that we're a shift by half the size of the integer type. When
-    // the shift right is then smaller than the shl, it narrows us to looking
-    // at only the pattern of shifting a (narrower) signed value left, that
-    // happens to be stored in a wider value.
-    auto orig_size = sem.full_type->getIntegerBitWidth();
-    if (sem.shift_left > sem.shift_right &&
-        ((sem.shift_left * 2u) == orig_size)) {
-
-      sem.ashr = &insn;
-      matches.push_back(sem);
-    }
-  }
-
-  for (auto mat : matches) {
-    auto new_shl_amount = mat.shift_left - mat.shift_right;
-
-    auto half_type = llvm::IntegerType::get(
-        context, mat.shift_left);
-
-    auto trunc = new llvm::TruncInst(mat.int_ptr, half_type, "", mat.ashr);
-    auto sext = new llvm::SExtInst(trunc, mat.full_type, "", mat.ashr);
-    auto shl = llvm::BinaryOperator::Create(
-        llvm::BinaryOperator::BinaryOps::Shl,
-        sext,
-        llvm::ConstantInt::get(mat.full_type, new_shl_amount),
-        "",
-        mat.ashr);
-
-    anvill::CopyMetadataTo(mat.int_ptr, trunc);
-    anvill::CopyMetadataTo(mat.ashr, sext);
-    anvill::CopyMetadataTo(mat.ashr->getOperand(0u), shl);
-    mat.ashr->replaceAllUsesWith(shl);
-    mat.ashr->eraseFromParent();
-  }
-
-  return !matches.empty();
-}
-
 // Look for `(inttoptr (add B (shl I S)))` and convert it into:
 //
 //    B_ptr = intoptr B to X*
@@ -209,8 +137,8 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
 
     // We want to turn the result type of the load into a pointer, which means
     // the load is loading a pointer-to-pointer.
-    auto ptr_ptr_type = llvm::PointerType::get(
-        itp->getType(), load->getPointerAddressSpace());
+    auto ptr_ptr_type =
+        llvm::PointerType::get(itp->getType(), load->getPointerAddressSpace());
 
     // Drill down a bit further on the actual loaded operand.
     auto lo = load->getOperand(0)->stripPointerCasts();
@@ -230,7 +158,7 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
       if (llvm::isa<llvm::IntegerType>(lo_type)) {
         new_base = new llvm::IntToPtrInst(lo, ptr_ptr_type, "", load);
 
-      // It was a load of a pointer.
+        // It was a load of a pointer.
       } else if (llvm::isa<llvm::PointerType>(lo_type)) {
         new_base = new llvm::BitCastInst(lo, ptr_ptr_type, "", load);
       }
@@ -246,13 +174,13 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
       itp->replaceAllUsesWith(new_load);
       itp->eraseFromParent();
 
-    // Already found and types match, use the previously created new version.
+      // Already found and types match, use the previously created new version.
     } else if (new_load->getType() == itp->getType()) {
       itp->dropAllReferences();
       itp->replaceAllUsesWith(new_load);
       itp->eraseFromParent();
 
-    // Types don't match, make a bitcast.
+      // Types don't match, make a bitcast.
     } else {
       auto bc = new llvm::BitCastInst(new_load, itp->getType(), "", itp);
       anvill::CopyMetadataTo(itp, bc);
@@ -270,8 +198,8 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
   // a pointer) to an integer.
   for (auto [old_load, new_load] : new_loads) {
     if (!old_load->use_empty()) {
-      auto new_pti = new llvm::PtrToIntInst(new_load, old_load->getType(),
-                                            "", old_load);
+      auto new_pti =
+          new llvm::PtrToIntInst(new_load, old_load->getType(), "", old_load);
       old_load->replaceAllUsesWith(new_pti);
       anvill::CopyMetadataTo(old_load, new_load);
     }
@@ -322,8 +250,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
       continue;
     }
 
-    match.add = llvm::dyn_cast<llvm::BinaryOperator>(
-        match.itp->getOperand(0u));
+    match.add = llvm::dyn_cast<llvm::BinaryOperator>(match.itp->getOperand(0u));
 
     if (!match.add) {
       continue;
@@ -342,17 +269,19 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     auto ci_type = rhs->getType();
     switch (ci_type->getIntegerBitWidth()) {
-      case 8: case 16: case 32: case 64: break;
+      case 8:
+      case 16:
+      case 32:
+      case 64: break;
       default: continue;
     }
 
     // Normalize subtracts into additions, because `getelementptr` supports
     // negative indices.
     if (is_sub) {
-      rhs = llvm::ConstantInt::get(
-          ci_type,
-          static_cast<uint64_t>(-rhs->getSExtValue()),
-          true  /* is signed */);
+      rhs = llvm::ConstantInt::get(ci_type,
+                                   static_cast<uint64_t>(-rhs->getSExtValue()),
+                                   true /* is signed */);
     }
 
     int64_t positive_ci = 0;
@@ -375,8 +304,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     // Compute the new index to fill into the `getelementptr`.
     match.index = llvm::ConstantInt::get(
-        ci_type, static_cast<uint64_t>(positive_ci * sign_multiple),
-        is_signed);
+        ci_type, static_cast<uint64_t>(positive_ci * sign_multiple), is_signed);
 
     matches.emplace_back(std::move(match));
   }
@@ -444,9 +372,6 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &fam) {
 
   auto changed = false;
-  if (FoldAshrSlh(func)) {
-    changed = true;
-  }
 
   if (FoldBasePlusScaledIndex(func)) {
     changed = true;
