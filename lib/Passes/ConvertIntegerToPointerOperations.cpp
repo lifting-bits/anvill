@@ -9,6 +9,7 @@
 #include <anvill/Passes/ConvertIntegerToPointerOperations.h>
 #include <anvill/Transforms.h>
 #include <llvm/IR/PatternMatch.h>
+#include <llvm/IR/Verifier.h>
 
 #include <algorithm>
 #include <cassert>
@@ -318,11 +319,8 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
     // Figure out a reasonable insertion point.
     //
     // NOTE(pag): Every block contains a terminator.
-    auto lhs_inst = llvm::dyn_cast<llvm::Instruction>(lhs);
-    auto ipoint = func.getEntryBlock().getFirstInsertionPt()->getNextNode();
-    if (lhs_inst) {
-      ipoint = lhs_inst->getNextNode();
-    }
+    // NOTE(ian): We insert infront of the ptr cast so that the operand dominates us and we dont insert in the middle of phis.
+    llvm::Instruction *ipoint = itp;
 
     llvm::Value *lhs_ptr = nullptr;
     if (llvm::isa<llvm::PointerType>(lhs_type)) {
@@ -372,7 +370,6 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &fam) {
 
   auto changed = false;
-
   if (FoldBasePlusScaledIndex(func)) {
     changed = true;
   }
