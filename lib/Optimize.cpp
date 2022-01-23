@@ -54,10 +54,10 @@
 
 #include <anvill/ABI.h>
 #include <anvill/CrossReferenceResolver.h>
+#include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
-#include <anvill/Declarations.h>
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
 #include <remill/BC/ABI.h>
@@ -88,11 +88,12 @@ namespace anvill {
 class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
   llvm::VerifierPass pass;
   const unsigned line;
- public:
-  inline explicit OurVerifierPass(unsigned line_)
-      : line(line_) {}
 
-  llvm::PreservedAnalyses run(llvm::Function &F, llvm::AnalysisManager<llvm::Function> &AM) {
+ public:
+  inline explicit OurVerifierPass(unsigned line_) : line(line_) {}
+
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::AnalysisManager<llvm::Function> &AM) {
     LOG(ERROR) << "Verifier at " << line;
     return pass.run(F, AM);
   }
@@ -102,8 +103,7 @@ class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
 // code, etc.
 // When utilizing crossRegisterProxies cleanup triggers asan
 
-void OptimizeModule(const EntityLifter &lifter,
-                    llvm::Module &module) {
+void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   const LifterOptions &options = lifter.Options();
   const MemoryProvider &mp = lifter.MemoryProvider();
@@ -141,7 +141,7 @@ void OptimizeModule(const EntityLifter &lifter,
   llvm::ModuleAnalysisManager mam(false);
   llvm::LoopAnalysisManager lam(false);
   llvm::CGSCCAnalysisManager cam(false);
-//  llvm::InlineParams params;
+  //  llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam(false);
 
   pb.registerFunctionAnalyses(fam);
@@ -152,9 +152,9 @@ void OptimizeModule(const EntityLifter &lifter,
   fam.registerPass([&] { return BranchAnalysis(); });
   fam.registerPass([&] { return JumpTableAnalysis(lifter); });
 
-//  params.DefaultThreshold = 250;
-//  auto inliner = llvm::ModuleInlinerWrapperPass(params);
-//  mpm.addPass(std::move(inliner));
+  //  params.DefaultThreshold = 250;
+  //  auto inliner = llvm::ModuleInlinerWrapperPass(params);
+  //  mpm.addPass(std::move(inliner));
 
   mpm.addPass(llvm::GlobalOptPass());
   mpm.addPass(llvm::GlobalDCEPass());
@@ -166,7 +166,7 @@ void OptimizeModule(const EntityLifter &lifter,
   fpm.addPass(llvm::SinkingPass());
 
   // NewGVN has bugs with `____strtold_l_internal` from chal5, amd64.
-//  fpm.addPass(llvm::NewGVNPass());
+  //  fpm.addPass(llvm::NewGVNPass());
 
   fpm.addPass(llvm::SCCPPass());
   fpm.addPass(llvm::DSEPass());
@@ -210,7 +210,10 @@ void OptimizeModule(const EntityLifter &lifter,
   AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROA());
-  
+
+
+  AddCombineAdjacentShifts(fpm);
+
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
   // makes code easier to read and analyze. This is a fairly narrow optimization
@@ -239,7 +242,6 @@ void OptimizeModule(const EntityLifter &lifter,
   second_fpm.addPass(CodeQualityStatCollector());
   AddConvertXorsToCmps(second_fpm);
   second_fpm.addPass(llvm::DCEPass());
-
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));

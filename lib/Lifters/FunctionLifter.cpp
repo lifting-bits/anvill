@@ -1164,7 +1164,6 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     // a call-site specific declaration, and if so, use it, otherwise, use
     // the destination function type.
     if (inst_func) {
-      LOG(INFO) << "Started from: " << std::hex << address << "Lifting call from " << std::hex << from_addr << " to: " << inst_func->address;
       std::optional<CallableDecl> maybe_decl;
       if (from_addr) {
         maybe_decl = TryGetTargetFunctionType(inst, inst_addr, redir_addr);
@@ -1175,12 +1174,6 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       }
 
       llvm::IRBuilder<> ir(block);
-      LOG(INFO) << "Calling function with type" << remill::LLVMThingToString(maybe_decl->type);
-
-      if (maybe_decl->returns.size() == 1) {
-        LOG(INFO) << remill::LLVMThingToString(maybe_decl->returns[0].type);
-      }
-
       auto new_mem_ptr = CallCallableDecl(
           block,
           options.program_counter_init_procedure(ir, pc_reg, redir_addr),

@@ -16,6 +16,8 @@ STATISTIC(
     "A factor that approximates the complexity of the condition in branch instructions");
 STATISTIC(NumberOfInstructions, "Total number of instructions");
 STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
+STATISTIC(IntToPointerCasts, "Integer to pointer casts");
+STATISTIC(PointerToIntCasts, "Pointer to integer casts");
 
 
 namespace {
@@ -59,6 +61,15 @@ CodeQualityStatCollector::run(llvm::Function &function,
                               llvm::FunctionAnalysisManager &analysisManager) {
   ConditionalComplexityVisitor complexity_visitor;
   for (auto &i : llvm::instructions(function)) {
+    if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
+      IntToPointerCasts++;
+    }
+
+    if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
+      PointerToIntCasts++;
+    }
+
+
     NumberOfInstructions++;
     if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
       if (branch->isConditional()) {

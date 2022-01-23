@@ -53,6 +53,7 @@ set(anvill_passes
   SplitStackFrameAtReturnAddress
   SpreadPCMetadata
   TransformRemillJumpIntrinsics
+  CombineAdjacentShifts
 )
 
 set(anvill_arch_HEADERS
