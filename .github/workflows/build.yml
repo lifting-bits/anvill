@@ -81,11 +81,13 @@ jobs:
           rel_install_path="install"
           rel_downloads_path="downloads"
           rel_ccache_path="ccache"
+          rel_workspace_path="workspace"
 
           mkdir -p ${rel_build_path} \
                    ${rel_install_path} \
                    ${rel_downloads_path} \
-                   ${rel_ccache_path}
+                   ${rel_ccache_path} \
+                   ${rel_workspace_path}
 
           echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
           echo ::set-output name=REL_SOURCE::${rel_source_path}
@@ -94,6 +96,7 @@ jobs:
           echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
           echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
           echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
+          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v2
@@ -236,6 +239,17 @@ jobs:
 
           echo ::set-output name=PATH::${DESTDIR}
 
+      - name: Build, configure and install remill (Presets)
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/remill
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
+
+        run: |
+          scripts/build-preset.sh debug
+
       - name: Configure anvill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
 
@@ -278,6 +292,17 @@ jobs:
                 --target install
 
           echo ::set-output name=PATH::${DESTDIR}
+
+      - name: Build, configure and install anvill (Presets)
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
+
+        run: |
+          scripts/build-preset.sh debug
 
       - name: Install Binary Ninja
 
@@ -403,11 +428,13 @@ jobs:
           rel_install_path="install"
           rel_downloads_path="downloads"
           rel_ccache_path="ccache"
+          rel_workspace_path="workspace"
 
           mkdir -p ${rel_build_path} \
                    ${rel_install_path} \
                    ${rel_downloads_path} \
-                   ${rel_ccache_path}
+                   ${rel_ccache_path} \
+                   ${rel_workspace_path}
 
           echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
           echo ::set-output name=REL_SOURCE::${rel_source_path}
@@ -416,6 +443,7 @@ jobs:
           echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
           echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
           echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
+          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v2
@@ -552,6 +580,17 @@ jobs:
 
           echo ::set-output name=PATH::${DESTDIR}
 
+      - name: Build, configure and install remill (Presets)
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/remill
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
+
+        run: |
+          scripts/build-preset.sh debug
+
       - name: Configure anvill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
 
@@ -594,6 +633,17 @@ jobs:
                 --target install
 
           echo ::set-output name=PATH::${DESTDIR}
+
+      - name: Build, configure and install anvill (Presets)
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
+
+        env:
+          CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
+          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
+
+        run: |
+          scripts/build-preset.sh debug
 
       - name: Run the tests not requiring Binary Ninja
 

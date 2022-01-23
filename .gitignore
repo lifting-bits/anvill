@@ -53,3 +53,7 @@ ci/BinaryNinja-headless.zip
 
 # Ignore z3 run info
 .z3-trace
+
+#build logs
+anvill-build.log
+anvill-configure.log
