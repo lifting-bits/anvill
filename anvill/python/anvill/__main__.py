@@ -51,6 +51,9 @@ def main():
         type=str,
         help="Where the image should be loaded, expressed as an hex integer.")
 
+
+    arg_parser.add_argument("--entrypoint", type=str, help="only specify functions from entrypoint")
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -76,7 +79,29 @@ def main():
 
     bv = cast(bn.BinaryView, p.bv)
 
-    for f in bv.functions:
+    flist = bv.functions
+
+
+
+    if args.entrypoint:
+        epoint = int(args.entrypoint, 16)
+        newflsit = set()
+        bv.add_function(epoint)
+        func = next(filter(lambda f: f.start == epoint,bv.functions))
+        worklist = [func]
+        while worklist:
+            curr = worklist.pop()
+            if curr in worklist:
+                continue
+
+            newflsit.add(curr)
+             
+            for f in curr.callees:
+                if f not in newflsit:
+                    worklist.append(f)
+        flist = newflsit
+
+    for f in flist:
         ea: int = f.start
         DEBUG(f"Found function at: {ea:x}")
         try:

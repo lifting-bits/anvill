@@ -324,7 +324,6 @@ class TypeCache:
 
         assert tinfo_.type_class == bn.TypeClass.IntegerTypeClass
         tinfo = cast(bn.types.IntegerType, tinfo_)
-
         # long double ty may get represented as int80_t. If the size
         # of the IntegerTypeClass is [10, 12], create a float type
         # int32_t (int32_t arg1, int80_t arg2 @ st0)
