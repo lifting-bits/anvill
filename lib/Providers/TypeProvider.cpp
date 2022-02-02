@@ -9,14 +9,15 @@
 #include <anvill/Declarations.h>
 #include <anvill/Providers.h>
 #include <glog/logging.h>
-#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
 #include <remill/Arch/Instruction.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
+
 #include <type_traits>
 
 #include "Specification.h"
@@ -129,8 +130,8 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
 }
 
 std::optional<anvill::VariableDecl>
-SpecificationTypeProvider::TryGetVariableType(
-    uint64_t address, llvm::Type *) const {
+SpecificationTypeProvider::TryGetVariableType(uint64_t address,
+                                              llvm::Type *) const {
   auto var_it = impl->address_to_var.find(address);
   if (var_it != impl->address_to_var.end()) {
     return *(var_it->second);
@@ -147,6 +148,13 @@ DefaultCallableTypeProvider::TryGetCalledFunctionType(
       ProxyTypeProvider::TryGetCalledFunctionType(function_address, from_inst);
   if (maybe_res.has_value()) {
     return maybe_res;
+  }
+
+
+  auto maybe_func_type =
+      ProxyTypeProvider::TryGetFunctionType(function_address);
+  if (maybe_func_type.has_value()) {
+    return maybe_func_type;
   }
 
   if (auto arch_decl = impl->TryGetDeclForArch(from_inst.arch_name)) {
@@ -188,11 +196,11 @@ DefaultCallableTypeProvider::~DefaultCallableTypeProvider(void) {}
 DefaultCallableTypeProvider::DefaultCallableTypeProvider(
     remill::ArchName default_arch, const TypeProvider &deleg)
     : ProxyTypeProvider(deleg),
-      impl(new DefaultCallableTypeProviderImpl(default_arch)){}
+      impl(new DefaultCallableTypeProviderImpl(default_arch)) {}
 
 // Set `decl` to the default callable type for `arch`.
-void DefaultCallableTypeProvider::SetDefault(
-    remill::ArchName arch, CallableDecl decl) {
+void DefaultCallableTypeProvider::SetDefault(remill::ArchName arch,
+                                             CallableDecl decl) {
   impl->decls[arch] = std::move(decl);
 }
 
@@ -221,8 +229,8 @@ std::optional<CallableDecl> ProxyTypeProvider::TryGetCalledFunctionType(
 
 // Try to return the variable at given address or containing the address
 std::optional<VariableDecl>
-ProxyTypeProvider::TryGetVariableType(
-    uint64_t address, llvm::Type *hinted_value_type) const {
+ProxyTypeProvider::TryGetVariableType(uint64_t address,
+                                      llvm::Type *hinted_value_type) const {
   return this->deleg.TryGetVariableType(address, hinted_value_type);
 }
 
