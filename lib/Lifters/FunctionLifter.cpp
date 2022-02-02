@@ -1150,12 +1150,14 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         options.control_flow_provider.GetRedirection(inst, inst_addr);
 
     std::optional<FunctionDecl> inst_func;
-    if (redir_addr != func_address) {
-      inst_func = options.type_provider.TryGetFunctionType(redir_addr);
+    if (redir_addr != inst_addr) {
+      if (redir_addr != func_address) {
+        inst_func = options.type_provider.TryGetFunctionType(redir_addr);
 
-    // It looks like a self tail-call.
-    } else if (from_addr) {
-      inst_func = *curr_decl;
+      // It looks like a self tail-call.
+      } else if (from_addr) {
+        inst_func = *curr_decl;
+      }
     }
 
     pc_annotation = GetPCAnnotation(inst_addr);
