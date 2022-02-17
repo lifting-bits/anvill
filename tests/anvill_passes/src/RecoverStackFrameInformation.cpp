@@ -151,12 +151,14 @@ TEST_SUITE("RecoverBasicStackFrame") {
       }
 
       WHEN("creating a new stack frame with no padding bytes") {
-        auto stack_frame_analysis =AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
-        
+        auto stack_frame_analysis = AnalyzeStackFrame(
+            function, lift_options.stack_frame_recovery_options);
+        auto stack_frame_word_type = lift_options.arch->AddressType();
         auto stack_frame_type = GenerateStackFrameType(
-                function, lift_options.stack_frame_recovery_options, stack_frame_analysis, 0);
+                function, lift_options.stack_frame_recovery_options,
+                stack_frame_analysis, 0, stack_frame_word_type);
 
-        THEN("a StructType containing a byte array is returned") {
+        THEN("a StructType containing a word array is returned") {
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
@@ -172,27 +174,30 @@ TEST_SUITE("RecoverBasicStackFrame") {
               llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
           REQUIRE(byte_array_type != nullptr);
 
-          auto byte_array_size = byte_array_type->getNumElements();
-          std::cout << byte_array_size << std::endl;
+          CHECK(stack_frame_analysis.size == 44u);
+
+          auto word_array_size = byte_array_type->getNumElements();
+          std::cout << word_array_size << std::endl;
           // type is always address size
-          CHECK(byte_array_size == 11U);
+          CHECK(word_array_size == (48u / (lift_options.arch->address_size / 8)));
 
           auto module = function.getParent();
           auto data_layout = module->getDataLayout();
           auto frame_type_size = data_layout.getTypeAllocSize(stack_frame_type);
-          CHECK(frame_type_size == 44U);
+          CHECK(frame_type_size == 48U);
         }
       }
 
       WHEN("creating a new stack frame with additional padding bytes") {
-        auto stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
-
-      
+        auto stack_frame_analysis = AnalyzeStackFrame(
+            function, lift_options.stack_frame_recovery_options);
+        auto stack_frame_word_type = lift_options.arch->AddressType();
         auto stack_frame_type = GenerateStackFrameType(
-                function, lift_options.stack_frame_recovery_options, stack_frame_analysis, 128U);
+            function, lift_options.stack_frame_recovery_options,
+            stack_frame_analysis, 128U, stack_frame_word_type);
 
         THEN(
-            "a StructType containing a byte array along with the padding is returned") {
+            "a StructType containing a word array along with the padding is returned") {
           REQUIRE(stack_frame_type->getNumElements() == 1U);
 
           auto function_name = function.getName().str();
@@ -208,13 +213,15 @@ TEST_SUITE("RecoverBasicStackFrame") {
               llvm::dyn_cast<llvm::ArrayType>(first_elem_type);
           REQUIRE(byte_array_type != nullptr);
 
-          auto byte_array_size = byte_array_type->getNumElements();
-          CHECK(byte_array_size == 43);
+          CHECK(stack_frame_analysis.size == 44u);
+
+          auto word_array_size = byte_array_type->getNumElements();
+          CHECK(word_array_size == (176u / (lift_options.arch->address_size / 8)));
 
           auto module = function.getParent();
           auto data_layout = module->getDataLayout();
           auto frame_type_size = data_layout.getTypeAllocSize(stack_frame_type);
-          CHECK(frame_type_size == 172U);
+          CHECK(frame_type_size == 176U);
         }
       }
     }

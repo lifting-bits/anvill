@@ -123,7 +123,7 @@ static void PerformInstructionReplacements(
 static bool
 CollectAndValidateGEPIndexes(std::vector<llvm::Value *> &index_list,
                              llvm::Instruction *phi_or_select_instr,
-                             llvm::Instruction *gep_instr) {
+                             llvm::GetElementPtrInst *instr) {
   index_list.clear();
 
   // Acquire all the indices and verify them:
@@ -132,7 +132,6 @@ CollectAndValidateGEPIndexes(std::vector<llvm::Value *> &index_list,
   //    basic block as the GEP (otherwise we won't have them when
   //    we move the GetElementPtrInst inside the incoming basic block)
   // 2. All the indices that are following the PHI/Select use must be constants
-  auto instr = llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr);
   bool phi_or_select_index_found{false};
 
   for (auto &index_use : instr->indices()) {
@@ -152,7 +151,7 @@ CollectAndValidateGEPIndexes(std::vector<llvm::Value *> &index_list,
       // We have not met the PHI/Select index yet, make sure that this
       // index is still reachable if we move the GEP
       if (index_as_instr != nullptr &&
-          index_as_instr->getParent() == gep_instr->getParent()) {
+          index_as_instr->getParent() == instr->getParent()) {
         return false;
       }
 
@@ -302,7 +301,10 @@ static bool FoldSelectWithCastInst(
 static bool FoldSelectWithGEPInst(
     llvm::Instruction *&output, llvm::Instruction *select_instr,
     llvm::Value *condition, llvm::Value *true_value, llvm::Value *false_value,
-    llvm::Instruction *gep_instr) {
+    llvm::Instruction *gep_instr_) {
+
+  llvm::GetElementPtrInst *gep_instr =
+      llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr_);
 
   std::vector<llvm::Value *> index_list;
   if (!CollectAndValidateGEPIndexes(index_list, select_instr, gep_instr)) {
@@ -316,10 +318,12 @@ static bool FoldSelectWithGEPInst(
   for (auto &index : index_list) {
     if (index == select_instr) {
       index = true_value;
-      new_true_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      new_true_value = builder.CreateGEP(gep_instr->getSourceElementType(),
+                                         gep_instr->getOperand(0), index_list);
       CopyMetadataTo(gep_instr, new_true_value);
       index = false_value;
-      new_false_value = builder.CreateGEP(gep_instr->getOperand(0), index_list);
+      new_false_value = builder.CreateGEP(gep_instr->getSourceElementType(),
+                                          gep_instr->getOperand(0), index_list);
       CopyMetadataTo(gep_instr, new_false_value);
       break;
     }
@@ -650,7 +654,10 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithCastInst(
 
 bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
     llvm::Instruction *&output, llvm::PHINode *phi_node,
-    IncomingValueList &incoming_values, llvm::Instruction *gep_instr) {
+    IncomingValueList &incoming_values, llvm::Instruction *gep_instr_) {
+
+  llvm::GetElementPtrInst *gep_instr =
+      llvm::dyn_cast<llvm::GetElementPtrInst>(gep_instr_);
 
   std::vector<llvm::Value *> index_list;
   if (!CollectAndValidateGEPIndexes(index_list, phi_node, gep_instr)) {
@@ -764,6 +771,7 @@ bool HoistUsersOfSelectsAndPhis::PassFunctionState::FoldPHINodeWithGEPInst(
     IncomingValue new_incoming_value;
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_value.value = builder.CreateGEP(
+        gep_instr->getSourceElementType(),
         value_map[base_ptr][incoming_value.basic_block], mapped_index_list);
     CopyMetadataTo(gep_instr, new_incoming_value.value);
 

@@ -7,12 +7,12 @@ export BINJA_DECODE_KEY=__BINJA_DECODE_KEY__
 export BINJA_CHANNEL=__BINJA_CHANNEL__
 export BINJA_VERSION=__BINJA_VERSION__
 
-export LLVM_VERSION=12
-export CC=clang-12 CXX=clang++-12
+export LLVM_VERSION=13
+export CC=clang-13 CXX=clang++-13
 
 dpkg --add-architecture i386
 apt-get update
-apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-12 g++-multilib unzip
+apt-get install -yqq s3cmd pixz curl git python3 python3-venv python3-pip xz-utils cmake ninja-build clang-13 g++-multilib unzip
 apt-get install -yqq libc6-dev:i386 libstdc++-*-dev:i386
 python3 -m pip install requests
 

@@ -26,7 +26,7 @@ endif()
 execute_process(
   COMMAND
     "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_LIST_DIR}/../../setup.py"
+    "${CMAKE_CURRENT_LIST_DIR}/../setup.py"
     install
     ${purelib_arg}
     ${prefix_arg}

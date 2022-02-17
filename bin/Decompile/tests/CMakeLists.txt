@@ -10,7 +10,7 @@ if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   message(STATUS "anvill: Enabling tests that require Binary Ninja")
 
   add_test(NAME anvill_test_roundtrip
-    COMMAND "/usr/bin/env" "PYTHONPATH=${PROJECT_SOURCE_DIR}/anvill/python:$ENV{PYTHONPATH}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/roundtrip.py" "$<TARGET_FILE:anvill-decompile-json>" "${CMAKE_CURRENT_SOURCE_DIR}/cases" "${CMAKE_C_COMPILER}"
+    COMMAND "/usr/bin/env" "PYTHONPATH=${PROJECT_SOURCE_DIR}/python:$ENV{PYTHONPATH}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/roundtrip.py" "$<TARGET_FILE:anvill-decompile-json>" "${CMAKE_CURRENT_SOURCE_DIR}/cases" "${CMAKE_C_COMPILER}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   )
 
