@@ -8,7 +8,7 @@
 
 if(ANVILL_ENABLE_INSTALL AND NOT ANVILL_INSTALL_PYTHON3_LIBS)
   install(
-    FILES "${PROJECT_SOURCE_DIR}/anvill/plugins/ida/anvill.py"
+    FILES "${PROJECT_SOURCE_DIR}/plugins/ida/anvill.py"
     DESTINATION "share/anvill/ida"
   )
 

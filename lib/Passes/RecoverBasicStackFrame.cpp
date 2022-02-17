@@ -18,13 +18,13 @@
 #include <cassert>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <vector>
 
 #include "Utils.h"
 
 namespace anvill {
 namespace {
-
 
 // Describes an instruction that accesses the stack pointer through the
 // `__anvill_sp` symbol.
@@ -172,7 +172,11 @@ static StackFrameAnalysis AnalyzeStackFrame(
 // function
 static llvm::StructType *GenerateStackFrameType(
     const llvm::Function &function, const StackFrameRecoveryOptions &options,
-    const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes) {
+    const StackFrameAnalysis &stack_frame_analysis, std::size_t padding_bytes,
+    llvm::IntegerType *el_type) {
+
+  const auto element_size = static_cast<unsigned>(
+      el_type->getPrimitiveSizeInBits().getFixedSize() / 8u);
 
   // Generate a stack frame type with a name that matches the anvill ABI
   auto function_name = function.getName().str();
@@ -197,10 +201,10 @@ static llvm::StructType *GenerateStackFrameType(
 
   // Round the stack frame to a multiple of the address size.
   auto address_size = dl.getPointerSize(0);
-
-  const auto num_slots = (stack_frame_size + (address_size - 1u)) /
-                         address_size;
-  stack_frame_size = num_slots * address_size;
+  const unsigned slot_size = std::lcm(address_size, element_size);
+  const auto num_slots = (stack_frame_size + (slot_size - 1u)) /
+                         slot_size;
+  stack_frame_size = num_slots * slot_size;
 
   if (stack_frame_type != nullptr) {
     assert(dl.getTypeAllocSize(stack_frame_type).getKnownMinSize() <=
@@ -209,8 +213,7 @@ static llvm::StructType *GenerateStackFrameType(
   }
 
   // Generate the stack frame using an array of address-sized elements.
-  auto addr_type = llvm::Type::getIntNTy(context, address_size * 8u);
-  auto arr_type = llvm::ArrayType::get(addr_type, num_slots);
+  auto arr_type = llvm::ArrayType::get(el_type, num_slots);
 
   llvm::Type *stack_frame_types[] = {arr_type};
   return llvm::StructType::create(stack_frame_types, stack_frame_type_name);
@@ -241,7 +244,7 @@ static llvm::GlobalVariable *GetStackSymbolicByteValue(
 
   auto gv = module.getGlobalVariable(value_name);
   if (gv) {
-    assert(gv->getValueType() == type);
+    CHECK_EQ(gv->getValueType(), type);
     return gv;
   } else {
     return new llvm::GlobalVariable(
@@ -265,18 +268,24 @@ static void UpdateFunction(
   std::size_t stack_frame_higher_padding =
       options.stack_frame_higher_padding;
 
-  // Generate a new stack frame type, using a byte array inside a
-  // StructType
-  auto padding_bytes = stack_frame_lower_padding + stack_frame_higher_padding;
-
-  auto stack_frame_type = GenerateStackFrameType(
-      function, options, stack_frame_analysis, padding_bytes);
-
   auto &context = function.getContext();
   auto module = function.getParent();
   const auto &dl = module->getDataLayout();
   auto address_size = dl.getPointerSize(0);
   auto addr_type = llvm::Type::getIntNTy(context, address_size * 8u);
+
+  // Generate a new stack frame type, using a byte array inside a
+  // StructType
+  auto padding_bytes = stack_frame_lower_padding + stack_frame_higher_padding;
+  unsigned stack_frame_word_size = options.stack_frame_word_size;
+  if (!stack_frame_word_size) {
+    stack_frame_word_size = address_size;
+  }
+  llvm::IntegerType * const stack_frame_word_type = llvm::IntegerType::get(
+      context, stack_frame_word_size * 8u);
+  auto stack_frame_type = GenerateStackFrameType(
+      function, options, stack_frame_analysis, padding_bytes,
+      stack_frame_word_type);
 
   int64_t base_stack_offset;
   if (options.stack_grows_down) {
@@ -309,14 +318,14 @@ static void UpdateFunction(
     if (options.stack_grows_down) {
       base = stack_frame_analysis.highest_offset;
       base += static_cast<int64_t>(options.stack_frame_higher_padding);
-      base -= static_cast<int64_t>(address_size);
+      base -= static_cast<int64_t>(stack_frame_word_size);
 
     // If the stack grows up, the lower offsets represent accesses to the
     // callee's stack frame. These will be negative.
     } else {
       base = stack_frame_analysis.lowest_offset;
       base -= static_cast<int64_t>(options.stack_frame_lower_padding);
-      base += static_cast<int64_t>(address_size);
+      base += static_cast<int64_t>(stack_frame_word_size);
     }
 
     // NOTE(pag): Base points to the highest or lowest address-sized integer
@@ -387,17 +396,24 @@ static void UpdateFunction(
       llvm::Value *gep_indexes[] = {builder.getInt32(0), builder.getInt32(0),
                                     nullptr};
 
-      for (auto i = 0U; i < total_stack_frame_size; i += address_size) {
-        gep_indexes[2] = builder.getInt32(i / address_size);
+      for (auto i = 0U; i < total_stack_frame_size;
+           i += stack_frame_word_size) {
+
+        gep_indexes[2] = builder.getInt32(i / stack_frame_word_size);
+        DCHECK_EQ(stack_frame_word_type,
+                  llvm::GetElementPtrInst::getIndexedType(stack_frame_type,
+                                                          gep_indexes));
         auto stack_frame_byte =
-            builder.CreateGEP(stack_frame_alloca, gep_indexes);
+            builder.CreateGEP(stack_frame_type, stack_frame_alloca,
+                              gep_indexes);
 
         auto symbolic_value_ptr = GetStackSymbolicByteValue(
-            module, options, current_offset, addr_type);
+            module, options, current_offset, stack_frame_word_type);
 
-        current_offset += static_cast<int>(address_size);
+        current_offset += static_cast<int>(stack_frame_word_size);
 
-        auto symbolic_value = builder.CreateLoad(symbolic_value_ptr);
+        auto symbolic_value = builder.CreateLoad(stack_frame_word_type,
+                                                 symbolic_value_ptr);
         builder.CreateStore(symbolic_value, stack_frame_byte);
       }
 
@@ -436,49 +452,51 @@ static void UpdateFunction(
     // As a reminder, the stack frame type is a StructType that contains
     // an ArrayType with int8 elements
     llvm::Value *stack_frame_ptr = builder.CreateGEP(
-        stack_frame_alloca,
+        stack_frame_type, stack_frame_alloca,
         {builder.getInt32(0), builder.getInt32(0),
-         builder.getInt32(zero_based_offset / address_size)});
+         builder.getInt32(zero_based_offset / stack_frame_word_size)});
 
     auto from_val = sp_use.use->get();
     CopyMetadataTo(from_val, stack_frame_ptr);
 
-    llvm::PointerType *ptr_type = nullptr;
+    llvm::IntegerType *el_type = nullptr;
     unsigned scale = 0;
-    auto missing = static_cast<uint64_t>(zero_based_offset) % address_size;
+    auto missing = static_cast<uint64_t>(zero_based_offset) %
+                   stack_frame_word_size;
     switch (missing) {
       case 7:
       case 5:
       case 3:
       case 1:
-        ptr_type = llvm::Type::getInt8PtrTy(context, 0);
+        el_type = llvm::Type::getInt8Ty(context);
         scale = 1;
         break;
 
       case 4:
-        ptr_type = llvm::Type::getInt32PtrTy(context, 0);
+        el_type = llvm::Type::getInt32Ty(context);
         scale = 4;
         break;
 
       case 6:
       case 2:
-        ptr_type = llvm::Type::getInt16PtrTy(context, 0);
+        el_type = llvm::Type::getInt16Ty(context);
         scale = 2;
         break;
       case 0:
         break;
       default:
         LOG(FATAL)
-            << "Unsupported address size: " << address_size;
+            << "Unsupported address size: " << missing;
         break;
     }
 
-    if (ptr_type) {
+    if (el_type) {
+      llvm::PointerType *ptr_type = llvm::PointerType::get(el_type, 0);
       stack_frame_ptr = builder.CreateBitOrPointerCast(
           stack_frame_ptr, ptr_type);
       CopyMetadataTo(from_val, stack_frame_ptr);
       stack_frame_ptr = builder.CreateGEP(
-          stack_frame_ptr, builder.getInt32(missing / scale));
+          el_type, stack_frame_ptr, builder.getInt32(missing / scale));
       CopyMetadataTo(from_val, stack_frame_ptr);
     }
 

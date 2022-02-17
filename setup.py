@@ -12,7 +12,7 @@ import setuptools
 import sys
 import os
 
-os.chdir(os.path.join(os.path.dirname(__file__), "anvill", "python"))
+os.chdir(os.path.join(os.path.dirname(__file__), "python"))
 
 setuptools.setup(
     name="anvill",

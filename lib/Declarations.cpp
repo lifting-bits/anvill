@@ -120,7 +120,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   ir.SetInsertPoint(block);
 
   const auto sp_val_on_exit = ir.CreateAdd(
-      ir.CreateLoad(new_sp_base),
+      ir.CreateLoad(return_stack_pointer->type, new_sp_base),
       llvm::ConstantInt::get(return_stack_pointer->type,
                              static_cast<uint64_t>(return_stack_pointer_offset),
                              true));

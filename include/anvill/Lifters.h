@@ -123,6 +123,10 @@ class StackFrameRecoveryOptions {
   // What is the maximum stack frame size to consider?
   std::uint64_t max_stack_frame_size{8192u};
 
+  // Size in bytes of stack frame "words". If zero then it is interpreted as
+  // being the size of a pointer (in bytes).
+  unsigned stack_frame_word_size{0u};
+
   // The name to use for the metadata on pointers to describe the offset from
   // the stack pointer of a given pointer value.
   const char *stack_offset_metadata_name{nullptr};

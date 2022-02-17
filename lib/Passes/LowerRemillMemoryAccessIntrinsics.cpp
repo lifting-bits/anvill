@@ -27,7 +27,7 @@ static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   llvm::IRBuilder<> ir(call_inst);
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
   CopyMetadataTo(call_inst, ptr);
-  llvm::Value *val = ir.CreateLoad(ptr);
+  llvm::Value *val = ir.CreateLoad(val_type, ptr);
   CopyMetadataTo(call_inst, val);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPTrunc(val, call_inst->getType());
@@ -47,7 +47,7 @@ static void ReplaceMemReadOpToRef(llvm::CallBase *call_inst,
   llvm::IRBuilder<> ir(call_inst);
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
   CopyMetadataTo(call_inst, ptr);
-  llvm::Value *val = ir.CreateLoad(ptr);
+  llvm::Value *val = ir.CreateLoad(val_type, ptr);
   CopyMetadataTo(call_inst, val);
 
   auto val_ptr = ir.CreateBitCast(call_inst->getArgOperand(2),
@@ -92,7 +92,7 @@ static void ReplaceMemWriteOpFromRef(llvm::CallBase *call_inst,
   auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
   CopyMetadataTo(call_inst, ptr);
 
-  llvm::Value *val = ir.CreateLoad(val_ptr);
+  llvm::Value *val = ir.CreateLoad(val_type, val_ptr);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPExt(val, val_type);
     CopyMetadataTo(call_inst, val);

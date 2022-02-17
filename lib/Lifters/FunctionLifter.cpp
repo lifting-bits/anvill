@@ -272,7 +272,8 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
 // bytes which cannot be decoded, or an empty byte sequence.
 void FunctionLifter::VisitInvalid(const remill::Instruction &inst,
                                   llvm::BasicBlock *block) {
-  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
+  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error,
+                                                 intrinsics));
 }
 
 // Visit an error instruction. An error instruction is guaranteed to trap
@@ -284,7 +285,8 @@ void FunctionLifter::VisitError(const remill::Instruction &inst,
                                 remill::Instruction *delayed_inst,
                                 llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error));
+  MuteStateEscape(remill::AddTerminatingTailCall(block, intrinsics.error,
+                                                 intrinsics));
 }
 
 // Visit a normal instruction. Normal instructions have straight line control-
@@ -403,7 +405,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
     // Either we didn't find any target list from the control flow provider, or
     // we did but it wasn't marked as `complete`.
-    auto jump = remill::AddTerminatingTailCall(current_bb, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(current_bb, intrinsics.jump,
+                                               intrinsics);
     AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 }
@@ -439,7 +442,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
 
   // No good info; do an indirect jump.
   } else {
-    auto jump = remill::AddTerminatingTailCall(block, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(block, intrinsics.jump,
+                                               intrinsics);
     AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 }
@@ -475,7 +479,8 @@ void FunctionLifter::VisitConditionalIndirectJump(
 
   // No target type info.
   } else {
-    auto jump = remill::AddTerminatingTailCall(taken_block, intrinsics.jump);
+    auto jump = remill::AddTerminatingTailCall(taken_block, intrinsics.jump,
+                                               intrinsics);
     AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
   }
 
@@ -495,7 +500,7 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                          llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   auto func_return = remill::AddTerminatingTailCall(
-      block, intrinsics.function_return);
+      block, intrinsics.function_return, intrinsics);
   AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
   MuteStateEscape(func_return);
 }
@@ -515,7 +520,7 @@ void FunctionLifter::VisitConditionalFunctionReturn(
   auto br1 = llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   auto func_return = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.function_return);
+      taken_block, intrinsics.function_return, intrinsics);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc), not_taken_block);
@@ -611,7 +616,7 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
 
     // If we do not have a function declaration, treat this as a call
     // to an unknown address.
-    auto call = remill::AddCall(block, intrinsics.function_call);
+    auto call = remill::AddCall(block, intrinsics.function_call, intrinsics);
     AnnotateInstruction(call, pc_annotation_id, pc_annotation);
     return;
   }
@@ -861,7 +866,8 @@ void FunctionLifter::VisitAsyncHyperCall(const remill::Instruction &inst,
                                          remill::Instruction *delayed_inst,
                                          llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call);
+  remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call,
+                                 intrinsics);
 }
 
 // Visit conditional asynchronous hyper calls. These are conditional, non-
@@ -880,7 +886,7 @@ void FunctionLifter::VisitConditionalAsyncHyperCall(
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
 
   auto hc = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.async_hyper_call);
+      taken_block, intrinsics.async_hyper_call, intrinsics);
 
   auto br2 = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc),
@@ -1219,14 +1225,16 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
 
-      auto call = remill::AddTerminatingTailCall(block, intrinsics.error);
+      auto call = remill::AddTerminatingTailCall(block, intrinsics.error,
+                                                 intrinsics);
       AnnotateInstruction(call, pc_annotation_id, pc_annotation);
       MuteStateEscape(call);
       continue;
 
     // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
-      auto call = remill::AddTerminatingTailCall(block, intrinsics.error);
+      auto call = remill::AddTerminatingTailCall(block, intrinsics.error,
+                                                 intrinsics);
       AnnotateInstruction(call, pc_annotation_id, pc_annotation);
       MuteStateEscape(call);
       continue;
@@ -1430,7 +1438,7 @@ void FunctionLifter::InitializeStateStructureFromGlobalRegisterVariables(
       }
 
       const auto reg_ptr = reg->AddressOf(state_ptr, block);
-      ir.CreateStore(ir.CreateLoad(reg_global), reg_ptr);
+      ir.CreateStore(ir.CreateLoad(reg->type, reg_global), reg_ptr);
     }
   });
 }

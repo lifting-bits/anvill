@@ -40,7 +40,7 @@ bool RunFunctionPass(llvm::Module *module, PassT &&function_pass) {
   fam.registerPass(
       [&] { return llvm::ModuleAnalysisManagerFunctionProxy(mam); });
 
-  fpm.addPass(function_pass);
+  fpm.addPass(std::forward<PassT>(function_pass));
   for (auto &func : *module) {
     fpm.run(func, fam);
   }
