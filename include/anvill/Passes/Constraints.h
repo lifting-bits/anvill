@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <optional>
 
 namespace anvill {
 class Environment {

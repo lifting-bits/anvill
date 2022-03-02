@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <llvm/IR/InstVisitor.h>
 
 namespace anvill {
