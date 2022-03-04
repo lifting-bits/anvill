@@ -180,7 +180,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   }
 
   auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
-  if (maybe_decl) {
+  if (maybe_decl && !maybe_decl->is_default_decl) {
     return GetFunctionPointer(*maybe_decl, ent_lifter);
   }
 

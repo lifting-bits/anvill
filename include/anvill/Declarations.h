@@ -160,6 +160,10 @@ struct CallableDecl {
   // is a variadic function.
   bool is_variadic{false};
 
+
+  // This value provides a way for type providers to hint to lifters wether this type can be used to infer an entity is going to exist at this location.
+  bool is_default_decl{false};
+
   // The calling convention of this function.
   llvm::CallingConv::ID calling_convention{0u};
 
