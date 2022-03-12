@@ -60,8 +60,8 @@ ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
                                llvm::PointerType *opt_ptr_type) const {
   llvm::Type *opt_elem_type =
       opt_ptr_type ? opt_ptr_type->getElementType() : nullptr;
-  auto maybe_var = ent_lifter.type_provider->TryGetVariableType(
-      search_ea, opt_elem_type);
+  auto maybe_var =
+      ent_lifter.type_provider->TryGetVariableType(search_ea, opt_elem_type);
   if (!maybe_var) {
     return nullptr;
   }
@@ -83,7 +83,7 @@ ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
       return llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
           builder, enclosing_var, var_ea - maybe_var->address, opt_ptr_type));
 
-    // Otherwise, we need to go with whatever we can.
+      // Otherwise, we need to go with whatever we can.
     } else {
       opt_ptr_type = llvm::Type::getInt8PtrTy(context);
       auto ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
@@ -180,7 +180,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   }
 
   auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
-  if (maybe_decl && !maybe_decl->is_default_decl) {
+  if (maybe_decl) {
     return GetFunctionPointer(*maybe_decl, ent_lifter);
   }
 
@@ -220,9 +220,10 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
 // Lift the pointer at address `ea` which is getting referenced by the
 // variable at `loc_ea`. It checks the type and lift them as function
 // or variable pointer
-llvm::Constant *ValueLifterImpl::GetPointer(
-    uint64_t ea, llvm::Type *value_type, EntityLifterImpl &ent_lifter,
-    uint64_t loc_ea, unsigned address_space) const {
+llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
+                                            EntityLifterImpl &ent_lifter,
+                                            uint64_t loc_ea,
+                                            unsigned address_space) const {
 
   if (!value_type) {
     value_type = llvm::Type::getInt8Ty(context);
@@ -261,8 +262,8 @@ llvm::Constant *ValueLifterImpl::GetPointer(
 
   std::stringstream ss;
   ss << kGlobalAliasNamePrefix << std::hex << ea << '_'
-     << type_specifier.EncodeToString(
-            type, EncodingFormat::kValidSymbolCharsOnly);
+     << type_specifier.EncodeToString(type,
+                                      EncodingFormat::kValidSymbolCharsOnly);
 
   const auto name = ss.str();
   auto alias_ret = llvm::GlobalAlias::create(value_type, address_space,

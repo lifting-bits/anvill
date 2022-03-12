@@ -252,4 +252,61 @@ const ::anvill::TypeDictionary &ProxyTypeProvider::Dictionary(void) const {
 
 ProxyTypeProvider::ProxyTypeProvider(const TypeProvider &deleg)
     : deleg(deleg) {}
+
+std::optional<FunctionDecl>
+TypeProvider::GetDefaultFunctionType(uint64_t address) const {
+  return std::nullopt;
+}
+
+std::optional<VariableDecl>
+TypeProvider::GetDefaultVariableDecl(uint64_t address) const {
+  return std::nullopt;
+}
+
+
+std::optional<FunctionDecl>
+TypeProvider::TryGetFuntionTypeOrDefault(uint64_t address) const {
+  auto res = this->TryGetFunctionType(address);
+  if (res.has_value()) {
+    return res;
+  }
+
+  return this->GetDefaultFunctionType(address);
+}
+
+std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionTypeOrDefault(
+    uint64_t function_address, const remill::Instruction &from_inst) const {
+  auto res = this->TryGetCalledFunctionType(function_address, from_inst);
+  if (res.has_value()) {
+    return res;
+  }
+
+  return this->GetDefaultFunctionType(function_address);
+}
+
+
+std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionTypeOrDefault(
+    uint64_t function_address, const remill::Instruction &from_inst,
+    uint64_t to_address) const {
+  auto res =
+      this->TryGetCalledFunctionType(function_address, from_inst, to_address);
+  if (res.has_value()) {
+    return res;
+  }
+
+  return this->GetDefaultFunctionType(function_address);
+}
+
+std::optional<VariableDecl>
+TypeProvider::TryGetVariableTypeOrDefault(uint64_t address,
+                                          llvm::Type *hinted_value_type) const {
+  auto res = this->TryGetVariableType(address, hinted_value_type);
+  if (res.has_value()) {
+    return res;
+  }
+
+  return this->GetDefaultVariableDecl(address);
+}
+
+
 }  // namespace anvill
