@@ -448,6 +448,7 @@ JSONTranslator::DecodeDefaultCallableDecl(const llvm::json::Object *obj) const {
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }
+
   return decl;
 }
 

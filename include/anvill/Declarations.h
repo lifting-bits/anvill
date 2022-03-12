@@ -108,8 +108,8 @@ struct VariableDecl {
   std::uint64_t address{0};
 
   // Declare this global variable in an LLVM module.
-  llvm::GlobalVariable *DeclareInModule(
-      const std::string &name, llvm::Module &) const;
+  llvm::GlobalVariable *DeclareInModule(const std::string &name,
+                                        llvm::Module &) const;
 };
 
 // A declaration for a callable entity.
@@ -160,16 +160,18 @@ struct CallableDecl {
   // is a variadic function.
   bool is_variadic{false};
 
+
   // The calling convention of this function.
   llvm::CallingConv::ID calling_convention{0u};
 
   // Interpret `target` as being the function to call, and call it from within
   // a basic block in a lifted bitcode function. Returns the new value of the
   // memory pointer.
-  llvm::Value *CallFromLiftedBlock(
-      llvm::Value *target, const anvill::TypeDictionary &types,
-      const remill::IntrinsicTable &intrinsics, llvm::BasicBlock *block,
-      llvm::Value *state_ptr, llvm::Value *mem_ptr) const;
+  llvm::Value *
+  CallFromLiftedBlock(llvm::Value *target, const anvill::TypeDictionary &types,
+                      const remill::IntrinsicTable &intrinsics,
+                      llvm::BasicBlock *block, llvm::Value *state_ptr,
+                      llvm::Value *mem_ptr) const;
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -201,13 +203,14 @@ struct FunctionDecl : public CallableDecl {
 
   // Create a function declaration from an LLVM function.
   inline static Result<FunctionDecl, std::string>
-  Create(llvm::Function &func, const std::unique_ptr<const remill::Arch> &arch) {
+  Create(llvm::Function &func,
+         const std::unique_ptr<const remill::Arch> &arch) {
     return Create(func, arch.get());
   }
 
   // Create a function declaration from an LLVM function.
-  static Result<FunctionDecl, std::string> Create(
-      llvm::Function &func, const remill::Arch *arch);
+  static Result<FunctionDecl, std::string> Create(llvm::Function &func,
+                                                  const remill::Arch *arch);
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a
