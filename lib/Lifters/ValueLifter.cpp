@@ -184,6 +184,12 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     return GetFunctionPointer(*maybe_decl, ent_lifter);
   }
 
+  auto maybe_default_decl =
+      ent_lifter.type_provider->TryGetFunctionTypeOrDefault(ea);
+  if (!hinted_type && maybe_default_decl) {
+    return GetFunctionPointer(*maybe_decl, ent_lifter);
+  }
+
   // Try to create a `FunctionDecl` on-demand.
   if (hinted_type) {
     if (auto func_type =

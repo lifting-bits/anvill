@@ -6,18 +6,19 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/ConvertAddressesToEntityUses.h>
-
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/ConvertAddressesToEntityUses.h>
 #include <anvill/Providers.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
+
 #include <unordered_set>
+
 #include "Utils.h"
 
 namespace anvill {
@@ -27,8 +28,8 @@ namespace {
 static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
   auto &dl = module->getDataLayout();
   auto &context = module->getContext();
-  auto address_type = llvm::Type::getIntNTy(
-      context, dl.getPointerSizeInBits(0));
+  auto address_type =
+      llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
   auto pc_val = llvm::ConstantInt::get(address_type, pc);
   auto pc_md = llvm::ValueAsMetadata::get(pc_val);
   return llvm::MDNode::get(context, pc_md);
@@ -36,8 +37,9 @@ static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
 
 }  // namespace
 
-llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
-    llvm::Function &function, llvm::FunctionAnalysisManager &fam) {
+llvm::PreservedAnalyses
+ConvertAddressesToEntityUses::run(llvm::Function &function,
+                                  llvm::FunctionAnalysisManager &fam) {
   if (function.isDeclaration()) {
     return llvm::PreservedAnalyses::all();
   }
@@ -84,6 +86,7 @@ llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
       address_space = inferred_type->getAddressSpace();
     }
 
+
     entity = xref_resolver.EntityAtAddress(ra.u.address, pointee_type,
                                            address_space);
 
@@ -97,8 +100,8 @@ llvm::PreservedAnalyses ConvertAddressesToEntityUses::run(
     if (pc_metadata_id) {
       if (auto obj = llvm::dyn_cast<llvm::GlobalObject>(entity)) {
         auto module = function.getParent();
-        obj->setMetadata(
-            *pc_metadata_id, GetPCAnnotation(module, ra.u.address));
+        obj->setMetadata(*pc_metadata_id,
+                         GetPCAnnotation(module, ra.u.address));
       }
     }
 
@@ -140,12 +143,12 @@ EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
     return output;
   }
 
-  CrossReferenceFolder xref_folder(
-      xref_resolver, function.getParent()->getDataLayout());
+  CrossReferenceFolder xref_folder(xref_resolver,
+                                   function.getParent()->getDataLayout());
 
-//  const auto arch = this->entity_lifter.Options().arch;
-//  const auto mem_ptr_type = arch->MemoryPointerType();
-//  const auto state_ptr_type = arch->StatePointerType();
+  //  const auto arch = this->entity_lifter.Options().arch;
+  //  const auto mem_ptr_type = arch->MemoryPointerType();
+  //  const auto state_ptr_type = arch->StatePointerType();
 
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
@@ -156,12 +159,12 @@ EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
           continue;  // Can happen as a result of `dropAllReferences`.
         }
 
-//        // If we see something related to Remill's `Memory *` or `State *`
-//        // then ignore those as being possible cross-references.
-//        const auto val_type = val->getType();
-//        if (val_type == mem_ptr_type || val_type == state_ptr_type) {
-//          continue;
-//        }
+        //        // If we see something related to Remill's `Memory *` or `State *`
+        //        // then ignore those as being possible cross-references.
+        //        const auto val_type = val->getType();
+        //        if (val_type == mem_ptr_type || val_type == state_ptr_type) {
+        //          continue;
+        //        }
 
         if (auto ra = xref_folder.TryResolveReferenceWithClearedCache(val);
             ra.is_valid && !ra.references_return_address &&
