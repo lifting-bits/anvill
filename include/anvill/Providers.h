@@ -41,13 +41,8 @@ class TypeProvider {
   virtual std::optional<VariableDecl>
   GetDefaultVariableDecl(uint64_t address) const;
 
-
   std::optional<FunctionDecl>
-  TryGetFuntionTypeOrDefault(uint64_t address) const;
-
-  std::optional<CallableDecl>
-  TryGetCalledFunctionTypeOrDefault(uint64_t function_address,
-                                    const remill::Instruction &from_inst) const;
+  TryGetFunctionTypeOrDefault(uint64_t address) const;
 
   std::optional<CallableDecl>
   TryGetCalledFunctionTypeOrDefault(uint64_t function_address,

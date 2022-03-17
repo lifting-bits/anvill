@@ -179,7 +179,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
     return unwrap_zero_indices(found_entity_at);
   }
 
-  auto maybe_decl = ent_lifter.type_provider->TryGetFunctionType(ea);
+  auto maybe_decl = ent_lifter.type_provider->TryGetFunctionTypeOrDefault(ea);
   if (maybe_decl) {
     return GetFunctionPointer(*maybe_decl, ent_lifter);
   }

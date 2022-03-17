@@ -7,12 +7,10 @@
  */
 
 #include <anvill/Declarations.h>
-
-#include <anvill/Utils.h>
 #include <anvill/Type.h>
+#include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DataLayout.h>
@@ -24,7 +22,6 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -37,7 +34,7 @@ namespace anvill {
 // Declare this global variable in an LLVM module.
 llvm::GlobalVariable *
 VariableDecl::DeclareInModule(const std::string &name,
-                               llvm::Module &target_module) const {
+                              llvm::Module &target_module) const {
   auto &context = target_module.getContext();
   auto var_type = remill::RecontextualizeType(type, context);
 
@@ -52,8 +49,9 @@ VariableDecl::DeclareInModule(const std::string &name,
 }
 
 // Declare this function in an LLVM module.
-llvm::Function *FunctionDecl::DeclareInModule(
-    std::string_view name, llvm::Module &target_module) const {
+llvm::Function *
+FunctionDecl::DeclareInModule(std::string_view name,
+                              llvm::Module &target_module) const {
   auto &context = target_module.getContext();
   auto func_type = llvm::dyn_cast<llvm::FunctionType>(
       remill::RecontextualizeType(type, context));
@@ -96,8 +94,8 @@ llvm::Function *FunctionDecl::DeclareInModule(
 // memory pointer.
 llvm::Value *CallableDecl::CallFromLiftedBlock(
     llvm::Value *target, const anvill::TypeDictionary &types,
-    const remill::IntrinsicTable &intrinsics,
-    llvm::BasicBlock *block, llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
+    const remill::IntrinsicTable &intrinsics, llvm::BasicBlock *block,
+    llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
   auto module = block->getModule();
   auto &context = module->getContext();
   CHECK_EQ(&context, &(target->getContext()));
@@ -128,13 +126,13 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr = LoadLiftedValue(
-      return_address, types, intrinsics, block, state_ptr, mem_ptr);
+  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, block,
+                                  state_ptr, mem_ptr);
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val = LoadLiftedValue(
-        param_decl, types, intrinsics, block, state_ptr, mem_ptr);
+    const auto val = LoadLiftedValue(param_decl, types, intrinsics, block,
+                                     state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }
@@ -155,12 +153,12 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   if (returns.size() == 1) {
     auto call_ret = ret_val;
 
-    mem_ptr = StoreNativeValue(
-        call_ret, returns.front(), types, intrinsics, block, state_ptr, mem_ptr);
+    mem_ptr = StoreNativeValue(call_ret, returns.front(), types, intrinsics,
+                               block, state_ptr, mem_ptr);
 
-  // There are possibly multiple return values (or zero). Unpack the
-  // return value (it will be a struct type) into its components and
-  // write each one out into the lifted state.
+    // There are possibly multiple return values (or zero). Unpack the
+    // return value (it will be a struct type) into its components and
+    // write each one out into the lifted state.
   } else {
     unsigned index = 0;
     for (const auto &ret_decl : returns) {
@@ -174,6 +172,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
 
   // Store the return address, and computed return stack pointer.
   ir.SetInsertPoint(block);
+
   ir.CreateStore(ret_addr, remill::FindVarInFunction(block, "NEXT_PC"));
   ir.CreateStore(sp_val_on_exit, ptr_to_sp);
 
@@ -185,8 +184,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
 }
 
 // Create a Function Declaration from an `llvm::Function`.
-Result<FunctionDecl, std::string> FunctionDecl::Create(
-    llvm::Function &func, const remill::Arch *arch) {
+Result<FunctionDecl, std::string>
+FunctionDecl::Create(llvm::Function &func, const remill::Arch *arch) {
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch
@@ -199,7 +198,7 @@ Result<FunctionDecl, std::string> FunctionDecl::Create(
   if (cc_id != llvm::CallingConv::C) {
     maybe_cc = CallingConvention::CreateCCFromArchAndID(arch, cc_id);
 
-  // Figure out the default calling convention for this triple.
+    // Figure out the default calling convention for this triple.
   } else {
     maybe_cc = CallingConvention::CreateCCFromArch(arch);
   }
@@ -218,12 +217,13 @@ Result<FunctionDecl, std::string> FunctionDecl::Create(
 
 
 void CallableDecl::OverrideFunctionTypeWithABIParamLayout() {
-  llvm::SmallVector<llvm::Type*> new_args;
-  for (const auto& par : this->params ) {
+  llvm::SmallVector<llvm::Type *> new_args;
+  for (const auto &par : this->params) {
     new_args.push_back(par.type);
   }
 
-  this->type = llvm::FunctionType::get(this->type->getReturnType(),new_args, this->type->isVarArg());
+  this->type = llvm::FunctionType::get(this->type->getReturnType(), new_args,
+                                       this->type->isVarArg());
 
   return;
 }
@@ -232,19 +232,22 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
   if (this->returns.size() < 1) {
     return;
   } else if (this->returns.size() == 1) {
-    // Override the return type with the type of the last return 
-    auto new_func_type = llvm::FunctionType::get(this->returns.front().type, this->type->params(), this->type->isVarArg());
+    // Override the return type with the type of the last return
+    auto new_func_type =
+        llvm::FunctionType::get(this->returns.front().type,
+                                this->type->params(), this->type->isVarArg());
     this->type = new_func_type;
   } else {
     // Create a structure that has a field for each return
-    std::vector<llvm::Type*> elems;
-    for (const auto& ret : this->returns) {
+    std::vector<llvm::Type *> elems;
+    for (const auto &ret : this->returns) {
       elems.push_back(ret.type);
     }
 
     auto ret_type_struct = llvm::StructType::create(elems);
 
-    auto new_func_type = llvm::FunctionType::get(ret_type_struct, this->type->params(), this->type->isVarArg());
+    auto new_func_type = llvm::FunctionType::get(
+        ret_type_struct, this->type->params(), this->type->isVarArg());
     this->type = new_func_type;
   }
 }

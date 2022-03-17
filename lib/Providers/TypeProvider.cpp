@@ -265,23 +265,13 @@ TypeProvider::GetDefaultVariableDecl(uint64_t address) const {
 
 
 std::optional<FunctionDecl>
-TypeProvider::TryGetFuntionTypeOrDefault(uint64_t address) const {
+TypeProvider::TryGetFunctionTypeOrDefault(uint64_t address) const {
   auto res = this->TryGetFunctionType(address);
   if (res.has_value()) {
     return res;
   }
 
   return this->GetDefaultFunctionType(address);
-}
-
-std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionTypeOrDefault(
-    uint64_t function_address, const remill::Instruction &from_inst) const {
-  auto res = this->TryGetCalledFunctionType(function_address, from_inst);
-  if (res.has_value()) {
-    return res;
-  }
-
-  return this->GetDefaultFunctionType(function_address);
 }
 
 
@@ -294,7 +284,7 @@ std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionTypeOrDefault(
     return res;
   }
 
-  return this->GetDefaultFunctionType(function_address);
+  return this->GetDefaultFunctionType(to_address);
 }
 
 std::optional<VariableDecl>
