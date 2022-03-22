@@ -62,33 +62,43 @@ TEST_SUITE("XorConversion") {
   TEST_CASE("Remove Xor Flip Branch -- Not Removed (compare w/ false)") {
     auto [xor_start, xor_end] = runXorRemovalPassCountXors(
         "xor_removal_noremove.ll", "xor_removal_noremove_false");
-    REQUIRE(xor_start == 1);
-    REQUIRE(xor_start == xor_end);
+    auto xor_start_var = xor_start;
+    auto xor_end_var = xor_end;
+    REQUIRE(xor_start_var == 1);
+    REQUIRE(xor_start_var == xor_end_var);
   }
 
   TEST_CASE("Remove Xor Flip Branch -- Not Removed (xor not used in branch)") {
     auto [xor_start, xor_end] = runXorRemovalPassCountXors(
         "xor_removal_noremove.ll", "xor_removal_noremove_notused");
-    REQUIRE(xor_start == 1);
-    REQUIRE(xor_start == xor_end);
+    auto xor_start_var = xor_start;
+    auto xor_end_var = xor_end;
+    REQUIRE(xor_start_var == 1);
+    REQUIRE(xor_start_var == xor_end_var);
   }
 
   TEST_CASE("Remove Xor Flip Branch") {
     auto [xor_start, xor_end] =
         runXorRemovalPassCountXors("xor_removal.ll", "xor_removal");
-    REQUIRE(xor_start > xor_end);
+    auto xor_start_var = xor_start;
+    auto xor_end_var = xor_end;
+    REQUIRE(xor_start_var > xor_end_var);
   }
 
   TEST_CASE("Convert a Xor used in a BranchInst and SelectInst") {
     auto [xor_start, xor_end] =
         runXorRemovalPassCountXors("xor_conversion.ll", "xor_as_not");
-    REQUIRE(xor_start > xor_end);
+    auto xor_start_var = xor_start;
+    auto xor_end_var = xor_end;
+    REQUIRE(xor_start_var > xor_end_var);
   }
 
   TEST_CASE("DO NOT convert a xor used as a branch/select") {
     auto [xor_start, xor_end] = runXorRemovalPassCountXors(
         "xor_conversion_nochange.ll", "xor_as_not_nochange");
-    REQUIRE(xor_start == xor_end);
+    auto xor_start_var = xor_start;
+    auto xor_end_var = xor_end;
+    REQUIRE(xor_start_var == xor_end_var);
   }
 }
 
