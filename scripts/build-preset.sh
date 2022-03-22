@@ -142,8 +142,8 @@ fi
 cmake --preset vcpkg-${ARCH}-${BUILD_TYPE} ${@} &>${CONFIGLOG}
 if [ "$?" != "0" ]; then
   echo "Configuration failed. See ${CONFIGLOG}"
-  echo "Last 10 lines are:"
-  tail -n 10 "${CONFIGLOG}"
+  cat "${CONFIGLOG}"
+  grep -i error "${CONFIGLOG}"
   exit 1
 else
   echo "Configure success!"
@@ -153,8 +153,8 @@ echo "Building [${BUILD_TYPE}] [${ARCH}]..."
 cmake --build --preset ${ARCH}-${BUILD_TYPE} --parallel &>${BUILDLOG}
 if [ "$?" != "0" ]; then
   echo "Build failed. See ${BUILDLOG}"
-  echo "Last 10 lines are:"
-  tail -n 10 "${BUILDLOG}"
+  cat "${BUILDLOG}"
+  grep -i error "${BUILDLOG}"
   exit 1
 else
   echo "Build success!"
@@ -165,8 +165,8 @@ echo "Installing [${BUILD_TYPE}] [${ARCH}]..."
 cmake --build --preset ${ARCH}-${BUILD_TYPE} --target install --parallel >>${BUILDLOG} 2>&1
 if [ "$?" != "0" ]; then
   echo "Install failed. See ${BUILDLOG}"
-  echo "Last 10 lines are:"
-  tail -n 10 "${BUILDLOG}"
+  cat "${BUILDLOG}"
+  grep -i error "${BUILDLOG}"
   exit 1
 else
   echo "Install success!"
