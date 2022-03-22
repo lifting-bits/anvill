@@ -238,7 +238,8 @@ TEST_SUITE("TypeSpecifier") {
       os.flush();
 
       REQUIRE(type != nullptr);
-      REQUIRE(out == ll_type);
+      auto ll_type_var = ll_type;
+      REQUIRE(out == ll_type_var);
     }
   }
 }

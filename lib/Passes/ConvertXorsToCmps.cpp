@@ -125,7 +125,6 @@ ConvertXorsToCmps::run(llvm::Function &func,
   }
 
   auto changed = false;
-  int replaced_items = 0;
 
   std::vector<llvm::BranchInst *> brs_to_invert;
   std::vector<llvm::SelectInst *> selects_to_invert;
@@ -262,7 +261,6 @@ ConvertXorsToCmps::run(llvm::Function &func,
     // negate predicate
     if (auto neg_cmp = negateCmpPredicate(cmp)) {
       CopyMetadataTo(xori, neg_cmp);
-      replaced_items += 1;
 
       // invert all branches
       for (auto B : brs_to_invert) {
