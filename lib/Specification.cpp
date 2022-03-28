@@ -8,17 +8,18 @@
 
 #include "Specification.h"
 
-#include <algorithm>
-#include <sstream>
-
 #include <anvill/JSON.h>
+#include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/JSON.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-#include <remill/BC/Util.h>
 #include <remill/BC/Compat/Error.h>
+#include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
+
+#include <algorithm>
+#include <sstream>
 
 namespace anvill {
 
@@ -63,8 +64,8 @@ bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
 
   auto maybe_bytes = obj->getString("data");
   if (!maybe_bytes) {
-    ss << "Missing byte string in memory range starting at address "
-       << std::hex << address << " of program specification";
+    ss << "Missing byte string in memory range starting at address " << std::hex
+       << address << " of program specification";
     return false;
   }
 
@@ -104,8 +105,7 @@ bool SpecificationImpl::ParseRange(const llvm::json::Object *obj,
 }
 
 bool SpecificationImpl::ParseControlFlowRedirection(
-    const llvm::json::Array &redirection_list,
-    std::stringstream &ss) {
+    const llvm::json::Array &redirection_list, std::stringstream &ss) {
 
   auto index{0u};
 
@@ -269,20 +269,20 @@ bool SpecificationImpl::ParseControlFlowTargets(
     ++index;
   }
 
-  std::sort(targets.begin(), targets.end(),
-            [] (const ControlFlowTargetListPtr &a,
-                const ControlFlowTargetListPtr &b) {
-              return a->address < b->address;
-            });
+  std::sort(
+      targets.begin(), targets.end(),
+      [](const ControlFlowTargetListPtr &a, const ControlFlowTargetListPtr &b) {
+        return a->address < b->address;
+      });
 
   return true;
 }
 
-const llvm::json::Object *SpecificationImpl::ParseSpecification(
-    const llvm::json::Object *spec, std::stringstream &ss) {
+Result<std::vector<JSONDecodeError>, JSONDecodeError>
+SpecificationImpl::ParseSpecification(const llvm::json::Object *spec) {
 
   JSONTranslator translator(type_translator, arch.get());
-
+  std::vector<JSONDecodeError> dec_err;
   if (auto funcs = spec->getArray("functions")) {
     auto index{0u};
     for (const llvm::json::Value &func : *funcs) {
@@ -290,21 +290,27 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
         auto maybe_func = translator.DecodeFunction(func_obj);
         if (!maybe_func.Succeeded()) {
           auto err = maybe_func.TakeError();
+          std::stringstream ss;
           ss << "Unable to decode " << index
              << "th function in 'functions' list of program specification: "
              << err.message;
 
           // Make sure we return non-`nullptr` on failure.
-          return err.object ? err.object : func_obj;
+          if (err.object) {
+            dec_err.emplace_back(ss.str(), err.object);
+          } else {
+            dec_err.emplace_back(ss.str(), func_obj);
+          }
 
         } else {
           auto func = maybe_func.TakeValue();
           auto func_address = func.address;
           if (address_to_function.count(func_address)) {
+            std::stringstream ss;
             ss << "Duplicate function for address " << std::hex << func_address
                << std::dec << " at " << index
                << "th entry of 'functions' list of program specification";
-            return func_obj;
+            return JSONDecodeError(ss.str(), func_obj);
           }
 
           auto func_ptr = new FunctionDecl(std::move(func));
@@ -312,21 +318,23 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           address_to_function.emplace(func_address, func_ptr);
         }
       } else {
+        std::stringstream ss;
         ss << index << "th entry of 'functions' list of program specification "
            << "is not an object";
-        return spec;
+        return JSONDecodeError(ss.str(), spec);
       }
       ++index;
     }
 
     std::sort(functions.begin(), functions.end(),
-              [] (const FunctionDeclPtr &a, const FunctionDeclPtr &b) {
+              [](const FunctionDeclPtr &a, const FunctionDeclPtr &b) {
                 return a->address < b->address;
               });
 
   } else if (spec->find("functions") != spec->end()) {
+    std::stringstream ss;
     ss << "Non-JSON array value for 'functions' in program specification";
-    return spec;
+    return JSONDecodeError(ss.str(), spec);
   }
 
 
@@ -337,12 +345,17 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
         auto maybe_cs = translator.DecodeCallSite(cs_obj);
         if (!maybe_cs.Succeeded()) {
           auto err = maybe_cs.TakeError();
+          std::stringstream ss;
           ss << "Unable to decode " << index
              << "th call site in 'call_sites' list of program specification: "
              << err.message;
 
           // Make sure we return non-`nullptr` on failure.
-          return err.object ? err.object : cs_obj;
+          if (err.object) {
+            dec_err.emplace_back(ss.str(), err.object);
+          } else {
+            dec_err.emplace_back(ss.str(), cs_obj);
+          }
 
         } else {
           auto func = maybe_cs.TakeValue();
@@ -350,11 +363,12 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           auto func_address = func.function_address;
           std::pair<std::uint64_t, std::uint64_t> loc{func_address, address};
           if (loc_to_call_site.count(loc)) {
+            std::stringstream ss;
             ss << "Duplicate call site for address " << std::hex << address
-               << " in function at address " << func_address
-               << std::dec << " at " << index
+               << " in function at address " << func_address << std::dec
+               << " at " << index
                << "th entry of 'call_sites' list of program specification";
-            return cs_obj;
+            return JSONDecodeError(ss.str(), cs_obj);
           }
 
           auto cs_ptr = new CallSiteDecl(std::move(func));
@@ -362,15 +376,16 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           loc_to_call_site.emplace(std::move(loc), cs_ptr);
         }
       } else {
+        std::stringstream ss;
         ss << index << "th entry of 'call_sites' list of program specification "
            << "is not an object";
-        return spec;
+        return JSONDecodeError(ss.str(), spec);
       }
       ++index;
     }
 
     std::sort(call_sites.begin(), call_sites.end(),
-              [] (const CallSiteDeclPtr &a, const CallSiteDeclPtr &b) {
+              [](const CallSiteDeclPtr &a, const CallSiteDeclPtr &b) {
                 if (a->function_address < b->function_address) {
                   return true;
                 } else if (a->function_address > b->function_address) {
@@ -381,30 +396,33 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
               });
 
   } else if (spec->find("call_sites") != spec->end()) {
-    ss << "Non-JSON array value for 'call_sites' in program specification";
-    return spec;
+    std::stringstream error_stream;
+    error_stream
+        << "Non-JSON array value for 'call_sites' in program specification";
+    return JSONDecodeError(error_stream.str(), spec);
   }
-
+  std::stringstream error_stream;
   if (auto redirection_list = spec->getArray("control_flow_redirections")) {
-    if (!ParseControlFlowRedirection(*redirection_list, ss)) {
-      return spec;
+    if (!ParseControlFlowRedirection(*redirection_list, error_stream)) {
+      return JSONDecodeError(error_stream.str(), spec);
     }
 
   } else if (spec->find("control_flow_redirections") != spec->end()) {
-    ss << "Non-JSON array value for 'control_flow_redirections' in "
-       << "program specification";
-    return spec;
+    error_stream << "Non-JSON array value for 'control_flow_redirections' in "
+                 << "program specification";
+    return JSONDecodeError(error_stream.str(), spec);
   }
 
   if (auto ctrl_flow_targets = spec->getArray("control_flow_targets")) {
-    if (!ParseControlFlowTargets(*ctrl_flow_targets, ss)) {
-      return spec;
+    if (!ParseControlFlowTargets(*ctrl_flow_targets, error_stream)) {
+      return JSONDecodeError(error_stream.str(), spec);
     }
 
   } else if (spec->find("control_flow_targets") != spec->end()) {
-    ss << "Non-JSON array value for 'control_flow_targets' in program "
-       << "specification";
-    return spec;
+    error_stream
+        << "Non-JSON array value for 'control_flow_targets' in program "
+        << "specification";
+    return JSONDecodeError(error_stream.str(), spec);
   }
 
   if (auto vars = spec->getArray("variables")) {
@@ -414,13 +432,18 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
       if (auto var_obj = var.getAsObject()) {
         auto maybe_var = translator.DecodeGlobalVar(var_obj);
         if (!maybe_var.Succeeded()) {
+          std::stringstream ss;
           auto err = maybe_var.TakeError();
           ss << "Unable to decode " << index
              << "th variable in 'variables' list of program specification: "
              << err.message;
 
           // Make sure we return non-`nullptr` on failure.
-          return err.object ? err.object : var_obj;
+          if (err.object) {
+            dec_err.emplace_back(ss.str(), err.object);
+          } else {
+            dec_err.emplace_back(ss.str(), var_obj);
+          }
 
         } else {
           auto var_ptr = new VariableDecl(maybe_var.TakeValue());
@@ -430,32 +453,34 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           for (auto i = 0ull; i < size; ++i) {
             (void) address_to_var.emplace(var_ptr->address + i, var_ptr);
 
-//            auto [it, added] =
-//            if (!added) {
-//              ss << "Variable starting at " << std::hex << var_ptr->address
-//                 << " (the " << index << "th entry in 'variables' list) "
-//                 << "overlaps with the variable at " << it->second->address
-//                 << " in program specification";
-//              return var_obj;
-//            }
+            //            auto [it, added] =
+            //            if (!added) {
+            //              ss << "Variable starting at " << std::hex << var_ptr->address
+            //                 << " (the " << index << "th entry in 'variables' list) "
+            //                 << "overlaps with the variable at " << it->second->address
+            //                 << " in program specification";
+            //              return var_obj;
+            //            }
           }
         }
       } else {
+        std::stringstream ss;
         ss << index << "th entry of 'variables' list of program specification "
            << "is not an object";
-        return spec;
+        return JSONDecodeError(ss.str(), spec);
       }
       ++index;
     }
 
     std::sort(variables.begin(), variables.end(),
-              [] (const VariableDeclPtr &a, const VariableDeclPtr &b) {
+              [](const VariableDeclPtr &a, const VariableDeclPtr &b) {
                 return a->address < b->address;
               });
 
   } else if (spec->find("variables") != spec->end()) {
+    std::stringstream ss;
     ss << "Non-JSON array value for 'variables' in program specification";
-    return spec;
+    return JSONDecodeError(ss.str(), spec);
   }
 
   // Map in the memory needed for this decompilation.
@@ -463,19 +488,22 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     auto index{0u};
     for (const llvm::json::Value &range : *ranges) {
       if (auto range_obj = range.getAsObject()) {
+        std::stringstream ss;
         if (!ParseRange(range_obj, ss)) {
-          return range_obj;
+          return JSONDecodeError(ss.str(), range_obj);
         }
       } else {
+        std::stringstream ss;
         ss << "Non-JSON object in " << index
            << "th entry of 'memory' list of program specification";
-        return spec;
+        return JSONDecodeError(ss.str(), spec);
       }
       ++index;
     }
   } else if (spec->find("memory") != spec->end()) {
+    std::stringstream ss;
     ss << "Non-JSON array value for 'memory' in program specification";
-    return spec;
+    return JSONDecodeError(ss.str(), spec);
   }
 
   // Map in the symbols.
@@ -484,9 +512,10 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
     for (const llvm::json::Value &maybe_ea_name : *symbols_array) {
       if (auto ea_name = maybe_ea_name.getAsArray(); ea_name) {
         if (ea_name->size() != 2u) {
+          std::stringstream ss;
           ss << "Each entry in 'symbols' list of program specification "
              << "must have exactly two values";
-          return spec;
+          return JSONDecodeError(ss.str(), spec);
         }
 
         auto &maybe_ea = ea_name->operator[](0u);
@@ -496,39 +525,44 @@ const llvm::json::Object *SpecificationImpl::ParseSpecification(
           const auto ea = static_cast<uint64_t>(ea_.getValue());
           if (auto name = maybe_name.getAsString(); name) {
             if (name->empty()) {
+              std::stringstream ss;
               ss << "Empty symbol name associated with address " << std::hex
                  << ea << " in the " << index << "th entry of the 'symbols'"
                  << " list of program specification";
-              return spec;
+              return JSONDecodeError(ss.str(), spec);
             } else {
               symbols.emplace(ea, name->str());
             }
           } else {
+            std::stringstream ss;
             ss << "Second value, associated with address " << std::hex << ea
                << " in the " << index << "th entry of the 'symbols' list of"
                << " program specification must be a string";
-            return spec;
+            return JSONDecodeError(ss.str(), spec);
           }
         } else {
+          std::stringstream ss;
           ss << "First value of every entry in the 'symbols' list of a "
              << "program specification must be an integer; " << index
              << "th entry's first vale is not an integer";
-          return spec;
+          return JSONDecodeError(ss.str(), spec);
         }
       } else {
+        std::stringstream ss;
         ss << "Expected list entries (pairs) inside of 'symbols' list of "
            << "program specification; " << index << "th entry is not a list";
-        return spec;
+        return JSONDecodeError(ss.str(), spec);
       }
 
       ++index;
     }
   } else if (spec->find("symbols") != spec->end()) {
+    std::stringstream ss;
     ss << "Non-JSON array value for 'symbols' in program specification";
-    return spec;
+    return JSONDecodeError(ss.str(), spec);
   }
 
-  return nullptr;
+  return dec_err;
 }
 
 Specification::~Specification(void) {}
@@ -553,9 +587,10 @@ const ::anvill::TypeTranslator &Specification::TypeTranslator(void) const {
 
 // Try to create a program from a JSON specification. Returns a string error
 // if something went wrong.
-anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
-    llvm::LLVMContext &context, const llvm::json::Value &json) {
-     
+anvill::Result<Specification, JSONDecodeError>
+Specification::DecodeFromJSON(llvm::LLVMContext &context,
+                              const llvm::json::Value &json) {
+
   const auto spec = json.getAsObject();
   if (!spec) {
     return JSONDecodeError("Could not interpret json value as an object");
@@ -595,20 +630,27 @@ anvill::Result<Specification, JSONDecodeError> Specification::DecodeFromJSON(
   auto arch = remill::Arch::Build(&context, os_name, arch_name);
   if (!arch) {
     ss << "Invalid architecture/operating system combination "
-       << remill::GetArchName(arch_name) << '/'
-       << remill::GetOSName(os_name) << " in program specification";
+       << remill::GetArchName(arch_name) << '/' << remill::GetOSName(os_name)
+       << " in program specification";
     return JSONDecodeError(ss.str());
   }
 
   std::shared_ptr<SpecificationImpl> pimpl(
       new SpecificationImpl(std::move(arch)));
 
-  if (auto err_obj = pimpl->ParseSpecification(spec, ss)) {
-    return JSONDecodeError(ss.str(), err_obj);
+  auto maybe_warnings = pimpl->ParseSpecification(spec);
+
+  if (!maybe_warnings.Succeeded()) {
+    return maybe_warnings.TakeError();
   }
 
-  return Specification(std::move(pimpl));
+  auto warnings = maybe_warnings.TakeValue();
+  for (auto w : warnings) {
+    LOG(ERROR) << w.message;
+  }
 
+
+  return Specification(std::move(pimpl));
 }
 
 // Try to encode the specification into JSON.
@@ -684,22 +726,17 @@ Specification::EncodeToJSON(void) {
     switch (byte_entry.second) {
       case BytePermission::kUnknown: {
         std::stringstream ss;
-        ss << "Unknown byte permissions for byte at address "
-           << std::hex << address;
+        ss << "Unknown byte permissions for byte at address " << std::hex
+           << address;
         return JSONEncodeError(ss.str());
       }
-      case BytePermission::kReadable:
-        break;
-      case BytePermission::kReadableWritable:
-        is_writeable = true;
-        break;
+      case BytePermission::kReadable: break;
+      case BytePermission::kReadableWritable: is_writeable = true; break;
       case BytePermission::kReadableWritableExecutable:
         is_writeable = true;
         is_executable = true;
         break;
-      case BytePermission::kReadableExecutable:
-        is_executable = true;
-        break;
+      case BytePermission::kReadableExecutable: is_executable = true; break;
     }
 
     // Need to introduce a new range.
@@ -723,21 +760,18 @@ Specification::EncodeToJSON(void) {
   // Encode the range-based memory implementation to JSON.
   for (Range &range : ranges) {
     llvm::json::Object ro;
-    ro.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("address"),
-        static_cast<int64_t>(range.begin_address)});
+    ro.insert(
+        llvm::json::Object::KV{llvm::json::ObjectKey("address"),
+                               static_cast<int64_t>(range.begin_address)});
 
-    ro.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("is_writeable"),
-        range.is_writeable});
+    ro.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_writeable"),
+                                     range.is_writeable});
 
-    ro.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("is_executable"),
-        range.is_executable});
+    ro.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_executable"),
+                                     range.is_executable});
 
-    ro.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("data"),
-        std::move(range.hex_bytes)});
+    ro.insert(llvm::json::Object::KV{llvm::json::ObjectKey("data"),
+                                     std::move(range.hex_bytes)});
 
     memory.emplace_back(std::move(ro));
   }
@@ -745,8 +779,8 @@ Specification::EncodeToJSON(void) {
   for (auto [from_address, to_address] : impl->redirections) {
     if (from_address == to_address) {
       std::stringstream ss;
-      ss << "Trivial control-flow redirection cycle on address "
-         << std::hex << from_address;
+      ss << "Trivial control-flow redirection cycle on address " << std::hex
+         << from_address;
       return JSONEncodeError(ss.str());
     }
 
@@ -759,8 +793,8 @@ Specification::EncodeToJSON(void) {
   for (const auto &to_list : impl->targets) {
     if (to_list->target_addresses.empty()) {
       std::stringstream ss;
-      ss << "Empty destination address list for source address "
-         << std::hex << to_list->address;
+      ss << "Empty destination address list for source address " << std::hex
+         << to_list->address;
       return JSONEncodeError(ss.str());
     }
 
@@ -770,17 +804,14 @@ Specification::EncodeToJSON(void) {
     }
 
     llvm::json::Object tl;
-    tl.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("source"),
-        static_cast<int64_t>(to_list->address)});
+    tl.insert(llvm::json::Object::KV{llvm::json::ObjectKey("source"),
+                                     static_cast<int64_t>(to_list->address)});
 
-    tl.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("is_complete"),
-        to_list->is_complete});
+    tl.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_complete"),
+                                     to_list->is_complete});
 
-    tl.insert(llvm::json::Object::KV{
-        llvm::json::ObjectKey("destinations"),
-        std::move(destinations)});
+    tl.insert(llvm::json::Object::KV{llvm::json::ObjectKey("destinations"),
+                                     std::move(destinations)});
 
     targets.emplace_back(std::move(tl));
   }
@@ -788,46 +819,38 @@ Specification::EncodeToJSON(void) {
   llvm::json::Object json;
   llvm::StringRef arch(remill::GetArchName(impl->arch->arch_name));
   llvm::StringRef os(remill::GetOSName(impl->arch->os_name));
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("arch"), arch});
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("os"), os});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("functions"),
+                                     std::move(functions)});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("call_sites"),
+                                     std::move(call_sites)});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("variables"),
+                                     std::move(variables)});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("symbols"),
+                                     std::move(symbols)});
+
+  json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("memory"),
+                                     std::move(memory)});
+
+  json.insert(
+      llvm::json::Object::KV{llvm::json::ObjectKey("control_flow_redirections"),
+                             std::move(redirects)});
 
   json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("os"), os});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("functions"),
-      std::move(functions)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("call_sites"),
-      std::move(call_sites)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("variables"),
-      std::move(variables)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("symbols"),
-      std::move(symbols)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("memory"),
-      std::move(memory)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("control_flow_redirections"),
-      std::move(redirects)});
-
-  json.insert(llvm::json::Object::KV{
-      llvm::json::ObjectKey("control_flow_targets"),
-      std::move(targets)});
+      llvm::json::ObjectKey("control_flow_targets"), std::move(targets)});
 
   return json;
 }
 
 // Return the function beginning at `address`, or an empty `shared_ptr`.
-std::shared_ptr<const FunctionDecl> Specification::FunctionAt(
-    std::uint64_t address) const {
+std::shared_ptr<const FunctionDecl>
+Specification::FunctionAt(std::uint64_t address) const {
   auto it = impl->address_to_function.find(address);
   if (it != impl->address_to_function.end()) {
     return std::shared_ptr<const FunctionDecl>(impl, it->second);
@@ -837,8 +860,8 @@ std::shared_ptr<const FunctionDecl> Specification::FunctionAt(
 }
 
 // Return the global variable beginning at `address`, or an empty `shared_ptr`.
-std::shared_ptr<const VariableDecl> Specification::VariableAt(
-    std::uint64_t address) const {
+std::shared_ptr<const VariableDecl>
+Specification::VariableAt(std::uint64_t address) const {
   auto it = impl->address_to_var.find(address);
   if (it != impl->address_to_var.end()) {
     if (it->second->address == address) {
@@ -849,8 +872,8 @@ std::shared_ptr<const VariableDecl> Specification::VariableAt(
 }
 
 // Return the global variable containing `address`, or an empty `shared_ptr`.
-std::shared_ptr<const VariableDecl> Specification::VariableContaining(
-    std::uint64_t address) const {
+std::shared_ptr<const VariableDecl>
+Specification::VariableContaining(std::uint64_t address) const {
   auto it = impl->address_to_var.find(address);
   if (it != impl->address_to_var.end()) {
     return std::shared_ptr<const VariableDecl>(impl, it->second);
@@ -860,8 +883,8 @@ std::shared_ptr<const VariableDecl> Specification::VariableContaining(
 }
 
 // Call `cb` on each symbol in the spec, until `cb` returns `false`.
-void Specification::ForEachSymbol(std::function<bool(std::uint64_t,
-                                      const std::string &)> cb) const {
+void Specification::ForEachSymbol(
+    std::function<bool(std::uint64_t, const std::string &)> cb) const {
   for (const auto &[ea, name] : impl->symbols) {
     if (!cb(ea, name)) {
       return;
@@ -904,7 +927,8 @@ void Specification::ForEachCallSite(
 
 // Call `cb` on each control-flow target list, until `cb` returns `false`.
 void Specification::ForEachControlFlowTargetList(
-    std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb) const {
+    std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
+    const {
   for (const auto &ent : impl->targets) {
     std::shared_ptr<const ControlFlowTargetList> ptr(impl, ent.get());
     if (!cb(std::move(ptr))) {

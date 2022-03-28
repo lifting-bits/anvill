@@ -8,15 +8,14 @@
 
 #pragma once
 
+#include <anvill/Declarations.h>
+#include <anvill/Providers.h>
 #include <anvill/Specification.h>
+#include <anvill/Type.h>
 
 #include <map>
 #include <unordered_map>
 #include <utility>
-
-#include <anvill/Declarations.h>
-#include <anvill/Providers.h>
-#include <anvill/Type.h>
 
 namespace llvm {
 class LLVMContext;
@@ -38,14 +37,14 @@ class SpecificationImpl
 
   bool ParseRange(const llvm::json::Object *obj, std::stringstream &err);
 
-  bool ParseControlFlowRedirection(
-      const llvm::json::Array &redirection_list, std::stringstream &err);
+  bool ParseControlFlowRedirection(const llvm::json::Array &redirection_list,
+                                   std::stringstream &err);
 
-  bool ParseControlFlowTargets(
-      const llvm::json::Array &ctrl_flow_target_list, std::stringstream &err);
+  bool ParseControlFlowTargets(const llvm::json::Array &ctrl_flow_target_list,
+                               std::stringstream &err);
 
-  const llvm::json::Object *ParseSpecification(
-      const llvm::json::Object *obj, std::stringstream &err);
+  Result<std::vector<JSONDecodeError>, JSONDecodeError>
+  ParseSpecification(const llvm::json::Object *obj);
 
  public:
   ~SpecificationImpl(void);
