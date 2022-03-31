@@ -78,6 +78,7 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
       }
 
     case remill::kArchAArch32LittleEndian: return CreateAArch32_C(arch);
+    case remill::kArchThumb2LittleEndian: return CreateAArch32_C(arch);
     case remill::kArchAArch64LittleEndian: return CreateAArch64_C(arch);
 
     case remill::kArchSparc32:
@@ -103,15 +104,14 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
   const auto arch_name = remill::GetArchName(arch->arch_name);
   const auto os_name = remill::GetOSName(arch->os_name);
   std::stringstream ss;
-  ss << "Unsupported architecture/OS pair: " << arch_name << " and "
-     << os_name;
+  ss << "Unsupported architecture/OS pair: " << arch_name << " and " << os_name;
   return ss.str();
 }
 
 // Still need the arch to be passed in so we can create the calling convention
 Result<CallingConvention::Ptr, std::string>
-CallingConvention::CreateCCFromArchAndID(
-    const remill::Arch *arch, llvm::CallingConv::ID cc_id) {
+CallingConvention::CreateCCFromArchAndID(const remill::Arch *arch,
+                                         llvm::CallingConv::ID cc_id) {
   switch (cc_id) {
     case llvm::CallingConv::C:
       if (arch->IsX86()) {
@@ -182,7 +182,7 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
   if (remill::IsError(maybe_decl)) {
     return remill::GetErrorString(maybe_decl);
   } else {
-    // Here we override the return type of the extern declaration to match how it was allocated 
+    // Here we override the return type of the extern declaration to match how it was allocated
     // In the future instead of doing this we should store information about how to extract return values at the llvm
     // level into the abi returns.
     // TODO(ian): Dont dont do this.
