@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/Arch.h>
 #include <anvill/Lifters.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
@@ -28,8 +29,8 @@ TEST_SUITE("TransformRemillJump_Test0") {
     llvm::LLVMContext llvm_context;
     auto module = LoadTestData(llvm_context, "TransformRemillJumpData0.ll");
 
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+    auto arch = BuildArch(llvm_context, remill::ArchName::kArchAMD64,
+                          remill::OSName::kOSLinux);
     REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
@@ -63,8 +64,8 @@ TEST_SUITE("TransformRemillJump_Test1") {
     llvm::LLVMContext llvm_context;
     auto module = LoadTestData(llvm_context, "TransformRemillJumpData1.ll");
 
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+    auto arch = BuildArch(llvm_context, remill::ArchName::kArchAMD64,
+                          remill::OSName::kOSLinux);
     REQUIRE(arch != nullptr);
       auto ctrl_flow_provider =
           anvill::NullControlFlowProvider();
@@ -99,8 +100,10 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
     auto module =
         LoadTestData(llvm_context, "TransformRemillJumpDataARM32_0.ll");
 
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("aarch32"));
+
+    auto arch = BuildArch(
+        llvm_context, remill::ArchName::kArchAArch32LittleEndian,
+        remill::OSName::kOSLinux);
     REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
@@ -136,8 +139,9 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
     auto module =
         LoadTestData(llvm_context, "TransformRemillJumpDataARM32_1.ll");
 
-    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                    remill::GetArchName("aarch32"));
+    auto arch = BuildArch(
+        llvm_context, remill::ArchName::kArchAArch32LittleEndian,
+        remill::OSName::kOSLinux);
     REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =

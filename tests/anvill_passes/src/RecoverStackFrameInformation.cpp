@@ -7,10 +7,10 @@
  */
 
 #include <anvill/ABI.h>
+#include <anvill/Arch.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
-#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
 #include <anvill/Lifters.h>
@@ -43,9 +43,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
           REQUIRE(module != nullptr);
 
-          auto arch =
-              remill::Arch::Build(&context, remill::GetOSName(platform.os),
-                                  remill::GetArchName(platform.arch));
+          auto arch = BuildArch(context, remill::GetArchName(platform.arch),
+                                remill::GetOSName(platform.os));
 
           REQUIRE(arch != nullptr);
 
@@ -78,10 +77,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
       llvm::LLVMContext context;
       auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
-
-
-      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
-                                      remill::GetArchName("amd64"));
+      auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                            remill::OSName::kOSLinux);
       REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
@@ -243,10 +240,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
       REQUIRE(function_it != function_list.end());
       auto &function = *function_it;
-
-
-      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
-                                      remill::GetArchName("amd64"));
+      auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                            remill::OSName::kOSLinux);
       REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
@@ -261,8 +256,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
       WHEN("recovering the stack frame") {
         auto stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
-        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
-                                        remill::kArchAMD64);
+        auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                              remill::OSName::kOSLinux);
 
         lift_options.stack_frame_recovery_options.stack_frame_struct_init_procedure =
             StackFrameStructureInitializationProcedure::kZeroes;

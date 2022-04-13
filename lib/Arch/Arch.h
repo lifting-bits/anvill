@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <anvill/Arch.h>
+
 #include <remill/BC/Compat/Error.h>
 
 #include <string>

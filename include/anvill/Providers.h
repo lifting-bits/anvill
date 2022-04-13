@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -32,6 +33,15 @@ class Instruction;
 enum ArchName : uint32_t;
 }  // namespace remill
 namespace anvill {
+
+struct CallableDecl;
+struct ControlFlowTargetList;
+struct FunctionDecl;
+struct VariableDecl;
+class Specification;
+class SpecificationImpl;
+class TypeDictionary;
+class TypeTranslator;
 
 class TypeProvider {
  public:
@@ -333,11 +343,13 @@ class ControlFlowProvider {
   // Returns a possible redirection for the given target. If there is no
   // redirection then `address` should be returned.
   virtual std::uint64_t GetRedirection(const remill::Instruction &from_inst,
-                                       std::uint64_t to_address) const = 0;
+                                       std::uint64_t to_address,
+                                       remill::ArchName to_arch) const = 0;
 
   // Returns a list of targets reachable from the given address
   virtual std::optional<ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &from_inst) const = 0;
+  TryGetControlFlowTargets(const remill::Instruction &from_inst,
+                           remill::ArchName to_arch) const = 0;
 
  protected:
   ControlFlowProvider(void) = default;
@@ -355,10 +367,12 @@ class NullControlFlowProvider : public ControlFlowProvider {
   virtual ~NullControlFlowProvider(void) = default;
 
   std::uint64_t GetRedirection(const remill::Instruction &,
-                               std::uint64_t address) const override;
+                               std::uint64_t address,
+                               remill::ArchName to_arch) const override;
 
   std::optional<ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &) const override;
+  TryGetControlFlowTargets(const remill::Instruction &,
+                           remill::ArchName) const override;
 };
 
 class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
@@ -371,10 +385,12 @@ class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
   explicit SpecificationControlFlowProvider(const Specification &spec);
 
   std::uint64_t GetRedirection(const remill::Instruction &from_inst,
-                               std::uint64_t address) const final;
+                               std::uint64_t address,
+                               remill::ArchName to_arch) const final;
 
   std::optional<anvill::ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
+  TryGetControlFlowTargets(const remill::Instruction &from_inst,
+                           remill::ArchName) const final;
 };
 
 

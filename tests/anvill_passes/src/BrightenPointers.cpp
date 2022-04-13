@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/Arch.h>
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/Lifters.h>
 #include <anvill/Lifters.h>
@@ -17,7 +18,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/Scalar/DCE.h>
-#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Lifter.h>
@@ -62,8 +62,7 @@ bool checkMod(const llvm::Module &mod) {
 class BrightenPointersFixture {
  public:
   BrightenPointersFixture(void)
-      : arch(remill::Arch::Build(&llvm_context, remill::kOSLinux,
-                                 remill::kArchAMD64)),
+      : arch(BuildArch(llvm_context, remill::kArchAMD64, remill::kOSLinux)),
         mem(MemoryProvider::CreateNull()),
         types(TypeProvider::CreateNull(llvm_context)) {}
 

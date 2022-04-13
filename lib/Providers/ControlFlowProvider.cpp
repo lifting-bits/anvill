@@ -15,12 +15,14 @@
 namespace anvill {
 
 std::uint64_t NullControlFlowProvider::GetRedirection(
-    const remill::Instruction &, std::uint64_t address) const {
+    const remill::Instruction &, std::uint64_t address,
+    remill::ArchName) const {
   return address;
 }
 
 std::optional<ControlFlowTargetList>
-NullControlFlowProvider::TryGetControlFlowTargets(const remill::Instruction &) const {
+NullControlFlowProvider::TryGetControlFlowTargets(
+    const remill::Instruction &, remill::ArchName) const {
   return std::nullopt;
 }
 
@@ -32,7 +34,9 @@ SpecificationControlFlowProvider::SpecificationControlFlowProvider(
       : impl(spec.impl) {}
 
 std::uint64_t SpecificationControlFlowProvider::GetRedirection(
-    const remill::Instruction &inst, std::uint64_t address) const {
+    const remill::Instruction &inst, std::uint64_t address,
+    remill::ArchName to_arch) const {
+  (void) to_arch;
   auto it = impl->redirections.find(inst.pc);
   if (it != impl->redirections.end()) {
     return it->second;
@@ -43,7 +47,8 @@ std::uint64_t SpecificationControlFlowProvider::GetRedirection(
 
 std::optional<anvill::ControlFlowTargetList>
 SpecificationControlFlowProvider::TryGetControlFlowTargets(
-    const remill::Instruction &inst) const {
+    const remill::Instruction &inst, remill::ArchName to_arch) const {
+  (void) to_arch;
   auto it = impl->address_to_targets.find(inst.pc);
   if (it != impl->address_to_targets.end()) {
     return *(it->second);

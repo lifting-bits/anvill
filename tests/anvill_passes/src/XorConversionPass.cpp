@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/Arch.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/ConvertXorsToCmps.h>
 #include <anvill/Providers.h>
@@ -45,8 +46,8 @@ runXorRemovalPassCountXors(const std::string &module_name,
   llvm::LLVMContext llvm_context;
   auto module = LoadTestData(llvm_context, module_name);
 
-  auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                  remill::GetArchName("amd64"));
+  auto arch = BuildArch(llvm_context, remill::ArchName::kArchAMD64,
+                        remill::OSName::kOSLinux);
 
   REQUIRE(arch != nullptr);
 

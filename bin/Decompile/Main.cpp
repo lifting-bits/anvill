@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/Arch.h>
 #include <anvill/JSON.h>
 #include <anvill/Lifters.h>
 #include <anvill/Optimize.h>
@@ -19,7 +20,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <remill/Arch/Arch.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
 

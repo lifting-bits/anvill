@@ -12,6 +12,7 @@
 #include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
@@ -19,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <tuple>
 #include <unordered_map>
 
 namespace llvm {
@@ -34,6 +36,7 @@ namespace remill {
 class Arch;
 class Instruction;
 struct Register;
+enum ArchName : uint32_t;
 }  // namespace remill
 namespace anvill {
 
@@ -114,6 +117,9 @@ class FunctionLifter {
   // Address of the function currently being lifted.
   uint64_t func_address{0};
 
+  // Architecture of the function currently being lifted.
+  remill::ArchName func_arch_name{remill::ArchName::kArchInvalid};
+
   // The declaration of the current function being lifted.
   const FunctionDecl *curr_decl{nullptr};
 
@@ -158,11 +164,11 @@ class FunctionLifter {
   // NOTE(pag): The destination PC of the edge comes first in the work list so
   //            that the ordering of the `std::set` processes the instructions
   //            roughly in order.
-  std::set<std::pair<uint64_t, uint64_t>> edge_work_list;
+  std::set<std::tuple<uint64_t, uint64_t, remill::ArchName>> edge_work_list;
 
   // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
   // with `to_pc`.
-  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *>
+  std::map<std::tuple<uint64_t, uint64_t, remill::ArchName>, llvm::BasicBlock *>
       edge_to_dest_block;
 
   // Maps an instruction address to a basic block that will hold the lifted code
@@ -184,12 +190,14 @@ class FunctionLifter {
   // function drives a work list, where the first time we ask for the
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr);
+  llvm::BasicBlock *GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr,
+                                     remill::ArchName to_arch);
 
   // Attempts to lookup any redirection of the given address, and then
   // calls GetOrCreateBlock
   llvm::BasicBlock *GetOrCreateTargetBlock(const remill::Instruction &from_inst,
-                                           uint64_t to_addr);
+                                           uint64_t to_addr,
+                                           remill::ArchName to_arch);
 
   // The following `Visit*` methods exist to orchestrate control flow. The way
   // lifting works in Remill is that the mechanics of an instruction are
@@ -409,14 +417,14 @@ class FunctionLifter {
                                      llvm::BasicBlock *block);
 
   // Visit all instructions. This runs the work list and lifts instructions.
-  void VisitInstructions(uint64_t address);
+  void VisitInstructions(void);
 
   // Try to decode an instruction at address `addr` into `*inst_out`. Returns
   // `true` is successful and `false` otherwise. `is_delayed` tells the decoder
   // whether or not the instruction being decoded is being decoded inside of a
   // delay slot of another instruction.
-  bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
-                             remill::Instruction *inst_out);
+  bool DecodeInstructionInto(uint64_t addr, remill::ArchName inst_arch,
+                             bool is_delayed, remill::Instruction *inst_out);
 
   // Set up `native_func` to be able to call `lifted_func`. This means
   // marshalling high-level argument types into lower-level values to pass into

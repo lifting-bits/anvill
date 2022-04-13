@@ -8,9 +8,9 @@
 
 #include <anvill/Passes/HoistUsersOfSelectsAndPhis.h>
 
+#include <anvill/Arch.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
-#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
 
@@ -27,8 +27,8 @@ TEST_SUITE("InstructionFolderPass") {
 
     REQUIRE(module != nullptr);
 
-    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+    auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                          remill::OSName::kOSLinux);
 
     REQUIRE(arch != nullptr);
 

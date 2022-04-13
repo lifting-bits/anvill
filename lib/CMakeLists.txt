@@ -113,6 +113,7 @@ foreach(pass_name ${anvill_passes})
 endforeach()
 
 set(anvill_PUBLIC_HEADERS
+  "${anvill_PUBLIC_HEADER_DIR}/Arch.h"
   "${anvill_PUBLIC_HEADER_DIR}/ABI.h"
   "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceFolder.h"
   "${anvill_PUBLIC_HEADER_DIR}/CrossReferenceResolver.h"

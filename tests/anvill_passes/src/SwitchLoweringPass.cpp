@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2021-present, Trail of Bits, Inc.
+ * All rights reserved.
+ *
+ * This source code is licensed in accordance with the terms specified in
+ * the LICENSE file found in the root directory of this source tree.
+ */
+
+#include <anvill/Arch.h>
 #include <anvill/Passes/LowerSwitchIntrinsics.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
@@ -96,8 +105,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+    auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                          remill::OSName::kOSLinux);
     auto ctrl_flow_provider =
         anvill::NullControlFlowProvider();
     TypeDictionary tyDict(context);
@@ -220,8 +229,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
-                                    remill::GetArchName("amd64"));
+    auto arch = BuildArch(context, remill::ArchName::kArchAMD64,
+                          remill::OSName::kOSLinux);
     auto ctrl_flow_provider =
         anvill::NullControlFlowProvider();
     TypeDictionary tyDict(context);

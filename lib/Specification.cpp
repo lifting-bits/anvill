@@ -8,11 +8,11 @@
 
 #include "Specification.h"
 
+#include <anvill/Arch.h>
 #include <anvill/JSON.h>
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/JSON.h>
-#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Compat/Error.h>
 #include <remill/BC/Util.h>
@@ -304,6 +304,9 @@ SpecificationImpl::ParseSpecification(const llvm::json::Object *spec) {
 
         } else {
           auto func = maybe_func.TakeValue();
+          if (func.sub_arch_name == remill::kArchInvalid) {
+            func.sub_arch_name = arch->arch_name;
+          }
           auto func_address = func.address;
           if (address_to_function.count(func_address)) {
             std::stringstream ss;
@@ -627,7 +630,7 @@ Specification::DecodeFromJSON(llvm::LLVMContext &context,
   // Get a unique pointer to a remill architecture object. The architecture
   // object knows how to deal with everything for this specific architecture,
   // such as semantics, register,  etc.
-  auto arch = remill::Arch::Build(&context, os_name, arch_name);
+  auto arch = BuildArch(context, arch_name, os_name);
   if (!arch) {
     ss << "Invalid architecture/operating system combination "
        << remill::GetArchName(arch_name) << '/' << remill::GetOSName(os_name)

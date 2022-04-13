@@ -1,8 +1,9 @@
+
+#include <anvill/Arch.h>
 #include <anvill/Lifters.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
-#include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
 #include <anvill/Lifters.h>
@@ -19,10 +20,8 @@ namespace anvill {
     TEST_CASE("Regression test for unresolved anvill_pc") {
         llvm::LLVMContext llvm_context;
         auto module = LoadTestData(llvm_context, "TestingUnresolvedEntity.ll");
-        
-
-        auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                        remill::GetArchName("amd64"));
+        auto arch = BuildArch(llvm_context, remill::ArchName::kArchAMD64,
+                              remill::OSName::kOSLinux);
         REQUIRE(arch != nullptr);
 
         auto ctrl_flow_provider =

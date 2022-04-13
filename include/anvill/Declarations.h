@@ -15,6 +15,8 @@
 #include <string_view>
 #include <vector>
 
+#include <remill/Arch/Name.h>
+
 #include "Result.h"
 
 namespace llvm {
@@ -190,6 +192,12 @@ struct CallableDecl {
 //            brings up amd64 code, etc.).
 struct FunctionDecl : public CallableDecl {
  public:
+  // The sub-architecture name, e.g. to specialize `CallableDecl::arch`. This
+  // helps us mark `thumb2` functions in `aarch32` mode or vice versa.
+  //
+  // TODO(pag): This a pretty leaky abstraction.
+  remill::ArchName sub_arch_name{remill::ArchName::kArchInvalid};
+
   // Address of this function in memory.
   std::uint64_t address{0};
 

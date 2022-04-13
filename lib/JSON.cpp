@@ -28,7 +28,6 @@ JSONTranslator::ParseJsonIntoCallableDecl(const llvm::json::Object *obj,
                                           CallableDecl &decl) const {
   decl.arch = arch;
 
-
   if (auto maybe_is_noreturn = obj->getBoolean("is_noreturn")) {
     decl.is_noreturn = *maybe_is_noreturn;
   }
@@ -460,6 +459,11 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
   FunctionDecl decl;
 
+  auto maybe_arch = obj->getString("arch");
+  if (maybe_arch) {
+    decl.sub_arch_name = remill::GetArchName(maybe_arch->str());
+  }
+
   auto maybe_ea = obj->getInteger("address");
   if (!maybe_ea) {
     return JSONDecodeError("Missing function address in specification", obj);
@@ -840,6 +844,17 @@ JSONTranslator::Encode(const FunctionDecl &decl) const {
   }
 
   llvm::json::Object json;
+
+  if (decl.sub_arch_name != remill::kArchInvalid) {
+    json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("arch"),
+        remill::GetArchName(decl.sub_arch_name).data()});
+
+  } else if (decl.arch) {
+    json.insert(llvm::json::Object::KV{
+        llvm::json::ObjectKey("arch"),
+        remill::GetArchName(decl.arch->arch_name).data()});
+  }
 
   if (decl.address) {
     json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("address"),
