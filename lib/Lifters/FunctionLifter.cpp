@@ -199,8 +199,9 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
-    uint64_t from_addr, uint64_t to_addr, remill::ArchName to_arch) {
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t from_addr,
+                                                   uint64_t to_addr,
+                                                   remill::ArchName to_arch) {
   CHECK(to_arch != remill::ArchName::kArchInvalid);
   auto &block = edge_to_dest_block[{from_addr, to_addr, to_arch}];
   if (block) {
@@ -221,13 +222,13 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
 }
 
 llvm::BasicBlock *
-FunctionLifter::GetOrCreateTargetBlock(
-    const remill::Instruction &from_inst, uint64_t to_addr,
-    remill::ArchName to_arch) {
+FunctionLifter::GetOrCreateTargetBlock(const remill::Instruction &from_inst,
+                                       uint64_t to_addr,
+                                       remill::ArchName to_arch) {
 
   CHECK(to_arch != remill::ArchName::kArchInvalid);
 
-  auto update_arch_addr = [&] (void) {
+  auto update_arch_addr = [&](void) {
     if (to_addr % 2u) {
       if (to_arch == remill::ArchName::kArchAArch32LittleEndian ||
           to_arch == remill::ArchName::kArchAArch64LittleEndian) {
@@ -246,8 +247,8 @@ FunctionLifter::GetOrCreateTargetBlock(
   // as arguments), and...
   update_arch_addr();
 
-  to_addr = options.control_flow_provider.GetRedirection(
-      from_inst, to_addr, to_arch);
+  to_addr =
+      options.control_flow_provider.GetRedirection(from_inst, to_addr, to_arch);
 
   // ... control-flow redirects, which happen just above.
   update_arch_addr();
@@ -354,10 +355,9 @@ void FunctionLifter::VisitDirectJump(const remill::Instruction &inst,
                                      remill::Instruction *delayed_inst,
                                      llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_taken_pc,
-                             inst.branch_taken_arch_name),
-      block);
+  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, inst.branch_taken_pc,
+                                                  inst.branch_taken_arch_name),
+                           block);
 }
 
 // Visit an indirect jump that is a jump table.
@@ -436,8 +436,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     auto dest_id{0u};
 
     for (auto dest : target_list.target_addresses) {
-      auto dest_block = GetOrCreateTargetBlock(
-          inst, dest, inst.branch_taken_arch_name);
+      auto dest_block =
+          GetOrCreateTargetBlock(inst, dest, inst.branch_taken_arch_name);
       auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
       switch_inst->addCase(dest_case, dest_block);
     }
@@ -481,8 +481,8 @@ void FunctionLifter::VisitIndirectJump(const remill::Instruction &inst,
     // Attempt to get the target list for this control flow instruction
     // so that we can handle this jump in a less generic way.
   } else if (auto maybe_target_list =
-      options.control_flow_provider.TryGetControlFlowTargets(
-          inst, inst.branch_taken_arch_name)) {
+                 options.control_flow_provider.TryGetControlFlowTargets(
+                     inst, inst.branch_taken_arch_name)) {
 
     DoSwitchBasedIndirectJump(inst, block, *maybe_target_list);
 
@@ -646,8 +646,9 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
     // First, try to see if it's actually related to another function. This is
     // equivalent to a tail-call in the original code.
     uint64_t target_addr = target_pc.value();
-    const uint64_t redirected_addr = options.control_flow_provider.GetRedirection(
-        inst, target_addr, inst.branch_taken_arch_name);
+    const uint64_t redirected_addr =
+        options.control_flow_provider.GetRedirection(
+            inst, target_addr, inst.branch_taken_arch_name);
 
     // Now, get the type of the target given the source and destination.
     maybe_decl = TryGetTargetFunctionType(inst, target_addr, redirected_addr);
@@ -868,8 +869,8 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
   llvm::IRBuilder<> ir(block);
   auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
   auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
-  auto branch_to_next_pc = ir.CreateBr(
-      GetOrCreateTargetBlock(inst, ret_pc, inst.arch_name));
+  auto branch_to_next_pc =
+      ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, inst.arch_name));
 
   AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
   AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
@@ -1297,7 +1298,7 @@ void FunctionLifter::VisitInstructions(void) {
       MuteStateEscape(call);
       continue;
 
-    // Didn't get a valid instruction.
+      // Didn't get a valid instruction.
     } else if (!inst.IsValid() || inst.IsError()) {
       auto call =
           remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
@@ -1305,7 +1306,7 @@ void FunctionLifter::VisitInstructions(void) {
       MuteStateEscape(call);
       continue;
 
-    // Decoded.
+      // Decoded.
     } else {
       if (inst_addr == func_address) {
         inst_addr = options.control_flow_provider.GetRedirection(
@@ -1721,7 +1722,6 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
-
   addr_to_func.clear();
   edge_work_list.clear();
   edge_to_dest_block.clear();
@@ -1744,6 +1744,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
       memory_provider.Query(func_address);
   if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
       !MemoryProvider::IsExecutable(first_byte_perms)) {
+    LOG(ERROR) << "Attempted to lift function at invalid address " << std::hex
+               << decl.address;
     return nullptr;
   }
 
@@ -1762,6 +1764,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // The address is valid, the memory is executable, but we don't actually have
   // the data available for lifting, so leave us with just a declaration.
   if (!MemoryProvider::HasByte(first_byte_avail)) {
+    LOG(ERROR) << "Attempted to lift function at address without bytes "
+               << std::hex << decl.address;
     return native_func;
   }
 

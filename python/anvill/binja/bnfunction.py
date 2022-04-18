@@ -68,8 +68,12 @@ class BNFunction(Function):
         is_entrypoint=False,
         is_external=False
     ):
-        super(BNFunction, self).__init__(arch, address, param_list, ret_list,
-                                         func_type, is_entrypoint=is_entrypoint)
+        if bn_func.arch.name == "thumb2":
+            super(BNFunction, self).__init__(arch, address, param_list, ret_list,
+                                            func_type, is_entrypoint=is_entrypoint, sub_arch="thumb2")
+        else:
+            super(BNFunction, self).__init__(arch, address, param_list, ret_list,
+                                func_type, is_entrypoint=is_entrypoint)
         self._is_external: bool = is_external
         self._bn_func: bn.Function = bn_func
 
@@ -334,13 +338,6 @@ class BNFunction(Function):
             return
 
         program = cast('BNSpecification', program_)
-
-        # The lifter does not support thumb2 instruction set. If the function
-        # is of arch type `thumb2` then don't visit them and fill the memory
-        # bytes. These functions will be declared but not defined in the lifted
-        # code
-        if self._bn_func is None or self._bn_func.arch.name == "thumb2":
-            return
 
         mem = program.memory
 

@@ -31,10 +31,11 @@ class Function(ABC):
     def __init__(
         self, arch: Arch, address: int, parameters: List[Location],
         return_values: List[Location], func_type: FunctionType,
-        is_entrypoint: bool = False, cc: CC = 0
+        is_entrypoint: bool = False, cc: CC = 0, sub_arch: Optional[Arch] = None
     ):
         assert isinstance(func_type, FunctionType)
         self._arch: Final[Arch] = arch
+        self._sub_arch: Final[Optional[Arch]] = sub_arch
         self._address: Final[int] = address
         self._parameters: Final[List[Location]] = parameters
         self._return_values: Final[List[Location]] = return_values
@@ -104,6 +105,9 @@ class Function(ABC):
             "is_noreturn": self.is_noreturn(),
             "calling_convention": cast(int, self._cc)
         }
+
+        if self._sub_arch is not None:
+            proto["arch"] = self._sub_arch
 
         if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()
