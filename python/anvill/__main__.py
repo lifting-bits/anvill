@@ -51,6 +51,7 @@ def main():
         type=str,
         help="Where the image should be loaded, expressed as an hex integer.")
 
+    arg_parser.add_argument("--only_declare_depedencies",action="store_true", default=False)
 
     arg_parser.add_argument("--entrypoint", type=str, help="only specify functions from entrypoint")
 
@@ -81,8 +82,6 @@ def main():
 
     flist = bv.functions
 
-
-
     if args.entrypoint:
         epoint = int(args.entrypoint, 16)
         newflsit = set()
@@ -104,10 +103,16 @@ def main():
     for f in flist:
         ea: int = f.start
         DEBUG(f"Found function at: {ea:x}")
-        try:
-            p.add_function_definition(ea, True)
-        except:
-            ERROR(f"Error when trying to add function {ea:x}: {traceback.format_exc()}")
+        if (args.entrypoint is None) or ea == int(args.entrypoint, 16) or (not args.only_declare_depedencies):
+            try:
+                p.add_function_definition(ea, (not args.only_declare_depedencies))
+            except:
+                ERROR(f"Error when trying to add function {ea:x}: {traceback.format_exc()}")
+        else:
+            try:
+                p.add_function_declaration(ea, (not args.only_declare_depedencies))
+            except:
+                ERROR(f"Error when trying to add function decl {ea:x}: {traceback.format_exc()}")      
 
     for s_ in bv.get_symbols():
         s = cast(bn.Symbol, s_)
