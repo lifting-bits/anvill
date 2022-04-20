@@ -45,6 +45,8 @@ DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
 
+DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
+
 DEFINE_string(
     default_callable_spec, "",
     "a default specification for functions for which we dont have a type");
@@ -191,13 +193,34 @@ int main(int argc, char *argv[]) {
 
   anvill::EntityLifter lifter(options);
 
-  spec.ForEachFunction([&lifter](auto decl) {
-    lifter.LiftEntity(*decl);
+  std::unordered_map<uint64_t, std::string> names;
+  if (FLAGS_add_names) {
+    spec.ForEachSymbol([&names] (uint64_t addr, const std::string &name) {
+      names.emplace(addr, name);
+      LOG(ERROR) << std::hex << addr << std::dec << " " << name;
+      return true;
+    });
+  }
+
+  spec.ForEachFunction([&lifter, &names](auto decl) {
+    llvm::Function *func = lifter.LiftEntity(*decl);
+    if (FLAGS_add_names) {
+      if (auto name_it = names.find(decl->address); name_it != names.end()) {
+        func->setName(name_it->second);
+      }
+    }
     return true;
   });
 
-  spec.ForEachVariable([&lifter](auto decl) {
-    lifter.LiftEntity(*decl);
+  spec.ForEachVariable([&lifter, &names](auto decl) {
+    llvm::Constant *cv = lifter.LiftEntity(*decl);
+    if (FLAGS_add_names) {
+      if (auto name_it = names.find(decl->address); name_it != names.end()) {
+        if (llvm::GlobalValue *gv = llvm::dyn_cast<llvm::GlobalValue>(cv)) {
+          gv->setName(name_it->second);
+        }
+      }
+    }
     return true;
   });
 
