@@ -46,6 +46,7 @@ DEFINE_bool(add_breakpoints, false,
             "lifted bitcode.");
 
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
+DEFINE_bool(disable_optimization, false, "disable optimization of the bitcode");
 
 DEFINE_string(
     default_callable_spec, "",
@@ -167,8 +168,8 @@ int main(int argc, char *argv[]) {
     }
 
     remill::ArchName arch_name = spec.Arch().get()->arch_name;
-    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(
-        arch_name, spec_tp);
+    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
+                                                                     spec_tp);
     dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
 
     tp = std::move(dtp);
@@ -195,7 +196,7 @@ int main(int argc, char *argv[]) {
 
   std::unordered_map<uint64_t, std::string> names;
   if (FLAGS_add_names) {
-    spec.ForEachSymbol([&names] (uint64_t addr, const std::string &name) {
+    spec.ForEachSymbol([&names](uint64_t addr, const std::string &name) {
       names.emplace(addr, name);
       LOG(ERROR) << std::hex << addr << std::dec << " " << name;
       return true;
@@ -228,8 +229,9 @@ int main(int argc, char *argv[]) {
     llvm::EnableStatistics();
   }
 
-  anvill::OptimizeModule(lifter, module);
-
+  if (!FLAGS_disable_optimization) {
+    anvill::OptimizeModule(lifter, module);
+  }
   int ret = EXIT_SUCCESS;
 
 

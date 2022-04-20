@@ -255,11 +255,10 @@ std::vector<RegisterConstraint>
 ApplyX86Ext(const std::vector<RegisterConstraint> &constraints,
             remill::ArchName arch_name) {
 
-  const auto is_avx =
-      remill::kArchAMD64_AVX == arch_name ||
-      remill::kArchX86_AVX == arch_name ||
-      remill::kArchAMD64_SLEIGH == arch_name ||
-      remill::kArchX86_SLEIGH == arch_name;
+  const auto is_avx = remill::kArchAMD64_AVX == arch_name ||
+                      remill::kArchX86_AVX == arch_name ||
+                      remill::kArchAMD64_SLEIGH == arch_name ||
+                      remill::kArchX86_SLEIGH == arch_name;
 
   const auto is_avx512 = remill::kArchAMD64_AVX512 == arch_name ||
                          remill::kArchX86_AVX512 == arch_name ||
@@ -346,8 +345,7 @@ class AArch32InstructionLifter final : public remill::InstructionLifter {
   // this instruction will execute within the delay slot of another instruction.
   remill::LiftStatus LiftIntoBlock(remill::Instruction &inst,
                                    llvm::BasicBlock *block,
-                                   llvm::Value *state_ptr,
-                                   bool is_delayed) {
+                                   llvm::Value *state_ptr, bool is_delayed) {
     if (is_delayed) {
       return remill::LiftStatus::kLiftedLifterError;
     }
@@ -384,8 +382,8 @@ class AArch32Arch final : public remill::Arch {
                      remill::ArchName::kArchAArch32LittleEndian),
         aarch32(remill::Arch::Build(
             context, os_name, remill::ArchName::kArchAArch32LittleEndian)),
-        thumb2(remill::Arch::Build(
-            context, os_name, remill::ArchName::kArchThumb2LittleEndian)),
+        thumb2(remill::Arch::Build(context, os_name,
+                                   remill::ArchName::kArchThumb2LittleEndian)),
         preferred_arch(arch_name_) {
 
     CHECK_NOTNULL(aarch32.get());
@@ -546,8 +544,8 @@ class AArch32Arch final : public remill::Arch {
   //
   // NOTE(pag): Internal API; do not invoke unless you are proxying/composing
   //            architectures.
-  const remill::Register *AddRegister(
-      const char *name, llvm::Type *, size_t , const char *) const final {
+  const remill::Register *AddRegister(const char *name, llvm::Type *, size_t,
+                                      const char *) const final {
     return aarch32->RegisterByName(name);
   }
 
