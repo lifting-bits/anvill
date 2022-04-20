@@ -40,7 +40,7 @@ static int64_t Signed(uint64_t val, uint64_t size) {
       }
     case 8: return static_cast<int8_t>(val);
     case 16: return static_cast<int16_t>(val);
-    case 32: return static_cast<int8_t>(val);
+    case 32: return static_cast<int32_t>(val);
     case 64: return static_cast<int64_t>(val);
     default:
       const uint64_t m = 1ull << (size - 1ull);
@@ -336,6 +336,7 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
+          ptr_type && !ptr_type->isOpaque() &&
           !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
       }
@@ -353,7 +354,8 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type =
               llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
-          ptr_type && !xr.displacement_from_hinted_value_type) {
+          ptr_type && !ptr_type->isOpaque() &&
+          !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
       }
       return xr;
@@ -379,6 +381,7 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
   }
 
   auto &xr = xref_cache[const_val];
+  DCHECK(!xr.u.address);
 
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
     xr = ResolveGlobalValue(gv);
@@ -406,7 +409,10 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
     }
 
   } else if (auto cpn = llvm::dyn_cast<llvm::ConstantPointerNull>(const_val)) {
-    xr.hinted_value_type = cpn->getType()->getElementType();
+    llvm::PointerType *ptr_type = cpn->getType();
+    if (!ptr_type->isOpaque()) {
+      xr.hinted_value_type = ptr_type->getElementType();
+    }
     xr.is_valid = true;
     xr.size = dl.getPointerSizeInBits(0);
 
@@ -473,7 +479,8 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     xr.size = dl.getPointerSizeInBits(0);
     xr.references_entity = true;
     xr.is_valid = true;
-    if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
+    if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType());
+        !ptr_ty->isOpaque()) {
       xr.hinted_value_type = ptr_ty->getElementType();
     }
     return xr;
@@ -549,7 +556,7 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
-          !xr.displacement_from_hinted_value_type) {
+          !xr.displacement_from_hinted_value_type && !ptr_type->isOpaque()) {
         xr.hinted_value_type = ptr_type->getElementType();
       }
       return xr;
@@ -565,7 +572,8 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
       if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
-          ptr_type && !xr.displacement_from_hinted_value_type) {
+          ptr_type && !ptr_type->isOpaque() &&
+          !xr.displacement_from_hinted_value_type) {
         xr.hinted_value_type = ptr_type->getElementType();
       }
       return xr;
