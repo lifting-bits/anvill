@@ -10,8 +10,11 @@
 #include <anvill/Transforms.h>
 #include <llvm/IR/PatternMatch.h>
 #include <llvm/IR/Verifier.h>
+#include <glog/logging.h>
+#include <remill/BC/Util.h>
 
 #include <algorithm>
+#include <string>
 #include <cassert>
 #include <unordered_map>
 #include <vector>
@@ -160,7 +163,17 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
         new_base = new llvm::IntToPtrInst(lo, ptr_ptr_type, "", load);
 
         // It was a load of a pointer.
-      } else if (llvm::isa<llvm::PointerType>(lo_type)) {
+      } else if (auto lo_ptr_type = llvm::dyn_cast<llvm::PointerType>(lo_type)) {
+
+        DLOG(INFO) << "Load of pointer: " << remill::LLVMThingToString(lo) << "\n";
+        DLOG(INFO) << "Load value: " << remill::LLVMThingToString(load) << "\n";
+        DLOG(INFO) << "Pointer type we want: " << remill::LLVMThingToString(ptr_ptr_type) << "\n";
+        if (auto addrspace = lo_ptr_type->getAddressSpace(); addrspace != ptr_ptr_type->getAddressSpace()) {
+          if (lo_ptr_type->isOpaque()) {
+          } else {
+            lo = new llvm::AddrSpaceCastInst(lo, llvm::PointerType::get(lo_ptr_type->getElementType(), ptr_ptr_type->getAddressSpace()), "", load);
+          }
+        }
         new_base = new llvm::BitCastInst(lo, ptr_ptr_type, "", load);
       }
 
@@ -369,16 +382,22 @@ llvm::PreservedAnalyses
 ConvertIntegerToPointerOperations::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &fam) {
 
+  DLOG(INFO) << "Converting integer to pointer ops on: " << std::string(func.getName())
+             << "\n";
+
   auto changed = false;
   if (FoldBasePlusScaledIndex(func)) {
+    DLOG(INFO) << "\t" << "FoldBasePlusScaledIndex made changes to the function" << "\n";
     changed = true;
   }
 
   if (IntToPtrOnLoadToLoadOfPointer(func)) {
+    DLOG(INFO) << "\t" << "IntToPtrOnLoadToLoadOfPointer made changes to the function" << "\n";
     changed = true;
   }
 
   if (IntToPtrOnAddToGetElementPtr(func)) {
+    DLOG(INFO) << "\t" << "IntToPtrOnAddToGetElementPtr made changes to the function" << "\n";
     changed = true;
   }
 
