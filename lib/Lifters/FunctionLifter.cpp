@@ -546,6 +546,7 @@ void FunctionLifter::VisitFunctionReturn(const remill::Instruction &inst,
                                          remill::Instruction *delayed_inst,
                                          llvm::BasicBlock *block) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
+
   auto func_return = remill::AddTerminatingTailCall(
       block, intrinsics.function_return, intrinsics);
   AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
@@ -1826,14 +1827,11 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
   CallLiftedFunctionFromNativeFunction(decl);
-  this->native_func->dump();
-  this->lifted_func->dump();
 
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
 
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
-  this->native_func->dump();
   return native_func;
 }
 
