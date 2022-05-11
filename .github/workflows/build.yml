@@ -759,7 +759,7 @@ jobs:
     strategy:
       matrix:
         llvm: ["13"]
-        ubuntu: ["18.04", "20.04"]
+        ubuntu: ["20.04"]
         binja:
           - {channel: 'headless-dev', version: '2.5.3126'}
     steps:
