@@ -31,9 +31,6 @@
 #include <sstream>
 #include <string>
 
-DECLARE_string(arch);
-DECLARE_string(os);
-
 DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
 DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
 DEFINE_string(bc_out, "",
@@ -165,8 +162,8 @@ int main(int argc, char *argv[]) {
     }
 
     remill::ArchName arch_name = spec.Arch().get()->arch_name;
-    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(
-        arch_name, spec_tp);
+    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
+                                                                     spec_tp);
     dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
 
     tp = std::move(dtp);
