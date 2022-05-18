@@ -339,7 +339,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     llvm::Value *indexes[] = {index};
     auto gep = llvm::GetElementPtrInst::Create(
-        ptr_type->getPointerElementType(), lhs_ptr, indexes, "", ipoint);
+        lhs_ptr->getType(), lhs_ptr, indexes, "", ipoint);
 
     anvill::CopyMetadataTo(itp, lhs_ptr);
     anvill::CopyMetadataTo(itp, gep);

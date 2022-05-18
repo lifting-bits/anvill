@@ -662,7 +662,7 @@ CrossReferenceFolderImpl::ResolveCall(llvm::CallInst *call) {
   if (auto func = call->getCalledFunction();
       func && func->getName().startswith(kTypeHintFunctionPrefix)) {
     auto xr = ResolveValue(call->getArgOperand(0));
-    xr.hinted_value_type = func->getReturnType()->getPointerElementType();
+    // xr.hinted_value_type = func->getReturnType()->getPointerElementType();
     xr.displacement_from_hinted_value_type = 0;
     xr.size = dl.getPointerSizeInBits(0);
     return xr;
