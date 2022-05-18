@@ -7,7 +7,7 @@
 #
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from .arch import Arch
 from .exc import *
@@ -174,9 +174,6 @@ class PointerType(Type):
     def set_element_type(self, elem_type):
         assert isinstance(elem_type, Type)
         self._elem_type = elem_type
-
-    def get_element_type(self) -> Optional[Type]:
-        return self._elem_type
 
     def serialize(self, arch: Arch, ids: Dict[Type, int]) -> str:
         return "*"
