@@ -335,10 +335,11 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     case llvm::Instruction::IntToPtr: {
       xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
-          !xr.displacement_from_hinted_value_type) {
-        xr.hinted_value_type = ptr_type->getElementType();
-      }
+      // NOTE(alex): Looks like this just improves the fidelity of the lift but not correctness?
+      // if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
+      //     !xr.displacement_from_hinted_value_type) {
+      //   xr.hinted_value_type = ptr_type->getElementType();
+      // }
       return xr;
     }
 
@@ -351,11 +352,11 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     case llvm::Instruction::BitCast: {
       xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      if (auto ptr_type =
-              llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
-          ptr_type && !xr.displacement_from_hinted_value_type) {
-        xr.hinted_value_type = ptr_type->getElementType();
-      }
+      // if (auto ptr_type =
+      //         llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
+      //     ptr_type && !xr.displacement_from_hinted_value_type) {
+      //   xr.hinted_value_type = ptr_type->getElementType();
+      // }
       return xr;
     }
 
@@ -473,9 +474,9 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     xr.size = dl.getPointerSizeInBits(0);
     xr.references_entity = true;
     xr.is_valid = true;
-    if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
-      xr.hinted_value_type = ptr_ty->getElementType();
-    }
+    // if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
+    //   xr.hinted_value_type = ptr_ty->getElementType();
+    // }
     return xr;
   }
 
@@ -548,10 +549,10 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     case llvm::Instruction::IntToPtr: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
-          !xr.displacement_from_hinted_value_type) {
-        xr.hinted_value_type = ptr_type->getElementType();
-      }
+      // if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
+      //     !xr.displacement_from_hinted_value_type) {
+      //   xr.hinted_value_type = ptr_type->getElementType();
+      // }
       return xr;
     }
 
@@ -564,10 +565,10 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     case llvm::Instruction::BitCast: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
-          ptr_type && !xr.displacement_from_hinted_value_type) {
-        xr.hinted_value_type = ptr_type->getElementType();
-      }
+      // if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
+      //     ptr_type && !xr.displacement_from_hinted_value_type) {
+      //   xr.hinted_value_type = ptr_type->getElementType();
+      // }
       return xr;
     }
 

@@ -63,7 +63,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
                    llvm::dyn_cast<llvm::PointerType>(dest_type);
                dest_ptr_type) {
       auto inter_type =
-          llvm::PointerType::get(dest_ptr_type->getElementType(), 0);
+          llvm::PointerType::get(ir.getContext(), 0);
 
       llvm::Value *inter_val = nullptr;
       if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(src); pti) {
@@ -80,7 +80,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
         CopyMetadataTo(src, inter_val);
       }
 
-      if (inter_type == dest_ptr_type) {
+      if (inter_type->getAddressSpace() == dest_ptr_type->getAddressSpace()) {
         return inter_val;
       } else {
         auto dest = ir.CreateAddrSpaceCast(inter_val, dest_ptr_type);
@@ -97,7 +97,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
         dest_ptr_type) {
 
       if (src_ptr_type->getAddressSpace() != dest_ptr_type->getAddressSpace()) {
-        src_ptr_type = llvm::PointerType::get(src_ptr_type->getElementType(),
+        src_ptr_type = llvm::PointerType::get(ir.getContext(),
                                               dest_ptr_type->getAddressSpace());
         auto dest = ir.CreateAddrSpaceCast(src, src_ptr_type);
         CopyMetadataTo(src, dest);
@@ -118,7 +118,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
                dest_int_type) {
       if (src_ptr_type->getAddressSpace()) {
         src_ptr_type =
-            llvm::PointerType::get(src_ptr_type->getElementType(), 0);
+            llvm::PointerType::get(ir.getContext(), 0);
         auto dest = ir.CreateAddrSpaceCast(src, src_ptr_type);
         CopyMetadataTo(src, dest);
         src = dest;

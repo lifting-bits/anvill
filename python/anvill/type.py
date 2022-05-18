@@ -7,7 +7,7 @@
 #
 
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .arch import Arch
 from .exc import *
@@ -175,12 +175,11 @@ class PointerType(Type):
         assert isinstance(elem_type, Type)
         self._elem_type = elem_type
 
+    def get_element_type(self) -> Optional[Type]:
+        return self._elem_type
+
     def serialize(self, arch: Arch, ids: Dict[Type, int]) -> str:
-        if not self._elem_type:
-            return "*v"
-        else:
-            assert isinstance(self._elem_type, Type)
-            return "*{}".format(self._elem_type.serialize(arch, ids))
+        return "*"
 
     def flatten(self, arch: Arch, out_list: List[Type]):
         out_list.append(self)

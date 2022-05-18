@@ -45,8 +45,7 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = ptr_ty->getElementType()->getPointerTo(
-          dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
       val_to_convert =
           llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
       ptr_ty = new_ptr_ty;
@@ -89,8 +88,7 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = ptr_ty->getElementType()->getPointerTo(
-          dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
       auto dest = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
       CopyMetadataTo(val_to_convert, dest);
       val_to_convert = dest;

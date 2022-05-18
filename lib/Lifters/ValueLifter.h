@@ -60,7 +60,7 @@ class ValueLifterImpl {
   // NOTE(pag): `hinted_type` can be `nullptr`.
   llvm::Constant *TryGetPointerForAddress(uint64_t ea,
                                           EntityLifterImpl &ent_lifter,
-                                          llvm::PointerType *hinted_type) const;
+                                          llvm::Type *hinted_type) const;
 
   // Lift pointers at `ea` that is getting referred by the variable at `loc_ea`.
   //
@@ -77,7 +77,7 @@ class ValueLifterImpl {
 
   llvm::Constant *GetVarPointer(uint64_t var_ea, uint64_t search_ea,
                                 EntityLifterImpl &ent_lifter,
-                                llvm::PointerType *ptr_type = nullptr) const;
+                                llvm::Type *ptr_type = nullptr) const;
 
   const LifterOptions &options;
   const llvm::DataLayout &dl;

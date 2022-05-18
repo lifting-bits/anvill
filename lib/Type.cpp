@@ -303,24 +303,7 @@ void TypeSpecifierImpl::EncodeType(
       break;
     }
 
-    case llvm::Type::PointerTyID: {
-      ss << (alpha_num ? "_S" : "*");
-      auto derived = llvm::dyn_cast<llvm::PointerType>(&type);
-      auto elem_type = derived->getElementType();
-
-      if (elem_type->isVoidTy() || elem_type == type_dict.u.named.void_) {
-        ss << 'v';
-
-      // Get the type of the pointee.
-      } else if (elem_type->isFunctionTy() || elem_type->isSized()) {
-        EncodeType(*elem_type, ss, format);
-
-      // It's an opaque type, e.g. a structure that is declared but not defined.
-      } else {
-        ss << 'v';
-      }
-      break;
-    }
+    case llvm::Type::PointerTyID: ss << (alpha_num ? "_S" : "*"); break;
 
     default: {
 
@@ -492,30 +475,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
       // Parse a pointer type.
       case '*': {
         i += 1;
-        auto maybe_elem_type = ParseType(size_checked, spec, i);
-        if (!maybe_elem_type.Succeeded()) {
-          return maybe_elem_type.TakeError();
-        }
-
-        llvm::Type *elem_type = maybe_elem_type.TakeValue();
-        if (!elem_type) {
-          return TypeSpecificationError{
-              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              "Missing subtype for pointer type in type specification"};
-        }
-
-        if (elem_type->isVoidTy() || elem_type == type_dict.u.named.void_) {
-#if ANVILL_USE_WRAPPED_TYPES
-          return llvm::PointerType::get(type_dict.u.named.void_, 0);
-#else
-          return llvm::PointerType::get(type_dict.u.named.uint8, 0);
-#endif
-
-        // The element type of a pointer could an unsized type as well. Get the
-        // pointer type from the element
-        } else {
-          return llvm::PointerType::get(elem_type, 0);
-        }
+        return llvm::PointerType::get(this->context, 0);
       }
 
       // Parse a function type.
