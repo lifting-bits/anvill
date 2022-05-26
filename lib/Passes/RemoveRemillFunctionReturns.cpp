@@ -81,12 +81,10 @@ static void OverwriteReturnAddress(
       &(func.getEntryBlock().front()));
 
   for (auto &[call, ret_addr] : fixups) {
-    auto ret_addr_type = ret_addr->getType();
-
     // Store the return address.
     llvm::IRBuilder<> ir(call);
     auto *bit_cast = ir.CreateBitCast(addr_of_ret_addr,
-                                      llvm::PointerType::get(ret_addr_type, 0));
+                                      llvm::PointerType::get(ir.getContext(), 0));
     CopyMetadataTo(call, bit_cast);
     auto *store = ir.CreateStore(ret_addr, bit_cast);
     CopyMetadataTo(call, store);

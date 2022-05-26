@@ -164,7 +164,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
     ir.SetInsertPoint(li);
     auto loaded_ptr = AdaptToType(
         ir, li->getPointerOperand(),
-        llvm::PointerType::get(dest_type, li->getPointerAddressSpace()));
+        llvm::PointerType::get(ir.getContext(), li->getPointerAddressSpace()));
     ir.SetInsertPoint(li);
     auto new_li = ir.CreateLoad(dest_type, loaded_ptr);
     new_li->setVolatile(li->isVolatile());
@@ -285,7 +285,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     } else {
       auto ptr = ir.CreateBitCast(ptr_to_reg,
-                                  llvm::PointerType::get(decl_type, 0));
+                                  llvm::PointerType::get(ir.getContext(), 0));
       CopyMetadataTo(native_val, ptr);
       store = ir.CreateStore(native_val, ptr);
     }
@@ -364,7 +364,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
       return adapted_val;
     } else {
       auto bc = ir.CreateBitCast(ptr_to_reg,
-                                 llvm::PointerType::get(decl_type, 0));
+                                 llvm::PointerType::get(context, 0));
       auto li = ir.CreateLoad(decl_type, bc);
       CopyMetadataTo(mem_ptr, bc);
       CopyMetadataTo(mem_ptr, li);

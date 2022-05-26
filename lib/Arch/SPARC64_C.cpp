@@ -227,18 +227,7 @@ SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
   if (function.hasStructRetAttr()) {
     auto &value_declaration = ret_values.emplace_back();
 
-    // Check both first and second parameter because llvm does that in
-    // llvm::Function::hasStructRetAttr()
-    if (function.hasParamAttribute(0, llvm::Attribute::StructRet)) {
-      value_declaration.type =
-          remill::NthArgument(&function, 0)->getType()->getPointerElementType();
-
-    } else if (function.hasParamAttribute(1, llvm::Attribute::StructRet)) {
-      value_declaration.type =
-          remill::NthArgument(&function, 1)->getType()->getPointerElementType();
-    }
-
-    value_declaration.type = llvm::PointerType::get(value_declaration.type, 0);
+    value_declaration.type = llvm::PointerType::get(function.getContext(), 0);
 
     if (!ret_type->isVoidTy()) {
       return llvm::createStringError(

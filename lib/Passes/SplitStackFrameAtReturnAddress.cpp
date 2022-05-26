@@ -242,20 +242,20 @@ static llvm::Instruction *DemandedOffset(
     case 3:
     case 1:
       el_type = llvm::Type::getInt8Ty(context);
-      ptr_type = llvm::PointerType::get(el_type, 0);
+      ptr_type = llvm::PointerType::get(context, 0);
       scale = 1;
       break;
 
     case 4:
       el_type = llvm::Type::getInt32Ty(context);
-      ptr_type = llvm::PointerType::get(el_type, 0);
+      ptr_type = llvm::PointerType::get(context, 0);
       scale = 4;
       break;
 
     case 6:
     case 2:
       el_type = llvm::Type::getInt16Ty(context);
-      ptr_type = llvm::PointerType::get(el_type, 0);
+      ptr_type = llvm::PointerType::get(context, 0);
       scale = 2;
       break;
     case 0:
@@ -279,7 +279,7 @@ static llvm::Instruction *DemandedOffset(
     base = new_base;
   } else {
     scale = addr_size;
-    ptr_type = llvm::PointerType::get(el_type, 0);
+    ptr_type = llvm::PointerType::get(context, 0);
   }
 
   inst = llvm::dyn_cast<llvm::Instruction>(
@@ -368,7 +368,7 @@ static void SubstituteUse(
     case llvm::Instruction::Load: {
       auto li = llvm::dyn_cast<llvm::LoadInst>(user_inst);
       auto pty = llvm::PointerType::get(
-          li->getType(), li->getPointerAddressSpace());
+          ir.getContext(), li->getPointerAddressSpace());
       auto bc = ir.CreateBitOrPointerCast(ret, pty);
       CopyMetadataTo(use_inst, bc);
       use->set(bc);
@@ -394,7 +394,7 @@ static void SubstituteUse(
 
       // Operating on the pointer.
       } else {
-        auto pty = llvm::PointerType::get(ty, si->getPointerAddressSpace());
+        auto pty = llvm::PointerType::get(ir.getContext(), si->getPointerAddressSpace());
         auto bc = ir.CreateBitOrPointerCast(ret, pty);
         CopyMetadataTo(use_inst, bc);
         use->set(bc);
@@ -440,7 +440,7 @@ static void SubstituteUse(
         // something that was constant calculated.
         if (const_indices.empty()) {
           auto pty = llvm::PointerType::get(
-              gep->getSourceElementType(), addr_space);
+              ir.getContext(), addr_space);
           auto bc = ir.CreateBitOrPointerCast(ret, pty);
           CopyMetadataTo(use_inst, bc);
           use->set(bc);
@@ -466,7 +466,7 @@ static void SubstituteUse(
           auto sub_ret_ty = llvm::GetElementPtrInst::getIndexedType(
               source_ty, const_indices);
           auto sub_ret_pty = llvm::PointerType::get(
-              sub_ret_ty, addr_space);
+              ir.getContext(), addr_space);
 
           auto bc = ir.CreateBitOrPointerCast(ret, sub_ret_pty);
           CopyMetadataTo(user_inst, bc);
@@ -625,7 +625,7 @@ SplitStackFrameAtReturnAddress::run(llvm::Function &function,
   }
 
   SplitStackFrameAround(frame_alloca, std::move(uses), options);
-  
+
   return llvm::PreservedAnalyses::none();
 }
 

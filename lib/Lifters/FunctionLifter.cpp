@@ -565,10 +565,9 @@ llvm::Value *FunctionLifter::CallCallableDecl(llvm::BasicBlock *block,
   CHECK_EQ(decl.arch, options.arch);
 
   auto &context = block->getContext();
-  auto dest_func_type = remill::RecontextualizeType(decl.type, context);
 
   auto dest_func =
-      ir.CreateBitOrPointerCast(pc, llvm::PointerType::get(dest_func_type, 0));
+      ir.CreateBitOrPointerCast(pc, llvm::PointerType::get(context, 0));
 
   auto mem_ptr = ir.CreateLoad(mem_ptr_type, mem_ptr_ref);
   auto new_mem_ptr =
@@ -1374,8 +1373,8 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
       const auto gsbase_val = llvm::ConstantExpr::getPtrToInt(
           llvm::ConstantExpr::getAddrSpaceCast(
               llvm::ConstantExpr::getNullValue(
-                  llvm::PointerType::get(i8_type, 256)),
-              llvm::PointerType::get(i8_type, 0)),
+                  llvm::PointerType::get(block->getContext(), 256)),
+              llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
       ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(state_ptr, ir));
     }
@@ -1384,8 +1383,8 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
       const auto fsbase_val = llvm::ConstantExpr::getPtrToInt(
           llvm::ConstantExpr::getAddrSpaceCast(
               llvm::ConstantExpr::getNullValue(
-                  llvm::PointerType::get(i8_type, 257)),
-              llvm::PointerType::get(i8_type, 0)),
+                  llvm::PointerType::get(block->getContext(), 257)),
+              llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
       ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(state_ptr, ir));
     }
