@@ -188,31 +188,6 @@ CrossReferenceFolderImpl::Merge(ResolvedCrossReference lhs,
       lhs.references_return_address | rhs.references_return_address;
   xr.references_stack_pointer =
       lhs.references_stack_pointer | rhs.references_stack_pointer;
-  xr.hinted_value_type = nullptr;
-  xr.displacement_from_hinted_value_type = 0;
-
-  if (lhs.hinted_value_type && rhs.hinted_value_type) {
-
-    // Not clear how to combine, so drop the type info. E.g. we could be
-    // dealing with a `ptrdiff_t` logically, i.e. the distance between
-    // two pointers.
-
-    // TODO(pag): Think more about the difference between two entities
-    //            case. It might be that we don't want to actually fold
-    //            this type of symbolic expression down.
-
-  } else if (lhs.hinted_value_type) {
-    const auto diff = xr.u.displacement - lhs.u.displacement;
-    xr.hinted_value_type = lhs.hinted_value_type;
-    xr.displacement_from_hinted_value_type =
-        lhs.displacement_from_hinted_value_type + diff;
-
-  } else if (rhs.hinted_value_type) {
-    const auto diff = xr.u.displacement - rhs.u.displacement;
-    xr.hinted_value_type = rhs.hinted_value_type;
-    xr.displacement_from_hinted_value_type =
-        rhs.displacement_from_hinted_value_type + diff;
-  }
 
   return xr;
 }
@@ -230,9 +205,6 @@ ResolvedCrossReference CrossReferenceFolderImpl::MergeLeft(
   xr.references_program_counter = lhs.references_program_counter;
   xr.references_return_address = lhs.references_return_address;
   xr.references_stack_pointer = lhs.references_stack_pointer;
-  xr.hinted_value_type = lhs.hinted_value_type;
-  xr.displacement_from_hinted_value_type +=
-      static_cast<int64_t>(xr.u.address - lhs.u.address);
   return xr;
 }
 
@@ -335,11 +307,6 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     case llvm::Instruction::IntToPtr: {
       xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      // NOTE(alex): Looks like this just improves the fidelity of the lift but not correctness?
-      // if (auto ptr_type = llvm::cast<llvm::PointerType>(inst_val->getType());
-      //     !xr.displacement_from_hinted_value_type) {
-      //   xr.hinted_value_type = ptr_type->getElementType();
-      // }
       return xr;
     }
 
@@ -352,11 +319,6 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     case llvm::Instruction::BitCast: {
       xr = ResolveValue(inst_val->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      // if (auto ptr_type =
-      //         llvm::dyn_cast<llvm::PointerType>(inst_val->getType());
-      //     ptr_type && !xr.displacement_from_hinted_value_type) {
-      //   xr.hinted_value_type = ptr_type->getElementType();
-      // }
       return xr;
     }
 
@@ -384,9 +346,6 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
   if (auto gv = llvm::dyn_cast<llvm::GlobalValue>(const_val)) {
     xr = ResolveGlobalValue(gv);
     xr.size = dl.getPointerSizeInBits(0);
-    if (!llvm::isa<llvm::Function>(gv) && !llvm::isa<llvm::GlobalIFunc>(gv)) {
-      xr.hinted_value_type = gv->getValueType();
-    }
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(const_val)) {
     xr = ResolveConstantExpr(ce);
@@ -407,7 +366,6 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
     }
 
   } else if (auto cpn = llvm::dyn_cast<llvm::ConstantPointerNull>(const_val)) {
-    xr.hinted_value_type = cpn->getType()->getElementType();
     xr.is_valid = true;
     xr.size = dl.getPointerSizeInBits(0);
 
@@ -474,9 +432,6 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     xr.size = dl.getPointerSizeInBits(0);
     xr.references_entity = true;
     xr.is_valid = true;
-    // if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(ce->getType())) {
-    //   xr.hinted_value_type = ptr_ty->getElementType();
-    // }
     return xr;
   }
 
@@ -549,10 +504,6 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     case llvm::Instruction::IntToPtr: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      // if (auto ptr_type = llvm::cast<llvm::PointerType>(ce->getType());
-      //     !xr.displacement_from_hinted_value_type) {
-      //   xr.hinted_value_type = ptr_type->getElementType();
-      // }
       return xr;
     }
 
@@ -565,10 +516,6 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
     case llvm::Instruction::BitCast: {
       auto xr = ResolveConstant(ce->getOperand(0));
       xr.size = static_cast<unsigned>(out_size);
-      // if (auto ptr_type = llvm::dyn_cast<llvm::PointerType>(ce->getType());
-      //     ptr_type && !xr.displacement_from_hinted_value_type) {
-      //   xr.hinted_value_type = ptr_type->getElementType();
-      // }
       return xr;
     }
 
@@ -604,7 +551,6 @@ CrossReferenceFolderImpl::ResolveConstantExpr(llvm::ConstantExpr *ce) {
       const auto disp = Signed(ap.getZExtValue(), ptr_size);
       base.u.address += static_cast<uint64_t>(disp);
       base.size = static_cast<unsigned>(out_size);
-      base.displacement_from_hinted_value_type += disp;
       return base;
     }
 
@@ -662,8 +608,6 @@ CrossReferenceFolderImpl::ResolveCall(llvm::CallInst *call) {
   if (auto func = call->getCalledFunction();
       func && func->getName().startswith(kTypeHintFunctionPrefix)) {
     auto xr = ResolveValue(call->getArgOperand(0));
-    // xr.hinted_value_type = func->getReturnType()->getPointerElementType();
-    xr.displacement_from_hinted_value_type = 0;
     xr.size = dl.getPointerSizeInBits(0);
     return xr;
 

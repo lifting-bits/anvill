@@ -39,27 +39,9 @@ struct ResolvedCrossReference {
     std::int64_t displacement;
   } u;
 
-  // As we're visiting a constant/cross-reference, we may encounter a symbolic
-  // type hint, which takes the form of `__anvill_type_XYZ`. These exist to
-  // funnel higher-level type information (provided by a tool such as Binary
-  // Ninja or IDA Pro) through the lifting pipeline.
-  //
-  // Similarly, if we encounter a global variable then we'll include its type
-  // information in the `hinted_type`.
-  //
-  // Type hint priority is based on depth; we retain the shallowest hinted types
-  // in constant expression trees. In some cases, e.g. an `add` with both
-  // operands being hinted, we drop the type hints.
-  llvm::Type *hinted_value_type{nullptr};
-
   // Size (in bits) of the operand that is used to adjust the displacement of
   // references.
   unsigned size{0};
-
-  // If we have a `hinted_type`, then how "far away" are we from that hinted
-  // type? I.e. we might be doing a `getelementptr` on a pointer that is type
-  // hinted, and so this represents the displacement induced by the GEP indices.
-  std::int64_t displacement_from_hinted_value_type{0};
 
   // Saturating facts about what we've encountered in the process of evaluating
   // and trying to resolve a cross-reference.
