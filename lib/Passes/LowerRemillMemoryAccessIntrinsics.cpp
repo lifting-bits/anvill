@@ -181,8 +181,6 @@ llvm::PreservedAnalyses
 LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &AM) {
   
-  LOG(INFO) << "Before lower memory";
-  func.dump();
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
@@ -199,8 +197,7 @@ LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
   for (auto call : calls) {
     ret = ReplaceMemoryOp(call) || ret;
   }
-  LOG(INFO) << "After lower memory";
-  func.dump();
+
   return ConvertBoolToPreserved(ret);
 }
 

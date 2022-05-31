@@ -368,8 +368,6 @@ llvm::StringRef ConvertIntegerToPointerOperations::name(void) {
 llvm::PreservedAnalyses
 ConvertIntegerToPointerOperations::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &fam) {
-  LOG(INFO) << "Start pointer conv";
-  func.dump();
   auto changed = false;
   if (FoldBasePlusScaledIndex(func)) {
     changed = true;
@@ -383,8 +381,6 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
     changed = true;
   }
   
-  LOG(INFO) << "End pointer conv";
-  func.dump();
   if (changed) {
     return llvm::PreservedAnalyses::none();
   } else {
