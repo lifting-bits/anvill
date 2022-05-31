@@ -81,10 +81,18 @@ def main():
 
     flist = bv.functions
 
+    if args.entrypoint and len(bv.get_functions_by_name(args.entrypoint)) == 0 and len(bv.get_functions_by_name("_"+args.entrypoint)) != 0:
+        args.entrypoint = "_"+args.entrypoint
 
 
     if args.entrypoint:
-        epoint = int(args.entrypoint, 16)
+        epoint = None
+        if len(bv.get_functions_by_name(args.entrypoint)) > 0:
+            target = bv.get_functions_by_name(args.entrypoint)[0]
+            epoint = target.start
+        else:
+            epoint = int(args.entrypoint, 16)
+
         newflsit = set()
         bv.add_function(epoint)
         func = next(filter(lambda f: f.start == epoint,bv.functions))
