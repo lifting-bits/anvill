@@ -40,6 +40,8 @@ static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
 llvm::PreservedAnalyses
 ConvertAddressesToEntityUses::run(llvm::Function &function,
                                   llvm::FunctionAnalysisManager &fam) {
+  LOG(INFO) << "Before uses recovered";
+  function.dump();
   if (function.isDeclaration()) {
     return llvm::PreservedAnalyses::all();
   }
@@ -128,6 +130,8 @@ ConvertAddressesToEntityUses::run(llvm::Function &function,
     }
   }
 
+  LOG(INFO) << "After uses recovered"; 
+  function.dump();
   return llvm::PreservedAnalyses::none();
 }
 
