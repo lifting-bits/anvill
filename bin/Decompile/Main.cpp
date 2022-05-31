@@ -194,7 +194,6 @@ int main(int argc, char *argv[]) {
   if (FLAGS_add_names) {
     spec.ForEachSymbol([&names] (uint64_t addr, const std::string &name) {
       names.emplace(addr, name);
-      LOG(ERROR) << std::hex << addr << std::dec << " " << name;
       return true;
     });
   }

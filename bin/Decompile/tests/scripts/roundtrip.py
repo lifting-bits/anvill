@@ -92,6 +92,7 @@ def decompile(self, decompiler, input, output, timeout, ws):
     cmd = [decompiler]
     cmd.extend(["--spec", input])
     cmd.extend(["--bc_out", output])
+    cmd.extend(["-add_names"])
     p = run_cmd(cmd, timeout, description="Decompilation command", ws=ws)
 
     self.assertEqual(p.returncode, 0, "decompiler failure: %s" % p.stderr)
