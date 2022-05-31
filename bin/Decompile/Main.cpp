@@ -192,8 +192,16 @@ int main(int argc, char *argv[]) {
 
   std::unordered_map<uint64_t, std::string> names;
   if (FLAGS_add_names) {
-    spec.ForEachSymbol([&names] (uint64_t addr, const std::string &name) {
-      names.emplace(addr, name);
+    spec.ForEachSymbol([&names,&module] (uint64_t addr, const std::string &name) {
+      
+
+      if(llvm::Triple(module.getTargetTriple()).getVendor() == llvm::Triple::VendorType::Apple && name.find("_",0) == 0) {
+        names.emplace(addr,  name.substr(1));
+      } else {
+        names.emplace(addr, name);
+      }
+
+
       return true;
     });
   }

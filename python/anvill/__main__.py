@@ -120,7 +120,9 @@ def main():
     for s_ in bv.get_symbols():
         s = cast(bn.Symbol, s_)
         ea, name = s.address, s.name
-        p.add_symbol(ea, name)
+        DEBUG(f"Looking at symbol {name}")
+        if s.name != "_start" or bv.get_symbol_at(ea).name == s.name:
+            p.add_symbol(ea, name)
 
         if s.type == bn.SymbolType.FunctionSymbol:
             continue  # Already added as a function.
@@ -130,6 +132,7 @@ def main():
             if v is not None and isinstance(v.type, bn.FunctionType):
                 p.add_function_declaration(ea, False)
             else:
+                print(hex(ea))
                 p.add_variable_declaration(ea, False)
 
         elif s.type == bn.SymbolType.LibraryFunctionSymbol or \
