@@ -1320,7 +1320,7 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 void FunctionLifter::AllocateAndInitializeStateStructure(
     llvm::BasicBlock *block) {
   llvm::IRBuilder<> ir(block);
-  const auto state_type = state_ptr_type->getElementType();
+  const auto state_type = llvm::StructType::getTypeByName(ir.getContext(), "struct.State");
   switch (options.state_struct_init_procedure) {
     case StateStructureInitializationProcedure::kNone:
       state_ptr = ir.CreateAlloca(state_type);
