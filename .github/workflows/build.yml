@@ -59,7 +59,7 @@ jobs:
         image:
           - { name: 'ubuntu', tag: '20.04' }
         binja:
-          - {channel: 'headless-dev', version: '2.5.3126'}
+          - {channel: 'release', version: '3.1.3469'}
         llvm: [ '13' ]
         cxxcommon_version: [ 'v0.1.8' ]
 
@@ -761,7 +761,7 @@ jobs:
         llvm: ["13"]
         ubuntu: ["20.04"]
         binja:
-          - {channel: 'headless-dev', version: '2.5.3126'}
+          - {channel: 'release', version: '3.1.3469'}
     steps:
     - uses: actions/checkout@v2
       with:

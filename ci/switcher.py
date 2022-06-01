@@ -5,7 +5,7 @@ from binaryninja.update import UpdateChannel, set_auto_updates_enabled, is_updat
 from binaryninja import core_version
 import argparse
 
-chandefault = UpdateChannel.list[0].name
+chandefault = list(UpdateChannel)[0].name
 channel = None
 versions = []
 
