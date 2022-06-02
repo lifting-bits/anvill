@@ -332,7 +332,7 @@ class BNFunction(Function):
     def visit(self, program_: 'Specification', is_definition, add_refs_as_defs):
         if not is_definition:
             return
-
+        DEBUG(f"Visiting {self.address()}")
         program = cast('BNSpecification', program_)
 
         # The lifter does not support thumb2 instruction set. If the function
@@ -363,7 +363,9 @@ class BNFunction(Function):
         # function is a declaration, then Anvill only needs to know its symbols
         # and prototypes if its a definition, then Anvill will perform analysis
         # of the function and produce information for the function.
+        print(ref_eas)
         for ref_ea in ref_eas:
+            DEBUG(f"Attempting to add referenced entity {ref_ea:x}")
             # If ref_ea is an invalid address
             seg = program.bv.get_segment_at(ref_ea)
             if seg is not None:

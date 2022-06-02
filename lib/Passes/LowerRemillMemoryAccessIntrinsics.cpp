@@ -180,6 +180,7 @@ llvm::StringRef LowerRemillMemoryAccessIntrinsics::name(void) {
 llvm::PreservedAnalyses
 LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &AM) {
+  
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {

@@ -4,8 +4,9 @@ import sys
 from binaryninja.update import UpdateChannel, set_auto_updates_enabled, is_update_installation_pending, install_pending_update
 from binaryninja import core_version
 import argparse
+import sys
 
-chandefault = UpdateChannel.list[0].name
+chandefault = list(UpdateChannel)[0].name
 channel = None
 versions = []
 
@@ -16,6 +17,11 @@ def main():
     prs.add_argument('channel_string', metavar='C', type=str)
 
     args = prs.parse_args()
+
+
+    cname = set([chan.name for chan in list(UpdateChannel)])
+    if args.channel_string not in cname:
+        sys.exit(f"Invalid channel name: {args.channel_string}, options are {list(cname)}")
 
     channel = UpdateChannel[args.channel_string]
 
