@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 import collections
 from dataclasses import dataclass, field
 from typing import List, DefaultDict, Dict, Iterator, Optional, Set, Final
-
+from .util import DEBUG
 from .call import *
 from .os import *
 from .function import *
@@ -117,13 +117,16 @@ class Specification(ABC):
 
     def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)
+        DEBUG(f"Getting variable for {ea:x}")
         if var is not None and isinstance(var, Variable):
+            DEBUG(f"Got variable for {ea:x}")
             ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs:
                 if ea in self._var_decls:
                     del self._var_decls[ea]
                 self._var_defs[ea] = var
                 var.visit(self, True, add_refs_as_defs)
+            DEBUG(f"Successful variable def for {ea:x}")
             return True
         else:
             return False
@@ -172,16 +175,22 @@ class Specification(ABC):
         return True
 
     def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False) -> bool:
+        DEBUG(f"Attempting to add ref entity: {ea:x} {add_refs_as_defs}")
         if add_refs_as_defs:
             try:
-                self.add_function_definition(ea, add_refs_as_defs)
-                return True
-            except InvalidFunctionException as e1:
-                try:
-                    self.add_variable_definition(ea, add_refs_as_defs)
+                DEBUG(f"Adding ref as function {ea:x}")
+                if self.add_function_definition(ea, add_refs_as_defs):
+                    DEBUG(f"Added function {ea:x}")
                     return True
-                except InvalidVariableException as e2:
-                    pass
+            except InvalidFunctionException as e1:
+                pass
+            try:
+                DEBUG(f"Adding ref as variable {ea:x}")
+                if self.add_variable_definition(ea, add_refs_as_defs):
+                    DEBUG(f"Variable added {ea:x}")
+                    return True
+            except InvalidVariableException as e2:
+                pass
         try:
             self.add_function_declaration(ea, False)
             return True

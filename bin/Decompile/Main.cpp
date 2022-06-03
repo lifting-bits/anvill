@@ -31,9 +31,6 @@
 #include <sstream>
 #include <string>
 
-DECLARE_string(arch);
-DECLARE_string(os);
-
 DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
 DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
 DEFINE_string(bc_out, "",
@@ -196,9 +193,16 @@ int main(int argc, char *argv[]) {
 
   std::unordered_map<uint64_t, std::string> names;
   if (FLAGS_add_names) {
-    spec.ForEachSymbol([&names](uint64_t addr, const std::string &name) {
-      names.emplace(addr, name);
-      LOG(ERROR) << std::hex << addr << std::dec << " " << name;
+    spec.ForEachSymbol([&names,&module] (uint64_t addr, const std::string &name) {
+      
+
+      if(llvm::Triple(module.getTargetTriple()).getVendor() == llvm::Triple::VendorType::Apple && name.find("_",0) == 0) {
+        names.emplace(addr,  name.substr(1));
+      } else {
+        names.emplace(addr, name);
+      }
+
+
       return true;
     });
   }

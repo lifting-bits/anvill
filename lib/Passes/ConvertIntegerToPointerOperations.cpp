@@ -12,7 +12,6 @@
 #include <llvm/IR/Verifier.h>
 #include <glog/logging.h>
 #include <remill/BC/Util.h>
-
 #include <algorithm>
 #include <string>
 #include <cassert>
@@ -318,7 +317,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     // Compute the new index to fill into the `getelementptr`.
     match.index = llvm::ConstantInt::get(
-        ci_type, static_cast<uint64_t>(positive_ci * sign_multiple), is_signed);
+        ci_type, static_cast<uint64_t>((positive_ci/actual_elem_size) * sign_multiple), is_signed);
 
     matches.emplace_back(std::move(match));
   }
@@ -400,7 +399,7 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
     DLOG(INFO) << "\t" << "IntToPtrOnAddToGetElementPtr made changes to the function" << "\n";
     changed = true;
   }
-
+  
   if (changed) {
     return llvm::PreservedAnalyses::none();
   } else {
