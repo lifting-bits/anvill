@@ -60,8 +60,8 @@ jobs:
           - { name: 'ubuntu', tag: '20.04' }
         binja:
           - {channel: 'headless', version: '3.0.3233'}
-        llvm: [ '13' ]
-        cxxcommon_version: [ 'v0.1.8' ]
+        llvm: [ '14' ]
+        cxxcommon_version: [ 'v0.2.7' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -329,7 +329,7 @@ jobs:
         working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
         run: |
           ctest -V
- 
+
       - name: Create the packages
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -758,7 +758,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["13"]
+        llvm: ["14"]
         ubuntu: ["20.04"]
         binja:
           - {channel: 'headless', version: '3.0.3233'}
