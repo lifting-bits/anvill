@@ -50,7 +50,7 @@ class PcBinding {
 
   static PcBinding Build(const llvm::CallInst *complete_switch,
                          llvm::SwitchInst *follower) {
-    assert(complete_switch->getNumArgOperands() - 1 == follower->getNumCases());
+    assert(complete_switch->arg_size() - 1 == follower->getNumCases());
 
     llvm::DenseMap<llvm::APInt, llvm::BasicBlock *> mapping;
     for (auto case_handler : follower->cases()) {

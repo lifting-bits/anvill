@@ -12,6 +12,7 @@
 
 // clang-format off
 #include <remill/BC/Compat/ScalarTransforms.h>
+#include <llvm/Pass.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -170,7 +171,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   fpm.addPass(llvm::SCCPPass());
   fpm.addPass(llvm::DSEPass());
-  fpm.addPass(llvm::SROA());
+  fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::EarlyCSEPass(true));
   fpm.addPass(llvm::BDCEPass());
   fpm.addPass(llvm::SimplifyCFGPass());
@@ -192,7 +193,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   fpm.addPass(llvm::InstCombinePass());
   fpm.addPass(llvm::DCEPass());
-  fpm.addPass(llvm::SROA());
+  fpm.addPass(llvm::SROAPass());
 
   // Sometimes we observe patterns where PC- and SP-related offsets are
   // accidentally truncated, and thus displacement-based analyses make them
@@ -209,7 +210,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   AddRemoveStackPointerCExprs(fpm, options.stack_frame_recovery_options);
   AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
-  fpm.addPass(llvm::SROA());
+  fpm.addPass(llvm::SROAPass());
 
 
   AddCombineAdjacentShifts(fpm);
