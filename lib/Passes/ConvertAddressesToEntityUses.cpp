@@ -59,23 +59,10 @@ ConvertAddressesToEntityUses::run(llvm::Function &function,
     const auto user_inst =
         llvm::dyn_cast<llvm::Instruction>(xref_use.use->getUser());
     llvm::IRBuilder<> ir(user_inst);
-    // llvm::PointerType *inferred_type = nullptr;
     llvm::Value *entity = nullptr;
 
     llvm::Type *pointee_type = nullptr;
     unsigned address_space = 0u;
-
-    // Failing this, check if the value we're looking at is a pointer, and use
-    // that type.
-    // if (!inferred_type) {
-    //   inferred_type = llvm::dyn_cast<llvm::PointerType>(val_type);
-    // }
-
-    // if (inferred_type) {
-    //   pointee_type = inferred_type->getElementType();
-    //   address_space = inferred_type->getAddressSpace();
-    // }
-
 
     entity = xref_resolver.EntityAtAddress(ra.u.address, pointee_type,
                                            address_space);

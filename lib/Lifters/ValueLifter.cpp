@@ -137,16 +137,8 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   // preference to an entity with a matching type. Then to global variables and
   // functions, then to aliases, then constants.
   llvm::Constant *found_entity_at = nullptr;
-  // llvm::Constant *found_entity_at_type = nullptr;
   ent_lifter.ForEachEntityAtAddress(ea, [&](llvm::Constant *gv) {
-    // if (gv->getType() == hinted_type) {
-    //   if (!found_entity_at_type ||
-    //       (llvm::isa<llvm::GlobalValue>(gv) &&
-    //        !llvm::isa<llvm::GlobalValue>(found_entity_at_type))) {
-    //     found_entity_at_type = gv;
-    //   }
-    if (llvm::isa<llvm::GlobalVariable>(gv) ||
-               llvm::isa<llvm::Function>(gv)) {
+    if (llvm::isa<llvm::GlobalVariable>(gv) || llvm::isa<llvm::Function>(gv)) {
       found_entity_at = gv;
     } else if (!found_entity_at ||
                (llvm::isa<llvm::GlobalValue>(gv) &&
@@ -161,9 +153,6 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   };
 
   // We've found the entity we wanted.
-  // if (found_entity_at_type) {
-  //   return unwrap_zero_indices(found_entity_at_type);
-  // }
   if (found_entity_at) {
     return unwrap_zero_indices(found_entity_at);
   }
