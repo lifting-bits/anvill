@@ -22,6 +22,7 @@
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
 #include <iostream>
+#include <map>
 
 #include "Utils.h"
 namespace anvill {

@@ -11,7 +11,7 @@ namespace anvill {
 
 class RemoveUnusedBranchHints
     : public IntrinsicPass<RemoveUnusedBranchHints, llvm::PreservedAnalyses>,
-      llvm::PassInfoMixin<RemoveUnusedBranchHints> {
+      public llvm::PassInfoMixin<RemoveUnusedBranchHints> {
  public:
   // Maps CallInst to anvill_compare prims to the result
   using Result = llvm::PreservedAnalyses;

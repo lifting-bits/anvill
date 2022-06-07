@@ -126,7 +126,7 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 
 
   if (func_name.startswith("__remill_read_memory_")) {
-    switch (call->getNumArgOperands()) {
+    switch (call->arg_size()) {
 
       // `val = __remill_read_memory_NN(mem, addr)`.
       case 2: {
