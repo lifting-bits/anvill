@@ -183,7 +183,11 @@ TransformRemillJumpIntrinsics::run(llvm::Function &func,
     llvm::FunctionPassManager fpm;
 
     fpm.addPass(llvm::DCEPass());
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(14, 0)
     fpm.addPass(llvm::SROA());
+#else
+    fpm.addPass(llvm::SROAPass());
+#endif
     fpm.addPass(llvm::SimplifyCFGPass());
     fpm.addPass(llvm::InstCombinePass());
     fpm.run(func, fam);

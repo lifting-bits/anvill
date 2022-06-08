@@ -29,7 +29,7 @@ namespace anvill {
 
 class BranchRecovery
     : public BranchHintPass<BranchRecovery, llvm::PreservedAnalyses>,
-      llvm::PassInfoMixin<BranchRecovery> {
+      public llvm::PassInfoMixin<BranchRecovery> {
  public:
   // Maps CallInst to anvill_compare prims to the result
   using Result = llvm::PreservedAnalyses;

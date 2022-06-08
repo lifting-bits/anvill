@@ -13,7 +13,7 @@ jobs:
       matrix:
         binja:
           - {channel: 'headless-dev', version: '2.5.3126'}
-        llvm: [ '13' ]
+        llvm: [ '14' ]
     steps:
     - uses: actions/checkout@v2
       with:
