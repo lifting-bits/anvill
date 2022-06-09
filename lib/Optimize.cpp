@@ -164,13 +164,15 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   llvm::FunctionPassManager fpm;
 
   fpm.addPass(llvm::DCEPass());
-  fpm.addPass(llvm::SinkingPass());
+  // NOTE(alex): This pass is extremely slow with LLVM 14.
+  // fpm.addPass(llvm::SinkingPass());
 
   // NewGVN has bugs with `____strtold_l_internal` from chal5, amd64.
   //  fpm.addPass(llvm::NewGVNPass());
 
   fpm.addPass(llvm::SCCPPass());
-  fpm.addPass(llvm::DSEPass());
+  // NOTE(alex): This pass is extremely slow with LLVM 14.
+  // fpm.addPass(llvm::DSEPass());
 #if LLVM_VERSION_NUMBER < LLVM_VERSION(14, 0)
   fpm.addPass(llvm::SROA());
 #else
@@ -179,7 +181,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   fpm.addPass(llvm::EarlyCSEPass(true));
   fpm.addPass(llvm::BDCEPass());
   fpm.addPass(llvm::SimplifyCFGPass());
-  fpm.addPass(llvm::SinkingPass());
+  // NOTE(alex): This pass is extremely slow with LLVM 14.
+  // fpm.addPass(llvm::SinkingPass());
   fpm.addPass(llvm::SimplifyCFGPass());
   fpm.addPass(llvm::InstCombinePass());
 
