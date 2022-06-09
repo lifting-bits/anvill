@@ -36,8 +36,6 @@
 #  define STDOUT_FILENO 1
 #endif
 
-DECLARE_string(arch);
-DECLARE_string(os);
 DEFINE_string(bc_in, "",
               "Path to BITcode file containing data to be specified");
 
@@ -48,25 +46,17 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
 
   if (FLAGS_bc_in.empty()) {
-    std::cerr
-        << "Please specify a path to a BITcode input file in --bc_in"
-        << std::endl;
+    std::cerr << "Please specify a path to a BITcode input file in --bc_in"
+              << std::endl;
     return EXIT_FAILURE;
-  }
-
-  // Overwrite the inherited architecture and os flags if they are not
-  // already empty.
-  if (!FLAGS_arch.empty() || !FLAGS_os.empty()) {
-    FLAGS_arch = "";
-    FLAGS_os = "";
   }
 
   llvm::LLVMContext context;
   auto module = remill::LoadModuleFromFile(&context, FLAGS_bc_in);
   remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
   if (!arch) {
-    std::cerr
-        << "Could not infer architecture for bitcode module file" << std::endl;
+    std::cerr << "Could not infer architecture for bitcode module file"
+              << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -102,9 +92,8 @@ int main(int argc, char *argv[]) {
       if (func.Succeeded()) {
         funcs_json.emplace_back(func.TakeValue());
       } else {
-        std::cerr
-            << "Error encoding function '" << function.getName().str()
-            << "' to JSON: " << func.TakeError().message;
+        std::cerr << "Error encoding function '" << function.getName().str()
+                  << "' to JSON: " << func.TakeError().message;
         return EXIT_FAILURE;
       }
     }
@@ -131,9 +120,8 @@ int main(int argc, char *argv[]) {
     os = fos.get();
 
     if (ec) {
-      std::cerr
-          << "Could not open file '" << FLAGS_json_out << "' for writing: "
-          << ec.message() << std::endl;
+      std::cerr << "Could not open file '" << FLAGS_json_out
+                << "' for writing: " << ec.message() << std::endl;
       return EXIT_FAILURE;
     }
   }

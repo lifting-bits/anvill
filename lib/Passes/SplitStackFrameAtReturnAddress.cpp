@@ -516,7 +516,7 @@ static void SplitStackFrameAround(
             store_use->use->getUser());
         user_inst && offset_of_ra != 0) {
 
-      LOG(ERROR)
+      LOG(INFO)
           << "Offset of return address storage location in function "
           << frame_alloca->getFunction()->getName().str()
           << " is " << offset_of_ra << ": "

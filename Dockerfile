@@ -1,4 +1,4 @@
-ARG LLVM_VERSION=13
+ARG LLVM_VERSION=14
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
@@ -56,7 +56,7 @@ RUN apt-get update && \
 WORKDIR /dependencies
 
 # cxx-common
-ADD https://github.com/lifting-bits/cxx-common/releases/latest/download/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+ADD https://github.com/lifting-bits/cxx-common/releases/download/v0.2.7/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 

@@ -59,9 +59,9 @@ jobs:
         image:
           - { name: 'ubuntu', tag: '20.04' }
         binja:
-          - {channel: 'headless-dev', version: '2.5.3126'}
-        llvm: [ '12', '13' ]
-        cxxcommon_version: [ 'v0.1.8' ]
+          - {channel: 'headless', version: '3.0.3233'}
+        llvm: [ '14' ]
+        cxxcommon_version: [ 'v0.2.7' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -329,7 +329,7 @@ jobs:
         working-directory: ${{ steps.build_paths.outputs.BUILD }}/anvill_build
         run: |
           ctest -V
- 
+
       - name: Create the packages
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -413,8 +413,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ 'macos-11' ]
-        llvm: [ '12', '13' ]
-        cxxcommon_version: [ 'v0.1.8' ]
+        llvm: [ '14' ]
+        cxxcommon_version: [ 'v0.2.7' ]
 
     runs-on: ${{ matrix.os }}
 
@@ -758,10 +758,10 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["12", "13"]
-        ubuntu: ["18.04", "20.04"]
+        llvm: ["14"]
+        ubuntu: ["20.04"]
         binja:
-          - {channel: 'headless-dev', version: '2.5.3126'}
+          - {channel: 'headless', version: '3.0.3233'}
     steps:
     - uses: actions/checkout@v2
       with:

@@ -10,7 +10,7 @@
 #include <anvill/Transforms.h>
 #include <llvm/IR/PatternMatch.h>
 #include <llvm/IR/Verifier.h>
-
+#include <glog/logging.h>
 #include <algorithm>
 #include <cassert>
 #include <unordered_map>
@@ -305,7 +305,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     // Compute the new index to fill into the `getelementptr`.
     match.index = llvm::ConstantInt::get(
-        ci_type, static_cast<uint64_t>(positive_ci * sign_multiple), is_signed);
+        ci_type, static_cast<uint64_t>((positive_ci/actual_elem_size) * sign_multiple), is_signed);
 
     matches.emplace_back(std::move(match));
   }
@@ -368,7 +368,6 @@ llvm::StringRef ConvertIntegerToPointerOperations::name(void) {
 llvm::PreservedAnalyses
 ConvertIntegerToPointerOperations::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &fam) {
-
   auto changed = false;
   if (FoldBasePlusScaledIndex(func)) {
     changed = true;
@@ -381,7 +380,7 @@ ConvertIntegerToPointerOperations::run(llvm::Function &func,
   if (IntToPtrOnAddToGetElementPtr(func)) {
     changed = true;
   }
-
+  
   if (changed) {
     return llvm::PreservedAnalyses::none();
   } else {

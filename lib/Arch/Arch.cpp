@@ -196,15 +196,16 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
 // parameters with the form "param_x". The mapping of the return value is
 // positional starting at 1.
 std::vector<std::string> TryRecoverParamNames(const llvm::Function &function) {
-  std::vector<std::string> param_names(
+  std::vector<std::string> param_names;
+  param_names.reserve(
       function.getFunctionType()->getNumParams());
 
   auto i = 0u;
   for (auto &param : function.args()) {
     if (param.hasName()) {
-      param_names[i] = param.getName().str();
+      param_names.push_back(param.getName().str());
     } else {
-      param_names[i] = "param" + std::to_string(i);
+      param_names.push_back("param" + std::to_string(i));
     }
     ++i;
   }

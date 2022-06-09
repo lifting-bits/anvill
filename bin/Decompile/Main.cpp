@@ -31,9 +31,6 @@
 #include <sstream>
 #include <string>
 
-DECLARE_string(arch);
-DECLARE_string(os);
-
 DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
 DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
 DEFINE_string(bc_out, "",
@@ -44,6 +41,8 @@ DEFINE_string(stats_out, "", "Path to emit decompilation statistics");
 DEFINE_bool(add_breakpoints, false,
             "Add breakpoint_XXXXXXXX functions to the "
             "lifted bitcode.");
+
+DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 
 DEFINE_string(
     default_callable_spec, "",
@@ -166,8 +165,8 @@ int main(int argc, char *argv[]) {
     }
 
     remill::ArchName arch_name = spec.Arch().get()->arch_name;
-    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(
-        arch_name, spec_tp);
+    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
+                                                                     spec_tp);
     dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
 
     tp = std::move(dtp);
@@ -192,13 +191,41 @@ int main(int argc, char *argv[]) {
 
   anvill::EntityLifter lifter(options);
 
-  spec.ForEachFunction([&lifter](auto decl) {
-    lifter.LiftEntity(*decl);
+  std::unordered_map<uint64_t, std::string> names;
+  if (FLAGS_add_names) {
+    spec.ForEachSymbol([&names,&module] (uint64_t addr, const std::string &name) {
+      
+
+      if(llvm::Triple(module.getTargetTriple()).getVendor() == llvm::Triple::VendorType::Apple && name.find("_",0) == 0) {
+        names.emplace(addr,  name.substr(1));
+      } else {
+        names.emplace(addr, name);
+      }
+
+
+      return true;
+    });
+  }
+
+  spec.ForEachFunction([&lifter, &names](auto decl) {
+    llvm::Function *func = lifter.LiftEntity(*decl);
+    if (FLAGS_add_names) {
+      if (auto name_it = names.find(decl->address); name_it != names.end()) {
+        func->setName(name_it->second);
+      }
+    }
     return true;
   });
 
-  spec.ForEachVariable([&lifter](auto decl) {
-    lifter.LiftEntity(*decl);
+  spec.ForEachVariable([&lifter, &names](auto decl) {
+    llvm::Constant *cv = lifter.LiftEntity(*decl);
+    if (FLAGS_add_names) {
+      if (auto name_it = names.find(decl->address); name_it != names.end()) {
+        if (llvm::GlobalValue *gv = llvm::dyn_cast<llvm::GlobalValue>(cv)) {
+          gv->setName(name_it->second);
+        }
+      }
+    }
     return true;
   });
 

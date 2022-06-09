@@ -126,7 +126,7 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 
 
   if (func_name.startswith("__remill_read_memory_")) {
-    switch (call->getNumArgOperands()) {
+    switch (call->arg_size()) {
 
       // `val = __remill_read_memory_NN(mem, addr)`.
       case 2: {
@@ -180,6 +180,7 @@ llvm::StringRef LowerRemillMemoryAccessIntrinsics::name(void) {
 llvm::PreservedAnalyses
 LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
                                        llvm::FunctionAnalysisManager &AM) {
+  
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {

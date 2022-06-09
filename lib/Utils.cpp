@@ -202,7 +202,7 @@ void UnfoldConstantExpressions(llvm::Instruction *inst) {
     UnfoldConstantExpressions(inst, use);
   }
   if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(inst)) {
-    for (llvm::Use &use : call->arg_operands()) {
+    for (llvm::Use &use : call->args()) {
       UnfoldConstantExpressions(inst, use);
     }
   }
