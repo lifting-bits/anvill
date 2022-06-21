@@ -194,7 +194,7 @@ llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
     case llvm::Triple::ArchType::x86_64:
     case llvm::Triple::ArchType::aarch64:
     case llvm::Triple::ArchType::aarch64_be:
-      func_name = "llvm.addressofreturnaddress.p0i8";
+      func_name = "llvm.addressofreturnaddress.p0";
       break;
 
     // The Windows `_AddressOfReturnAddress` intrinsic function works on
