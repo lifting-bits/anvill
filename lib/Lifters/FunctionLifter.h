@@ -430,7 +430,8 @@ class FunctionLifter {
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 
   // Allocate and initialize the state structure.
-  void AllocateAndInitializeStateStructure(llvm::BasicBlock *block);
+  void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
+                                           const remill::Arch *arch);
 
   // Perform architecture-specific initialization of the state structure
   // in `block`.

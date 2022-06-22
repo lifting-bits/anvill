@@ -1319,9 +1319,9 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 
 // Allocate and initialize the state structure.
 void FunctionLifter::AllocateAndInitializeStateStructure(
-    llvm::BasicBlock *block) {
+    llvm::BasicBlock *block, const remill::Arch *arch) {
   llvm::IRBuilder<> ir(block);
-  const auto state_type = llvm::StructType::getTypeByName(ir.getContext(), "struct.State");
+  const auto state_type = arch->StateStructType();
   switch (options.state_struct_init_procedure) {
     case StateStructureInitializationProcedure::kNone:
       state_ptr = ir.CreateAlloca(state_type);
@@ -1465,7 +1465,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate and initialize the state pointer.
-  AllocateAndInitializeStateStructure(block);
+  AllocateAndInitializeStateStructure(block, decl.arch);
 
   auto pc_ptr = pc_reg->AddressOf(state_ptr, block);
   auto sp_ptr = sp_reg->AddressOf(state_ptr, block);
