@@ -173,7 +173,9 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // Store the return address, and computed return stack pointer.
   ir.SetInsertPoint(block);
 
-  ir.CreateStore(ret_addr, remill::FindVarInFunction(block, "NEXT_PC").first);
+  ir.CreateStore(
+      ret_addr,
+      remill::FindVarInFunction(block, remill::kNextPCVariableName).first);
   ir.CreateStore(sp_val_on_exit, ptr_to_sp);
 
   if (is_noreturn) {
