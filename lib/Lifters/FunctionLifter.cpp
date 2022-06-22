@@ -1701,10 +1701,14 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
   const auto entry_block = &(lifted_func->getEntryBlock());
-  pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr, pc_reg->name);
-  next_pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr,
-                                               remill::kNextPCVariableName);
-  sp_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr, sp_reg->name);
+  pc_reg_ref =
+      inst_lifter.LoadRegAddress(entry_block, state_ptr, pc_reg->name).first;
+  next_pc_reg_ref =
+      inst_lifter
+          .LoadRegAddress(entry_block, state_ptr, remill::kNextPCVariableName)
+          .first;
+  sp_reg_ref =
+      inst_lifter.LoadRegAddress(entry_block, state_ptr, sp_reg->name).first;
 
   mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
 
