@@ -203,6 +203,10 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
                                             uint64_t loc_ea,
                                             unsigned address_space) const {
 
+  if (!value_type) {
+    value_type = llvm::Type::getInt8Ty(context);
+  }
+
   auto ptr_type = llvm::PointerType::get(context, address_space);
   auto ret = TryGetPointerForAddress(ea, ent_lifter, value_type);
   if (!ret) {
@@ -222,37 +226,13 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
       return nullptr;
     }
 
-  } else if (ret->getType()->getPointerAddressSpace() != ptr_type->getAddressSpace()) {
+  } else if (ret->getType()->getPointerAddressSpace() !=
+             ptr_type->getAddressSpace()) {
     ret = llvm::ConstantExpr::getAddrSpaceCast(ret, ptr_type);
     ent_lifter.AddEntity(ret, ea);
   }
 
-  if (llvm::isa<llvm::GlobalValue>(ret) || !CanBeAliased(ret)) {
-    return ret;
-  }
-
-  // Wrap the returned pointer in an alias.
-  std::stringstream ss;
-  ss << kGlobalAliasNamePrefix << std::hex << ea << '_';
-
-  const auto name = ss.str();
-  // TODO(alex): Might need the pointer type here. Try to understand what this is doing later.
-  auto alias_ret = llvm::GlobalAlias::create(llvm::Type::getInt8Ty(context), address_space,
-                                             llvm::GlobalValue::ExternalLinkage,
-                                             name, options.module);
-
-  if (ret->getType()->getPointerAddressSpace() != address_space) {
-    ret = llvm::ConstantExpr::getAddrSpaceCast(ret, ptr_type);
-  }
-
-  alias_ret->setAliasee(ret);
-
-  // NOTE(akshayk): Adding `alias_ret` to entity map may cause type confusion
-  //                on look up. It gets fixed in the data lifter.
-  //
-  ent_lifter.AddEntity(alias_ret, ea);
-
-  return alias_ret;
+  return ret;
 }
 
 // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
