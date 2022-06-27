@@ -57,4 +57,6 @@ struct Platform final {
 using PlatformList = std::vector<Platform>;
 const PlatformList &GetSupportedPlatforms(void);
 
+std::unique_ptr<llvm::LLVMContext> CreateContext(void);
+
 }  // namespace anvill

@@ -42,11 +42,12 @@ static std::tuple<int, int>
 runXorRemovalPassCountXors(const std::string &module_name,
                            const std::string &function_name) {
 
-  llvm::LLVMContext llvm_context;
-  auto module = LoadTestData(llvm_context, module_name);
+  auto llvm_context = anvill::CreateContext();
+  auto module = LoadTestData(*llvm_context, module_name);
 
-  auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                  remill::GetArchName("amd64"));
+  auto arch =
+      remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
+                          remill::GetArchName("amd64"));
 
   REQUIRE(arch != nullptr);
 

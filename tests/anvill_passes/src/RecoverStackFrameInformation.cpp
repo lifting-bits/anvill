@@ -37,14 +37,14 @@ TEST_SUITE("RecoverBasicStackFrame") {
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto init_strategy : kInitStackSettings) {
         for (auto padding_bytes : kTestPaddingSettings) {
-          llvm::LLVMContext context;
+          auto context = anvill::CreateContext();
           auto module =
-              LoadTestData(context, "RecoverStackFrameInformation.ll");
+              LoadTestData(*context, "RecoverStackFrameInformation.ll");
 
           REQUIRE(module != nullptr);
 
           auto arch =
-              remill::Arch::Build(&context, remill::GetOSName(platform.os),
+              remill::Arch::Build(context.get(), remill::GetOSName(platform.os),
                                   remill::GetArchName(platform.arch));
 
           REQUIRE(arch != nullptr);
@@ -52,13 +52,13 @@ TEST_SUITE("RecoverBasicStackFrame") {
           auto ctrl_flow_provider =
               anvill::NullControlFlowProvider();
 
-          TypeDictionary tyDict(context);
+          TypeDictionary tyDict(*context);
 
           NullTypeProvider ty_prov(tyDict);
           NullMemoryProvider mem_prov;
           anvill::LifterOptions lift_options(
               arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
-          
+
           lift_options.stack_frame_recovery_options.stack_frame_struct_init_procedure = init_strategy;
           lift_options.stack_frame_recovery_options.stack_frame_lower_padding =
               lift_options.stack_frame_recovery_options.stack_frame_higher_padding = padding_bytes / 2U;
@@ -75,19 +75,19 @@ TEST_SUITE("RecoverBasicStackFrame") {
   SCENARIO("Function analysis can recreate a simple, byte-array frame type") {
 
     GIVEN("a lifted function without stack information") {
-      llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+      auto context = anvill::CreateContext();
+      auto module = LoadTestData(*context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 
 
-      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+      auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                       remill::GetArchName("amd64"));
       REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
           anvill::NullControlFlowProvider();
 
-      TypeDictionary tyDict(context);
+      TypeDictionary tyDict(*context);
 
       NullTypeProvider ty_prov(tyDict);
       NullMemoryProvider mem_prov;
@@ -229,8 +229,8 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
   SCENARIO("Applying stack frame recovery") {
     GIVEN("a well formed function") {
-      llvm::LLVMContext context;
-      auto module = LoadTestData(context, "RecoverStackFrameInformation.ll");
+      auto context = anvill::CreateContext();
+      auto module = LoadTestData(*context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 
       auto &function_list = module->getFunctionList();
@@ -245,14 +245,14 @@ TEST_SUITE("RecoverBasicStackFrame") {
       auto &function = *function_it;
 
 
-      auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+      auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                       remill::GetArchName("amd64"));
       REQUIRE(arch != nullptr);
 
       auto ctrl_flow_provider =
           anvill::NullControlFlowProvider();
 
-      TypeDictionary tyDict(context);
+      TypeDictionary tyDict(*context);
 
       NullTypeProvider ty_prov(tyDict);
       NullMemoryProvider mem_prov;
@@ -261,7 +261,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
       WHEN("recovering the stack frame") {
         auto stack_frame_analysis = AnalyzeStackFrame(function, lift_options.stack_frame_recovery_options);
-        auto arch = remill::Arch::Build(&context, remill::kOSLinux,
+        auto arch = remill::Arch::Build(context.get(), remill::kOSLinux,
                                         remill::kArchAMD64);
 
         lift_options.stack_frame_recovery_options.stack_frame_struct_init_procedure =

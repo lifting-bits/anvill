@@ -52,6 +52,7 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+  context.enableOpaquePointers();
   auto module = remill::LoadModuleFromFile(&context, FLAGS_bc_in);
   remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
   if (!arch) {

@@ -29,17 +29,16 @@ TEST_SUITE("TypeSpecifier") {
       //{ "l", "i64", true },
       { "L", "i64", true },
       { "I", "i32", true },
-      { "**B", "i8**", true },
-
-      // __libc_start_main
-      //{ "(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
-      { "(*(I**B**BI)I**B*(I**B**BI)*(vI)*(vI)*BI)", "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)", true },
+      { "**B", "", false },
+      { "*", "ptr", true },
+      { "(IB*Iv)", "void (i32, i8, ptr, i32)", true },
     };
 
     // clang-format on
 
     for (const auto &test_entry : kTestEntryList) {
       llvm::LLVMContext llvm_context;
+      llvm_context.enableOpaquePointers();
       llvm::DataLayout dl("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
 
       anvill::TypeDictionary type_dict(llvm_context);
@@ -71,6 +70,7 @@ TEST_SUITE("TypeSpecifier") {
     };
 
     llvm::LLVMContext llvm_context;
+    llvm_context.enableOpaquePointers();
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
@@ -83,11 +83,11 @@ TEST_SUITE("TypeSpecifier") {
       { llvm::Type::getInt64Ty(llvm_context), "l", "l" },
       { llvm::Type::getFloatTy(llvm_context), "f", "f"},
 
-      { llvm::Type::getInt8PtrTy(llvm_context), "*b", "_Sb" },
-      { llvm::Type::getInt16PtrTy(llvm_context), "*h", "_Sh" },
-      { llvm::Type::getInt32PtrTy(llvm_context), "*i", "_Si" },
-      { llvm::Type::getInt64PtrTy(llvm_context), "*l", "_Sl" },
-      { llvm::Type::getFloatPtrTy(llvm_context), "*f", "_Sf"},
+      { llvm::Type::getInt8PtrTy(llvm_context), "*", "_S" },
+      { llvm::Type::getInt16PtrTy(llvm_context), "*", "_S" },
+      { llvm::Type::getInt32PtrTy(llvm_context), "*", "_S" },
+      { llvm::Type::getInt64PtrTy(llvm_context), "*", "_S" },
+      { llvm::Type::getFloatPtrTy(llvm_context), "*", "_S"},
     };
 
     // clang-format on
@@ -201,18 +201,13 @@ TEST_SUITE("TypeSpecifier") {
 
     // clang-format off
     const std::vector<std::pair<const char *, const char *>> kTestSpecList = {
-      {"(*(i**b**bi)i**b*(i**b**bi)*(vi)*(vi)*vi)",
-       "i32 (i32 (i32, i8**, i8**)*, i32, i8**, i32 (i32, i8**, i8**)*, i32 ()*, i32 ()*, i8*)"},
+      {"(ib*biv)", "void (i32, i8, ptr, i8, i32)"},
       {"b", "i8"},
       {"h", "i16"},
       {"i", "i32"},
       {"l", "i64"},
       {"f", "float"},
-      {"*b", "i8*"},
-      {"*h", "i16*"},
-      {"*i", "i32*"},
-      {"*l", "i64*"},
-      {"*f", "float*"},
+      {"*", "ptr"},
 //      {"=0{[=1{hhhhhhhhhh}x100]%1}", ""},
 //      {"(=0{[=1{hhhhhhhhhh}x100]%1}[%1x100])", ""},
     };
@@ -220,12 +215,13 @@ TEST_SUITE("TypeSpecifier") {
     // clang-format on
 
     llvm::LLVMContext llvm_context;
+    llvm_context.enableOpaquePointers();
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
     anvill::TypeDictionary type_dict(llvm_context);
     anvill::TypeTranslator specifier(type_dict, data_layout);
-    
+
     for (auto [test_spec, ll_type] : kTestSpecList) {
       auto context_res = specifier.DecodeFromString(test_spec);
       REQUIRE(context_res.Succeeded());

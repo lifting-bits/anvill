@@ -76,9 +76,9 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("SwitchLowerLargeFunction") {
   TEST_CASE("Run on large function") {
-    llvm::LLVMContext context;
+    auto context = anvill::CreateContext();
 
-    auto mod = LoadTestData(context, "SwitchLoweringLarge.ll");
+    auto mod = LoadTestData(*context, "SwitchLoweringLarge.ll");
     auto target_function =
         FindFunction(mod.get(), "sub_8240110__A_Sbi_Sbii_B_0");
     CHECK(target_function != nullptr);
@@ -97,12 +97,12 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+    auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
     auto ctrl_flow_provider =
         anvill::NullControlFlowProvider();
-    TypeDictionary tyDict(context);
-    
+    TypeDictionary tyDict(*context);
+
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider null_mem_prov;
     anvill::LifterOptions lift_options(
@@ -202,8 +202,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
   }
 
   TEST_CASE("Try negative Index") {
-    llvm::LLVMContext context;
-    auto mod = LoadTestData(context, "SwitchLoweringNeg.ll");
+    auto context = anvill::CreateContext();
+    auto mod = LoadTestData(*context, "SwitchLoweringNeg.ll");
     auto target_function = FindFunction(mod.get(), "_start");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
@@ -221,12 +221,12 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
+    auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
     auto ctrl_flow_provider =
         anvill::NullControlFlowProvider();
-    TypeDictionary tyDict(context);
-    
+    TypeDictionary tyDict(*context);
+
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider null_mem_prov;
     anvill::LifterOptions lift_options(
