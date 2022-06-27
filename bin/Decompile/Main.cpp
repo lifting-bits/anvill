@@ -109,6 +109,7 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+  context.enableOpaquePointers();
   llvm::Module module("lifted_code", context);
 
   auto maybe_spec = anvill::Specification::DecodeFromJSON(

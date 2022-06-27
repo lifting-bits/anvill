@@ -57,14 +57,14 @@ ValueLifterImpl::GetFunctionPointer(const FunctionDecl &decl,
 llvm::Constant *
 ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
                                EntityLifterImpl &ent_lifter,
-                               llvm::PointerType *opt_ptr_type) const {
-  llvm::Type *opt_elem_type =
-      opt_ptr_type ? opt_ptr_type->getElementType() : nullptr;
+                               llvm::Type *opt_elem_type) const {
   auto maybe_var =
       ent_lifter.type_provider->TryGetVariableType(search_ea, opt_elem_type);
   if (!maybe_var) {
     return nullptr;
   }
+
+  llvm::PointerType *opt_ptr_type = llvm::PointerType::get(this->context, 0);
 
   // if the variable start address matches with ea
   if (maybe_var->address == var_ea) {
@@ -77,19 +77,8 @@ ValueLifterImpl::GetVarPointer(uint64_t var_ea, uint64_t search_ea,
     const auto enclosing_var =
         ent_lifter.data_lifter.GetOrDeclareData(*maybe_var, ent_lifter);
 
-    // If we've got a hinted pointer type then we can directly use a Remill
-    // function.
-    if (opt_ptr_type) {
-      return llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
-          builder, enclosing_var, var_ea - maybe_var->address, opt_ptr_type));
-
-      // Otherwise, we need to go with whatever we can.
-    } else {
-      opt_ptr_type = llvm::Type::getInt8PtrTy(context);
-      auto ret = llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
-          builder, enclosing_var, var_ea - maybe_var->address, opt_ptr_type));
-      return llvm::dyn_cast<llvm::Constant>(ret->stripPointerCastsAndAliases());
-    }
+    return llvm::dyn_cast<llvm::Constant>(remill::BuildPointerToOffset(
+        builder, enclosing_var, var_ea - maybe_var->address, opt_ptr_type));
   }
 }
 
@@ -142,22 +131,14 @@ static llvm::Constant *UnwrapZeroIndices(llvm::Constant *ret,
 llvm::Constant *
 ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
                                          EntityLifterImpl &ent_lifter,
-                                         llvm::PointerType *hinted_type) const {
+                                         llvm::Type *hinted_type) const {
 
   // First, try to see if we already have an entity for this address. Give
   // preference to an entity with a matching type. Then to global variables and
   // functions, then to aliases, then constants.
   llvm::Constant *found_entity_at = nullptr;
-  llvm::Constant *found_entity_at_type = nullptr;
   ent_lifter.ForEachEntityAtAddress(ea, [&](llvm::Constant *gv) {
-    if (gv->getType() == hinted_type) {
-      if (!found_entity_at_type ||
-          (llvm::isa<llvm::GlobalValue>(gv) &&
-           !llvm::isa<llvm::GlobalValue>(found_entity_at_type))) {
-        found_entity_at_type = gv;
-      }
-    } else if (llvm::isa<llvm::GlobalVariable>(gv) ||
-               llvm::isa<llvm::Function>(gv)) {
+    if (llvm::isa<llvm::GlobalVariable>(gv) || llvm::isa<llvm::Function>(gv)) {
       found_entity_at = gv;
     } else if (!found_entity_at ||
                (llvm::isa<llvm::GlobalValue>(gv) &&
@@ -172,10 +153,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   };
 
   // We've found the entity we wanted.
-  if (found_entity_at_type) {
-    return unwrap_zero_indices(found_entity_at_type);
-
-  } else if (found_entity_at) {
+  if (found_entity_at) {
     return unwrap_zero_indices(found_entity_at);
   }
 
@@ -187,7 +165,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
   // Try to create a `FunctionDecl` on-demand.
   if (hinted_type) {
     if (auto func_type =
-            llvm::dyn_cast<llvm::FunctionType>(hinted_type->getElementType())) {
+            llvm::dyn_cast<llvm::FunctionType>(hinted_type)) {
       const auto func =
           llvm::Function::Create(func_type, llvm::GlobalValue::PrivateLinkage,
                                  ".anvill.value_lifter.temp", options.module);
@@ -229,8 +207,8 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
     value_type = llvm::Type::getInt8Ty(context);
   }
 
-  auto ptr_type = llvm::PointerType::get(value_type, address_space);
-  auto ret = TryGetPointerForAddress(ea, ent_lifter, ptr_type);
+  auto ptr_type = llvm::PointerType::get(context, address_space);
+  auto ret = TryGetPointerForAddress(ea, ent_lifter, value_type);
   if (!ret) {
     if (!ea) {
       return llvm::Constant::getNullValue(ptr_type);
@@ -248,40 +226,13 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
       return nullptr;
     }
 
-  } else if (ret->getType() != ptr_type) {
-    ret = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(ret, ptr_type);
+  } else if (ret->getType()->getPointerAddressSpace() !=
+             ptr_type->getAddressSpace()) {
+    ret = llvm::ConstantExpr::getAddrSpaceCast(ret, ptr_type);
     ent_lifter.AddEntity(ret, ea);
   }
 
-  if (llvm::isa<llvm::GlobalValue>(ret) || !CanBeAliased(ret)) {
-    return ret;
-  }
-
-  // Wrap the returned pointer in an alias.
-  const auto type = ptr_type->getElementType();
-
-  std::stringstream ss;
-  ss << kGlobalAliasNamePrefix << std::hex << ea << '_'
-     << type_specifier.EncodeToString(type,
-                                      EncodingFormat::kValidSymbolCharsOnly);
-
-  const auto name = ss.str();
-  auto alias_ret = llvm::GlobalAlias::create(value_type, address_space,
-                                             llvm::GlobalValue::ExternalLinkage,
-                                             name, options.module);
-
-  if (ret->getType()->getPointerAddressSpace() != address_space) {
-    ret = llvm::ConstantExpr::getAddrSpaceCast(ret, ptr_type);
-  }
-
-  alias_ret->setAliasee(ret);
-
-  // NOTE(akshayk): Adding `alias_ret` to entity map may cause type confusion
-  //                on look up. It gets fixed in the data lifter.
-  //
-  ent_lifter.AddEntity(alias_ret, ea);
-
-  return alias_ret;
+  return ret;
 }
 
 // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
@@ -324,7 +275,7 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       }
 
       // If we successfully lift it as a reference then we're in good shape.
-      if (auto val = GetPointer(address, pointer_type->getElementType(),
+      if (auto val = GetPointer(address, nullptr,
                                 ent_lifter, loc_ea, addr_space)) {
         return val;
       }

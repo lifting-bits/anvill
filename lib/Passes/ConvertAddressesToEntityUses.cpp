@@ -59,33 +59,10 @@ ConvertAddressesToEntityUses::run(llvm::Function &function,
     const auto user_inst =
         llvm::dyn_cast<llvm::Instruction>(xref_use.use->getUser());
     llvm::IRBuilder<> ir(user_inst);
-    llvm::PointerType *inferred_type = nullptr;
     llvm::Value *entity = nullptr;
-
-    // As a first pass, take the inferred type of this entity from the cross-
-    // reference info.
-    if (xref_use.xref.hinted_value_type &&
-        !xref_use.xref.displacement_from_hinted_value_type) {
-      inferred_type = xref_use.xref.hinted_value_type->getPointerTo(0);
-
-      // TODO(pag): If we have a `hinted_value_type`, and a non-zero
-      //            displacement then figure out what the value type is, if
-      //            we're in-bounds of the type.
-    }
-
-    // Failing this, check if the value we're looking at is a pointer, and use
-    // that type.
-    if (!inferred_type) {
-      inferred_type = llvm::dyn_cast<llvm::PointerType>(val_type);
-    }
 
     llvm::Type *pointee_type = nullptr;
     unsigned address_space = 0u;
-    if (inferred_type) {
-      pointee_type = inferred_type->getElementType();
-      address_space = inferred_type->getAddressSpace();
-    }
-
 
     entity = xref_resolver.EntityAtAddress(ra.u.address, pointee_type,
                                            address_space);
@@ -170,8 +147,7 @@ EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
             ra.is_valid && !ra.references_return_address &&
             !ra.references_stack_pointer) {
 
-          if (ra.hinted_value_type ||  // Looked like a pointer.
-              ra.references_entity ||  // Related to an existing lifted entity.
+          if (ra.references_entity ||  // Related to an existing lifted entity.
               ra.references_global_value ||  // Related to a global var/func.
               ra.references_program_counter) {  // Related to `__anvill_pc`.
             output.emplace_back(&use, ra);

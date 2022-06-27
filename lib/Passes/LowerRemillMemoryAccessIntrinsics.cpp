@@ -25,7 +25,7 @@ namespace {
 static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   auto addr = call_inst->getArgOperand(1);
   llvm::IRBuilder<> ir(call_inst);
-  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(ir.getContext(), 0));
   CopyMetadataTo(call_inst, ptr);
   llvm::Value *val = ir.CreateLoad(val_type, ptr);
   CopyMetadataTo(call_inst, val);
@@ -45,13 +45,13 @@ static void ReplaceMemReadOpToRef(llvm::CallBase *call_inst,
   auto addr = call_inst->getArgOperand(1);
 
   llvm::IRBuilder<> ir(call_inst);
-  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(ir.getContext(), 0));
   CopyMetadataTo(call_inst, ptr);
   llvm::Value *val = ir.CreateLoad(val_type, ptr);
   CopyMetadataTo(call_inst, val);
 
   auto val_ptr = ir.CreateBitCast(call_inst->getArgOperand(2),
-                                  llvm::PointerType::get(val_type, 0));
+                                  llvm::PointerType::get(ir.getContext(), 0));
   CopyMetadataTo(call_inst, val_ptr);
   val = ir.CreateStore(val, val_ptr);
   CopyMetadataTo(call_inst, val);
@@ -67,7 +67,7 @@ static void ReplaceMemWriteOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
   auto val = call_inst->getArgOperand(2);
 
   llvm::IRBuilder<> ir(call_inst);
-  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(ir.getContext(), 0));
   CopyMetadataTo(call_inst, ptr);
   if (val_type->isX86_FP80Ty() || val_type->isFP128Ty()) {
     val = ir.CreateFPExt(val, val_type);
@@ -89,7 +89,7 @@ static void ReplaceMemWriteOpFromRef(llvm::CallBase *call_inst,
   auto val_ptr = call_inst->getArgOperand(2);
 
   llvm::IRBuilder<> ir(call_inst);
-  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(val_type, 0));
+  auto ptr = ir.CreateIntToPtr(addr, llvm::PointerType::get(ir.getContext(), 0));
   CopyMetadataTo(call_inst, ptr);
 
   llvm::Value *val = ir.CreateLoad(val_type, val_ptr);

@@ -17,9 +17,9 @@ namespace anvill {
 
 TEST_SUITE("SinkSelectionsIntoBranchTargets") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    llvm::LLVMContext llvm_context;
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
-        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -29,9 +29,9 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
   }
 
   TEST_CASE("SimpleCase") {
-    llvm::LLVMContext llvm_context;
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
-        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -50,9 +50,9 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
   }
 
   TEST_CASE("MultipleSelects") {
-    llvm::LLVMContext llvm_context;
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
-        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -71,9 +71,9 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
   }
 
   TEST_CASE("MultipleSelectUsages") {
-    llvm::LLVMContext llvm_context;
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
-        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 

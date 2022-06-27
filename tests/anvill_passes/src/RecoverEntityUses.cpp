@@ -17,40 +17,42 @@ namespace anvill {
 
     TEST_SUITE("RecoverEntityUses") {
     TEST_CASE("Regression test for unresolved anvill_pc") {
-        llvm::LLVMContext llvm_context;
-        auto module = LoadTestData(llvm_context, "TestingUnresolvedEntity.ll");
-        
+      auto llvm_context = anvill::CreateContextWithOpaquePointers();
+      auto module = LoadTestData(*llvm_context, "TestingUnresolvedEntity.ll");
 
-        auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
-                                        remill::GetArchName("amd64"));
-        REQUIRE(arch != nullptr);
 
-        auto ctrl_flow_provider =
-            anvill::NullControlFlowProvider();
-        TypeDictionary tyDict(llvm_context);
+      auto arch =
+          remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
+                              remill::GetArchName("amd64"));
+      REQUIRE(arch != nullptr);
 
-        NullTypeProvider ty_prov(tyDict);
-        NullMemoryProvider mem_prov;
-        anvill::LifterOptions lift_options(
-            arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+      auto ctrl_flow_provider = anvill::NullControlFlowProvider();
+      TypeDictionary tyDict(*llvm_context);
 
-        anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+      NullTypeProvider ty_prov(tyDict);
+      NullMemoryProvider mem_prov;
+      anvill::LifterOptions lift_options(arch.get(), *module, ty_prov,
+                                         std::move(ctrl_flow_provider),
+                                         mem_prov);
 
-        // memory and types will not get used and create lifter with null
-        anvill::EntityLifter lifter(options);
+      anvill::LifterOptions options(arch.get(), *module, ty_prov,
+                                    std::move(ctrl_flow_provider), mem_prov);
 
-        EntityCrossReferenceResolver xref(lifter);
+      // memory and types will not get used and create lifter with null
+      anvill::EntityLifter lifter(options);
 
-        ConvertAddressesToEntityUses conv(xref);
+      EntityCrossReferenceResolver xref(lifter);
 
-        auto func = module->getFunction("sub_12b30__A_SBI_B_0.6");
+      ConvertAddressesToEntityUses conv(xref);
 
-        REQUIRE(func != nullptr);
-        
-        llvm::FunctionAnalysisManager fam;
+      auto func = module->getFunction("sub_12b30__A_SBI_B_0.6");
 
-        conv.run(*func,fam);
-        func->dump();
+      REQUIRE(func != nullptr);
+
+      llvm::FunctionAnalysisManager fam;
+
+      conv.run(*func, fam);
+      func->dump();
     }
     }
 }

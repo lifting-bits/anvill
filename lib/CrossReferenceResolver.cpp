@@ -54,7 +54,7 @@ llvm::Constant *EntityCrossReferenceResolver::EntityAtAddress(
   llvm::Constant *ret = impl->value_lifter.Lift(
       addr, value_type, addr_space);
   if (ret && value_type) {
-    auto ptr_type = llvm::PointerType::get(value_type, addr_space);
+    auto ptr_type = llvm::PointerType::get(value_type->getContext(), addr_space);
     auto ret_ptr_type = llvm::dyn_cast<llvm::PointerType>(ret->getType());
     CHECK_NOTNULL(ret_ptr_type);
 
@@ -63,7 +63,7 @@ llvm::Constant *EntityCrossReferenceResolver::EntityAtAddress(
           ret_addr_space != addr_space) {
         return llvm::ConstantExpr::getAddrSpaceCast(
             llvm::ConstantExpr::getBitCast(
-                ret, llvm::PointerType::get(value_type, ret_addr_space)),
+                ret, llvm::PointerType::get(value_type->getContext(), ret_addr_space)),
             ptr_type);
       } else {
         return llvm::ConstantExpr::getBitCast(ret, ptr_type);

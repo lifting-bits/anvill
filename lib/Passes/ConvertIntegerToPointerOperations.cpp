@@ -139,7 +139,7 @@ static bool IntToPtrOnLoadToLoadOfPointer(llvm::Function &func) {
     // We want to turn the result type of the load into a pointer, which means
     // the load is loading a pointer-to-pointer.
     auto ptr_ptr_type =
-        llvm::PointerType::get(itp->getType(), load->getPointerAddressSpace());
+        llvm::PointerType::get(func.getContext(), load->getPointerAddressSpace());
 
     // Drill down a bit further on the actual loaded operand.
     auto lo = load->getOperand(0)->stripPointerCasts();
@@ -339,7 +339,7 @@ static bool IntToPtrOnAddToGetElementPtr(llvm::Function &func) {
 
     llvm::Value *indexes[] = {index};
     auto gep = llvm::GetElementPtrInst::Create(
-        ptr_type->getPointerElementType(), lhs_ptr, indexes, "", ipoint);
+        lhs_ptr->getType(), lhs_ptr, indexes, "", ipoint);
 
     anvill::CopyMetadataTo(itp, lhs_ptr);
     anvill::CopyMetadataTo(itp, gep);

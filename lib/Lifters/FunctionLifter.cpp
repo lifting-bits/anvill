@@ -566,10 +566,9 @@ llvm::Value *FunctionLifter::CallCallableDecl(llvm::BasicBlock *block,
   CHECK_EQ(decl.arch, options.arch);
 
   auto &context = block->getContext();
-  auto dest_func_type = remill::RecontextualizeType(decl.type, context);
 
   auto dest_func =
-      ir.CreateBitOrPointerCast(pc, llvm::PointerType::get(dest_func_type, 0));
+      ir.CreateBitOrPointerCast(pc, llvm::PointerType::get(context, 0));
 
   auto mem_ptr = ir.CreateLoad(mem_ptr_type, mem_ptr_ref);
   auto new_mem_ptr =
@@ -1320,9 +1319,9 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 
 // Allocate and initialize the state structure.
 void FunctionLifter::AllocateAndInitializeStateStructure(
-    llvm::BasicBlock *block) {
+    llvm::BasicBlock *block, const remill::Arch *arch) {
   llvm::IRBuilder<> ir(block);
-  const auto state_type = state_ptr_type->getElementType();
+  const auto state_type = arch->StateStructType();
   switch (options.state_struct_init_procedure) {
     case StateStructureInitializationProcedure::kNone:
       state_ptr = ir.CreateAlloca(state_type);
@@ -1375,8 +1374,8 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
       const auto gsbase_val = llvm::ConstantExpr::getPtrToInt(
           llvm::ConstantExpr::getAddrSpaceCast(
               llvm::ConstantExpr::getNullValue(
-                  llvm::PointerType::get(i8_type, 256)),
-              llvm::PointerType::get(i8_type, 0)),
+                  llvm::PointerType::get(block->getContext(), 256)),
+              llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
       ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(state_ptr, ir));
     }
@@ -1385,8 +1384,8 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
       const auto fsbase_val = llvm::ConstantExpr::getPtrToInt(
           llvm::ConstantExpr::getAddrSpaceCast(
               llvm::ConstantExpr::getNullValue(
-                  llvm::PointerType::get(i8_type, 257)),
-              llvm::PointerType::get(i8_type, 0)),
+                  llvm::PointerType::get(block->getContext(), 257)),
+              llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
       ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(state_ptr, ir));
     }
@@ -1466,7 +1465,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate and initialize the state pointer.
-  AllocateAndInitializeStateStructure(block);
+  AllocateAndInitializeStateStructure(block, decl.arch);
 
   auto pc_ptr = pc_reg->AddressOf(state_ptr, block);
   auto sp_ptr = sp_reg->AddressOf(state_ptr, block);
@@ -1702,10 +1701,14 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
   const auto entry_block = &(lifted_func->getEntryBlock());
-  pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr, pc_reg->name);
-  next_pc_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr,
-                                               remill::kNextPCVariableName);
-  sp_reg_ref = inst_lifter.LoadRegAddress(entry_block, state_ptr, sp_reg->name);
+  pc_reg_ref =
+      inst_lifter.LoadRegAddress(entry_block, state_ptr, pc_reg->name).first;
+  next_pc_reg_ref =
+      inst_lifter
+          .LoadRegAddress(entry_block, state_ptr, remill::kNextPCVariableName)
+          .first;
+  sp_reg_ref =
+      inst_lifter.LoadRegAddress(entry_block, state_ptr, sp_reg->name).first;
 
   mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
 

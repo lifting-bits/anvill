@@ -491,7 +491,7 @@ static void UpdateFunction(
     }
 
     if (el_type) {
-      llvm::PointerType *ptr_type = llvm::PointerType::get(el_type, 0);
+      llvm::PointerType *ptr_type = llvm::PointerType::get(context, 0);
       stack_frame_ptr = builder.CreateBitOrPointerCast(
           stack_frame_ptr, ptr_type);
       CopyMetadataTo(from_val, stack_frame_ptr);

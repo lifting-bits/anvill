@@ -28,8 +28,8 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("BranchRecoveryPass") {
   TEST_CASE("Run analysis on aarch64") {
-    llvm::LLVMContext context;
-    auto mod = LoadTestData(context, "BranchRecoveryAarch64.ll");
+    auto context = anvill::CreateContextWithOpaquePointers();
+    auto mod = LoadTestData(*context, "BranchRecoveryAarch64.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
@@ -109,8 +109,8 @@ TEST_SUITE("BranchRecoveryPass") {
   }
 
   TEST_CASE("Run analysis sliced function sub") {
-    llvm::LLVMContext context;
-    auto mod = LoadTestData(context, "RecoverSubBranch.ll");
+    auto context = anvill::CreateContextWithOpaquePointers();
+    auto mod = LoadTestData(*context, "RecoverSubBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
@@ -191,8 +191,8 @@ TEST_SUITE("BranchRecoveryPass") {
 
 
   TEST_CASE("Run on sliced function sub") {
-    llvm::LLVMContext context;
-    auto mod = LoadTestData(context, "UnrecoverableBranch.ll");
+    auto context = anvill::CreateContextWithOpaquePointers();
+    auto mod = LoadTestData(*context, "UnrecoverableBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
