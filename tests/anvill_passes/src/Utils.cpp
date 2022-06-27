@@ -79,7 +79,7 @@ const PlatformList &GetSupportedPlatforms(void) {
   return kSupportedPlatforms;
 }
 
-std::unique_ptr<llvm::LLVMContext> CreateContext(void) {
+std::unique_ptr<llvm::LLVMContext> CreateContextWithOpaquePointers(void) {
   auto context = std::make_unique<llvm::LLVMContext>();
   context->enableOpaquePointers();
   return context;

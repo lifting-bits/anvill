@@ -42,7 +42,7 @@ static std::tuple<int, int>
 runXorRemovalPassCountXors(const std::string &module_name,
                            const std::string &function_name) {
 
-  auto llvm_context = anvill::CreateContext();
+  auto llvm_context = anvill::CreateContextWithOpaquePointers();
   auto module = LoadTestData(*llvm_context, module_name);
 
   auto arch =

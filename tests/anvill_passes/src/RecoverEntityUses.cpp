@@ -17,7 +17,7 @@ namespace anvill {
 
     TEST_SUITE("RecoverEntityUses") {
     TEST_CASE("Regression test for unresolved anvill_pc") {
-      auto llvm_context = anvill::CreateContext();
+      auto llvm_context = anvill::CreateContextWithOpaquePointers();
       auto module = LoadTestData(*llvm_context, "TestingUnresolvedEntity.ll");
 
 

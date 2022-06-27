@@ -25,7 +25,7 @@ namespace anvill {
 
 TEST_SUITE("TransformRemillJump_Test0") {
   TEST_CASE("Run the pass on function having _remill_jump as tail call") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module = LoadTestData(*llvm_context, "TransformRemillJumpData0.ll");
 
     auto arch =
@@ -61,7 +61,7 @@ TEST_SUITE("TransformRemillJump_Test0") {
 
 TEST_SUITE("TransformRemillJump_Test1") {
   TEST_CASE("Run the pass on function having _remill_jump as tail call") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module = LoadTestData(*llvm_context, "TransformRemillJumpData1.ll");
 
     auto arch =
@@ -97,7 +97,7 @@ TEST_SUITE("TransformRemillJump_Test1") {
 
 TEST_SUITE("TransformRemillJump_ARM32_0") {
   TEST_CASE("Run the pass on function having _remill_jump as tail call") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
         LoadTestData(*llvm_context, "TransformRemillJumpDataARM32_0.ll");
 
@@ -134,7 +134,7 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
 
 TEST_SUITE("TransformRemillJump_ARM32_1") {
   TEST_CASE("Run the pass on function having _remill_jump as tail call") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
         LoadTestData(*llvm_context, "TransformRemillJumpDataARM32_1.ll");
 

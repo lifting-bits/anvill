@@ -37,7 +37,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
     for (const auto &platform : GetSupportedPlatforms()) {
       for (auto init_strategy : kInitStackSettings) {
         for (auto padding_bytes : kTestPaddingSettings) {
-          auto context = anvill::CreateContext();
+          auto context = anvill::CreateContextWithOpaquePointers();
           auto module =
               LoadTestData(*context, "RecoverStackFrameInformation.ll");
 
@@ -75,7 +75,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
   SCENARIO("Function analysis can recreate a simple, byte-array frame type") {
 
     GIVEN("a lifted function without stack information") {
-      auto context = anvill::CreateContext();
+      auto context = anvill::CreateContextWithOpaquePointers();
       auto module = LoadTestData(*context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 
@@ -229,7 +229,7 @@ TEST_SUITE("RecoverBasicStackFrame") {
 
   SCENARIO("Applying stack frame recovery") {
     GIVEN("a well formed function") {
-      auto context = anvill::CreateContext();
+      auto context = anvill::CreateContextWithOpaquePointers();
       auto module = LoadTestData(*context, "RecoverStackFrameInformation.ll");
       REQUIRE(module != nullptr);
 

@@ -22,7 +22,7 @@ namespace anvill {
 
 TEST_SUITE("InstructionFolderPass") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
     auto module = LoadTestData(*context, "InstructionFolderPass.ll");
 
     REQUIRE(module != nullptr);

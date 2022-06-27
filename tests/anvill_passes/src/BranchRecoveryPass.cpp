@@ -28,7 +28,7 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("BranchRecoveryPass") {
   TEST_CASE("Run analysis on aarch64") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
     auto mod = LoadTestData(*context, "BranchRecoveryAarch64.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
@@ -109,7 +109,7 @@ TEST_SUITE("BranchRecoveryPass") {
   }
 
   TEST_CASE("Run analysis sliced function sub") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
     auto mod = LoadTestData(*context, "RecoverSubBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
@@ -191,7 +191,7 @@ TEST_SUITE("BranchRecoveryPass") {
 
 
   TEST_CASE("Run on sliced function sub") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
     auto mod = LoadTestData(*context, "UnrecoverableBranch.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);

@@ -27,7 +27,7 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("RemoveStackPointerCExprs") {
   TEST_CASE("RegressionRecoverStack.ll") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto mod = LoadTestData(*llvm_context, "RegressionRecoverStack.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);

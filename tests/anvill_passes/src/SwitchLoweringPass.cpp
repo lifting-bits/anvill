@@ -76,7 +76,7 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("SwitchLowerLargeFunction") {
   TEST_CASE("Run on large function") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
 
     auto mod = LoadTestData(*context, "SwitchLoweringLarge.ll");
     auto target_function =
@@ -202,7 +202,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
   }
 
   TEST_CASE("Try negative Index") {
-    auto context = anvill::CreateContext();
+    auto context = anvill::CreateContextWithOpaquePointers();
     auto mod = LoadTestData(*context, "SwitchLoweringNeg.ll");
     auto target_function = FindFunction(mod.get(), "_start");
     CHECK(target_function != nullptr);

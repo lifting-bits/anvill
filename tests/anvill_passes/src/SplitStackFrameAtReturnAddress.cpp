@@ -21,7 +21,7 @@ namespace anvill {
 
 TEST_SUITE("SplitStackFrameAtReturnAddress") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    auto llvm_context = anvill::CreateContext();
+    auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module =
         LoadTestData(*llvm_context, "SplitStackFrameAtReturnAddress.ll");
 
