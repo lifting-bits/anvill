@@ -20,7 +20,7 @@
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/Arch/Arch.h>
-#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 
 #include <cstdint>
@@ -194,7 +194,7 @@ int main(int argc, char *argv[]) {
   std::unordered_map<uint64_t, std::string> names;
   if (FLAGS_add_names) {
     spec.ForEachSymbol([&names,&module] (uint64_t addr, const std::string &name) {
-      
+
 
       if(llvm::Triple(module.getTargetTriple()).getVendor() == llvm::Triple::VendorType::Apple && name.find("_",0) == 0) {
         names.emplace(addr,  name.substr(1));

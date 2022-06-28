@@ -33,7 +33,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Instruction.h>
-#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Version.h>
 #include <remill/OS/OS.h>

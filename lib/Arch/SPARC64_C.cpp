@@ -10,7 +10,6 @@
 #include <glog/logging.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-#include <remill/BC/Compat/VectorType.h>
 
 #include "AllocationState.h"
 #include "Arch.h"
@@ -306,7 +305,7 @@ SPARC64_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Try to split the composite type over registers, and fall back on RVO
     // if it's not possible.
-    case llvm::GetFixedVectorTypeId():
+    case llvm::Type::FixedVectorTyID:
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
       AllocationState alloc_ret(return_register_constraints, arch, this);

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Error.h>
 
 #include <string>
 #include <vector>

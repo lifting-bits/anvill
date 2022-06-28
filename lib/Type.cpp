@@ -22,8 +22,7 @@
 #include <glog/logging.h>
 
 #include <remill/Arch/Arch.h>
-#include <remill/BC/Compat/Error.h>
-#include <remill/BC/Compat/VectorType.h>
+#include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 
 #include <anvill/ABI.h>
@@ -287,7 +286,7 @@ void TypeSpecifierImpl::EncodeType(
       break;
     }
 
-    case llvm::GetFixedVectorTypeId(): {
+    case llvm::Type::FixedVectorTyID: {
       const auto vec_ptr = llvm::cast<llvm::FixedVectorType>(&type);
       ss << (alpha_num ? "_G" : "<");
       EncodeType(*vec_ptr->getElementType(), ss, format);

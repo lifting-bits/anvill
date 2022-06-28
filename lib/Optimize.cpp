@@ -11,7 +11,6 @@
 #include <glog/logging.h>
 
 // clang-format off
-#include <remill/BC/Compat/ScalarTransforms.h>
 #include <llvm/Pass.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -62,8 +61,7 @@
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
 #include <remill/BC/ABI.h>
-#include <remill/BC/Compat/Error.h>
-#include <remill/BC/Compat/ScalarTransforms.h>
+#include <remill/BC/Error.h>
 #include <remill/BC/Optimizer.h>
 #include <remill/BC/Util.h>
 

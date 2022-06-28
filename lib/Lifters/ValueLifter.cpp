@@ -18,7 +18,6 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include "EntityLifter.h"
@@ -326,7 +325,7 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
     }
 
     // Traverse through all the elements of vector and create the initializer
-    case llvm::GetFixedVectorTypeId(): {
+    case llvm::Type::FixedVectorTyID: {
       const auto vec_type = llvm::dyn_cast<llvm::FixedVectorType>(type);
       const auto num_elms = vec_type->getNumElements();
       const auto elm_type = vec_type->getElementType();

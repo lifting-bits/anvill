@@ -251,7 +251,7 @@ X86_StdCall::BindReturnValues(llvm::Function &function, bool &injected_sret,
 
     // Try to split the composite type over registers, and fall back on RVO
     // if it's not possible.
-    case llvm::GetFixedVectorTypeId():
+    case llvm::Type::FixedVectorTyID:
     case llvm::Type::ArrayTyID:
     case llvm::Type::StructTyID: {
       AllocationState alloc_ret(return_register_constraints, arch, this);
