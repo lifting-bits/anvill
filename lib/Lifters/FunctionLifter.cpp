@@ -58,16 +58,6 @@ static void ClearVariableNames(llvm::Function *func) {
   }
 }
 
-// Compatibility function for performing a single step of inlining.
-static llvm::InlineResult InlineFunction(llvm::CallBase *call,
-                                         llvm::InlineFunctionInfo &info) {
-#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
-  return llvm::InlineFunction(call, info);
-#else
-  return llvm::InlineFunction(*call, info);
-#endif
-}
-
 // A function that ensures that the memory pointer escapes, and thus none of
 // the memory writes at the end of a function are lost.
 static llvm::Function *
@@ -1589,7 +1579,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       }
 
       llvm::InlineFunctionInfo info;
-      InlineFunction(call_inst, info);
+      llvm::InlineFunction(*call_inst, info);
 
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {
