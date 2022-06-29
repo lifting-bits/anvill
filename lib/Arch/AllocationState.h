@@ -9,7 +9,6 @@
 #pragma once
 
 #include <llvm/IR/Attributes.h>
-#include <remill/BC/Compat/VectorType.h>
 #include <remill/BC/Util.h>
 
 #include <vector>

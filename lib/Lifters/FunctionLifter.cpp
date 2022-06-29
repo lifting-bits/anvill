@@ -33,7 +33,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Instruction.h>
-#include <remill/BC/Compat/Error.h>
+#include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Version.h>
 #include <remill/OS/OS.h>
@@ -56,16 +56,6 @@ static void ClearVariableNames(llvm::Function *func) {
       }
     }
   }
-}
-
-// Compatibility function for performing a single step of inlining.
-static llvm::InlineResult InlineFunction(llvm::CallBase *call,
-                                         llvm::InlineFunctionInfo &info) {
-#if LLVM_VERSION_NUMBER < LLVM_VERSION(11, 0)
-  return llvm::InlineFunction(call, info);
-#else
-  return llvm::InlineFunction(*call, info);
-#endif
 }
 
 // A function that ensures that the memory pointer escapes, and thus none of
@@ -1589,7 +1579,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       }
 
       llvm::InlineFunctionInfo info;
-      InlineFunction(call_inst, info);
+      llvm::InlineFunction(*call_inst, info);
 
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {

@@ -11,7 +11,6 @@
 #include <glog/logging.h>
 #include <llvm/IR/Attributes.h>
 #include <remill/Arch/Arch.h>
-#include <remill/BC/Compat/VectorType.h>
 
 #include <algorithm>
 
@@ -176,7 +175,7 @@ SizeAndType AllocationState::AssignSizeAndType(llvm::Type &type) {
       size_constraint = kMinBit80;
       break;
 
-    case llvm::GetFixedVectorTypeId():
+    case llvm::Type::FixedVectorTyID:
       type_constraint = kTypeFloatOrVec;
       size_constraint = kMinBit80;
       break;

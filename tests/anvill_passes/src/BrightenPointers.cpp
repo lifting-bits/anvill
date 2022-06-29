@@ -19,7 +19,6 @@
 #include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-#include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Lifter.h>
 #include <remill/OS/OS.h>
 
