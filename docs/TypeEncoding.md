@@ -49,14 +49,9 @@ used in function types and pointer types.
 
 ## Pointer types
 
-A pointer type is a `*` followed by a type string. For example, `*i` is interpreted
-as an `int32_t *` in C. One special case is `*v`, a pointer to some kind of unknown
-data. The C interpretation is `void *`. In LLVM bitcode, `*v` is interpreted as
-`*B`.
-
-The size of a pointer type is dependent on the architecture referenced in a
-[specification document](SpecificationFormat.md). In practice, it is always
-four or eight bytes.
+A pointer type is a `*`. The size of a pointer type is dependent on the
+architecture referenced in a [specification document](SpecificationFormat.md).
+In practice, it is always four or eight bytes.
 
 ## Vector types
 
