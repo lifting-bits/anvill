@@ -228,15 +228,15 @@ static llvm::GlobalVariable *GetStackSymbolicByteValue(
   auto value_name = kSymbolicStackFrameValuePrefix;
   if (options.stack_grows_down) {
     if (offset < 0) {
-      value_name += "plus_";
-    } else if (offset > 0) {
       value_name += "minus_";
+    } else if (offset > 0) {
+      value_name += "plus_";
     }
   } else {
     if (offset < 0) {
-      value_name += "minus_";
-    } else if (offset > 0) {
       value_name += "plus_";
+    } else if (offset > 0) {
+      value_name += "minus_";
     }
   }
 
