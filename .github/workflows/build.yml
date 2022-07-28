@@ -146,7 +146,7 @@ jobs:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
       
-      - uses: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.github/actions/prepare_git_user
+      - uses: "${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.github/actions/prepare_git_user"
       
       - name: Select the remill version
         run: |
@@ -489,7 +489,7 @@ jobs:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
           
-      - uses: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.github/actions/prepare_git_user
+      - uses: "${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/.github/actions/prepare_git_user"
 
       - name: Select the remill version
         run: |
