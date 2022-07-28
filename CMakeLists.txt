@@ -32,7 +32,7 @@ find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(Z3 4.8 CONFIG REQUIRED)
 find_llvm(llvm "${_VCPKG_SHARE_DIR}")
 
-find_package(sleigh CONFIG REQUIRED)
+find_package(sleigh CONFIG)
 find_package(remill CONFIG REQUIRED)
 
 if(ANVILL_ENABLE_INSTALL)
