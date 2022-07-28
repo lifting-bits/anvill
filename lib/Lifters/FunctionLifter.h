@@ -83,11 +83,11 @@ class FunctionLifter {
   remill::IntrinsicTable intrinsics;
 
   // TODO(pag): Consider passing in the `InstructionLifter` via `LifterOptions`?
-  remill::InstructionLifter inst_lifter;
+  remill::InstructionLifter::LifterPtr inst_lifter;
 
   // Specification counter and stack pointer registers.
-  const remill::Register * const pc_reg;
-  const remill::Register * const sp_reg;
+  const remill::Register *const pc_reg;
+  const remill::Register *const sp_reg;
 
   // Are we lifting SPARC code? This affects whether or not we need to do
   // double checking on function return addresses;
@@ -269,8 +269,8 @@ class FunctionLifter {
   // Call `pc` in `block`, treating it as a callable declaration `decl`.
   // Returns the new value of the memory pointer (after it is stored to
   // `MEMORY`).
-  llvm::Value *CallCallableDecl(
-      llvm::BasicBlock *block, llvm::Value *pc, CallableDecl decl);
+  llvm::Value *CallCallableDecl(llvm::BasicBlock *block, llvm::Value *pc,
+                                CallableDecl decl);
 
   // Try to resolve `target_pc` to a lifted function, and introduce
   // a function call to that address in `block`. Failing this, add a call
@@ -281,9 +281,10 @@ class FunctionLifter {
   // A wrapper around the type provider's TryGetFunctionType that makes use
   // of the control flow provider to handle control flow redirections for
   // thunks
-  std::optional<CallableDecl> TryGetTargetFunctionType(
-      const remill::Instruction &inst, std::uint64_t address,
-      std::uint64_t redirected_address);
+  std::optional<CallableDecl>
+  TryGetTargetFunctionType(const remill::Instruction &inst,
+                           std::uint64_t address,
+                           std::uint64_t redirected_address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in

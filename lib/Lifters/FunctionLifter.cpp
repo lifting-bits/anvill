@@ -14,7 +14,6 @@
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <llvm/Pass.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -27,6 +26,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Pass.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
@@ -158,7 +158,7 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
-      inst_lifter(options.arch, intrinsics),
+      inst_lifter(options.arch->DefaultLifter(intrinsics)),
       pc_reg(options.arch
                  ->RegisterByName(options.arch->ProgramCounterRegisterName())
                  ->EnclosingRegister()),
@@ -359,7 +359,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     }
 
     // Create the parameters for the special anvill switch
-    auto pc = inst_lifter.LoadRegValue(
+    auto pc = inst_lifter->LoadRegValue(
         block, state_ptr, options.arch->ProgramCounterRegisterName());
 
     std::vector<llvm::Value *> switch_parameters;
@@ -724,8 +724,8 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 
   // The semantics for handling a call save the expected return program counter
   // into a local variable.
-  auto ret_pc =
-      inst_lifter.LoadRegValue(block, state_ptr, remill::kReturnPCVariableName);
+  auto ret_pc = inst_lifter->LoadRegValue(block, state_ptr,
+                                          remill::kReturnPCVariableName);
   if (!is_sparc) {
     return {pc, ret_pc};
   }
@@ -904,7 +904,7 @@ void FunctionLifter::VisitDelayedInstruction(const remill::Instruction &inst,
                           inst, *delayed_inst, on_taken_path)) {
     const auto prev_pc_annotation = pc_annotation;
     pc_annotation = GetPCAnnotation(delayed_inst->pc);
-    inst_lifter.LiftIntoBlock(*delayed_inst, block, state_ptr, true);
+    inst_lifter->LiftIntoBlock(*delayed_inst, block, state_ptr, true);
     AnnotateInstructions(block, pc_annotation_id, pc_annotation);
     pc_annotation = prev_pc_annotation;
   }
@@ -943,7 +943,7 @@ void FunctionLifter::InstrumentDataflowProvenance(llvm::BasicBlock *block) {
   args.push_back(llvm::ConstantInt::get(pc_reg_type, curr_inst->pc));
   options.arch->ForEachRegister([&](const remill::Register *reg) {
     if (reg != pc_reg && reg != sp_reg && reg->EnclosingRegister() == reg) {
-      args.push_back(inst_lifter.LoadRegValue(block, state_ptr, reg->name));
+      args.push_back(inst_lifter->LoadRegValue(block, state_ptr, reg->name));
     }
   });
 
@@ -986,8 +986,8 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
   llvm::Value *args[] = {
       new llvm::LoadInst(mem_ptr_type, mem_ptr_ref, llvm::Twine::createNull(),
                          block),
-      inst_lifter.LoadRegValue(block, state_ptr, remill::kPCVariableName),
-      inst_lifter.LoadRegValue(block, state_ptr, remill::kNextPCVariableName)};
+      inst_lifter->LoadRegValue(block, state_ptr, remill::kPCVariableName),
+      inst_lifter->LoadRegValue(block, state_ptr, remill::kNextPCVariableName)};
   llvm::IRBuilder<> ir(block);
   ir.CreateCall(func, args);
 }
@@ -1023,8 +1023,8 @@ void FunctionLifter::VisitInstruction(remill::Instruction &inst,
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
   // to treat instruction lifting as an operation that can't fail.
-  (void) inst_lifter.LiftIntoBlock(inst, block, state_ptr,
-                                   false /* is_delayed */);
+  (void) inst_lifter->LiftIntoBlock(inst, block, state_ptr,
+                                    false /* is_delayed */);
 
   // Figure out if we have to decode the subsequent instruction as a delayed
   // instruction.
@@ -1641,7 +1641,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   edge_work_list.clear();
   edge_to_dest_block.clear();
   addr_to_block.clear();
-  inst_lifter.ClearCache();
+  inst_lifter->ClearCache();
   curr_decl = &decl;
   curr_inst = nullptr;
   state_ptr = nullptr;
@@ -1692,13 +1692,13 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
   const auto entry_block = &(lifted_func->getEntryBlock());
   pc_reg_ref =
-      inst_lifter.LoadRegAddress(entry_block, state_ptr, pc_reg->name).first;
+      inst_lifter->LoadRegAddress(entry_block, state_ptr, pc_reg->name).first;
   next_pc_reg_ref =
       inst_lifter
-          .LoadRegAddress(entry_block, state_ptr, remill::kNextPCVariableName)
+          ->LoadRegAddress(entry_block, state_ptr, remill::kNextPCVariableName)
           .first;
   sp_reg_ref =
-      inst_lifter.LoadRegAddress(entry_block, state_ptr, sp_reg->name).first;
+      inst_lifter->LoadRegAddress(entry_block, state_ptr, sp_reg->name).first;
 
   mem_ptr_ref = remill::LoadMemoryPointerRef(entry_block);
 

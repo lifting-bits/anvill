@@ -32,35 +32,35 @@ find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(Z3 4.8 CONFIG REQUIRED)
 find_llvm(llvm "${_VCPKG_SHARE_DIR}")
 
+find_package(sleigh CONFIG REQUIRED)
 find_package(remill CONFIG REQUIRED)
 
 if(ANVILL_ENABLE_INSTALL)
   export(PACKAGE "${PROJECT_NAME}")
-  
+
   set(cmake_install_dir "lib/cmake/${PROJECT_NAME}")
-  
+
   include(CMakePackageConfigHelpers)
   configure_package_config_file("${PROJECT_NAME}Config.cmake.in"
-      "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-      INSTALL_DESTINATION "${cmake_install_dir}"
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    INSTALL_DESTINATION "${cmake_install_dir}"
   )
 
   install(
-      FILES
-          "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-      DESTINATION "${cmake_install_dir}"
+    FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    DESTINATION "${cmake_install_dir}"
   )
   install(EXPORT "${PROJECT_NAME}Targets"
-      DESTINATION "${cmake_install_dir}"
-      NAMESPACE "${PROJECT_NAME}::"
+    DESTINATION "${cmake_install_dir}"
+    NAMESPACE "${PROJECT_NAME}::"
   )
   install(
     TARGETS
-      "llvm"
+    "llvm"
     EXPORT
-      "${PROJECT_NAME}Targets"
+    "${PROJECT_NAME}Targets"
   )
-
 endif(ANVILL_ENABLE_INSTALL)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
