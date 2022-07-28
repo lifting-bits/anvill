@@ -72,6 +72,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      - uses: ./.github/actions/prepare_git_user
       - name: Setup the build paths
         shell: bash
         id: build_paths
@@ -419,6 +420,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - uses: ./.github/actions/prepare_git_user
       - name: Setup the build paths
         shell: bash
         id: build_paths
