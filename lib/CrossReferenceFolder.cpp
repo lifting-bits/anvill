@@ -40,7 +40,7 @@ static int64_t Signed(uint64_t val, uint64_t size) {
       }
     case 8: return static_cast<int8_t>(val);
     case 16: return static_cast<int16_t>(val);
-    case 32: return static_cast<int8_t>(val);
+    case 32: return static_cast<int32_t>(val);
     case 64: return static_cast<int64_t>(val);
     default:
       const uint64_t m = 1ull << (size - 1ull);
