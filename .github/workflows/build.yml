@@ -146,7 +146,11 @@ jobs:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
       
-      - uses: ${{ steps.build_paths.outputs.SOURCE }}/anvill/.github/actions/prepare_git_user
+      - name: Setup Git User for Applying Patches
+        # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
       
       - name: Select the remill version
         run: |
@@ -489,7 +493,11 @@ jobs:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
           
-      - uses: ${{ steps.build_paths.outputs.SOURCE }}/anvill/.github/actions/prepare_git_user
+      - name: Setup Git User for Applying Patches
+        # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
 
       - name: Select the remill version
         run: |
