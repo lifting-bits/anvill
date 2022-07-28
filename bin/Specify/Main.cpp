@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]) {
 
   llvm::json::Array funcs_json;
 
-  for (auto &function : *module) {
+  for (llvm::Function &function : *module) {
 
     // Skip llvm debug intrinsics
     if (function.getIntrinsicID()) {
@@ -88,10 +89,14 @@ int main(int argc, char *argv[]) {
       std::cerr << maybe_func.TakeError() << std::endl;
       return EXIT_FAILURE;
     } else {
-      auto decl = maybe_func.TakeValue();
-      auto func = jt.Encode(decl);
+      anvill::FunctionDecl decl = maybe_func.TakeValue();
+      anvill::Result<llvm::json::Object, anvill::JSONEncodeError>
+          func = jt.Encode(decl);
+
       if (func.Succeeded()) {
-        funcs_json.emplace_back(func.TakeValue());
+        llvm::json::Object func_obj = func.TakeValue();
+        func_obj["name"] = function.getName();
+        funcs_json.emplace_back(std::move(func_obj));
       } else {
         std::cerr << "Error encoding function '" << function.getName().str()
                   << "' to JSON: " << func.TakeError().message;
