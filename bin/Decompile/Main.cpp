@@ -30,6 +30,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 DEFINE_string(spec, "", "Path to a JSON specification of code to decompile.");
 DEFINE_string(ir_out, "", "Path to file where the LLVM IR should be saved.");
@@ -47,6 +48,10 @@ DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_string(
     default_callable_spec, "",
     "a default specification for functions for which we dont have a type");
+
+DEFINE_string(
+    lift_list, "",
+    "a list of function addresses to lift. By default anvill lifts all functions available in the spec");
 
 static void SetVersion(void) {
   std::stringstream ss;
@@ -193,22 +198,43 @@ int main(int argc, char *argv[]) {
 
   std::unordered_map<uint64_t, std::string> names;
   if (FLAGS_add_names) {
-    spec.ForEachSymbol([&names,&module] (uint64_t addr, const std::string &name) {
+    spec.ForEachSymbol(
+        [&names, &module](uint64_t addr, const std::string &name) {
+          if (llvm::Triple(module.getTargetTriple()).getVendor() ==
+                  llvm::Triple::VendorType::Apple &&
+              name.find("_", 0) == 0) {
+            names.emplace(addr, name.substr(1));
+          } else {
+            names.emplace(addr, name);
+          }
 
 
-      if(llvm::Triple(module.getTargetTriple()).getVendor() == llvm::Triple::VendorType::Apple && name.find("_",0) == 0) {
-        names.emplace(addr,  name.substr(1));
-      } else {
-        names.emplace(addr, name);
-      }
-
-
-      return true;
-    });
+          return true;
+        });
   }
 
-  spec.ForEachFunction([&lifter, &names](auto decl) {
-    llvm::Function *func = lifter.LiftEntity(*decl);
+
+  std::unordered_set<uint64_t> target_funcs;
+  if (!FLAGS_lift_list.empty()) {
+    std::stringstream ss(FLAGS_lift_list);
+
+    for (uint64_t addr; ss >> std::hex >> addr;) {
+      target_funcs.insert(addr);
+      LOG(INFO) << "Added target" << std::hex << addr;
+      if (ss.peek() == ',') {
+        ss.ignore();
+      }
+    }
+  }
+
+  spec.ForEachFunction([&lifter, &names, &target_funcs](auto decl) {
+    llvm::Function *func;
+    if (target_funcs.empty() ||
+        target_funcs.find(decl->address) != target_funcs.end()) {
+      func = lifter.LiftEntity(*decl);
+    } else {
+      func = lifter.DeclareEntity(*decl);
+    }
     if (FLAGS_add_names) {
       if (auto name_it = names.find(decl->address); name_it != names.end()) {
         func->setName(name_it->second);

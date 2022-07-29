@@ -145,7 +145,13 @@ jobs:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
-
+      
+      - name: Setup Git User for Applying Patches
+        # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
       - name: Select the remill version
         run: |
           remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
@@ -263,6 +269,7 @@ jobs:
               -DCMAKE_VERBOSE_MAKEFILE=true \
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
+              -Dsleigh_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/sleigh \
               -DANVILL_ENABLE_TESTS=true \
               -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
@@ -486,6 +493,12 @@ jobs:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
+          
+      - name: Setup Git User for Applying Patches
+        # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
 
       - name: Select the remill version
         run: |
@@ -604,6 +617,7 @@ jobs:
               -DCMAKE_VERBOSE_MAKEFILE=true \
               -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
+              -Dsleigh_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/sleigh \
               -DANVILL_ENABLE_TESTS=true \
               -DANVILL_ENABLE_INSTALL=true \
               -G Ninja \
