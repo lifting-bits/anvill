@@ -606,7 +606,7 @@ llvm::Value *FunctionLifter::CallCallableDecl(llvm::BasicBlock *block,
 // Try to resolve `inst.branch_taken_pc` to a lifted function, and introduce
 // a function call to that address in `block`. Failing this, add a call
 // to `__remill_function_call`.
-void FunctionLifter::CallFunction(const remill::Instruction &inst,
+bool FunctionLifter::CallFunction(const remill::Instruction &inst,
                                   llvm::BasicBlock *block,
                                   std::optional<std::uint64_t> target_pc) {
 
@@ -640,7 +640,7 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
     // to an unknown address.
     auto call = remill::AddCall(block, intrinsics.function_call, intrinsics);
     AnnotateInstruction(call, pc_annotation_id, pc_annotation);
-    return;
+    return true;
   }
 
 
@@ -655,7 +655,9 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
   }
 
   AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+  auto is_noreturn = maybe_decl->is_noreturn;
   (void) CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
+  return !is_noreturn;
 }
 
 // Visit a direct function call control-flow instruction. The target is known
@@ -667,8 +669,8 @@ void FunctionLifter::VisitDirectFunctionCall(
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::DecodingContext::ContextMap &mapper) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  CallFunction(inst, block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, block, mapper);
+  bool can_return = CallFunction(inst, block, inst.branch_taken_pc);
+  VisitAfterFunctionCall(inst, block, mapper, can_return);
 }
 
 // Visit a conditional direct function call control-flow instruction. The
@@ -691,7 +693,7 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
       llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   CallFunction(inst, taken_block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, taken_block, mapper);
+  VisitAfterFunctionCall(inst, taken_block);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   auto fallthrough_br = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
@@ -715,7 +717,7 @@ void FunctionLifter::VisitIndirectFunctionCall(
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   CallFunction(inst, block, std::nullopt);
-  VisitAfterFunctionCall(inst, block, mapper);
+  VisitAfterFunctionCall(inst, block);
 }
 
 // Visit a conditional indirect function call control-flow instruction.
@@ -733,8 +735,8 @@ void FunctionLifter::VisitConditionalIndirectFunctionCall(
   auto cond_func_call_fallthrough_br =
       llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  CallFunction(inst, taken_block, std::nullopt);
-  VisitAfterFunctionCall(inst, taken_block, mapper);
+  bool can_return = CallFunction(inst, taken_block, std::nullopt);
+  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   auto fallthrough_br = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
@@ -840,18 +842,23 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 // control-flow graph.
 void FunctionLifter::VisitAfterFunctionCall(
     const remill::Instruction &inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::DecodingContext::ContextMap &mapper, bool can_return) {
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
 
   llvm::IRBuilder<> ir(block);
-  auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
-  auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
-  auto branch_to_next_pc =
+  if(can_return) {
+    auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
+    auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
+    auto branch_to_next_pc =
       ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
 
-  AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(branch_to_next_pc, pc_annotation_id, pc_annotation);
+    AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
+    AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
+    AnnotateInstruction(branch_to_next_pc, pc_annotation_id, pc_annotation);
+  } else {
+    auto unreachable = ir.CreateUnreachable();
+    AnnotateInstruction(unreachable, pc_annotation_id, pc_annotation);
+  }
 }
 
 // Visit a conditional control-flow branch. Both the taken and not taken
@@ -1215,12 +1222,18 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         maybe_decl = std::move(inst_func.value());
       }
 
+      auto is_noreturn = maybe_decl->is_noreturn;
       llvm::IRBuilder<> ir(block);
       auto new_mem_ptr = CallCallableDecl(
           block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
           std::move(maybe_decl.value()));
 
-      auto ret = ir.CreateRet(new_mem_ptr);
+      llvm::Instruction* ret;
+      if(is_noreturn) {
+        ret = ir.CreateUnreachable();
+      } else {
+        ret = ir.CreateRet(new_mem_ptr);
+      }
       AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
       continue;
     }
@@ -1344,6 +1357,9 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   native_func->removeFnAttr(llvm::Attribute::InlineHint);
   native_func->removeFnAttr(llvm::Attribute::AlwaysInline);
   native_func->addFnAttr(llvm::Attribute::NoInline);
+  if(decl.is_noreturn) {
+    native_func->addFnAttr(llvm::Attribute::NoReturn);
+  }
   return native_func;
 }
 
@@ -1540,6 +1556,9 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   lifted_func_args[remill::kPCArgNum] = pc;
   auto call_to_lifted_func = ir.CreateCall(lifted_func->getFunctionType(),
                                            lifted_func, lifted_func_args);
+  if(decl.is_noreturn) {
+    call_to_lifted_func->setDoesNotReturn();
+  }
   mem_ptr = call_to_lifted_func;
 
   // Annotate all instructions leading up to and including the call of the

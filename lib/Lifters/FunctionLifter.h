@@ -300,7 +300,8 @@ class FunctionLifter {
   // Try to resolve `target_pc` to a lifted function, and introduce
   // a function call to that address in `block`. Failing this, add a call
   // to `__remill_function_call`.
-  void CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
+  // Returns true if the callee may return, false otherwise.
+  bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
                     std::optional<std::uint64_t> target_pc);
 
   // A wrapper around the type provider's TryGetFunctionType that makes use
@@ -370,7 +371,8 @@ class FunctionLifter {
   void
   VisitAfterFunctionCall(const remill::Instruction &inst,
                          llvm::BasicBlock *block,
-                         const remill::DecodingContext::ContextMap &mapper);
+                         const remill::DecodingContext::ContextMap &mapper,
+                         bool can_return);
 
   // Visit a conditional control-flow branch. Both the taken and not taken
   // targets are known by the decoder and their addresses are available in
