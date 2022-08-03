@@ -1229,8 +1229,10 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           std::move(maybe_decl.value()));
 
       llvm::Instruction* ret;
-      if(is_noreturn) {
-        ret = ir.CreateUnreachable();
+      if (is_noreturn) {
+        auto tail = ir.CreateCall(intrinsics.error);
+        tail->setTailCall();
+        ret = ir.CreateRet(tail);
       } else {
         ret = ir.CreateRet(new_mem_ptr);
       }
@@ -1357,7 +1359,7 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   native_func->removeFnAttr(llvm::Attribute::InlineHint);
   native_func->removeFnAttr(llvm::Attribute::AlwaysInline);
   native_func->addFnAttr(llvm::Attribute::NoInline);
-  if(decl.is_noreturn) {
+  if (decl.is_noreturn) {
     native_func->addFnAttr(llvm::Attribute::NoReturn);
   }
   return native_func;
@@ -1556,7 +1558,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   lifted_func_args[remill::kPCArgNum] = pc;
   auto call_to_lifted_func = ir.CreateCall(lifted_func->getFunctionType(),
                                            lifted_func, lifted_func_args);
-  if(decl.is_noreturn) {
+  if (decl.is_noreturn) {
     call_to_lifted_func->setDoesNotReturn();
   }
   mem_ptr = call_to_lifted_func;
