@@ -148,7 +148,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     ret_val = ir.CreateCall(func_type, target, param_vals);
   }
 
-  if(is_noreturn) {
+  if (is_noreturn) {
     ret_val->setDoesNotReturn();
   }
 

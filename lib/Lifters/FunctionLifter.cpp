@@ -846,7 +846,7 @@ void FunctionLifter::VisitAfterFunctionCall(
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
 
   llvm::IRBuilder<> ir(block);
-  if(can_return) {
+  if (can_return) {
     auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
     auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
     auto branch_to_next_pc =
