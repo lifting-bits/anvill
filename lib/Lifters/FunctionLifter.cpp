@@ -856,8 +856,11 @@ void FunctionLifter::VisitAfterFunctionCall(
     AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
     AnnotateInstruction(branch_to_next_pc, pc_annotation_id, pc_annotation);
   } else {
-    auto unreachable = ir.CreateUnreachable();
-    AnnotateInstruction(unreachable, pc_annotation_id, pc_annotation);
+    auto error = ir.CreateCall(intrinsics.error);
+    error->setTailCall();
+    auto ret = ir.CreateRet(error);
+    AnnotateInstruction(error, pc_annotation_id, pc_annotation);
+    AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
   }
 }
 
