@@ -20,6 +20,7 @@
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/Arch/Arch.h>
+#include <remill/Arch/ArchGroup.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 
@@ -132,8 +133,8 @@ int main(int argc, char *argv[]) {
       std::make_unique<anvill::ProxyTypeProvider>(spec_tp);
   if (!FLAGS_default_callable_spec.empty()) {
     anvill::TypeDictionary ty_dict(context);
-    anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
-    anvill::JSONTranslator trans(ty_trans, spec.Arch().get());
+    anvill::TypeTranslator ty_trans(ty_dict, *spec.ArchGroup().get());
+    anvill::JSONTranslator trans(ty_trans, spec.ArchGroup().get());
 
     auto maybe_buff =
         llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
@@ -168,18 +169,12 @@ int main(int argc, char *argv[]) {
                 << FLAGS_default_callable_spec << " "
                 << maybe_default_callable.TakeError().message << std::endl;
     }
-
-    remill::ArchName arch_name = spec.Arch().get()->arch_name;
-    auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
-                                                                     spec_tp);
-    dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
-
-    tp = std::move(dtp);
   }
 
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);
-  anvill::LifterOptions options(spec.Arch().get(), module, *tp.get(), cfp, mp);
+  anvill::LifterOptions options(spec.ArchGroup().get(), module, *tp.get(), cfp,
+                                mp);
 
   //  options.state_struct_init_procedure =
   //      anvill::StateStructureInitializationProcedure::kNone;

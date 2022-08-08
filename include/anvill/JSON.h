@@ -9,6 +9,7 @@
 #pragma once
 
 #include <anvill/Declarations.h>
+#include <remill/Arch/ArchGroup.h>
 
 #include <memory>
 #include <optional>
@@ -64,7 +65,7 @@ class JSONEncodeError {
 // Parse JSON specifications into declarations.
 class JSONTranslator {
  private:
-  const remill::Arch *const arch;
+  const remill::ArchGroup *const arch;
 
   // Type translator, which can encode/decode types.
   const anvill::TypeTranslator &type_translator;
@@ -90,12 +91,8 @@ class JSONTranslator {
 
  public:
   explicit JSONTranslator(const anvill::TypeTranslator &type_translator_,
-                          const remill::Arch *arch_);
+                          const remill::ArchGroup *arch_);
 
-  inline explicit JSONTranslator(
-      const anvill::TypeTranslator &type_translator_,
-      const std::unique_ptr<const remill::Arch> &arch_)
-      : JSONTranslator(type_translator_, arch_.get()) {}
 
   // Parse a parameter from the JSON spec. Parameters should have names,
   // as that makes the bitcode slightly easier to read, but names are

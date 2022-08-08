@@ -6,19 +6,19 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/CrossReferenceResolver.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/TransformRemillJumpIntrinsics.h>
+#include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest.h>
 #include <llvm/IR/Verifier.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
-#include <anvill/Lifters.h>
-#include <anvill/Providers.h>
+
 #include <iostream>
 
-#include <anvill/Passes/TransformRemillJumpIntrinsics.h>
-#include <anvill/CrossReferenceResolver.h>
 #include "Utils.h"
 
 namespace anvill {
@@ -28,21 +28,22 @@ TEST_SUITE("TransformRemillJump_Test0") {
     auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module = LoadTestData(*llvm_context, "TransformRemillJumpData0.ll");
 
-    auto arch =
-        remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
-                            remill::GetArchName("amd64"));
+
+    auto [arch, sem_mod] = remill::ArchGroup::Create(
+        {remill::GetArchName("amd64")}, remill::GetOSName("linux"));
+
     REQUIRE(arch != nullptr);
 
-      auto ctrl_flow_provider =
-          anvill::NullControlFlowProvider();
-      TypeDictionary tyDict(*llvm_context);
+    auto ctrl_flow_provider = anvill::NullControlFlowProvider();
+    TypeDictionary tyDict(*llvm_context);
 
-      NullTypeProvider ty_prov(tyDict);
-      NullMemoryProvider mem_prov;
-      anvill::LifterOptions lift_options(
-          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    NullTypeProvider ty_prov(tyDict);
+    NullMemoryProvider mem_prov;
+    anvill::LifterOptions lift_options(&arch, *module, ty_prov,
+                                       std::move(ctrl_flow_provider), mem_prov);
 
-    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    anvill::LifterOptions options(&arch, *module, ty_prov,
+                                  std::move(ctrl_flow_provider), mem_prov);
 
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options);
@@ -64,20 +65,19 @@ TEST_SUITE("TransformRemillJump_Test1") {
     auto llvm_context = anvill::CreateContextWithOpaquePointers();
     auto module = LoadTestData(*llvm_context, "TransformRemillJumpData1.ll");
 
-    auto arch =
-        remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
-                            remill::GetArchName("amd64"));
-    REQUIRE(arch != nullptr);
-      auto ctrl_flow_provider =
-          anvill::NullControlFlowProvider();
-      TypeDictionary tyDict(*llvm_context);
+    auto [arch, mod] = remill::ArchGroup::Create(remill::GetArchName("amd64"),
+                                                 remill::GetOSName("linux"));
 
-      NullTypeProvider ty_prov(tyDict);
-      NullMemoryProvider mem_prov;
-      anvill::LifterOptions lift_options(
-          arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    auto ctrl_flow_provider = anvill::NullControlFlowProvider();
+    TypeDictionary tyDict(*llvm_context);
 
-    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    NullTypeProvider ty_prov(tyDict);
+    NullMemoryProvider mem_prov;
+    anvill::LifterOptions lift_options(&arch, *module, ty_prov,
+                                       std::move(ctrl_flow_provider), mem_prov);
+
+    anvill::LifterOptions options(&arch, *module, ty_prov,
+                                  std::move(ctrl_flow_provider), mem_prov);
 
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options);
@@ -101,9 +101,9 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
     auto module =
         LoadTestData(*llvm_context, "TransformRemillJumpDataARM32_0.ll");
 
-    auto arch =
-        remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
-                            remill::GetArchName("aarch32"));
+
+    auto [arch, mod] = remill::ArchGroup::Create(remill::GetArchName("aarch32"),
+                                                 remill::GetOSName("linux"));
     REQUIRE(arch != nullptr);
 
     auto ctrl_flow_provider = anvill::NullControlFlowProvider();
@@ -111,10 +111,11 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
 
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider mem_prov;
-    anvill::LifterOptions lift_options(arch.get(), *module, ty_prov,
+    anvill::LifterOptions lift_options(&arch, *module, ty_prov,
                                        std::move(ctrl_flow_provider), mem_prov);
 
-    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    anvill::LifterOptions options(&arch, *module, ty_prov,
+                                  std::move(ctrl_flow_provider), mem_prov);
 
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options);
@@ -141,6 +142,10 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
     auto arch =
         remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
                             remill::GetArchName("aarch32"));
+
+
+    auto [grp, sem_mod] = remill::ArchGroup::Create(
+        {remill::GetArchName("aarch32")}, remill::GetOSName("linux"));
     REQUIRE(arch != nullptr);
 
     auto ctrl_flow_provider = anvill::NullControlFlowProvider();
@@ -148,10 +153,11 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
 
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider mem_prov;
-    anvill::LifterOptions lift_options(arch.get(), *module, ty_prov,
+    anvill::LifterOptions lift_options(&grp, *module, ty_prov,
                                        std::move(ctrl_flow_provider), mem_prov);
 
-    anvill::LifterOptions options(arch.get(), *module,ty_prov,std::move(ctrl_flow_provider),mem_prov);
+    anvill::LifterOptions options(&grp, *module, ty_prov,
+                                  std::move(ctrl_flow_provider), mem_prov);
 
     // memory and types will not get used and create lifter with null
     anvill::EntityLifter lifter(options);

@@ -55,21 +55,23 @@ int main(int argc, char *argv[]) {
   llvm::LLVMContext context;
   context.enableOpaquePointers();
   auto module = remill::LoadModuleFromFile(&context, FLAGS_bc_in);
-  remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
-  if (!arch) {
-    std::cerr << "Could not infer architecture for bitcode module file"
-              << std::endl;
-    return EXIT_FAILURE;
-  }
+  auto [arch_grp, sem_mod] = remill::ArchGroup::GetModuleArchGroup(*module);
 
-  auto arch_name = remill::GetArchName(arch->arch_name);
-  auto os_name = remill::GetOSName(arch->os_name);
+
+  auto arch_name = remill::GetArchGroupName(arch_grp.ArchNames());
+  auto os_name = remill::GetOSName(arch_grp.GetOS());
 
   anvill::TypeDictionary td(context);
-  anvill::TypeTranslator tr(td, arch);
-  anvill::JSONTranslator jt(tr, arch);
+  anvill::TypeTranslator tr(td, arch_grp);
+  anvill::JSONTranslator jt(tr, &arch_grp);
+
 
   llvm::json::Object json;
+
+  if (!arch_name) {
+    LOG(ERROR) << "No arch name to add to spec";
+  } else {
+  }
   json.insert(
       llvm::json::Object::KV{llvm::json::ObjectKey("arch"), arch_name.data()});
   json.insert(
@@ -78,7 +80,6 @@ int main(int argc, char *argv[]) {
   llvm::json::Array funcs_json;
 
   for (llvm::Function &function : *module) {
-
     // Skip llvm debug intrinsics
     if (function.getIntrinsicID()) {
       continue;
@@ -90,8 +91,8 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     } else {
       anvill::FunctionDecl decl = maybe_func.TakeValue();
-      anvill::Result<llvm::json::Object, anvill::JSONEncodeError>
-          func = jt.Encode(decl);
+      anvill::Result<llvm::json::Object, anvill::JSONEncodeError> func =
+          jt.Encode(decl);
 
       if (func.Succeeded()) {
         llvm::json::Object func_obj = func.TakeValue();

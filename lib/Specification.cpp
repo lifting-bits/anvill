@@ -571,8 +571,8 @@ Specification::Specification(std::shared_ptr<SpecificationImpl> impl_)
     : impl(std::move(impl_)) {}
 
 // Return the architecture used by this specification.
-std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
-  return std::shared_ptr<const remill::Arch>(impl, impl->arch.get());
+std::shared_ptr<const remill::ArchGroup> Specification::ArchGroup(void) const {
+  return std::shared_ptr<const remill::Arch>(impl, impl->arch_group.get());
 }
 
 // Return the type dictionary used by this specification.
@@ -657,7 +657,7 @@ Specification::DecodeFromJSON(llvm::LLVMContext &context,
 anvill::Result<llvm::json::Object, JSONEncodeError>
 Specification::EncodeToJSON(void) {
 
-  JSONTranslator translator(impl->type_translator, impl->arch.get());
+  JSONTranslator translator(impl->type_translator, impl->arch_group.get());
 
   llvm::json::Array functions;
   llvm::json::Array call_sites;

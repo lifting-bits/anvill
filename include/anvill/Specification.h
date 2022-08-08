@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <remill/Arch/ArchGroup.h>
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -89,7 +91,7 @@ class Specification {
   ~Specification(void);
 
   // Return the architecture used by this specification.
-  std::shared_ptr<const remill::Arch> Arch(void) const;
+  std::shared_ptr<const remill::ArchGroup> ArchGroup(void) const;
 
   // Return the type dictionary used by this specification.
   const ::anvill::TypeDictionary &TypeDictionary(void) const;
@@ -99,8 +101,8 @@ class Specification {
 
   // Try to create a program from a JSON specification. Returns a string error
   // if something went wrong.
-  static anvill::Result<Specification, JSONDecodeError> DecodeFromJSON(
-      llvm::LLVMContext &context, const llvm::json::Value &val);
+  static anvill::Result<Specification, JSONDecodeError>
+  DecodeFromJSON(llvm::LLVMContext &context, const llvm::json::Value &val);
 
   // Try to encode the specification into JSON.
   anvill::Result<llvm::json::Object, JSONEncodeError> EncodeToJSON(void);
@@ -112,12 +114,12 @@ class Specification {
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;
 
   // Return the global variable containing `address`, or an empty `shared_ptr`.
-  std::shared_ptr<const VariableDecl> VariableContaining(
-      std::uint64_t address) const;
+  std::shared_ptr<const VariableDecl>
+  VariableContaining(std::uint64_t address) const;
 
   // Call `cb` on each symbol in the spec, until `cb` returns `false`.
-  void ForEachSymbol(std::function<bool(std::uint64_t,
-                                        const std::string &)> cb) const;
+  void ForEachSymbol(
+      std::function<bool(std::uint64_t, const std::string &)> cb) const;
 
   // Call `cb` on each function in the spec, until `cb` returns `false`.
   void ForEachFunction(
@@ -133,7 +135,8 @@ class Specification {
 
   // Call `cb` on each control-flow target list, until `cb` returns `false`.
   void ForEachControlFlowTargetList(
-      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb) const;
+      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
+      const;
 
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(

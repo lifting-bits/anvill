@@ -19,14 +19,12 @@
 #include <llvm/Support/Error.h>
 // clang-format on
 
+#include <anvill/ABI.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
-
-#include <anvill/ABI.h>
-#include <anvill/Utils.h>
 
 #include <sstream>
 #include <unordered_map>
@@ -54,8 +52,7 @@ class TypeSpecifierImpl {
                   EncodingFormat format);
 
   template <typename Filter, typename T>
-  bool Parse(llvm::StringRef spec, size_t &i, Filter filter,
-             T *out) {
+  bool Parse(llvm::StringRef spec, size_t &i, Filter filter, T *out) {
     std::stringstream ss;
 
     auto found = false;
@@ -85,8 +82,8 @@ class TypeSpecifierImpl {
 
 // Translates an llvm::Type to a type that conforms to the spec in
 // TypeSpecification.cpp
-void TypeSpecifierImpl::EncodeType(
-    llvm::Type &type, std::stringstream &ss, EncodingFormat format) {
+void TypeSpecifierImpl::EncodeType(llvm::Type &type, std::stringstream &ss,
+                                   EncodingFormat format) {
   const auto alpha_num = format == EncodingFormat::kValidSymbolCharsOnly;
   switch (type.getTypeID()) {
     case llvm::Type::VoidTyID: ss << 'v'; break;
@@ -217,7 +214,7 @@ void TypeSpecifierImpl::EncodeType(
       } else if (struct_ptr == type_dict.u.named.padding) {
         ss << 'p';
 
-      // This is an opaque structure; mark it as a void type.
+        // This is an opaque structure; mark it as a void type.
       } else if (struct_ptr->isOpaque()) {
         ss << 'v';
 
@@ -229,7 +226,7 @@ void TypeSpecifierImpl::EncodeType(
         if (type_to_id.count(struct_ptr)) {
           ss << (alpha_num ? "_M" : "%") << type_to_id[struct_ptr];
 
-        // We've not yet serialized this structure.
+          // We've not yet serialized this structure.
         } else {
 
           // Start by emitting a new structure ID for this structure and memoizing
@@ -256,10 +253,11 @@ void TypeSpecifierImpl::EncodeType(
                    << (alpha_num ? "_D" : "]");
               }
 
-            // TODO(pag): Investigate this possibility. Does this occur for
-            //            bitfields?
+              // TODO(pag): Investigate this possibility. Does this occur for
+              //            bitfields?
             } else if (expected_offset > offset) {
-              LOG(FATAL) << "TODO?! Maybe bitfields? Structure field offset shenanigans";
+              LOG(FATAL)
+                  << "TODO?! Maybe bitfields? Structure field offset shenanigans";
             }
 
             const auto el_ty = struct_ptr->getElementType(i);
@@ -362,8 +360,8 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
 
         if (i >= spec_size || '}' != spec[i]) {
           return TypeSpecificationError{
-            TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-            "Missing closing '}' in type specification"};
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
+              "Missing closing '}' in type specification"};
         }
 
         i += 1;
@@ -494,8 +492,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
             ss << "Failed to parse argument/return type: "
                << spec.substr(prev_i).str();
             return TypeSpecificationError{
-                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                ss.str()};
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
           }
         }
 
@@ -510,8 +507,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
           ss << "Expected ')' for end of function type, but got this: "
              << spec.substr(i).str();
           return TypeSpecificationError{
-              TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-              ss.str()};
+              TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
         }
 
         // Skip over the `)`.
@@ -553,7 +549,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
           is_var_arg = true;
           elem_types.pop_back();
 
-        // If second-to-last is a void type, then it must be the first.
+          // If second-to-last is a void type, then it must be the first.
         } else if (elem_types.back().second->isVoidTy() ||
                    elem_types.back().second == type_dict.u.named.void_) {
           if (1 == elem_types.size()) {
@@ -564,8 +560,7 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
                << "specification: "
                << spec.substr(elem_types.back().first).str();
             return TypeSpecificationError{
-                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                ss.str()};
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
           }
         }
 
@@ -579,16 +574,14 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
             ss << "Invalid parameter type in type specification: "
                << spec.substr(param_i).str();
             return TypeSpecificationError{
-                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                ss.str()};
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
 
           } else if (param_type->isTokenTy()) {
             std::stringstream ss;
             ss << "Unexpected variadic argument type in type specification: "
                << spec.substr(param_i).str();
             return TypeSpecificationError{
-                TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-                ss.str()};
+                TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
           } else {
             param_types.push_back(param_type);
           }
@@ -768,9 +761,8 @@ TypeSpecifierImpl::ParseType(llvm::SmallPtrSetImpl<llvm::Type *> &size_checked,
       }
     }
   }
-  return TypeSpecificationError{
-      TypeSpecificationError::ErrorCode::InvalidState,
-      "Fell off the end of the type parser"};
+  return TypeSpecificationError{TypeSpecificationError::ErrorCode::InvalidState,
+                                "Fell off the end of the type parser"};
 }
 
 namespace {
@@ -778,8 +770,8 @@ namespace {
 #if ANVILL_USE_WRAPPED_TYPES
 
 template <typename T>
-static llvm::Type *GetOrCreateWrapper(
-    llvm::LLVMContext &context, const char *name, T wrapper) {
+static llvm::Type *GetOrCreateWrapper(llvm::LLVMContext &context,
+                                      const char *name, T wrapper) {
   std::string type_name = kAnvillNamePrefix + name;
   auto ty = llvm::StructType::getTypeByName(context, type_name);
   if (ty) {
@@ -790,25 +782,28 @@ static llvm::Type *GetOrCreateWrapper(
   return llvm::StructType::create(context, elems, type_name, true);
 }
 
-static llvm::Type *GetOrCreateInt(llvm::LLVMContext &context,
-                                  const char *name, unsigned num_bits) {
-  return GetOrCreateWrapper(context, name, [=] (llvm::LLVMContext &context_) {
+static llvm::Type *GetOrCreateInt(llvm::LLVMContext &context, const char *name,
+                                  unsigned num_bits) {
+  return GetOrCreateWrapper(context, name, [=](llvm::LLVMContext &context_) {
     return llvm::IntegerType::get(context_, num_bits);
   });
 }
 
 static llvm::Type *GetOrCreateFloat(llvm::LLVMContext &context,
-                                  const char *name, unsigned num_bits) {
-  return GetOrCreateWrapper(
-      context, name, [=] (llvm::LLVMContext &context_) -> llvm::Type * {
-        switch (num_bits) {
-          case 16: return llvm::Type::getHalfTy(context_);
-          case 32: return llvm::Type::getFloatTy(context_);
-          case 64: return llvm::Type::getDoubleTy(context_);
-          case 128: return llvm::Type::getFP128Ty(context_);
-          default: return nullptr;
-        }
-      });
+                                    const char *name, unsigned num_bits) {
+  return GetOrCreateWrapper(context, name,
+                            [=](llvm::LLVMContext &context_) -> llvm::Type * {
+                              switch (num_bits) {
+                                case 16: return llvm::Type::getHalfTy(context_);
+                                case 32:
+                                  return llvm::Type::getFloatTy(context_);
+                                case 64:
+                                  return llvm::Type::getDoubleTy(context_);
+                                case 128:
+                                  return llvm::Type::getFP128Ty(context_);
+                                default: return nullptr;
+                              }
+                            });
 }
 
 #endif
@@ -837,17 +832,18 @@ TypeDictionary::TypeDictionary(llvm::LLVMContext &context) {
   u.named.float32 = GetOrCreateFloat(context, "float32", 32);
   u.named.float64 = GetOrCreateFloat(context, "float64", 64);
   u.named.float80_12 = GetOrCreateWrapper(
-      context, "float80_12", [] (llvm::LLVMContext &context_) {
+      context, "float80_12", [](llvm::LLVMContext &context_) {
         return llvm::ArrayType::get(llvm::Type::getInt8Ty(context_), 10);
       });
   u.named.float80_16 = GetOrCreateWrapper(
-      context, "float80_16", [] (llvm::LLVMContext &context_) {
+      context, "float80_16", [](llvm::LLVMContext &context_) {
         return llvm::ArrayType::get(llvm::Type::getInt8Ty(context_), 12);
       });
   u.named.float128 = GetOrCreateFloat(context, "float128", 128);
-  u.named.m64 = GetOrCreateWrapper(context, "mmx", [] (llvm::LLVMContext &context_) {
-    return llvm::Type::getX86_MMXTy(context_);
-  });
+  u.named.m64 =
+      GetOrCreateWrapper(context, "mmx", [](llvm::LLVMContext &context_) {
+        return llvm::Type::getX86_MMXTy(context_);
+      });
   u.named.void_ = GetOrCreateInt(context, "void", 8);
   u.named.padding = GetOrCreateInt(context, "padding", 8);
 #else
@@ -885,7 +881,8 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
 #if ANVILL_USE_WRAPPED_TYPES
   switch (type->getTypeID()) {
     case llvm::Type::StructTyID:
-      for (auto elem_type : llvm::dyn_cast<llvm::StructType>(type)->elements()) {
+      for (auto elem_type :
+           llvm::dyn_cast<llvm::StructType>(type)->elements()) {
         if (!IsPadding(elem_type)) {
           return false;
         }
@@ -899,8 +896,7 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
       auto elem_type = llvm::dyn_cast<llvm::VectorType>(type)->getElementType();
       return IsPadding(elem_type);
     }
-    default:
-      return type == u.named.padding;
+    default: return type == u.named.padding;
   }
 #else
   return false;
@@ -910,7 +906,7 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
 TypeTranslator::~TypeTranslator(void) {}
 
 TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
-                             const llvm::DataLayout &dl)
+                               const llvm::DataLayout &dl)
     : impl(std::make_unique<TypeSpecifierImpl>(type_dict, dl)) {}
 
 // Delegating constructor using a module's data layout.
@@ -918,14 +914,10 @@ TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
                                const llvm::Module &module)
     : TypeTranslator(type_dict, module.getDataLayout()) {}
 
-// Delegating constructor using an architecture's data layout.
-TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
-                               const remill::Arch *arch)
-    : TypeTranslator(type_dict, arch->DataLayout()) {}
 
 TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
-                               const std::unique_ptr<const remill::Arch> &arch)
-    : TypeTranslator(type_dict, arch->DataLayout()) {}
+                               const remill::MachineSemantics &arch)
+    : TypeTranslator(type_dict, arch.DataLayout()) {}
 
 // Return the type dictionary for this type specifier.
 const TypeDictionary &TypeTranslator::Dictionary(void) const noexcept {
@@ -941,13 +933,13 @@ const llvm::DataLayout &TypeTranslator::DataLayout(void) const noexcept {
 // then only alpha_numeric characters (and underscores) are used. The
 // alpha_numeric representation is always safe to use when appended to
 // identifier names.
-std::string TypeTranslator::EncodeToString(
-    llvm::Type *type, EncodingFormat format) const {
+std::string TypeTranslator::EncodeToString(llvm::Type *type,
+                                           EncodingFormat format) const {
   std::stringstream ss;
   if (type) {
     impl->type_to_id.clear();
-    impl->EncodeType(
-        *remill::RecontextualizeType(type, impl->context), ss, format);
+    impl->EncodeType(*remill::RecontextualizeType(type, impl->context), ss,
+                     format);
   }
   return ss.str();
 }
@@ -974,64 +966,40 @@ TypeTranslator::DecodeFromString(const std::string_view spec) const {
           switch (const auto ch2 = spec[i]) {
 
             // `_M` -> `%`.
-            case 'M':
-              decoded.push_back('%');
-              break;
+            case 'M': decoded.push_back('%'); break;
 
             // `_S` -> `*`.
-            case 'S':
-              decoded.push_back('*');
-              break;
+            case 'S': decoded.push_back('*'); break;
 
             // `_A` -> `(`.
-            case 'A':
-              decoded.push_back('(');
-              break;
+            case 'A': decoded.push_back('('); break;
 
             // `_B` -> `)`.
-            case 'B':
-              decoded.push_back(')');
-              break;
+            case 'B': decoded.push_back(')'); break;
 
             // `_C` -> `[`.
-            case 'C':
-              decoded.push_back('[');
-              break;
+            case 'C': decoded.push_back('['); break;
 
             // `_D` -> `]`.
-            case 'D':
-              decoded.push_back(']');
-              break;
+            case 'D': decoded.push_back(']'); break;
 
             // `_E` -> `{`.
-            case 'E':
-              decoded.push_back('{');
-              break;
+            case 'E': decoded.push_back('{'); break;
 
             // `_F` -> `}`.
-            case 'F':
-              decoded.push_back('}');
-              break;
+            case 'F': decoded.push_back('}'); break;
 
             // `_G` -> `<`.
-            case 'G':
-              decoded.push_back('<');
-              break;
+            case 'G': decoded.push_back('<'); break;
 
             // `_H` -> `>`.
-            case 'H':
-              decoded.push_back('>');
-              break;
+            case 'H': decoded.push_back('>'); break;
 
             // `_V` -> `&`.
-            case 'V':
-              decoded.push_back('&');
-              break;
+            case 'V': decoded.push_back('&'); break;
 
             // `_X` -> `=`.
-            case 'X':
-              decoded.push_back('=');
-              break;
+            case 'X': decoded.push_back('='); break;
 
             default:
               decoded.push_back(ch);
@@ -1040,9 +1008,7 @@ TypeTranslator::DecodeFromString(const std::string_view spec) const {
           }
         }
         break;
-      default:
-        decoded.push_back(ch);
-        break;
+      default: decoded.push_back(ch); break;
     }
   }
 
@@ -1056,15 +1022,13 @@ TypeTranslator::DecodeFromString(const std::string_view spec) const {
     ss << "Trailing unparsed characters at end of type specification: "
        << decoded.substr(i);
     return TypeSpecificationError{
-        TypeSpecificationError::ErrorCode::InvalidSpecFormat,
-        ss.str()};
+        TypeSpecificationError::ErrorCode::InvalidSpecFormat, ss.str()};
   } else {
     return ret;
   }
 }
 
 namespace {
-
 static std::tuple<TypeKind, TypeSign, unsigned> kProfiles[] = {
     {TypeKind::kBoolean, TypeSign::kUnsigned, 1},  // bool_
     {TypeKind::kCharacter, TypeSign::kUnknown, 8},  // char_
@@ -1092,8 +1056,8 @@ static std::tuple<TypeKind, TypeSign, unsigned> kProfiles[] = {
 };
 
 template <unsigned kSize>
-static std::optional<unsigned> FindTypeInList(
-    llvm::Type *query, llvm::Type * const (&types)[kSize]) {
+static std::optional<unsigned>
+FindTypeInList(llvm::Type *query, llvm::Type *const (&types)[kSize]) {
 #if ANVILL_USE_WRAPPED_TYPES
   for (auto i = 0u; i < kSize; ++i) {
     if (types[i] == query) {
@@ -1107,9 +1071,9 @@ static std::optional<unsigned> FindTypeInList(
 }  // namespace
 
 // Convert a value to a specific type.
-llvm::Value *TypeDictionary::ConvertValueToType(
-    llvm::IRBuilderBase &ir, llvm::Value *src_val,
-    llvm::Type *dest_type) const {
+llvm::Value *TypeDictionary::ConvertValueToType(llvm::IRBuilderBase &ir,
+                                                llvm::Value *src_val,
+                                                llvm::Type *dest_type) const {
   llvm::Type *src_type = src_val->getType();
 
   if (src_type == dest_type) {
@@ -1128,26 +1092,26 @@ llvm::Value *TypeDictionary::ConvertValueToType(
   // Unpack the source type, and then try to build it into the destination
   // type. This dispatches to the next case.
   if (maybe_src_type_index && maybe_dest_type_index) {
-//    unsigned indexes[] = {0u};
-//    auto dest_val = ir.CreateExtractValue(src_val, indexes);
-//    CopyMetadataTo(src_val, dest_val);
-//    return ConvertValueToType(ir, dest_val, dest_type);
+    //    unsigned indexes[] = {0u};
+    //    auto dest_val = ir.CreateExtractValue(src_val, indexes);
+    //    CopyMetadataTo(src_val, dest_val);
+    //    return ConvertValueToType(ir, dest_val, dest_type);
     LOG(FATAL) << "TODO";
     return nullptr;
 
-  // Pack this type into a destination structure type.
+    // Pack this type into a destination structure type.
   } else if (!maybe_src_type_index && maybe_dest_type_index) {
     LOG(FATAL) << "TODO";
     return nullptr;
 
-  // Unpack this type from a source structure type.
+    // Unpack this type from a source structure type.
   } else if (maybe_src_type_index && !maybe_dest_type_index) {
     unsigned indexes[] = {0u};
     auto dest_val = ir.CreateExtractValue(src_val, indexes);
     CopyMetadataTo(src_val, dest_val);
     return AdaptToType(ir, dest_val, dest_type);
 
-  // Raw type adaptation.
+    // Raw type adaptation.
   } else {
     return AdaptToType(ir, src_val, dest_type);
   }
@@ -1155,8 +1119,8 @@ llvm::Value *TypeDictionary::ConvertValueToType(
 
 // Return the general type of a type, whether or not it is signed, and its
 // size in bits.
-std::tuple<TypeKind, TypeSign, unsigned> TypeDictionary::Profile(
-    llvm::Type *type, const llvm::DataLayout &dl) {
+std::tuple<TypeKind, TypeSign, unsigned>
+TypeDictionary::Profile(llvm::Type *type, const llvm::DataLayout &dl) {
   if (auto index = FindTypeInList(type, u.indexed)) {
     return kProfiles[*index];
   } else if (type->isIntegerTy()) {

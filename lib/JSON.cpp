@@ -292,10 +292,10 @@ JSONTranslator::ParseJsonIntoCallableDecl(const llvm::json::Object *obj,
 
 
 JSONTranslator::JSONTranslator(const TypeTranslator &type_translator_,
-                               const remill::Arch *arch_)
+                               const remill::ArchGroup *arch_)
     : arch(arch_),
       type_translator(type_translator_),
-      context(*(arch->context)),
+      context(arch->GetContext()),
       void_type(llvm::Type::getVoidTy(context)),
       dict_void_type(remill::RecontextualizeType(
           type_translator.Dictionary().u.named.void_, context)) {}

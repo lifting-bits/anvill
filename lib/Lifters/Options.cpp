@@ -6,22 +6,21 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Lifters.h>
-
 #include <anvill/ABI.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <glog/logging.h>
-#include <llvm/IR/Module.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/Module.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
 namespace anvill {
 
 void LifterOptions::CheckModuleContextMatchesArch(void) const {
-  CHECK_EQ(&(module->getContext()), arch->context);
+  CHECK_EQ(&module->getContext(), &this->arch_group->GetContext());
 }
 
 // Return the data layout associated with the lifter options.
@@ -41,9 +40,10 @@ const ::anvill::TypeDictionary &LifterOptions::TypeDictionary(void) const {
 // Initialize the stack frame with a constant expression of the form:
 //
 //    (ptrtoint __anvill_sp)
-llvm::Value *LifterOptions::SymbolicStackPointerInit(
-    llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
-    uint64_t func_address) {
+llvm::Value *
+LifterOptions::SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
+                                        const remill::Register *sp_reg,
+                                        uint64_t func_address) {
 
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
@@ -64,9 +64,10 @@ llvm::Value *LifterOptions::SymbolicStackPointerInit(
 // Initialize the program counter with a constant expression of the form:
 //
 //    (ptrtoint __anvill_pc)
-llvm::Value *LifterOptions::SymbolicProgramCounterInit(
-    llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
-    uint64_t func_address) {
+llvm::Value *
+LifterOptions::SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
+                                          const remill::Register *pc_reg,
+                                          uint64_t func_address) {
 
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
@@ -88,8 +89,9 @@ llvm::Value *LifterOptions::SymbolicProgramCounterInit(
 // Initialize the return address with a constant expression of the form:
 //
 //    (ptrtoint __anvill_ra)
-llvm::Value *LifterOptions::SymbolicReturnAddressInit(
-    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address) {
+llvm::Value *LifterOptions::SymbolicReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                      llvm::IntegerType *type,
+                                                      uint64_t func_address) {
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
   auto module = block->getModule();
@@ -107,16 +109,17 @@ llvm::Value *LifterOptions::SymbolicReturnAddressInit(
 // Initialize the return address with the result of:
 //
 //    call llvm.returnaddress()
-llvm::Value *LifterOptions::ConcreteReturnAddressInit(
-    llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t) {
+llvm::Value *LifterOptions::ConcreteReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                      llvm::IntegerType *type,
+                                                      uint64_t) {
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
   auto module = block->getModule();
   type = llvm::dyn_cast<llvm::IntegerType>(
       remill::RecontextualizeType(type, context));
 
-  auto ret_addr_func = llvm::Intrinsic::getDeclaration(
-      module, llvm::Intrinsic::returnaddress);
+  auto ret_addr_func =
+      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::returnaddress);
   llvm::Value *args[] = {
       llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)};
 

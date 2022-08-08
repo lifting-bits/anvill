@@ -47,7 +47,8 @@ class FunctionLifter {
  public:
   ~FunctionLifter(void);
 
-  FunctionLifter(const LifterOptions &options_);
+  FunctionLifter(const LifterOptions &options_,
+                 std::unique_ptr<llvm::Module> semantics_module);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -81,9 +82,6 @@ class FunctionLifter {
 
   // Remill intrinsics inside of `module`.
   remill::IntrinsicTable intrinsics;
-
-  // TODO(pag): Consider passing in the `InstructionLifter` via `LifterOptions`?
-  remill::InstructionLifter::LifterPtr inst_lifter;
 
   // Specification counter and stack pointer registers.
   const remill::Register *const pc_reg;

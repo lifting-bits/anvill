@@ -33,6 +33,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Instruction.h>
+#include <remill/Arch/Name.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Version.h>
@@ -146,38 +147,61 @@ static void AnnotateInstructions(llvm::BasicBlock *block, unsigned id,
   }
 }
 
+bool hasSparcInGroup(const std::set<remill::ArchName> &nm) {
+  return std::any_of(nm.begin(), nm.end(), [](remill::ArchName curr_nm) {
+    return curr_nm == remill::ArchName::kArchSparc32 ||
+           curr_nm == remill::ArchName::kArchSparc64;
+  });
+}
+
+bool hasX86Ingroup(const std::set<remill::ArchName> &nm) {
+  return std::any_of(nm.begin(), nm.end(), [](remill::ArchName curr_nm) {
+    return curr_nm == remill::ArchName::kArchX86 ||
+           curr_nm == remill::ArchName::kArchX86_AVX512 ||
+           curr_nm == remill::ArchName::kArchX86_AVX ||
+           curr_nm == remill::ArchName::kArchX86_SLEIGH ||
+           curr_nm == remill::ArchName::kArchAMD64 ||
+           curr_nm == remill::ArchName::kArchAMD64_AVX512 ||
+           curr_nm == remill::ArchName::kArchAMD64_AVX ||
+           curr_nm == remill::ArchName::kArchAMD64_SLEIGH;
+  });
+}
+
+
 }  // namespace
 
 FunctionLifter::~FunctionLifter(void) {}
 
-FunctionLifter::FunctionLifter(const LifterOptions &options_)
+FunctionLifter::FunctionLifter(const LifterOptions &options_,
+                               std::unique_ptr<llvm::Module> semantics_module)
     : options(options_),
       memory_provider(options.memory_provider),
       type_provider(options.type_provider),
-      type_specifier(options.TypeDictionary(), options.arch),
-      semantics_module(remill::LoadArchSemantics(options.arch)),
+      type_specifier(options.TypeDictionary(), *options.arch_group),
+      semantics_module(std::move(semantics_module)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
-      inst_lifter(options.arch->DefaultLifter(intrinsics)),
-      pc_reg(options.arch
-                 ->RegisterByName(options.arch->ProgramCounterRegisterName())
-                 ->EnclosingRegister()),
-      sp_reg(
-          options.arch->RegisterByName(options.arch->StackPointerRegisterName())
+      pc_reg(
+          options.arch_group
+              ->RegisterByName(options.arch_group->ProgramCounterRegisterName())
               ->EnclosingRegister()),
-      is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
-      is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
+      sp_reg(
+          options.arch_group
+              ->RegisterByName(options.arch_group->StackPointerRegisterName())
+              ->EnclosingRegister()),
+      is_sparc(hasSparcInGroup(options.arch_group->ArchNames())),
+      is_x86_or_amd64(hasX86Ingroup(options.arch_group->ArchNames())),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),
       i8_zero(llvm::Constant::getNullValue(i8_type)),
       i32_type(llvm::Type::getInt32Ty(llvm_context)),
       mem_ptr_type(
           llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
-              options.arch->MemoryPointerType(), llvm_context))),
+              options.arch_group->MemoryPointerType(), llvm_context))),
       state_ptr_type(
           llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
-              options.arch->StatePointerType(), llvm_context))),
-      address_type(
-          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
+              options.arch_group->StatePointerType(), llvm_context))),
+      address_type(llvm::Type::getIntNTy(llvm_context,
+                                         options.arch_group->address_size)),
       pc_reg_type(pc_reg->type) {
 
   if (options.pc_metadata_name) {
@@ -941,7 +965,7 @@ void FunctionLifter::InstrumentDataflowProvenance(llvm::BasicBlock *block) {
   llvm::IRBuilder<> ir(block);
   args.push_back(ir.CreateLoad(mem_ptr_type, mem_ptr_ref));
   args.push_back(llvm::ConstantInt::get(pc_reg_type, curr_inst->pc));
-  options.arch->ForEachRegister([&](const remill::Register *reg) {
+  options.arch_group->ForEachRegister([&](const remill::Register *reg) {
     if (reg != pc_reg && reg != sp_reg && reg->EnclosingRegister() == reg) {
       args.push_back(inst_lifter->LoadRegValue(block, state_ptr, reg->name));
     }

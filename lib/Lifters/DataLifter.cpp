@@ -31,7 +31,7 @@ DataLifter::DataLifter(const LifterOptions &options_)
     : options(options_),
       memory_provider(options.memory_provider),
       type_provider(options.type_provider),
-      type_specifier(options.TypeDictionary(), options.arch),
+      type_specifier(options.TypeDictionary(), *options.arch_group),
       context(options.module->getContext()) {}
 
 // Declare a lifted a variable. Will not return `nullptr`.
@@ -72,8 +72,8 @@ llvm::Constant *DataLifter::GetOrDeclareData(const VariableDecl &decl,
 
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-       << type_specifier.EncodeToString(
-              type, EncodingFormat::kValidSymbolCharsOnly);
+       << type_specifier.EncodeToString(type,
+                                        EncodingFormat::kValidSymbolCharsOnly);
     const auto name = ss.str();
     const auto ga = llvm::GlobalAlias::create(
         type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
@@ -141,8 +141,8 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
 
   std::stringstream ss2;
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
-      << type_specifier.EncodeToString(
-             type, EncodingFormat::kValidSymbolCharsOnly);
+      << type_specifier.EncodeToString(type,
+                                       EncodingFormat::kValidSymbolCharsOnly);
 
   const auto var_name = ss2.str();
   auto var = options.module->getGlobalVariable(var_name);

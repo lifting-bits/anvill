@@ -50,7 +50,7 @@ class SpecificationImpl
   ~SpecificationImpl(void);
 
   // Architecture used by all of the function and global variable declarations.
-  const std::unique_ptr<const remill::Arch> arch;
+  const std::unique_ptr<const remill::ArchGroup> arch_group;
 
   const TypeDictionary type_dictionary;
   const TypeTranslator type_translator;

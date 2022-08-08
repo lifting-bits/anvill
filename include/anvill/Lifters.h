@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <remill/Arch/ArchGroup.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -155,39 +157,41 @@ class LifterOptions {
   //
   //    (ptrtoint __anvill_sp)
   //
-  static llvm::Value *SymbolicStackPointerInit(
-      llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
-      uint64_t func_address);
+  static llvm::Value *SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
+                                               const remill::Register *sp_reg,
+                                               uint64_t func_address);
 
   // Initialize the program counter with a constant expression of the form:
   //
   //    (add (ptrtoint __anvill_pc), <addr>)
   //
-  static llvm::Value *SymbolicProgramCounterInit(
-      llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
-      uint64_t func_address);
+  static llvm::Value *SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
+                                                 const remill::Register *pc_reg,
+                                                 uint64_t func_address);
 
   // Initialize the return address with a constant expression of the form:
   //
   //    (ptrtoint __anvill_ra)
   //
-  static llvm::Value *SymbolicReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *SymbolicReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
   // Initialize the return address with the result of:
   //
   //    call llvm.returnaddress(0)
   //
-  static llvm::Value *ConcreteReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *ConcreteReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
 
   inline explicit LifterOptions(
-      const remill::Arch *arch_, llvm::Module &module_,
+      const remill::ArchGroup *arch_, llvm::Module &module_,
       const TypeProvider &type_provider_,
       const ControlFlowProvider &control_flow_provider_,
       const MemoryProvider &memory_provider_)
-      : arch(arch_),
+      : arch_group(arch_),
         module(&module_),
         type_provider(type_provider_),
         control_flow_provider(control_flow_provider_),
@@ -204,10 +208,7 @@ class LifterOptions {
     CheckModuleContextMatchesArch();
   }
 
-  // What is the architecture being used for lifting?
-  //
-  // TODO(pag): Remove this; decls have architectures.
-  const remill::Arch *const arch;
+  const remill::ArchGroup *arch_group;
 
   // Target module into which code will be lifted.
   llvm::Module *const module;
@@ -356,7 +357,7 @@ class ValueLifter {
   // Returns an `llvm::Constant *` if the pointer is associated with a
   // known or plausible entity, and an `nullptr` otherwise.
   llvm::Constant *Lift(std::uint64_t ea, llvm::Type *value_type,
-                       unsigned address_space=0u) const;
+                       unsigned address_space = 0u) const;
 
  private:
   std::shared_ptr<EntityLifterImpl> impl;

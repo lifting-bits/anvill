@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <remill/Arch/ArchGroup.h>
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,11 +56,7 @@ enum class TypeKind : unsigned char {
   kPadding
 };
 
-enum class TypeSign : unsigned char {
-  kUnknown,
-  kSigned,
-  kUnsigned
-};
+enum class TypeSign : unsigned char { kUnknown, kSigned, kUnsigned };
 
 // Dictionary of types to be used by the type specifier.
 class TypeDictionary {
@@ -110,8 +108,8 @@ class TypeDictionary {
 
   // Return the general type of a type, whether or not it is signed, and its
   // size in bits.
-  std::tuple<TypeKind, TypeSign, unsigned> Profile(
-      llvm::Type *type, const llvm::DataLayout &dl);
+  std::tuple<TypeKind, TypeSign, unsigned> Profile(llvm::Type *type,
+                                                   const llvm::DataLayout &dl);
 
   // Returns `true` if `type` is the padding type, or is entirely made up
   // of padding bytes (e.g. an array of the padding type).
@@ -121,10 +119,7 @@ class TypeDictionary {
   TypeDictionary(void) = delete;
 };
 
-enum EncodingFormat : bool {
-  kDefault = false,
-  kValidSymbolCharsOnly = true
-};
+enum EncodingFormat : bool { kDefault = false, kValidSymbolCharsOnly = true };
 
 // Translates between two type formats:
 //
@@ -151,9 +146,8 @@ class TypeTranslator {
   // Initialize a type specifier with a type dictionary.
   TypeTranslator(const TypeDictionary &type_dict, const llvm::DataLayout &dl);
   TypeTranslator(const TypeDictionary &type_dict, const llvm::Module &module);
-  TypeTranslator(const TypeDictionary &type_dict, const remill::Arch *arch);
   TypeTranslator(const TypeDictionary &type_dict,
-                 const std::unique_ptr<const remill::Arch> &arch);
+                 const remill::MachineSemantics &arch);
 
   // Return the type dictionary for this type specifier.
   const TypeDictionary &Dictionary(void) const noexcept;
@@ -168,9 +162,9 @@ class TypeTranslator {
   //
   // See `docs/TypeEncoding.md` for information on how different types are
   // represented.
-  std::string EncodeToString(
-      llvm::Type *type,
-      EncodingFormat alphanum = EncodingFormat::kDefault) const;
+  std::string
+  EncodeToString(llvm::Type *type,
+                 EncodingFormat alphanum = EncodingFormat::kDefault) const;
 
   // Parse an encoded type string into its represented type.
   //
