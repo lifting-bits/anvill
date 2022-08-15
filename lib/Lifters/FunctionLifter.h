@@ -158,8 +158,11 @@ class FunctionLifter {
   // NOTE(pag): The destination PC of the edge comes first in the work list so
   //            that the ordering of the `std::set` processes the instructions
   //            roughly in order.
-  std::set<std::tuple<uint64_t, uint64_t, remill::DecodingContext>>
-      edge_work_list;
+  std::set<std::tuple<uint64_t, uint64_t>> edge_work_list;
+
+  // We assume decoding contexts are constant per edge. If this is not the case a lot of things wont work out
+  std::map<std::pair<uint64_t, uint64_t>, remill::DecodingContext>
+      decoding_contexts;
 
   // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
   // with `to_pc`.

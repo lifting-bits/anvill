@@ -205,8 +205,9 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
   //            `addr_to_block` so that we can observe self-tail-calls and
   //            lift them as such, rather than as jumps back into the first
   //            lifted block.
-  edge_work_list.emplace(to_addr, from_addr, mapper(to_addr));
-
+  edge_work_list.emplace(to_addr, from_addr);
+  this->decoding_contexts.emplace(std::make_tuple(to_addr, from_addr),
+                                  mapper(to_addr));
   return block;
 }
 
@@ -1169,7 +1170,9 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
 
   // Recursively decode and lift all instructions that we come across.
   while (!edge_work_list.empty()) {
-    auto [inst_addr, from_addr, insn_context] = *(edge_work_list.begin());
+    auto [inst_addr, from_addr] = *(edge_work_list.begin());
+    auto insn_context = this->decoding_contexts[{inst_addr, from_addr}];
+
 
     edge_work_list.erase(edge_work_list.begin());
 
@@ -1680,6 +1683,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   edge_work_list.clear();
   edge_to_dest_block.clear();
   addr_to_block.clear();
+  this->op_lifter->ClearCache();
   curr_decl = &decl;
   curr_inst = nullptr;
   state_ptr = nullptr;
