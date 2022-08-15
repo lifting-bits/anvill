@@ -1112,7 +1112,7 @@ void FunctionLifter::VisitInstruction(
       VisitDirectFunctionCall(inst, delayed_inst, block, mapper);
       break;
     case remill::Instruction::kCategoryConditionalDirectFunctionCall:
-      VisitDirectFunctionCall(inst, delayed_inst, block, mapper);
+      VisitConditionalDirectFunctionCall(inst, delayed_inst, block, mapper);
       break;
     case remill::Instruction::kCategoryIndirectFunctionCall:
       VisitIndirectFunctionCall(inst, delayed_inst, block, mapper);
