@@ -1055,8 +1055,8 @@ void FunctionLifter::VisitInstruction(
   // Even when something isn't supported or is invalid, we still lift
   // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
   // to treat instruction lifting as an operation that can't fail.
-  (void) inst.GetLifter()->LiftIntoBlock(inst, block, state_ptr,
-                                         false /* is_delayed */);
+  std::ignore = inst.GetLifter()->LiftIntoBlock(inst, block, state_ptr,
+                                                false /* is_delayed */);
 
   // Figure out if we have to decode the subsequent instruction as a delayed
   // instruction.
