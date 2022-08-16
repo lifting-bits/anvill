@@ -1047,18 +1047,7 @@ void FunctionLifter::VisitInstruction(
     const remill::DecodingContext::ContextMap &mapper) {
   curr_inst = &inst;
 
-  // TODO(pag): Consider emitting calls to the `llvm.pcmarker` intrinsic. Figure
-  //            out if the `i32` parameter is different on 64-bit targets, or
-  //            if it's actually a metadata ID.
-
-  // Reserve space for an instrucion that will go into a delay slot, in case it
-  // is needed. This is an uncommon case, so avoid instantiating a new
-  // Instruction unless it is actually needed. The instruction instantition into
-  // this buffer happens via a placement new call later on.
-  std::aligned_storage<sizeof(remill::Instruction),
-                       alignof(remill::Instruction)>::type delayed_inst_storage;
-
-  remill::Instruction *delayed_inst = nullptr;
+  std::unique_ptr<remill::Instruction> delayed_inst = nullptr;
 
   if (options.track_provenance) {
     InstrumentDataflowProvenance(block);
@@ -1077,9 +1066,10 @@ void FunctionLifter::VisitInstruction(
   // Figure out if we have to decode the subsequent instruction as a delayed
   // instruction.
   if (options.arch->MayHaveDelaySlot(inst)) {
-    delayed_inst = new (&delayed_inst_storage) remill::Instruction;
+    delayed_inst = std::make_unique<remill::Instruction>();
+
     if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
-                               delayed_inst, prev_insn_context)) {
+                               delayed_inst.get(), prev_insn_context)) {
       LOG(ERROR) << "Unable to decode or use delayed instruction at "
                  << std::hex << inst.delayed_pc << std::dec << " of "
                  << inst.Serialize();
@@ -1101,7 +1091,7 @@ void FunctionLifter::VisitInstruction(
     // Error is a valid instruction, but specifies error semantics for the
     // processor. The canonical example is x86's `UD2` instruction.
     case remill::Instruction::kCategoryError:
-      VisitError(inst, delayed_inst, block);
+      VisitError(inst, delayed_inst.get(), block);
       break;
     case remill::Instruction::kCategoryNormal:
       VisitNormal(inst, block, mapper);
@@ -1110,40 +1100,42 @@ void FunctionLifter::VisitInstruction(
       VisitNoOp(inst, block, mapper);
       break;
     case remill::Instruction::kCategoryDirectJump:
-      VisitDirectJump(inst, delayed_inst, block, mapper);
+      VisitDirectJump(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryIndirectJump:
-      VisitIndirectJump(inst, delayed_inst, block, mapper);
+      VisitIndirectJump(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryConditionalIndirectJump:
-      VisitConditionalIndirectJump(inst, delayed_inst, block, mapper);
+      VisitConditionalIndirectJump(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryFunctionReturn:
-      VisitFunctionReturn(inst, delayed_inst, block);
+      VisitFunctionReturn(inst, delayed_inst.get(), block);
       break;
     case remill::Instruction::kCategoryConditionalFunctionReturn:
-      VisitConditionalFunctionReturn(inst, delayed_inst, block, mapper);
+      VisitConditionalFunctionReturn(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryDirectFunctionCall:
-      VisitDirectFunctionCall(inst, delayed_inst, block, mapper);
+      VisitDirectFunctionCall(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryConditionalDirectFunctionCall:
-      VisitConditionalDirectFunctionCall(inst, delayed_inst, block, mapper);
+      VisitConditionalDirectFunctionCall(inst, delayed_inst.get(), block,
+                                         mapper);
       break;
     case remill::Instruction::kCategoryIndirectFunctionCall:
-      VisitIndirectFunctionCall(inst, delayed_inst, block, mapper);
+      VisitIndirectFunctionCall(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryConditionalIndirectFunctionCall:
-      VisitConditionalIndirectFunctionCall(inst, delayed_inst, block, mapper);
+      VisitConditionalIndirectFunctionCall(inst, delayed_inst.get(), block,
+                                           mapper);
       break;
     case remill::Instruction::kCategoryConditionalBranch:
-      VisitConditionalBranch(inst, delayed_inst, block, mapper);
+      VisitConditionalBranch(inst, delayed_inst.get(), block, mapper);
       break;
     case remill::Instruction::kCategoryAsyncHyperCall:
-      VisitAsyncHyperCall(inst, delayed_inst, block);
+      VisitAsyncHyperCall(inst, delayed_inst.get(), block);
       break;
     case remill::Instruction::kCategoryConditionalAsyncHyperCall:
-      VisitConditionalAsyncHyperCall(inst, delayed_inst, block, mapper);
+      VisitConditionalAsyncHyperCall(inst, delayed_inst.get(), block, mapper);
       break;
   }
 
