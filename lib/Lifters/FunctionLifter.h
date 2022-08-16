@@ -12,6 +12,8 @@
 #include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instruction.h>
 #include <remill/Arch/Context.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -183,6 +185,12 @@ class FunctionLifter {
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
+
+
+  llvm::BranchInst *
+  BranchToInst(uint64_t from_addr, uint64_t to_addr,
+               const remill::DecodingContext::ContextMap &mapper,
+               llvm::BasicBlock *from_block);
 
   // Helper to get the basic block to contain the instruction at `addr`. This
   // function drives a work list, where the first time we ask for the

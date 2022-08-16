@@ -185,6 +185,17 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
   }
 }
 
+
+llvm::BranchInst *
+FunctionLifter::BranchToInst(uint64_t from_addr, uint64_t to_addr,
+                             const remill::DecodingContext::ContextMap &mapper,
+                             llvm::BasicBlock *from_block) {
+  auto br = llvm::BranchInst::Create(
+      GetOrCreateBlock(from_addr, to_addr, mapper), from_block);
+  AnnotateInstruction(br, pc_annotation_id, pc_annotation);
+  return br;
+}
+
 // Helper to get the basic block to contain the instruction at `addr`. This
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
@@ -1250,9 +1261,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           // TODO(Ian): is this context right?
           auto cont =
               remill::DecodingContext::UniformContextMapping(insn_context);
-          auto br = llvm::BranchInst::Create(
-              GetOrCreateBlock(func_address, inst_addr, cont), block);
-          AnnotateInstruction(br, pc_annotation_id, pc_annotation);
+          this->BranchToInst(func_address, inst_addr, cont, block);
           continue;
         }
       }
@@ -1283,9 +1292,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         // us lift GOT/PLT thunks into things that aren't just indirect jumps
         // that leak the `State` structure.
         if (inst_addr != func_address) {
-          auto br = llvm::BranchInst::Create(
-              GetOrCreateBlock(func_address, inst_addr, *next_context), block);
-          AnnotateInstruction(br, pc_annotation_id, pc_annotation);
+          this->BranchToInst(func_address, inst_addr, *next_context, block);
           continue;
         }
       }
