@@ -217,7 +217,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
   //            lift them as such, rather than as jumps back into the first
   //            lifted block.
   edge_work_list.emplace(to_addr, from_addr);
-  this->decoding_contexts.emplace(std::make_tuple(to_addr, from_addr),
+  this->decoding_contexts.emplace(std::make_pair(to_addr, from_addr),
                                   mapper(to_addr));
   return block;
 }
