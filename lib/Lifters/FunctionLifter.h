@@ -226,7 +226,8 @@ class FunctionLifter {
   // delay slots, and therefore the subsequent instruction may actually execute
   // prior to the error.
   void VisitError(const remill::Instruction &inst,
-                  remill::Instruction *delayed_inst, llvm::BasicBlock *block);
+                  std::optional<remill::Instruction> &delayed_inst,
+                  llvm::BasicBlock *block);
 
   // Visit a normal instruction. Normal instructions have straight line control-
   // flow semantics, i.e. after executing the instruction, execution proceeds
@@ -244,7 +245,7 @@ class FunctionLifter {
   // `inst.branch_taken_pc`. Execution thus needs to transfer to the instruction
   // (and thus `llvm::BasicBlock`) associated with `inst.branch_taken_pc`.
   void VisitDirectJump(const remill::Instruction &inst,
-                       remill::Instruction *delayed_inst,
+                       std::optional<remill::Instruction> &delayed_inst,
                        llvm::BasicBlock *block,
                        const remill::DecodingContext::ContextMap &mapper);
 
@@ -254,7 +255,7 @@ class FunctionLifter {
   // a tail-call to the `__remill_jump` function, whose role is to be a stand-in
   // something that enacts the effect of "transfer to target."
   void VisitIndirectJump(const remill::Instruction &inst,
-                         remill::Instruction *delayed_inst,
+                         std::optional<remill::Instruction> &delayed_inst,
                          llvm::BasicBlock *block,
                          const remill::DecodingContext::ContextMap &mapper);
 
@@ -269,8 +270,8 @@ class FunctionLifter {
   // between indirect jumps and conditional jumps that appears on the
   // ARMv7 (AArch32) architecture, where many instructions are predicated.
   void VisitConditionalIndirectJump(
-      const remill::Instruction &inst, remill::Instruction *delayed_inst,
-      llvm::BasicBlock *block,
+      const remill::Instruction &inst,
+      std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
       const remill::DecodingContext::ContextMap &mapper);
 
   // Visit a function return control-flow instruction, which is a form of
@@ -278,15 +279,15 @@ class FunctionLifter {
   // returning from a function. This is treated similarly to indirect jumps,
   // except the `__remill_function_return` function is tail-called.
   void VisitFunctionReturn(const remill::Instruction &inst,
-                           remill::Instruction *delayed_inst,
+                           std::optional<remill::Instruction> &delayed_inst,
                            llvm::BasicBlock *block);
 
   // Visit a conditional function return control-flow instruction, which is a
   // variant that is half-way between a return and a conditional jump. These
   // are possible on ARMv7 (AArch32).
   void VisitConditionalFunctionReturn(
-      const remill::Instruction &inst, remill::Instruction *delayed_inst,
-      llvm::BasicBlock *block,
+      const remill::Instruction &inst,
+      std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
       const remill::DecodingContext::ContextMap &mapper);
 
   // Call `pc` in `block`, treating it as a callable declaration `decl`.
@@ -315,7 +316,7 @@ class FunctionLifter {
   // to call the lifted function function at the target address.
   void
   VisitDirectFunctionCall(const remill::Instruction &inst,
-                          remill::Instruction *delayed_inst,
+                          std::optional<remill::Instruction> &delayed_inst,
                           llvm::BasicBlock *block,
                           const remill::DecodingContext::ContextMap &mapper);
 
@@ -326,8 +327,8 @@ class FunctionLifter {
   // is satisfied. Note that it is up to the semantics of the conditional call
   // instruction to "tell us" if the condition is met.
   void VisitConditionalDirectFunctionCall(
-      const remill::Instruction &inst, remill::Instruction *delayed_inst,
-      llvm::BasicBlock *block,
+      const remill::Instruction &inst,
+      std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
       const remill::DecodingContext::ContextMap &mapper);
 
   // Visit an indirect function call control-flow instruction. Similar to
@@ -338,7 +339,7 @@ class FunctionLifter {
   // as it presents itself in the binary.
   void
   VisitIndirectFunctionCall(const remill::Instruction &inst,
-                            remill::Instruction *delayed_inst,
+                            std::optional<remill::Instruction> &delayed_inst,
                             llvm::BasicBlock *block,
                             const remill::DecodingContext::ContextMap &mapper);
 
@@ -346,8 +347,8 @@ class FunctionLifter {
   // Visit a conditional indirect function call control-flow instruction.
   // This is a cross between conditional jumps and indirect function calls.
   void VisitConditionalIndirectFunctionCall(
-      const remill::Instruction &inst, remill::Instruction *delayed_inst,
-      llvm::BasicBlock *block,
+      const remill::Instruction &inst,
+      std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
       const remill::DecodingContext::ContextMap &mapper);
 
   // Helper to figure out the address where execution will resume after a
@@ -378,7 +379,7 @@ class FunctionLifter {
   // depending on the presence/absence of delay slot annulment bits.
   void
   VisitConditionalBranch(const remill::Instruction &inst,
-                         remill::Instruction *delayed_inst,
+                         std::optional<remill::Instruction> &delayed_inst,
                          llvm::BasicBlock *block,
                          const remill::DecodingContext::ContextMap &mapper);
 
@@ -386,14 +387,14 @@ class FunctionLifter {
   // local control-flow transfers, such as system calls. We treat them like
   // indirect function calls.
   void VisitAsyncHyperCall(const remill::Instruction &inst,
-                           remill::Instruction *delayed_inst,
+                           std::optional<remill::Instruction> &delayed_inst,
                            llvm::BasicBlock *block);
 
   // Visit conditional asynchronous hyper calls. These are conditional, non-
   // local control-flow transfers, e.g. `bound` on x86.
   void VisitConditionalAsyncHyperCall(
-      const remill::Instruction &inst, remill::Instruction *delayed_inst,
-      llvm::BasicBlock *block,
+      const remill::Instruction &inst,
+      std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
       const remill::DecodingContext::ContextMap &mapper);
 
   // Visit (and thus lift) a delayed instruction. When lifting a delayed
@@ -403,7 +404,7 @@ class FunctionLifter {
   // CPU pipeline. They are basically a way for hardware designers to push
   // the effort of keeping the pipeline full to compiler developers.
   void VisitDelayedInstruction(const remill::Instruction &inst,
-                               remill::Instruction *delayed_inst,
+                               std::optional<remill::Instruction> &delayed_inst,
                                llvm::BasicBlock *block, bool on_taken_path);
 
   // Instrument an instruction. This inject a `printf` call just before a
