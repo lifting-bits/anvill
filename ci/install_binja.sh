@@ -39,3 +39,4 @@ chmod +x "${EXTRACT_DIR}/binaryninja/scripts/linux-setup.sh"
 "${EXTRACT_DIR}/binaryninja/scripts/linux-setup.sh" -s -d -m -l &> /dev/null
 # virtual env, use -v; if not don't use it
 python3 "${EXTRACT_DIR}/binaryninja/scripts/install_api.py" ${VIRTUAL_ENV+"-v"}
+echo "API install done"
