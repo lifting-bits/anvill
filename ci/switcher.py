@@ -29,6 +29,7 @@ def main():
         channel.update_to_latest()
     else:
         set_auto_updates_enabled(False)
+        print(channel.versions)
         for v in channel.versions:
             if args.version_string in v.version:
                 print("Updating...")
