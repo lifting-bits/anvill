@@ -129,6 +129,11 @@ RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     source ${VIRTUAL_ENV}/bin/activate && \
     cd /dependencies/binja_install && \
     if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh && python3 switcher.py --version_string ${BINJA_VERSION} ${BINJA_CHANNEL}; fi
+
+RUN python --version
+
+RUN python -c "import binaryninja; print(binaryninja.core_version())"
+
 COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
 ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
 
