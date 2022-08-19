@@ -130,9 +130,7 @@ RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     cd /dependencies/binja_install && \
     if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh && python3 switcher.py --version_string ${BINJA_VERSION} ${BINJA_CHANNEL}; fi
 
-RUN python3 --version
-
-RUN python3 -c "import binaryninja; print(binaryninja.core_version())"
+RUN apt-get install libdbus-1-3
 
 COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
 ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
