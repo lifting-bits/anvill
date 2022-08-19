@@ -30,7 +30,7 @@ ARG UBUNTU_VERSION
 ARG LIBRARIES
 ARG LLVM_VERSION
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
+    apt-get install -qqy --no-install-recommends libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /dependencies
