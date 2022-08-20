@@ -30,7 +30,7 @@ ARG UBUNTU_VERSION
 ARG LIBRARIES
 ARG LLVM_VERSION
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
+    apt-get install -qqy --no-install-recommends libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /dependencies
@@ -129,6 +129,10 @@ RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
     source ${VIRTUAL_ENV}/bin/activate && \
     cd /dependencies/binja_install && \
     if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh && python3 switcher.py --version_string ${BINJA_VERSION} ${BINJA_CHANNEL}; fi
+
+# Keep this here to sanity check Binary Ninja API Installation & version
+RUN python3 --version && python3 -c "import binaryninja; print(binaryninja.core_version())"
+
 COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
 ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]
 
