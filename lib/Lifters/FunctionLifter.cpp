@@ -158,7 +158,6 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
-      //inst_lifter(options.arch->DefaultLifter(intrinsics)),
       inst_lifter( std::make_shared< remill::InstructionLifter >( options.arch, intrinsics ) ),
       context( options.arch->CreateInitialContext() ),
       pc_reg(options.arch
