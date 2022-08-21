@@ -15,6 +15,8 @@
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
+#include <remill/Arch/Context.h>
+
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -84,6 +86,10 @@ class FunctionLifter {
 
   // TODO(pag): Consider passing in the `InstructionLifter` via `LifterOptions`?
   remill::InstructionLifter::LifterPtr inst_lifter;
+
+  // Decoding context
+  //
+  remill::DecodingContext context;
 
   // Specification counter and stack pointer registers.
   const remill::Register *const pc_reg;

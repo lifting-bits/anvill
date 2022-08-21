@@ -158,7 +158,9 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
-      inst_lifter(options.arch->DefaultLifter(intrinsics)),
+      //inst_lifter(options.arch->DefaultLifter(intrinsics)),
+      inst_lifter( std::make_shared< remill::InstructionLifter >( options.arch, intrinsics ) ),
+      context( options.arch->CreateInitialContext() ),
       pc_reg(options.arch
                  ->RegisterByName(options.arch->ProgramCounterRegisterName())
                  ->EnclosingRegister()),
@@ -254,11 +256,19 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
     }
   }
 
+  remill::Arch::DecodingResult res;
+
   if (is_delayed) {
-    return options.arch->DecodeDelayedInstruction(addr, inst_out->bytes,
-                                                  *inst_out);
+    res = options.arch->DecodeDelayedInstruction(addr, inst_out->bytes,
+                                                  *inst_out, context);
   } else {
-    return options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out);
+    res = options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out, context);
+  }
+
+  if ( res ) {
+    return true;
+  } else {
+    return false;
   }
 }
 
