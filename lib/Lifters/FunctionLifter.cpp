@@ -1235,6 +1235,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       if (is_noreturn) {
         auto tail = ir.CreateCall(intrinsics.error);
         tail->setTailCall();
+        AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
         ret = ir.CreateRet(tail);
       } else {
         ret = ir.CreateRet(new_mem_ptr);
