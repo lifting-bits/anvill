@@ -139,7 +139,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     param_vals.push_back(val);
   }
 
-  llvm::Value *ret_val = nullptr;
+  llvm::CallInst *ret_val = nullptr;
   if (auto func = llvm::dyn_cast<llvm::Function>(target)) {
     ret_val = ir.CreateCall(func, param_vals);
   } else {
@@ -147,7 +147,10 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
         remill::RecontextualizeType(type, context));
     ret_val = ir.CreateCall(func_type, target, param_vals);
   }
-  (void) ret_val;
+
+  if (is_noreturn) {
+    ret_val->setDoesNotReturn();
+  }
 
   // There is a single return value, store it to the lifted state.
   if (returns.size() == 1) {
