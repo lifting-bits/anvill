@@ -692,8 +692,8 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
   auto cond_function_call_fallthrough_br =
       llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  CallFunction(inst, taken_block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, taken_block);
+  bool can_return = CallFunction(inst, taken_block, inst.branch_taken_pc);
+  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
   auto fallthrough_br = llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
@@ -716,8 +716,8 @@ void FunctionLifter::VisitIndirectFunctionCall(
     const remill::DecodingContext::ContextMap &mapper) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  CallFunction(inst, block, std::nullopt);
-  VisitAfterFunctionCall(inst, block);
+  bool can_return = CallFunction(inst, block, std::nullopt);
+  VisitAfterFunctionCall(inst, block, mapper, can_return);
 }
 
 // Visit a conditional indirect function call control-flow instruction.
