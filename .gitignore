@@ -40,6 +40,9 @@ build/*
 anvill/python/anvill.egg-info/*
 anvill/python/build/*
 anvill/python/dist/*
+python/anvill.egg-info/*
+python/dist/*
+python/build/*
 
 #ignore vscode dir
 .vscode
@@ -57,3 +60,10 @@ ci/BinaryNinja-headless.zip
 #build logs
 anvill-build.log
 anvill-configure.log
+
+# build artifacts
+anvill-build
+.cache
+
+# compile commands
+compile_commands.json
