@@ -238,7 +238,7 @@ std::optional<remill::DecodingContext::ContextMap>
 FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                                       remill::Instruction *inst_out,
                                       remill::DecodingContext context) {
-  static const auto max_inst_size = options.arch->MaxInstructionSize();
+  static const auto max_inst_size = options.arch->MaxInstructionSize(context);
   inst_out->Reset();
 
   // Read the maximum number of bytes possible for instructions on this
@@ -850,7 +850,7 @@ void FunctionLifter::VisitAfterFunctionCall(
     auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
     auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
     auto branch_to_next_pc =
-      ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
+        ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
 
     AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
     AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
@@ -1231,7 +1231,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
           std::move(maybe_decl.value()));
 
-      llvm::Instruction* ret;
+      llvm::Instruction *ret;
       if (is_noreturn) {
         auto tail = ir.CreateCall(intrinsics.error);
         tail->setTailCall();
