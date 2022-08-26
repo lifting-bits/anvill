@@ -16,7 +16,6 @@ project("anvill")
 
 include(GNUInstallDirs)
 include("cmake/system.cmake")
-include("cmake/llvm.cmake")
 
 if(ANVILL_ENABLE_INSTALL)
   include("cmake/packaging.cmake")
