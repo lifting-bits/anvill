@@ -12,7 +12,7 @@ from .arch import Arch
 from .os import CC
 from .type import Type, FunctionType, StructureType, VoidType
 from .loc import Location
-from typing import List, Dict, Any, Final, Optional, cast
+from typing import List, Dict, Any, Final, Optional, Tuple, cast
 
 
 class Function(ABC):
@@ -30,7 +30,7 @@ class Function(ABC):
 
     def __init__(
         self, arch: Arch, address: int, parameters: List[Location],
-        return_values: List[Location], func_type: FunctionType,
+        return_values: List[Location], func_type: FunctionType, context_assignments: Dict[str,int] = {},
         is_entrypoint: bool = False, cc: CC = 0
     ):
         assert isinstance(func_type, FunctionType)
@@ -41,6 +41,7 @@ class Function(ABC):
         self._type: Final[Optional[FunctionType]] = func_type
         self._cc: Final[CC] = cc
         self._is_entrypoint: Final[bool] = is_entrypoint
+        self._context_assignments: Dict[Tuple[str, int]] = context_assignments
 
         for param in self._parameters:
             assert isinstance(param, Location)
@@ -104,6 +105,9 @@ class Function(ABC):
             "is_noreturn": self.is_noreturn(),
             "calling_convention": cast(int, self._cc)
         }
+
+        if len(self._context_assignments) > 0:
+            proto["context_assignments"] = self._context_assignments
 
         if not self._is_entrypoint:
             proto["return_address"] = self._arch.return_address_proto()

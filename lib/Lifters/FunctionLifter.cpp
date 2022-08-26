@@ -238,7 +238,7 @@ std::optional<remill::DecodingContext::ContextMap>
 FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                                       remill::Instruction *inst_out,
                                       remill::DecodingContext context) {
-  static const auto max_inst_size = options.arch->MaxInstructionSize();
+  static const auto max_inst_size = options.arch->MaxInstructionSize(context);
   inst_out->Reset();
 
   // Read the maximum number of bytes possible for instructions on this
@@ -1790,8 +1790,13 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   // TODO(Ian): for a thumb vs arm function we need to figure out how to setup the correct initial context,
   // maybe the spec should have a section (Context reg assignments or something), where we apply those assingments to a defautl initial context
-  auto default_mapping = remill::DecodingContext::UniformContextMapping(
-      options.arch->CreateInitialContext());
+
+  auto emp = options.arch->CreateInitialContext();
+  for (const auto &[k, v] : decl.context_assignments) {
+    emp.UpdateContextReg(k, v);
+  }
+
+  auto default_mapping = remill::DecodingContext::UniformContextMapping(emp);
   ir.CreateBr(GetOrCreateBlock(0u, func_address, default_mapping));
 
   AnnotateInstructions(entry_block, pc_annotation_id,
