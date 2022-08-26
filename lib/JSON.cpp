@@ -470,12 +470,13 @@ JSONTranslator::DecodeFunction(const llvm::json::Object *obj) const {
 
   auto maybe_context_assignments = obj->getObject("context_assignments");
   if (maybe_context_assignments) {
-    for (auto [k, v] : *obj) {
+    for (auto [k, v] : *maybe_context_assignments) {
       auto maybe_value = v.getAsUINT64();
 
       if (!maybe_value.hasValue()) {
         return JSONDecodeError(
-            "All context assignment values should be unsigned integers.");
+            "All context assignment values should be unsigned integers.",
+            maybe_context_assignments);
       }
 
       decl.context_assignments.emplace(k.str(), maybe_value.getValue());
