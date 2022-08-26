@@ -16,7 +16,7 @@ target_link_libraries(test_anvill PRIVATE
   remill_settings
   remill
   anvill
-  thirdparty_doctest
+  doctest::doctest
 )
 
 target_include_directories(test_anvill PRIVATE

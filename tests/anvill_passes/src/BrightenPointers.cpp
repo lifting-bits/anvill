@@ -12,7 +12,7 @@
 #include <anvill/Providers.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>

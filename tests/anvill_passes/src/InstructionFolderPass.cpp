@@ -9,7 +9,7 @@
 #include <anvill/Passes/HoistUsersOfSelectsAndPhis.h>
 
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>

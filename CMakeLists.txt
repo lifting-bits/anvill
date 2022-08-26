@@ -30,6 +30,7 @@ find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(Z3 4.8 CONFIG REQUIRED)
+find_package(doctest CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_llvm(llvm "${_VCPKG_SHARE_DIR}")
 
 find_package(sleigh CONFIG)

@@ -29,7 +29,7 @@ target_link_libraries(test_anvill_passes PRIVATE
   remill_settings
   remill
   anvill
-  thirdparty_doctest
+  doctest::doctest
 )
 
 target_compile_definitions(test_anvill_passes PRIVATE
