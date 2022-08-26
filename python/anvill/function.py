@@ -30,8 +30,8 @@ class Function(ABC):
 
     def __init__(
         self, arch: Arch, address: int, parameters: List[Location],
-        return_values: List[Location], func_type: FunctionType, context_assignments: Dict[str,int] = {},
-        is_entrypoint: bool = False, cc: CC = 0
+        return_values: List[Location], func_type: FunctionType,
+        is_entrypoint: bool = False, cc: CC = 0, context_assignments: Dict[str,int] = {}
     ):
         assert isinstance(func_type, FunctionType)
         self._arch: Final[Arch] = arch
