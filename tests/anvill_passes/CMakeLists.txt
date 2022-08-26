@@ -38,7 +38,7 @@ target_compile_definitions(test_anvill_passes PRIVATE
 
 target_include_directories(test_anvill_passes PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../src"
-  "${CMAKE_SOURCE_DIR}/lib/Passes"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../lib/Passes"
 )
 
 add_test(
