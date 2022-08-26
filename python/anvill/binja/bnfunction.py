@@ -5,6 +5,7 @@
 # This source code is licensed in accordance with the terms specified in
 # the LICENSE file found in the root directory of this source tree.
 #
+from platform import architecture
 import traceback
 from typing import Tuple, Optional, Iterator, Set, Union, cast
 
@@ -56,6 +57,19 @@ class BNExternalFunction(Function):
         pass
 
 
+
+THUMB_MODE_REG_NAME = "TMReg"
+
+def get_entry_assignments(f: bn.Function) -> Dict[str, int]:
+    if f.arch == bn.Architecture['thumb2'] or f.arch == bn.Architecture['thumb2eb']:
+        return {THUMB_MODE_REG_NAME: 1}
+    elif f.arch == bn.Architecture['armv7'] or  f.arch == bn.Architecture['armv7eb']:
+        return {THUMB_MODE_REG_NAME: 0}
+    else:
+        return {}
+    
+
+
 class BNFunction(Function):
     def __init__(
         self,
@@ -69,7 +83,7 @@ class BNFunction(Function):
         is_external=False
     ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list,
-                                         func_type, is_entrypoint=is_entrypoint)
+                                         func_type, context_assignments=get_entry_assignments(bn_func), is_entrypoint=is_entrypoint)
         self._is_external: bool = is_external
         self._bn_func: bn.Function = bn_func
 
