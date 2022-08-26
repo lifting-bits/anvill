@@ -850,16 +850,17 @@ void FunctionLifter::VisitAfterFunctionCall(
     auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
     auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
     auto branch_to_next_pc =
-      ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
+        ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
 
     AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
     AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
     AnnotateInstruction(branch_to_next_pc, pc_annotation_id, pc_annotation);
   } else {
-    auto error = ir.CreateCall(intrinsics.error);
-    error->setTailCall();
-    auto ret = ir.CreateRet(error);
-    AnnotateInstruction(error, pc_annotation_id, pc_annotation);
+    auto tail = remill::AddTerminatingTailCall(
+        ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
+    AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
+    auto ret = ir.CreateRet(tail);
+    AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
     AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
   }
 }
@@ -1231,10 +1232,10 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
           std::move(maybe_decl.value()));
 
-      llvm::Instruction* ret;
+      llvm::Instruction *ret;
       if (is_noreturn) {
-        auto tail = ir.CreateCall(intrinsics.error);
-        tail->setTailCall();
+        auto tail = remill::AddTerminatingTailCall(
+            ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
         AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
         ret = ir.CreateRet(tail);
       } else {
