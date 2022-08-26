@@ -860,9 +860,7 @@ void FunctionLifter::VisitAfterFunctionCall(
     auto tail = remill::AddTerminatingTailCall(
         ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
     AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-    auto ret = ir.CreateRet(tail);
     AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-    AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
   }
 }
 
@@ -1672,6 +1670,15 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   }
 
   // Initialize cleanup optimizations
+
+
+  if (llvm::verifyFunction(*native_func, &llvm::errs())) {
+
+    LOG(FATAL) << "Function verification failed: "
+               << native_func->getName().str() << " "
+               << remill::LLVMThingToString(native_func->getType());
+  }
+
   llvm::legacy::FunctionPassManager fpm(semantics_module.get());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createPromoteMemoryToRegisterPass());
