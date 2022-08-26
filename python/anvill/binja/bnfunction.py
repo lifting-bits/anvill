@@ -377,7 +377,6 @@ class BNFunction(Function):
         # function is a declaration, then Anvill only needs to know its symbols
         # and prototypes if its a definition, then Anvill will perform analysis
         # of the function and produce information for the function.
-        print(ref_eas)
         for ref_ea in ref_eas:
             DEBUG(f"Attempting to add referenced entity {ref_ea:x}")
             # If ref_ea is an invalid address
