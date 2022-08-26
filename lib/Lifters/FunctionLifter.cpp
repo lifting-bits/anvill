@@ -271,6 +271,7 @@ FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
     return options.arch->DecodeDelayedInstruction(
         addr, inst_out->bytes, *inst_out, std::move(context));
   } else {
+    LOG(INFO) << "Ops emplace: " << inst_out->operands.size();
     return options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out,
                                            std::move(context));
   }
