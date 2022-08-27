@@ -1678,7 +1678,7 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
-
+  LOG(INFO) << "Attempting to lift inside function lifter";
   addr_to_func.clear();
   edge_work_list.clear();
   edge_to_dest_block.clear();
@@ -1697,6 +1697,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
       memory_provider.Query(func_address);
   if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
       !MemoryProvider::IsExecutable(first_byte_perms)) {
+    LOG(ERROR) << "Address is not valid for func " << std::hex << decl.address;
     return nullptr;
   }
 
@@ -1715,6 +1716,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // The address is valid, the memory is executable, but we don't actually have
   // the data available for lifting, so leave us with just a declaration.
   if (!MemoryProvider::HasByte(first_byte_avail)) {
+    LOG(ERROR) << "Memprov does not have bytes for func: " << std::hex
+               << decl.address;
     return native_func;
   }
 
@@ -1778,6 +1781,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
 
+  LOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitInstructions(func_address);
 
