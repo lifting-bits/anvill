@@ -24,7 +24,7 @@ class ControlFlowTargetList:
     """A list of targets reachable from a given address"""
 
     source: int = 0
-    destination_list: List[List[int, Dict[str, int]]] = field(default_factory=list)
+    destination_list: List[Tuple[int, Dict[str, int]]] = field(default_factory=list)
     complete: bool = False
 
 
