@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
