@@ -58,6 +58,23 @@ static void ClearVariableNames(llvm::Function *func) {
   }
 }
 
+static remill::DecodingContext::ContextMap WrapContextMapWithControlFlowTargets(
+    const remill::DecodingContext::ContextMap &old_mapper,
+    const ControlFlowTargetList &target_list) {
+
+  return [old_mapper, target_list](uint64_t addr) {
+    auto context = old_mapper(addr);
+    if (auto elem = target_list.target_addresses.find(addr);
+        elem != target_list.target_addresses.end()) {
+      for (const auto &[k, v] : elem->second) {
+        context.UpdateContextReg(k, v);
+      }
+    }
+
+    return context;
+  };
+}
+
 // A function that ensures that the memory pointer escapes, and thus none of
 // the memory writes at the end of a function are lost.
 static llvm::Function *
@@ -333,10 +350,13 @@ void FunctionLifter::VisitDirectJump(
 void FunctionLifter::DoSwitchBasedIndirectJump(
     const remill::Instruction &inst, llvm::BasicBlock *block,
     const ControlFlowTargetList &target_list,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::DecodingContext::ContextMap &old_mapper) {
 
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
+
+  // First we update the mapper with the assignments from the target list so that mappings are consistent
+  auto mapper = WrapContextMapWithControlFlowTargets(old_mapper, target_list);
 
   // This is a list of the possibilities we want to cover:
   //
@@ -353,8 +373,10 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     add_remill_jump = false;
 
     auto destination = *(target_list.target_addresses.begin());
-    llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination, mapper),
-                             block);
+
+
+    llvm::BranchInst::Create(
+        GetOrCreateTargetBlock(inst, destination.first, mapper), block);
 
     // We have multiple destinations. Handle this with a switch. If the target
     // list is not marked as complete, then we'll still add __remill_jump
@@ -388,7 +410,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
     for (auto destination : target_list.target_addresses) {
       switch_parameters.push_back(
-          llvm::ConstantInt::get(pc_reg->type, destination));
+          llvm::ConstantInt::get(pc_reg->type, destination.first));
     }
 
     // Invoke the anvill switch
@@ -406,7 +428,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     auto dest_id{0u};
 
     for (auto dest : target_list.target_addresses) {
-      auto dest_block = GetOrCreateTargetBlock(inst, dest, mapper);
+      auto dest_block = GetOrCreateTargetBlock(inst, dest.first, mapper);
       auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
       switch_inst->addCase(dest_case, dest_block);
     }

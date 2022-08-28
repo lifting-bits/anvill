@@ -241,17 +241,58 @@ bool SpecificationImpl::ParseControlFlowTargets(
 
     auto sub_index{0u};
     for (const auto &destination_list_entry : *destination_list) {
-      auto maybe_destination = destination_list_entry.getAsInteger();
-      if (!maybe_destination.hasValue()) {
-        ss << "Non-integer value in " << sub_index
+      auto maybe_destination = destination_list_entry.getAsArray();
+      if (!maybe_destination) {
+        ss << "Non-list value in " << sub_index
            << "th entry of 'destinations' list of " << index
            << "th entry of 'control_flow_targets' list (source address: "
            << std::hex << source_address << ") of program specification";
         return false;
       }
 
-      auto destination = maybe_destination.getValue();
-      target_list->target_addresses.insert(destination);
+      if (maybe_destination->size() != 2) {
+        ss << "List too short in " << sub_index
+           << "th entry of 'destinations' list of " << index
+           << "th entry of 'control_flow_targets' list (source address: "
+           << std::hex << source_address << ") of program specification";
+        return false;
+      }
+
+      auto maybe_target_address = (*maybe_destination)[0].getAsInteger();
+      auto maybe_context_assignments = (*maybe_destination)[1].getAsObject();
+      if (!maybe_target_address) {
+        ss << "First member of destination list is not int " << sub_index
+           << "th entry of 'destinations' list of " << index
+           << "th entry of 'control_flow_targets' list (source address: "
+           << std::hex << source_address << ") of program specification";
+        return false;
+      }
+
+      if (!maybe_context_assignments) {
+        ss << "Second member of destination list is not an assignment object "
+           << sub_index << "th entry of 'destinations' list of " << index
+           << "th entry of 'control_flow_targets' list (source address: "
+           << std::hex << source_address << ") of program specification";
+        return false;
+      }
+
+      auto destination = maybe_target_address.getValue();
+      std::map<std::string, uint64_t> &assignment_list =
+          target_list->target_addresses.insert({destination, {}}).first->second;
+
+      for (const auto &[k, v] : *maybe_context_assignments) {
+        auto assign = k.str();
+        auto maybe_value = v.getAsUINT64();
+        if (!maybe_value) {
+          ss << "Second member of a context assignment is not an unsigned integer in the context for "
+             << sub_index << "th entry of 'destinations' list of " << index
+             << "th entry of 'control_flow_targets' list (source address: "
+             << std::hex << source_address << ") of program specification";
+          return false;
+        }
+
+        assignment_list.emplace(assign, *maybe_value);
+      }
 
       ++sub_index;
     }
@@ -800,7 +841,15 @@ Specification::EncodeToJSON(void) {
 
     llvm::json::Array destinations;
     for (auto dest_address : to_list->target_addresses) {
-      destinations.push_back(static_cast<int64_t>(dest_address));
+      llvm::json::Array pair;
+      pair.push_back(dest_address.first);
+
+      llvm::json::Object assignment_obj;
+      for (const auto &[k, v] : dest_address.second) {
+        assignment_obj.insert({k, v});
+      }
+
+      pair.emplace_back(std::move(assignment_obj));
     }
 
     llvm::json::Object tl;
