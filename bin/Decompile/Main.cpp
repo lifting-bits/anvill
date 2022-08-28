@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
 
   spec.ForEachFunction([&lifter, &names, &target_funcs](auto decl) {
     llvm::Function *func;
-    if (target_funcs.empty() ||
+    if (FLAGS_lift_list.empty() ||
         target_funcs.find(decl->address) != target_funcs.end()) {
       LOG(INFO) << "attempting to lift: " << std::hex << decl->address;
       func = lifter.LiftEntity(*decl);

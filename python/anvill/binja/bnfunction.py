@@ -87,6 +87,10 @@ class BNFunction(Function):
         self._is_external: bool = is_external
         self._bn_func: bn.Function = bn_func
 
+       @abstractmethod
+    def get_context_assignments_for_addr(self, ea: int) -> Dict[str, int]:
+        ...
+
     def name(self) -> str:
         return self._bn_func.name
 

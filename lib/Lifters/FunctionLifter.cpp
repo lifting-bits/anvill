@@ -1257,6 +1257,9 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         }
       }
 
+
+      // TODO(Ian): If we hit this in our new model then the low level lift is a failure and we need to mark this somehow...
+      // otherwise we are inventing the abscence of control flow...
       LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;

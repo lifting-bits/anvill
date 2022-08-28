@@ -24,7 +24,7 @@ class ControlFlowTargetList:
     """A list of targets reachable from a given address"""
 
     source: int = 0
-    destination_list: List[int] = field(default_factory=list)
+    destination_list: List[List[int, Dict[str, int]]] = field(default_factory=list)
     complete: bool = False
 
 
@@ -79,6 +79,12 @@ class Specification(ABC):
                 return self.get_variable_impl(ea)
             except Exception as e:
                 raise type(e)(f"Error when trying to get variable {ea:x}: {str(e)}") from e
+
+
+
+    @abstractmethod
+    def get_context_assignments_for_addr(self, ea: int) -> Dict[str, int]:
+        ...
 
     @abstractmethod
     def get_symbols_impl(self, ea: int) -> Iterator[str]:
@@ -166,9 +172,13 @@ class Specification(ABC):
         if source_ea in self._control_flow_targets:
             return False
 
+
+        target_list_enriched = [[dest_addr, self.get_context_assignments_for_addr(dest_addr)] for dest_addr in destination_list]
+
+
         entry = ControlFlowTargetList()
         entry.source = source_ea
-        entry.destination_list = destination_list
+        entry.destination_list = target_list_enriched
         entry.complete = complete
 
         self._control_flow_targets[entry.source] = entry
