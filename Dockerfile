@@ -58,7 +58,7 @@ RUN apt-get update && \
 WORKDIR /dependencies
 
 # cxx-common
-ADD https://github.com/lifting-bits/cxx-common/releases/download/${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
