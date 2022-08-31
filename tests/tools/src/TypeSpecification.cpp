@@ -8,7 +8,7 @@
 
 #include <anvill/Type.h>
 
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/IR/Module.h>
 
 #include <vector>

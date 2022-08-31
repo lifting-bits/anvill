@@ -10,10 +10,6 @@ if (NOT EXISTS "${VCPKG_ROOT}")
   message(FATAL_ERROR "VCPKG_ROOT directory does not exist: '${VCPKG_ROOT}'")
 endif()
 
-# Find remill first because its config has useful dependency-finding info that
-# needs to be found before the CMake `project` declaration
-find_package(remill COMPONENTS VCPKG_DEPS QUIET)
-
 set(VCPKG_ROOT_INSTALL_DIR "${VCPKG_ROOT}/installed")
 if (NOT EXISTS "${VCPKG_ROOT_INSTALL_DIR}")
   message(FATAL_ERROR "VCPKG_ROOT installation directory does not exist: '${VCPKG_ROOT_INSTALL_DIR}'")

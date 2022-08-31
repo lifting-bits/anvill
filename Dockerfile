@@ -1,6 +1,7 @@
 ARG LLVM_VERSION=14
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=18.04
+ARG CXX_COMMON_VERSION=0.2.10
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
@@ -46,6 +47,7 @@ FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
 ARG UBUNTU_VERSION
 ARG ARCH
 ARG LLVM_VERSION
+ARG CXX_COMMON_VERSION
 ARG LIBRARIES
 
 RUN apt-get update && \
@@ -56,7 +58,7 @@ RUN apt-get update && \
 WORKDIR /dependencies
 
 # cxx-common
-ADD https://github.com/lifting-bits/cxx-common/releases/download/v0.2.7/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 

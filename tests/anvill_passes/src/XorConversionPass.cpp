@@ -10,7 +10,7 @@
 #include <anvill/Passes/ConvertXorsToCmps.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Verifier.h>

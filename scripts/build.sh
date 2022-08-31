@@ -26,6 +26,7 @@ BUILD_DIR="${CURR_DIR}/anvill-build"
 REMILL_BUILD_DIR="${CURR_DIR}/remill-build"
 INSTALL_DIR=/usr/local
 LLVM_VERSION=llvm-14
+CXX_COMMON_VERSION="0.2.10"
 OS_VERSION=unknown
 ARCH_VERSION=unknown
 BUILD_FLAGS=
@@ -90,8 +91,8 @@ function GetArchVersion
       ARCH_VERSION=amd64
       return 0
     ;;
-    aarch64)
-      ARCH_VERSION=aarch64
+    arm64 | aarch64)
+      ARCH_VERSION=arm64
       return 0
     ;;
     *)
@@ -104,7 +105,7 @@ function GetArchVersion
 function DownloadVcpkgLibraries
 {
   local GITHUB_LIBS="${LIBRARY_VERSION}.tar.xz"
-  local URL="https://github.com/lifting-bits/cxx-common/releases/download/v0.2.7/${GITHUB_LIBS}"
+  local URL="https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/${GITHUB_LIBS}"
 
   mkdir -p "${DOWNLOAD_DIR}"
   pushd "${DOWNLOAD_DIR}" || return 1

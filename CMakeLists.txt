@@ -16,7 +16,6 @@ project("anvill")
 
 include(GNUInstallDirs)
 include("cmake/system.cmake")
-include("cmake/llvm.cmake")
 
 if(ANVILL_ENABLE_INSTALL)
   include("cmake/packaging.cmake")
@@ -30,7 +29,9 @@ find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(Z3 4.8 CONFIG REQUIRED)
-find_llvm(llvm "${_VCPKG_SHARE_DIR}")
+find_package(doctest CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(LLVM CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+llvm_map_components_to_libnames(llvm_libs support core irreader bitreader bitwriter)
 
 find_package(sleigh CONFIG)
 find_package(remill CONFIG REQUIRED)
@@ -54,12 +55,6 @@ if(ANVILL_ENABLE_INSTALL)
   install(EXPORT "${PROJECT_NAME}Targets"
     DESTINATION "${cmake_install_dir}"
     NAMESPACE "${PROJECT_NAME}::"
-  )
-  install(
-    TARGETS
-    "llvm"
-    EXPORT
-    "${PROJECT_NAME}Targets"
   )
 endif(ANVILL_ENABLE_INSTALL)
 

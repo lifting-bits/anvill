@@ -1,6 +1,6 @@
 #include <anvill/Lifters.h>
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/IR/Verifier.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>

@@ -2,7 +2,7 @@
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/LLVMContext.h>

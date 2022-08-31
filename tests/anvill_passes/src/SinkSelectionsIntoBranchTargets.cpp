@@ -9,7 +9,7 @@
 #include <anvill/Passes/SinkSelectionsIntoBranchTargets.h>
 #include <llvm/IR/Dominators.h>
 #include <anvill/Transforms.h>
-#include <doctest.h>
+#include <doctest/doctest.h>
 #include <llvm/IR/Verifier.h>
 #include "Utils.h"
 

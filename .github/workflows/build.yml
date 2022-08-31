@@ -61,7 +61,7 @@ jobs:
         binja:
           - {channel: 'headless', version: '3.1.3479'}
         llvm: [ '14' ]
-        cxxcommon_version: [ 'v0.2.7' ]
+        cxxcommon_version: [ 'v0.2.10' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -99,26 +99,26 @@ jobs:
           echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
 
       - name: Update the cache (downloads)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.DOWNLOADS }}
 
           key: |
-            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ github.sha }}
+            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}_${{ github.sha }}
 
           restore-keys: |
-            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}
+            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}
 
       - name: Update the cache (ccache)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.CCACHE }}
 
           key: |
-            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ github.sha }}
+            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}_${{ github.sha }}
 
           restore-keys: |
-            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}
+            gitmodules_${{ matrix.image.name }}_${{ matrix.image.tag }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}
 
       # TODO(alessandro): Remove this step once the dependencies have been embedded in the container image
       - name: Install system dependencies
@@ -421,7 +421,7 @@ jobs:
       matrix:
         os: [ 'macos-11' ]
         llvm: [ '14' ]
-        cxxcommon_version: [ 'v0.2.7' ]
+        cxxcommon_version: [ 'v0.2.10' ]
 
     runs-on: ${{ matrix.os }}
 
@@ -458,10 +458,10 @@ jobs:
           path: ${{ steps.build_paths.outputs.DOWNLOADS }}
 
           key: |
-            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ github.sha }}
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}_${{ github.sha }}
 
           restore-keys: |
-            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}
+            gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}
 
       - name: Update the cache (ccache)
         uses: actions/cache@v2
