@@ -7,8 +7,8 @@
 #
 
 # Common settings
-set(CPACK_PACKAGE_DESCRIPTION "IRENE")
-set(CPACK_PACKAGE_NAME "IRENE")
+set(CPACK_PACKAGE_DESCRIPTION "Anvill")
+set(CPACK_PACKAGE_NAME "Anvill")
 set(CPACK_PACKAGE_VERSION "1.0.0")
 set(CPACK_PACKAGE_VENDOR "Trail of Bits")
 set(CPACK_PACKAGE_CONTACT "peter@trailofbits.com")
