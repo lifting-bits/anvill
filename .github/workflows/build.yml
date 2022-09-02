@@ -228,7 +228,7 @@ jobs:
 
         run: |
           cmake --build remill_build \
-                -j ${{ steps.build_job_count.VALUE }}
+                -j ${{ steps.build_job_count.outputs.VALUE }}
 
       - name: Install remill
         id: remill_installer
