@@ -309,8 +309,7 @@ class FunctionLifter {
   // thunks
   std::optional<CallableDecl>
   TryGetTargetFunctionType(const remill::Instruction &inst,
-                           std::uint64_t address,
-                           std::uint64_t redirected_address);
+                           std::uint64_t address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
@@ -368,11 +367,10 @@ class FunctionLifter {
   // Enact relevant control-flow changed after a function call. This figures
   // out the return address targeted by the callee and links it into the
   // control-flow graph.
-  void
-  VisitAfterFunctionCall(const remill::Instruction &inst,
-                         llvm::BasicBlock *block,
-                         const remill::DecodingContext::ContextMap &mapper,
-                         bool can_return);
+  void VisitAfterFunctionCall(const remill::Instruction &inst,
+                              llvm::BasicBlock *block,
+                              const remill::DecodingContext::ContextMap &mapper,
+                              bool can_return);
 
   // Visit a conditional control-flow branch. Both the taken and not taken
   // targets are known by the decoder and their addresses are available in
