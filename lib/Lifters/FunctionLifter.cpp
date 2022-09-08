@@ -1214,16 +1214,15 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
           std::move(maybe_decl.value()));
 
-      llvm::Instruction *ret;
+
       if (is_noreturn) {
         auto tail = remill::AddTerminatingTailCall(
             ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
         AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-        ret = ir.CreateRet(tail);
       } else {
-        ret = ir.CreateRet(new_mem_ptr);
+        llvm::Instruction *ret = ir.CreateRet(new_mem_ptr);
+        AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
       }
-      AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
       continue;
     }
 
