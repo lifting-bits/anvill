@@ -330,10 +330,7 @@ class ControlFlowProvider {
  public:
   virtual ~ControlFlowProvider(void) = default;
 
-  // Returns a possible redirection for the given target. If there is no
-  // redirection then `address` should be returned.
-  virtual std::uint64_t GetRedirection(const remill::Instruction &from_inst,
-                                       std::uint64_t to_address) const = 0;
+  virtual std::uint64_t GetCallRedirection(uint64_t from_addres) const = 0;
 
   // Returns a list of targets reachable from the given address
   virtual std::optional<ControlFlowTargetList>
@@ -354,8 +351,8 @@ class NullControlFlowProvider : public ControlFlowProvider {
  public:
   virtual ~NullControlFlowProvider(void) = default;
 
-  std::uint64_t GetRedirection(const remill::Instruction &,
-                               std::uint64_t address) const override;
+
+  std::uint64_t GetCallRedirection(uint64_t from_addres) const override;
 
   std::optional<ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &) const override;
@@ -370,8 +367,7 @@ class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
 
   explicit SpecificationControlFlowProvider(const Specification &spec);
 
-  std::uint64_t GetRedirection(const remill::Instruction &from_inst,
-                               std::uint64_t address) const final;
+  std::uint64_t GetCallRedirection(uint64_t from_addres) const override;
 
   std::optional<anvill::ControlFlowTargetList>
   TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;

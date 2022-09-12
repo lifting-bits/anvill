@@ -225,9 +225,7 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
 llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(
     const remill::Instruction &from_inst, uint64_t to_addr,
     const remill::DecodingContext::ContextMap &mapper) {
-  return GetOrCreateBlock(
-      from_inst.pc,
-      options.control_flow_provider.GetRedirection(from_inst, to_addr), mapper);
+  return GetOrCreateBlock(from_inst.pc, to_addr, mapper);
 }
 
 // Try to decode an instruction at address `addr` into `*inst_out`. Returns
@@ -556,24 +554,12 @@ void FunctionLifter::VisitConditionalFunctionReturn(
 
 std::optional<CallableDecl>
 FunctionLifter::TryGetTargetFunctionType(const remill::Instruction &from_inst,
-                                         std::uint64_t address,
-                                         std::uint64_t redirected_address) {
+                                         std::uint64_t address) {
   std::optional<CallableDecl> opt_callable_decl =
       type_provider.TryGetCalledFunctionTypeOrDefault(func_address, from_inst,
-                                                      redirected_address);
+                                                      address);
 
-  if (opt_callable_decl) {
-    return opt_callable_decl;
-
-    // In case we get redirected but still fail, try once more with the original
-    // address
-  } else if (address != redirected_address) {
-    return type_provider.TryGetCalledFunctionTypeOrDefault(func_address,
-                                                           from_inst, address);
-
-  } else {
-    return std::nullopt;
-  }
+  return opt_callable_decl;
 }
 
 // Call `pc` in `block`, treating it as a callable declaration `decl`.
@@ -613,15 +599,14 @@ bool FunctionLifter::CallFunction(const remill::Instruction &inst,
   std::optional<CallableDecl> maybe_decl;
 
   if (target_pc) {
-
     // First, try to see if it's actually related to another function. This is
     // equivalent to a tail-call in the original code.
     auto target_addr = target_pc.value();
     const auto redirected_addr =
-        options.control_flow_provider.GetRedirection(inst, target_addr);
+        options.control_flow_provider.GetCallRedirection(target_addr);
 
     // Now, get the type of the target given the source and destination.
-    maybe_decl = TryGetTargetFunctionType(inst, target_addr, redirected_addr);
+    maybe_decl = TryGetTargetFunctionType(inst, redirected_addr);
     target_pc = redirected_addr;
 
   } else {
@@ -859,9 +844,7 @@ void FunctionLifter::VisitAfterFunctionCall(
     auto tail = remill::AddTerminatingTailCall(
         ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
     AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-    auto ret = ir.CreateRet(tail);
     AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-    AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
   }
 }
 
@@ -1195,21 +1178,20 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       continue;  // Already handled.
     }
 
-    // Is there a redirection?
+    // Is this edge to a function redirected?
     std::uint64_t redir_addr =
-        options.control_flow_provider.GetRedirection(inst, inst_addr);
+        options.control_flow_provider.GetCallRedirection(inst_addr);
 
     std::optional<FunctionDecl> inst_func;
-    if (redir_addr != inst_addr) {
-      if (redir_addr != func_address) {
-        inst_func =
-            options.type_provider.TryGetFunctionTypeOrDefault(redir_addr);
 
-        // It looks like a self tail-call.
-      } else if (from_addr) {
-        inst_func = *curr_decl;
-      }
+    if (redir_addr != func_address) {
+      inst_func = options.type_provider.TryGetFunctionTypeOrDefault(redir_addr);
+
+      // It looks like a self tail-call.
+    } else if (from_addr) {
+      inst_func = *curr_decl;
     }
+
 
     pc_annotation = GetPCAnnotation(inst_addr);
 
@@ -1219,7 +1201,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     if (inst_func) {
       std::optional<CallableDecl> maybe_decl;
       if (from_addr) {
-        maybe_decl = TryGetTargetFunctionType(inst, inst_addr, redir_addr);
+        maybe_decl = TryGetTargetFunctionType(inst, redir_addr);
       }
 
       if (!maybe_decl) {
@@ -1232,16 +1214,15 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
           block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
           std::move(maybe_decl.value()));
 
-      llvm::Instruction *ret;
+
       if (is_noreturn) {
         auto tail = remill::AddTerminatingTailCall(
             ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
         AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-        ret = ir.CreateRet(tail);
       } else {
-        ret = ir.CreateRet(new_mem_ptr);
+        llvm::Instruction *ret = ir.CreateRet(new_mem_ptr);
+        AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
       }
-      AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
       continue;
     }
 
@@ -1263,8 +1244,6 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       if (inst_addr == func_address) {
         inst.pc = inst_addr;
         inst.arch_name = options.arch->arch_name;
-        inst_addr =
-            options.control_flow_provider.GetRedirection(inst, inst_addr);
 
         // Failed to decode the first instruction of the function, but we can
         // possibly recover via a tail-call to a redirection address!
@@ -1295,19 +1274,6 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       MuteStateEscape(call);
       continue;
     } else {
-      if (inst_addr == func_address) {
-        inst_addr =
-            options.control_flow_provider.GetRedirection(inst, inst_addr);
-
-        // Redirect control-flow out of this function if possible. This helps
-        // us lift GOT/PLT thunks into things that aren't just indirect jumps
-        // that leak the `State` structure.
-        if (inst_addr != func_address) {
-          this->BranchToInst(func_address, inst_addr, *next_context, block);
-          continue;
-        }
-      }
-
       VisitInstruction(inst, block, insn_context, *next_context);
     }
   }
@@ -1671,6 +1637,15 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   }
 
   // Initialize cleanup optimizations
+
+
+  if (llvm::verifyFunction(*native_func, &llvm::errs())) {
+
+    LOG(FATAL) << "Function verification failed: "
+               << native_func->getName().str() << " "
+               << remill::LLVMThingToString(native_func->getType());
+  }
+
   llvm::legacy::FunctionPassManager fpm(semantics_module.get());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createPromoteMemoryToRegisterPass());
