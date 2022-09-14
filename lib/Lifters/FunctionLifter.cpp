@@ -533,6 +533,37 @@ void FunctionLifter::VisitConditionalIndirectJump(
   AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
 }*/
 
+void FunctionLifter::VisitConditionalInstruction(
+    const remill::Instruction &inst,
+    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
+    const remill::Instruction::ConditionalInstruction &conditional_insn,
+    const remill::DecodingContext &prev_context) {
+  const auto lifted_func = block->getParent();
+  const auto cond = remill::LoadBranchTaken(block);
+  const auto taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+  const auto not_taken_block =
+      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+
+  auto cond_jump_fallthrough_br =
+      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
+
+  FlowVisitor visitor = {*this, inst, taken_block, delayed_inst, prev_context};
+  std::visit(visitor, conditional_insn.taken_branch);
+
+  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
+
+
+  auto fallthrough_br = llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.next_pc,
+                             conditional_insn.fall_through.fallthrough_context),
+      not_taken_block);
+
+  AnnotateInstruction(cond_jump_fallthrough_br, pc_annotation_id,
+                      pc_annotation);
+  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
+}
+
 // Visit a function return control-flow instruction, which is a form of
 // indirect control-flow, but with a certain semantic associated with
 // returning from a function. This is treated similarly to indirect jumps,
@@ -2060,8 +2091,13 @@ void FunctionLifter::FlowVisitor::operator()(
 }
 void FunctionLifter::FlowVisitor::operator()(
     const remill::Instruction::ConditionalInstruction &cond_insn) {
-  this->lifter.VisitConditionalInstruction(inst, delayed_inst, block,
-                                           cond_insn);
+  this->lifter.VisitConditionalInstruction(inst, delayed_inst, block, cond_insn,
+                                           this->prev_context);
+}
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::NoOp &noop) {
+  this->lifter.VisitNoOp(inst, block, noop);
 }
 
 }  // namespace anvill

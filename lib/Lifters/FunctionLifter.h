@@ -301,7 +301,8 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   void VisitConditionalInstruction(
       const remill::Instruction &inst,
       std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-      const remill::Instruction::ConditionalInstruction &conditional_insn);
+      const remill::Instruction::ConditionalInstruction &conditional_insn,
+      const remill::DecodingContext &prev_context);
 
   // Visit a function return control-flow instruction, which is a form of
   // indirect control-flow, but with a certain semantic associated with
