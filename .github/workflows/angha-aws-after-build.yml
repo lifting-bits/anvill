@@ -1,0 +1,191 @@
+name: Run AnghaBench CI After Build
+
+on:
+  # Only run when normal CI steps complete
+  # Otherwise we'd just fail to build this anvill branch
+  workflow_run:
+    workflows: ["Build"]
+    types: [completed]
+
+jobs:
+  start-runner:
+    if: github.event.workflow_run.conclusion == 'success' 
+    name: Start self-hosted EC2 runner
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ec2:
+          - { ami: ami-0610b26d76319237e, instance-type: m6i.8xlarge}
+    outputs:
+      label: ${{ steps.start-ec2-runner.outputs.label }}
+      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Start EC2 runner
+        id: start-ec2-runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: start
+          github-token: ${{ secrets.ACCESS_TOKEN }}
+          ec2-image-id: ${{ matrix.ec2.ami }}
+          ec2-instance-type: ${{ matrix.ec2.instance-type }}
+          subnet-id: subnet-0deb935f0bbfe1a5d
+          security-group-id: sg-0f6a02eb80fafb982
+          aws-resource-tags: > # optional, requires additional permissions
+            [
+              {"Key": "Name", "Value": "ec2-github-runner"},
+              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
+            ]
+  do-the-job:
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm: [ '14' ]
+        run_size: [ '1k' ]
+        binja:
+          - {channel: 'headless-dev', version: '2.5.3126'}
+
+    name: Run AnghaBench CI (AMD64)
+    needs: start-runner # required to start the main job when the runner is ready
+    runs-on: ${{ needs.start-runner.outputs.label }} # run the job on the newly created runner
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.workflow_run.head_branch }}
+        submodules: true
+    # https://stackoverflow.com/questions/58033366/how-to-get-current-branch-within-github-actions
+    - name: Extract branch name
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+      id: extract_branch
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Fix github token auth
+      shell: bash
+      env:
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      run: |
+        export HOME=${HOME:-/root}
+        git config --global user.name "CI User" && git config --global user.email "ci@none.local"
+        git config --global url."https://${ACCESS_TOKEN}@github.com/".insteadOf "git@github.com:"
+    - name: Set up pre-requisies
+      run: |
+        sudo dpkg --add-architecture i386 && sudo apt-get -qqy update && sudo env DEBIAN_FRONTEND=noninteractive apt-get -qqy upgrade
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -qqy \
+          git curl wget unzip xz-utils pixz jq s3cmd ninja-build pkg-config \
+          liblzma-dev zlib1g-dev libtinfo-dev build-essential \
+          libc6-dev:i386 libstdc++-*-dev:i386 g++-multilib
+        wget "https://github.com/Kitware/CMake/releases/download/v3.22.3/cmake-3.22.3-linux-$(uname -m).sh" && \
+          /bin/bash cmake-*.sh --skip-license --prefix=/usr/local && rm cmake-*.sh
+        python3 -m pip install requests
+        python3 -m venv anvill-venv
+        source anvill-venv/bin/activate
+    - name: Build anvill against LLVM ${{ matrix.llvm }}
+      run: |
+        # build us an anvill (and remill)
+        scripts/build.sh \
+            --install \
+            --llvm-version ${{ matrix.llvm }} \
+            --extra-cmake-args "-DCMAKE_BUILD_TYPE=Release"
+        # Should be installed by build.sh --isntall, but sometimes the script accidentally breaks venv installs
+        python3 setup.py install
+        # install binja
+        ci/install_binja.sh
+        python3 ci/switcher.py --version ${BINJA_VERSION} ${BINJA_CHANNEL}
+      env:
+        BINJA_VERSION: ${{ matrix.binja.version }}
+        BINJA_CHANNEL: ${{ matrix.binja.channel }}
+        BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
+
+    - name: Fetch Angha Data for LLVM {{ matrix.llvm }}
+      run: |
+          pushd libraries/lifting-tools-ci
+          if [[ -f requirements.txt ]]
+          then
+              python3 -m pip install -r requirements.txt
+          fi
+
+          mkdir -p $(pwd)/decompiled
+          mkdir -p $(pwd)/recompiled
+
+          datasets/fetch_anghabench.sh --clang "${LLVM_VERSION}" --binaries --run-size "${RUN_SIZE}"
+
+          for i in *.tar.xz
+          do
+              tar -xJf $i
+          done
+          popd
+      env:
+        LLVM_VERSION: ${{ matrix.llvm }}
+        RUN_SIZE: ${{ matrix.run_size }}
+
+    - name: Run Angha Against LLVM ${{ matrix.llvm }}
+      run: |
+
+          pushd external/lifting-tools-ci
+          # Run the benchmark
+          tool_run_scripts/anvill.py \
+              --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
+              --input-dir $(pwd)/binaries \
+              --output-dir $(pwd)/anvill_bitcode \
+              --anvill-decompile /usr/local/bin/anvill-decompile-json \
+              --slack-notify
+      env:
+        RUN_SIZE: ${{ matrix.run_size }}
+        RELLIC_BRANCH: ${{ steps.extract_branch.outputs.branch }}
+        RUN_NAME: "Rellic After Build CI Run"
+        SLACK_HOOK: ${{ secrets.SLACK_HOOK }}
+        DO_TOKEN: ${{ secrets.DO_TOKEN }}
+        LLVM_VERSION: ${{ matrix.llvm }}
+
+    - name: Save Angha Run for LLVM {{ matrix.llvm }}
+      run: |
+        if [[ "${AWS_ACCESS_KEY_ID,,}" != "" ]]
+        then
+            datenow=$(date +'%F-%H-%M')
+            url_base="https://tob-amp-ci-results.nyc3.digitaloceanspaces.com"
+            tar -Ipixz -cf anvill-ci-${datenow}.tar.xz anvill_bitcode
+
+            s3cmd -c /dev/null \
+                '--host-bucket=%(bucket)s.nyc3.digitaloceanspaces.com' \
+                --acl-public \
+                put \
+                anvill-ci-${datenow}.tar.xz \
+                s3://tob-amp-ci-results/anvill/
+
+            tool_run_scripts/slack.py \
+                --msg "Uploaded Anvill lifting results to ${url_base}/anvill/anvill-ci-${datenow}.tar.xz"
+        fi
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+        SLACK_HOOK: ${{ secrets.SLACK_HOOK }}
+
+  stop-runner:
+    name: Stop self-hosted EC2 runner
+    needs:
+      - start-runner # required to get output from the start-runner job
+      - do-the-job # required to wait when the main job is done
+    runs-on: ubuntu-latest
+    if: ${{ always() }} # required to stop the runner even if the error happened in the previous jobs
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Stop EC2 runner
+        uses: machulav/ec2-github-runner@v2
+        with:
+          mode: stop
+          github-token: ${{ secrets.ACCESS_TOKEN }}
+          label: ${{ needs.start-runner.outputs.label }}
+          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
