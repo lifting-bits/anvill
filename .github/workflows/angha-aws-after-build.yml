@@ -63,6 +63,14 @@ jobs:
       shell: bash
       run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
       id: extract_branch
+    - name: Fix github token auth
+      shell: bash
+      env:
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      run: |
+        export HOME=${HOME:-/root}
+        git config --global user.name "CI User" && git config --global user.email "ci@none.local"
+        git config --global url."https://${ACCESS_TOKEN}@github.com/".insteadOf "git@github.com:"
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
