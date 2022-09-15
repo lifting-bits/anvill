@@ -72,10 +72,12 @@ jobs:
       env:
         ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
       run: |
+        export HOME=${HOME:-/root}
         git config --global user.name "CI User" && git config --global user.email "ci@none.local"
         git config --global url."https://${ACCESS_TOKEN}@github.com/".insteadOf "git@github.com:"
     - name: Set up pre-requisies
       run: |
+        export HOME=${HOME:-/root}
         sudo dpkg --add-architecture i386 && sudo apt-get -qqy update && sudo env DEBIAN_FRONTEND=noninteractive apt-get -qqy upgrade
         sudo env DEBIAN_FRONTEND=noninteractive apt-get install -qqy \
           git curl wget unzip xz-utils pixz jq s3cmd ninja-build pkg-config \
@@ -88,6 +90,7 @@ jobs:
         source anvill-venv/bin/activate
     - name: Build anvill against LLVM ${{ matrix.llvm }}
       run: |
+        export HOME=${HOME:-/root}
         # build us an anvill (and remill)
         scripts/build.sh \
             --install \
@@ -138,14 +141,12 @@ jobs:
               --slack-notify
       env:
         RUN_SIZE: ${{ matrix.run_size }}
-        RELLIC_BRANCH: ${{ steps.extract_branch.outputs.branch }}
-        RUN_NAME: "Rellic After Build CI Run"
+        RUN_NAME: "Anvill After Build CI Run"
         SLACK_HOOK: ${{ secrets.SLACK_HOOK }}
         DO_TOKEN: ${{ secrets.DO_TOKEN }}
         LLVM_VERSION: ${{ matrix.llvm }}
 
-    - name: Save Angha Run for LLVM {{ matrix.llvm }}
-      run: |
+    - name: Save Angha Run for LLVM {{ matrix.llvm }} run: |
         if [[ "${AWS_ACCESS_KEY_ID,,}" != "" ]]
         then
             datenow=$(date +'%F-%H-%M')
