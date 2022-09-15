@@ -327,6 +327,7 @@ void FunctionLifter::VisitDirectJump(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::Instruction::DirectJump &mapper) {
+
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   llvm::BranchInst::Create(
       GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
@@ -538,6 +539,7 @@ void FunctionLifter::VisitConditionalInstruction(
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::Instruction::ConditionalInstruction &conditional_insn,
     const remill::DecodingContext &prev_context) {
+
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block =
