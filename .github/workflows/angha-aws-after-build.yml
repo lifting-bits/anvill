@@ -146,7 +146,8 @@ jobs:
         DO_TOKEN: ${{ secrets.DO_TOKEN }}
         LLVM_VERSION: ${{ matrix.llvm }}
 
-    - name: Save Angha Run for LLVM {{ matrix.llvm }} run: |
+    - name: Save Angha Run for LLVM {{ matrix.llvm }}
+      run: |
         if [[ "${AWS_ACCESS_KEY_ID,,}" != "" ]]
         then
             datenow=$(date +'%F-%H-%M')
