@@ -39,13 +39,14 @@ jobs:
         run: |
           pip install requests
 
-      - name: Cancel old workflow runs
+      # NOTE(artem): This has bad interactions with AWS CI runners
+      #- name: Cancel old workflow runs
 
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      #  env:
+      #    GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
-        run: |
-          python3 .github/scripts/abort_previous_workflows.py
+      #  run: |
+      #    python3 .github/scripts/abort_previous_workflows.py
 
 
 
