@@ -111,7 +111,7 @@ jobs:
         BINJA_CHANNEL: ${{ matrix.binja.channel }}
         BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
 
-    - name: Fetch Angha Data for LLVM {{ matrix.llvm }}
+    - name: Fetch Angha Data for LLVM ${{ matrix.llvm }}
       run: |
           pushd libraries/lifting-tools-ci
           if [[ -f requirements.txt ]]
@@ -151,7 +151,7 @@ jobs:
         DO_TOKEN: ${{ secrets.DO_TOKEN }}
         LLVM_VERSION: ${{ matrix.llvm }}
 
-    - name: Save Angha Run for LLVM {{ matrix.llvm }}
+    - name: Save Angha Run for LLVM ${{ matrix.llvm }}
       run: |
         if [[ "${AWS_ACCESS_KEY_ID,,}" != "" ]]
         then
