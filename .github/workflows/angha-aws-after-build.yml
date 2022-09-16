@@ -91,9 +91,12 @@ jobs:
     - name: Build anvill against LLVM ${{ matrix.llvm }}
       run: |
         export HOME=${HOME:-/root}
-        # build us an anvill (and remill)
+        mkdir -p downloads
+        export CC=$(ls -1 downloads/*/installed/*/tools/llvm/clang | head -n 1)
+        export CXX=$(ls -1 downloads/*/installed/*/tools/llvm/clang++ | head -n 1)
         scripts/build.sh \
             --install \
+            --download-dir $(pwd)/downloads \
             --llvm-version ${{ matrix.llvm }} \
             --extra-cmake-args "-DCMAKE_BUILD_TYPE=Release"
         # Should be installed by build.sh --isntall, but sometimes the script accidentally breaks venv installs
