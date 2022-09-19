@@ -39,8 +39,13 @@ class BNVariable(Variable):
             br.seek(ea)
             seg = bv.get_segment_at(ea)
             # _elf_header is getting recovered as variable
-            # get_segment_at(...) returns None for elf_header
-            if seg is None:
+            # ignore null pointer reference
+            if ea == 0:
+                continue
+
+            # ignore data variables with no references
+            var = bv.data_vars.get(ea)
+            if var is not None and next(var.code_refs, None) is None and next(var.data_refs, None) is None:
                 continue
 
             #NOTE(artem): This is a workaround for binary ninja's fake
