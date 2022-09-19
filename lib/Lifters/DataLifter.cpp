@@ -72,8 +72,8 @@ llvm::Constant *DataLifter::GetOrDeclareData(const VariableDecl &decl,
 
     std::stringstream ss;
     ss << kGlobalAliasNamePrefix << std::hex << decl.address << '_'
-       << type_specifier.EncodeToString(
-              type, EncodingFormat::kValidSymbolCharsOnly);
+       << type_specifier.EncodeToString(type,
+                                        EncodingFormat::kValidSymbolCharsOnly);
     const auto name = ss.str();
     const auto ga = llvm::GlobalAlias::create(
         type, 0, llvm::GlobalValue::ExternalLinkage, name, options.module);
@@ -141,8 +141,8 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
 
   std::stringstream ss2;
   ss2 << kGlobalVariableNamePrefix << std::hex << decl.address << '_'
-      << type_specifier.EncodeToString(
-             type, EncodingFormat::kValidSymbolCharsOnly);
+      << type_specifier.EncodeToString(type,
+                                       EncodingFormat::kValidSymbolCharsOnly);
 
   const auto var_name = ss2.str();
   auto var = options.module->getGlobalVariable(var_name);
@@ -191,9 +191,9 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
         type, lifter_context, decl.address);
   }
 
-  return new llvm::GlobalVariable(*options.module, type, false,
-                                  llvm::GlobalValue::ExternalLinkage, value,
-                                  var_name);
+  return new llvm::GlobalVariable(
+      *options.module, type, first_byte_perms == BytePermission::kReadable,
+      llvm::GlobalValue::ExternalLinkage, value, var_name);
 }
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is
