@@ -130,7 +130,10 @@ def main():
                     break
             else:
                 # main use original symbol name
-                if name == "main":
+                # Global and Weak bindings use original name
+                if name == "main" or \
+                   s.binding == bn.SymbolBinding.GlobalBinding or \
+                   s.binding == bn.SymbolBinding.WeakBinding:
                     DEBUG(f"Adding {name}")
                     p.add_symbol(ea, f"{name}")
                 else:
