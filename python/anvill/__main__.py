@@ -134,7 +134,7 @@ def main():
                     DEBUG(f"Adding {name}")
                     p.add_symbol(ea, f"{name}")
                 else:
-                    # all other symbols postfixed with address of function
+                    # all other symbols postfixed with address of symbol
                     DEBUG(f"Adding symbol {name}_{ea:x}")
                     p.add_symbol(ea, f"{name}_{ea:x}")
 
