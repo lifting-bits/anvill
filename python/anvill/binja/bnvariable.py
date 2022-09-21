@@ -18,7 +18,7 @@ class BNVariable(Variable):
         super(BNVariable, self).__init__(arch, address, type_)
         self._bn_var = bn_var
 
-    def visit(self, program, is_definition, add_refs_as_defs):
+    def visit(self, program, is_definition, add_refs_as_defs, ignore_no_refs):
         if not is_definition:
             return
 
@@ -44,9 +44,10 @@ class BNVariable(Variable):
                 continue
 
             # ignore data variables with no references
-            var = bv.data_vars.get(ea)
-            if var is not None and next(var.code_refs, None) is None and next(var.data_refs, None) is None:
-                continue
+            if ignore_no_refs:
+                var = bv.data_vars.get(ea)
+                if var is not None and next(var.code_refs, None) is None and next(var.data_refs, None) is None:
+                    continue
 
             #NOTE(artem): This is a workaround for binary ninja's fake
             # .externs section, which is (correctly) mapped as

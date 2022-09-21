@@ -54,6 +54,8 @@ def main():
 
     arg_parser.add_argument("--entrypoint", type=str, help="only specify functions from entrypoint")
 
+    arg_parser.add_argument("--ignore_no_refs", action="store_true", default=False, help="ignore globals with no references")
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -161,7 +163,7 @@ def main():
         else:
             try:
                 DEBUG(f"Found variable at: {ea:x}")
-                p.add_variable_definition(ea, True)
+                p.add_variable_definition(ea, True, args.ignore_no_refs)
             except:
                 ERROR(f"Error when trying to add variable {ea:x}: {traceback.format_exc()}")
 

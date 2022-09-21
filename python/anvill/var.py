@@ -29,7 +29,7 @@ class Variable(object):
         return self._type
 
     @abstractmethod
-    def visit(self, program: "Specification", is_definition: bool, add_refs_as_defs: bool):
+    def visit(self, program: "Specification", is_definition: bool, add_refs_as_defs: bool, ignore_no_refs: bool):
         ...
 
     def proto(self) -> Dict[str, Any]:
