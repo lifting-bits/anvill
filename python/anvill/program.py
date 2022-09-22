@@ -184,32 +184,39 @@ class Specification(ABC):
         self._control_flow_targets[entry.source] = entry
         return True
 
+    def try_add_function_definition(self,  ea: int, add_refs_as_defs: bool) -> bool:
+        try:
+            return self.add_function_definition(ea, add_refs_as_defs)
+        except InvalidFunctionException:
+            return False
+
+    def try_add_function_declaration(self,  ea: int, add_refs_as_defs: bool) -> bool:
+        try:
+            return self.add_function_declaration(ea, add_refs_as_defs)
+        except InvalidFunctionException:
+            return False
+
     def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False, ignore_no_refs=False) -> bool:
-        DEBUG(f"Attempting to add ref entity: {ea:x} {add_refs_as_defs}")
+        DEBUG(f"Attempting to add ref entity: {ea:x} with refs as defs: {add_refs_as_defs}")
         if add_refs_as_defs:
-            try:
-                DEBUG(f"Adding ref as function {ea:x}")
-                if self.add_function_definition(ea, add_refs_as_defs):
-                    DEBUG(f"Added function {ea:x}")
-                    return True
-            except InvalidFunctionException as e1:
-                pass
+            DEBUG(f"Adding ref as function {ea:x}")
+            if self.try_add_function_definition(ea, add_refs_as_defs):
+                DEBUG(f"Added function {ea:x}")
+                return True
             try:
                 DEBUG(f"Adding ref as variable {ea:x}")
                 if self.add_variable_definition(ea, add_refs_as_defs, ignore_no_refs):
                     DEBUG(f"Variable added {ea:x}")
                     return True
-            except InvalidVariableException as e2:
+            except InvalidVariableException:
                 pass
-        try:
-            self.add_function_declaration(ea, False)
+        
+        if self.try_add_function_declaration(ea, False):
             return True
-        except InvalidFunctionException as e1:
-            try:
-                self.add_variable_declaration(ea, False)
-                return True
-            except InvalidVariableException as e2:
-                return False
+        try:
+            return self.add_variable_declaration(ea, False)
+        except InvalidVariableException:
+            return False
 
     @property
     def memory(self) -> Memory:
