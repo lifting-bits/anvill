@@ -1605,6 +1605,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   std::vector<llvm::CallInst *> calls_to_inline;
 
+  CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
+
   // Set of instructions that we should not annotate because we can't tie them
   // to a particular instruction address.
   std::unordered_set<llvm::Instruction *> insts_without_provenance;
@@ -1636,8 +1638,14 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       }
 
       llvm::InlineFunctionInfo info;
-      llvm::InlineFunction(*call_inst, info);
+      auto res = llvm::InlineFunction(*call_inst, info);
 
+      CHECK(res.isSuccess());
+      if (!res.isSuccess()) {
+        DLOG(ERROR) << "Failed to inline: "
+                    << remill::LLVMThingToString(call_inst->getCalledFunction())
+                    << res.getFailureReason();
+      }
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {
         for (auto &inst : llvm::instructions(*native_func)) {
@@ -1815,6 +1823,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
+
 
   return native_func;
 }
