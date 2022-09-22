@@ -54,6 +54,8 @@ def main():
 
     arg_parser.add_argument("--entrypoint", type=str, help="only specify functions from entrypoint")
 
+    arg_parser.add_argument("--ignore_no_refs", action="store_true", default=False, help="ignore globals with no references")
+
     args = arg_parser.parse_args()
 
     # Configure logger
@@ -122,7 +124,24 @@ def main():
         ea, name = s.address, s.name
         DEBUG(f"Looking at symbol {name}")
         if s.name != "_start" or bv.get_symbol_at(ea).name == s.name:
-            p.add_symbol(ea, name)
+            # extern symbols use original symbol name
+            for sec in bv.get_sections_at(ea):
+                if sec.name == ".extern":
+                    DEBUG(f"Adding extern {name}")
+                    p.add_symbol(ea, f"{name}")
+                    break
+            else:
+                # main use original symbol name
+                # Global and Weak bindings use original name
+                if name == "main" or \
+                   s.binding == bn.SymbolBinding.GlobalBinding or \
+                   s.binding == bn.SymbolBinding.WeakBinding:
+                    DEBUG(f"Adding {name}")
+                    p.add_symbol(ea, f"{name}")
+                else:
+                    # all other symbols postfixed with address of symbol
+                    DEBUG(f"Adding symbol {name}_{ea:x}")
+                    p.add_symbol(ea, f"{name}_{ea:x}")
 
         if s.type == bn.SymbolType.FunctionSymbol:
             continue  # Already added as a function.
@@ -130,19 +149,21 @@ def main():
         elif s.type == bn.SymbolType.ExternalSymbol:
             v = bv.get_data_var_at(ea)
             if v is not None and isinstance(v.type, bn.FunctionType):
+                DEBUG(f"Adding extern func {s.name} {ea:x}")
                 p.add_function_declaration(ea, False)
             else:
-                print(hex(ea))
+                DEBUG(f"Adding extern var {s.name} {ea:x}")
                 p.add_variable_declaration(ea, False)
 
         elif s.type == bn.SymbolType.LibraryFunctionSymbol or \
-             s.type == bn.SymbolType.ImportedFunctionSymbol:
+             s.type == bn.SymbolType.ImportedFunctionSymbol or \
+             s.type == bn.SymbolType.ImportAddressSymbol:
             continue  # TODO(pag): Handle me?
 
         else:
             try:
                 DEBUG(f"Found variable at: {ea:x}")
-                p.add_variable_definition(ea, True)
+                p.add_variable_definition(ea, True, args.ignore_no_refs)
             except:
                 ERROR(f"Error when trying to add variable {ea:x}: {traceback.format_exc()}")
 

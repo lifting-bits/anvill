@@ -21,7 +21,7 @@ class IDAVariable(Variable):
         super(IDAVariable, self).__init__(arch, address, type_)
         self._ida_seg = ida_seg
 
-    def visit(self, program, is_definition, add_refs_as_defs):
+    def visit(self, program, is_definition, add_refs_as_defs, ignore_no_refs):
         seg_ref = [None]
         seg = find_segment_containing_ea(self.address(), seg_ref)
         if seg and is_imported_table_seg(seg):

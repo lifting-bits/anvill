@@ -96,13 +96,13 @@ class Specification(ABC):
         if len(name):
             self._symbols[ea].add(name)
 
-    def add_variable_declaration(self, ea: int, add_refs_as_defs=False) -> bool:
+    def add_variable_declaration(self, ea: int, add_refs_as_defs=False, ignore_no_refs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)
         if var is not None and isinstance(var, Variable):
             ea = var.address()  # Argument `ea` might be inside the variable.
             if ea not in self._var_defs and ea not in self._var_decls:
                 self._var_decls[ea] = var
-                var.visit(self, False, add_refs_as_defs)
+                var.visit(self, False, add_refs_as_defs, ignore_no_refs)
             return True
         else:
             return False
@@ -115,7 +115,7 @@ class Specification(ABC):
         self.try_add_referenced_entity(source_ea, False)
         self.try_add_referenced_entity(destination_ea, False)
 
-    def add_variable_definition(self, ea: int, add_refs_as_defs=False) -> bool:
+    def add_variable_definition(self, ea: int, add_refs_as_defs=False, ignore_no_refs=False) -> bool:
         var: Optional[Variable] = self.get_variable(ea)
         DEBUG(f"Getting variable for {ea:x}")
         if var is not None and isinstance(var, Variable):
@@ -125,7 +125,7 @@ class Specification(ABC):
                 if ea in self._var_decls:
                     del self._var_decls[ea]
                 self._var_defs[ea] = var
-                var.visit(self, True, add_refs_as_defs)
+                var.visit(self, True, add_refs_as_defs, ignore_no_refs)
             DEBUG(f"Successful variable def for {ea:x}")
             return True
         else:
@@ -174,7 +174,7 @@ class Specification(ABC):
         self._control_flow_targets[entry.source] = entry
         return True
 
-    def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False) -> bool:
+    def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False, ignore_no_refs=False) -> bool:
         DEBUG(f"Attempting to add ref entity: {ea:x} {add_refs_as_defs}")
         if add_refs_as_defs:
             try:
@@ -186,7 +186,7 @@ class Specification(ABC):
                 pass
             try:
                 DEBUG(f"Adding ref as variable {ea:x}")
-                if self.add_variable_definition(ea, add_refs_as_defs):
+                if self.add_variable_definition(ea, add_refs_as_defs, ignore_no_refs):
                     DEBUG(f"Variable added {ea:x}")
                     return True
             except InvalidVariableException as e2:
