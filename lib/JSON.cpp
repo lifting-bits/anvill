@@ -361,6 +361,7 @@ JSONTranslator::DecodeValue(const llvm::json::Object *obj, const char *desc,
 
   if (auto maybe_type_str = obj->getString("type")) {
     std::string spec = maybe_type_str->str();
+    decl.type_string = spec;
     auto type_spec_res = type_translator.DecodeFromString(spec);
     if (!type_spec_res.Succeeded()) {
       std::stringstream ss;
@@ -754,6 +755,7 @@ JSONTranslator::DecodeGlobalVar(const llvm::json::Object *obj) const {
 
   anvill::VariableDecl decl;
   decl.type = type;
+  decl.type_string = spec;
   decl.address = address;
   return decl;
 }
