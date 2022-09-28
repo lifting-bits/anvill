@@ -488,53 +488,6 @@ void FunctionLifter::VisitIndirectJump(
   }
 }
 
-// Visit a conditional indirect jump control-flow instruction. This is a mix
-// between indirect jumps and conditional jumps that appears on the
-// ARMv7 (AArch32) architecture, where many instructions are predicated.
-/*
-void FunctionLifter::VisitConditionalIndirectJump(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-
-  auto cond_jump_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-
-  // Try to get the target type given the source. This is a conditional tail-
-  // call.
-  if (auto maybe_decl =
-          type_provider.TryGetCalledFunctionType(func_address, inst)) {
-    llvm::IRBuilder<> ir(taken_block);
-    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
-    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
-    auto new_mem_ptr =
-        CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
-    ir.CreateRet(new_mem_ptr);
-
-    // No target type info.
-  } else {
-    auto jump = remill::AddTerminatingTailCall(taken_block, intrinsics.jump,
-                                               intrinsics);
-    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
-  }
-
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_jump_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-}*/
-
 void FunctionLifter::VisitConditionalInstruction(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
@@ -580,36 +533,6 @@ void FunctionLifter::VisitFunctionReturn(
   AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
   MuteStateEscape(func_return);
 }
-
-// Visit a conditional function return control-flow instruction, which is a
-// variant that is half-way between a return and a conditional jump. These
-// are possible on ARMv7 (AArch32).
-/*void FunctionLifter::VisitConditionalFunctionReturn(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_branch_to_return_fallthrough =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  auto func_return = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.function_return, intrinsics);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_block = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  MuteStateEscape(func_return);
-  AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(cond_branch_to_return_fallthrough, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_block, pc_annotation_id, pc_annotation);
-}*/
 
 std::optional<CallableDecl>
 FunctionLifter::TryGetTargetFunctionType(const remill::Instruction &from_inst,
