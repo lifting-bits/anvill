@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "Result.h"
+#include "Type.h"
 
 namespace llvm {
 class BasicBlock;
@@ -63,6 +64,8 @@ struct ValueDecl {
   const remill::Register *mem_reg{nullptr};
   std::int64_t mem_offset{0};
 
+  TypeSpec spec_type;
+
   // Type of this value.
   llvm::Type *type{nullptr};
 };
@@ -72,25 +75,6 @@ struct ParameterDecl : public ValueDecl {
 
   // Name of the parameter.
   std::string name;
-};
-
-// The type, and possibly a concrete value, associated with a specific register
-// at a specific point in time. The actual point in time is not defined in here.
-struct TypedRegisterDecl {
-
-  // Register
-  const remill::Register *reg{nullptr};
-
-  // Type of the register. This represents the type of values inhabiting the
-  // register at this point in time. For example, with a vector register, this
-  // could represent a particular specialization of the lane types of that
-  // vector register.
-  llvm::Type *type{nullptr};
-
-  // Concrete value inhabiting this register at some specific point in time.
-  //
-  // TODO(pag): Make this an `llvm::APVal`, perhaps.
-  std::optional<std::uint64_t> value;
 };
 
 // A typed location in memory, that isn't actually code. This roughly
@@ -103,6 +87,8 @@ struct VariableDecl {
   // can also infer that at address `0x10` there is an `int`, and at address
   // `0x14` there is also an `int`.
   llvm::Type *type{nullptr};
+
+  TypeSpec spec_type;
 
   // Address of this global variable.
   std::uint64_t address{0};

@@ -14,9 +14,10 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
+#include <istream>
 
-#include "JSON.h"
 #include "Result.h"
 
 namespace llvm {
@@ -72,6 +73,12 @@ struct ControlFlowTargetList final {
   bool is_complete{false};
 };
 
+struct CallSiteDecl;
+struct FunctionDecl;
+struct VariableDecl;
+struct ParameterDecl;
+struct ValueDecl;
+
 // Represents the data pulled out of a JSON (sub-)program specification.
 class Specification {
  private:
@@ -97,13 +104,15 @@ class Specification {
   // Return the type translator used by this specification.
   const ::anvill::TypeTranslator &TypeTranslator(void) const;
 
-  // Try to create a program from a JSON specification. Returns a string error
+  // Try to create a program from a protobuf specification. Returns a string error
   // if something went wrong.
-  static anvill::Result<Specification, JSONDecodeError> DecodeFromJSON(
-      llvm::LLVMContext &context, const llvm::json::Value &val);
+  static anvill::Result<Specification, std::string>
+  DecodeFromPB(llvm::LLVMContext &context, const std::string& pb);
 
-  // Try to encode the specification into JSON.
-  anvill::Result<llvm::json::Object, JSONEncodeError> EncodeToJSON(void);
+  // Try to create a program from a protobuf specification. Returns a string error
+  // if something went wrong.
+  static anvill::Result<Specification, std::string>
+  DecodeFromPB(llvm::LLVMContext &context, std::istream& pb);
 
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
@@ -112,12 +121,12 @@ class Specification {
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;
 
   // Return the global variable containing `address`, or an empty `shared_ptr`.
-  std::shared_ptr<const VariableDecl> VariableContaining(
-      std::uint64_t address) const;
+  std::shared_ptr<const VariableDecl>
+  VariableContaining(std::uint64_t address) const;
 
   // Call `cb` on each symbol in the spec, until `cb` returns `false`.
-  void ForEachSymbol(std::function<bool(std::uint64_t,
-                                        const std::string &)> cb) const;
+  void ForEachSymbol(
+      std::function<bool(std::uint64_t, const std::string &)> cb) const;
 
   // Call `cb` on each function in the spec, until `cb` returns `false`.
   void ForEachFunction(
@@ -133,7 +142,8 @@ class Specification {
 
   // Call `cb` on each control-flow target list, until `cb` returns `false`.
   void ForEachControlFlowTargetList(
-      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb) const;
+      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
+      const;
 
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(

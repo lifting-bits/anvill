@@ -12,6 +12,7 @@
 #include <anvill/Providers.h>
 #include <anvill/Specification.h>
 #include <anvill/Type.h>
+#include <specification.pb.h>
 
 #include <map>
 #include <unordered_map>
@@ -19,9 +20,6 @@
 
 namespace llvm {
 class LLVMContext;
-namespace json {
-class Array;
-}  // namespace json
 }  // namespace llvm
 namespace anvill {
 
@@ -35,16 +33,8 @@ class SpecificationImpl
   SpecificationImpl(void) = delete;
   SpecificationImpl(std::unique_ptr<const remill::Arch> arch_);
 
-  bool ParseRange(const llvm::json::Object *obj, std::stringstream &err);
-
-  bool ParseControlFlowRedirection(const llvm::json::Array &redirection_list,
-                                   std::stringstream &err);
-
-  bool ParseControlFlowTargets(const llvm::json::Array &ctrl_flow_target_list,
-                               std::stringstream &err);
-
-  Result<std::vector<JSONDecodeError>, JSONDecodeError>
-  ParseSpecification(const llvm::json::Object *obj);
+  Result<std::vector<std::string>, std::string>
+  ParseSpecification(const ::specification::Specification &obj);
 
  public:
   ~SpecificationImpl(void);
