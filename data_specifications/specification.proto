@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package specification;
+
+enum Arch {
+  ARCH_UNSPECIFIED = 0;
+  ARCH_X86 = 1;
+  ARCH_X86_AVX = 2;
+  ARCH_X86_AVX512 = 3;
+  ARCH_AMD64 = 4;
+  ARCH_AMD64_AVX = 5;
+  ARCH_ADM64_AVX512 = 6;
+  ARCH_AARCH64 = 7;
+  ARCH_AARCH32 = 8;
+  ARCH_SPARC32 = 9;
+  ARCH_SPARC64 = 10;
+}
+
+enum OS {
+  OS_UNSPECIFIED = 0;
+  OS_LINUX = 1;
+  OS_MACOS = 2;
+  OS_WINDOWS = 3;
+  OS_SOLARIS = 4;
+}
+
+enum BaseType {
+  BT_BOOL = 0;
+  BT_CHAR = 1;
+  BT_SCHAR = 2;
+  BT_UCHAR = 3;
+  BT_I8 = 4;
+  BT_U8 = 5;
+  BT_I16 = 6;
+  BT_U16 = 7;
+  BT_I24 = 8;
+  BT_U24 = 9;
+  BT_I32 = 10;
+  BT_U32 = 11;
+  BT_I64 = 12;
+  BT_U64 = 13;
+  BT_I128 = 14;
+  BT_U128 = 15;
+  BT_FL16 = 16;
+  BT_FL32 = 17;
+  BT_FL64 = 18;
+  BT_FL80 = 19;
+  BT_FL96 = 20;
+  BT_FL128 = 21;
+  BT_M64 = 22;
+  BT_VOID = 23;
+  BT_PADDING = 24;
+}
+
+message TypeSpec {
+  message PointerType {
+    TypeSpec pointee = 1;
+    bool const = 2;
+  }
+
+  message VectorType {
+    TypeSpec base = 1;
+    uint32 size = 2;
+  }
+
+  message ArrayType {
+    TypeSpec base = 1;
+    uint32 size = 2;
+  }
+
+  message StructType {
+    repeated TypeSpec members = 1;
+    optional uint32 identifier = 2;
+  }
+
+  message FunctionType {
+    TypeSpec return_type = 1;
+    repeated TypeSpec arguments = 2;
+    bool is_variadic = 3;
+  }
+
+  oneof type {
+    BaseType base = 1;
+    PointerType pointer = 2;
+    VectorType vector = 3;
+    ArrayType array = 4;
+    StructType struct = 5;
+    FunctionType function = 6;
+    uint32 unknown = 7;
+  }
+}
+
+message Register {
+  string register_name = 1;
+}
+
+message Memory {
+  string base_reg = 1;
+  int64 offset = 2;
+}
+
+message Value {
+  oneof inner_value {
+    Register reg = 1;
+    Memory mem = 2;
+  }
+
+  TypeSpec type = 3;
+}
+
+message Parameter {
+  optional string name = 1;
+  Value value = 2;
+}
+
+enum CallingConvention {
+  CALLING_CONVENTION_UNSPECIFIED = 0;
+  CALLING_CONVENTION_CDECL = 1;
+  CALLING_CONVENTION_STDCALL = 64;
+  CALLING_CONVENTION_FASTCALL = 65;
+  CALLING_CONVENTION_THISCALL = 70;
+  CALLING_CONVENTION_AMD64_SYSV = 78;
+  CALLING_CONVENTION_WIN64 = 79;
+  CALLING_CONVENTION_VECTORCALL = 80;
+}
+
+message Function {
+  uint64 entry_address = 1;
+  Value return_address = 2;
+  repeated Parameter parameters = 3;
+  repeated Value returns = 4;
+  bool is_variadic = 5;
+  bool is_noreturn = 6;
+  CallingConvention calling_convention = 7;
+}
+
+message GlobalVariable {
+  TypeSpec type = 1;
+  uint64 address = 2;
+}
+
+message Symbol {
+  string name = 1;
+  uint64 address = 2;
+}
+
+message MemoryRange {
+  uint64 address = 1;
+  bool is_writeable = 2;
+  bool is_executable = 3;
+  bytes values = 4;
+}
+
+
+message Jump {
+  uint64 address = 1;
+  repeated uint64 targets = 2;
+  bool stop = 3;
+}
+
+message Call {
+  uint64 address = 1;
+  optional uint64 return_address = 2;
+  bool is_tailcall = 3;
+  bool stop = 4;
+}
+
+message Return {
+  uint64 address = 1;
+  bool stop = 2;
+}
+
+message Other {
+  uint64 address = 1;
+  bool stop = 2;
+}
+
+message ControlFlowOverrides {
+  repeated Jump jumps = 1;
+  repeated Call calls = 2;
+  repeated Return returns = 3;
+  repeated Other other = 4;
+}
+
+
+message Specification {
+  Arch arch = 1;
+  OS operating_system = 2;
+  repeated Function functions = 3;
+  repeated GlobalVariable global_variables = 4;
+  repeated Symbol symbols = 5;
+  repeated MemoryRange memory_ranges = 6;
+  ControlFlowOverrides overrides = 7;
+}
+

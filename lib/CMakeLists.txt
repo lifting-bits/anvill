@@ -20,6 +20,13 @@ set(POST_CONFIGURE_FILE "${CMAKE_CURRENT_BINARY_DIR}/Version.cpp")
 set(GIT_WORKING_DIR "${PROJECT_SOURCE_DIR}")
 include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 
+find_package(Protobuf REQUIRED)
+protobuf_generate_cpp(
+  SPEC_PROTO_SOURCES
+  SPEC_PROTO_HEADERS
+  "${anvill_SOURCE_DIR}/data_specifications/specification.proto"
+)
+
 # List of passes. These names should each correspond with both an `.h` and a
 # `.cpp` file.
 set(anvill_passes
@@ -158,6 +165,8 @@ add_library(anvill STATIC
   ${anvill_passes_SOURCES}
   ${anvill_providers_SOURCES}
   ${anvill_SOURCES}
+  ${SPEC_PROTO_HEADERS}
+  ${SPEC_PROTO_SOURCES}
 )
 
 set_target_properties(anvill
@@ -169,12 +178,14 @@ set_target_properties(anvill
 target_include_directories(anvill PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-  PRIVATE "${CMAKE_CURRENT_LIST_DIR}"
+  PRIVATE "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 target_link_libraries(anvill
   PUBLIC
     remill
+  PRIVATE
+    protobuf::libprotobuf
 )
 
 add_dependencies(anvill check_git_anvill)
