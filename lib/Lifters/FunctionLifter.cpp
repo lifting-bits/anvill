@@ -717,37 +717,6 @@ void FunctionLifter::VisitDirectFunctionCall(
   VisitAfterFunctionCall(inst, block, dcall, can_return, prev_context);
 }
 
-// Visit a conditional direct function call control-flow instruction. The
-// target is known at decode time, and its realized address is stored in
-// `inst.branch_taken_pc`. In practice, what we do in this situation is try
-// to call the lifted function function at the target address if the condition
-// is satisfied. Note that it is up to the semantics of the conditional call
-// instruction to "tell us" if the condition is met.
-/*
-void FunctionLifter::VisitConditionalDirectFunctionCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_function_call_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  bool can_return = CallFunction(inst, taken_block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_function_call_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-}*/
 
 // Visit an indirect function call control-flow instruction. Similar to
 // indirect jumps, we invoke an intrinsic function, `__remill_function_call`;
@@ -766,33 +735,6 @@ void FunctionLifter::VisitIndirectFunctionCall(
   VisitAfterFunctionCall(inst, block, icall, can_return, prev_context);
 }
 
-// Visit a conditional indirect function call control-flow instruction.
-// This is a cross between conditional jumps and indirect function calls.
-/*
-void FunctionLifter::VisitConditionalIndirectFunctionCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_func_call_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  bool can_return = CallFunction(inst, taken_block, std::nullopt);
-  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_func_call_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-}*/
 
 // Helper to figure out the address where execution will resume after a
 // function call. In practice this is the instruction following the function
@@ -924,44 +866,6 @@ void FunctionLifter::VisitAfterFunctionCall(
   }
 }
 
-// Visit a conditional control-flow branch. Both the taken and not taken
-// targets are known by the decoder and their addresses are available in
-// `inst.branch_taken_pc` and `inst.branch_not_taken_pc`, respectively.
-// Here we need to orchestrate the two-way control-flow, as well as the
-// possible execution of a delayed instruction on either or both paths,
-// depending on the presence/absence of delay slot annulment bits.
-/*void FunctionLifter::VisitConditionalBranch(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  std::stringstream taken_ss;
-  taken_ss << "inst_" << std::hex << inst.pc << "_taken_"
-           << inst.branch_taken_pc;
-
-  std::stringstream not_taken_ss;
-  not_taken_ss << "inst_" << std::hex << inst.pc << "_not_taken_"
-               << inst.branch_not_taken_pc;
-
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, taken_ss.str(), lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, not_taken_ss.str(), lifted_func);
-  auto cond_taken_nottaken_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto taken_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_taken_pc, mapper), taken_block);
-  auto not_taken_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_taken_nottaken_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(taken_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(not_taken_br, pc_annotation_id, pc_annotation);
-}*/
 
 // Visit an asynchronous hyper call control-flow instruction. These are non-
 // local control-flow transfers, such as system calls. We treat them like
@@ -973,36 +877,6 @@ void FunctionLifter::VisitAsyncHyperCall(
   remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call,
                                  intrinsics);
 }
-
-// Visit conditional asynchronous hyper calls. These are conditional, non-
-// local control-flow transfers, e.g. `bound` on x86.
-/*void FunctionLifter::VisitConditionalAsyncHyperCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_hypercall_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-
-  auto hc = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.async_hyper_call, intrinsics);
-
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_hypercall_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(hc, pc_annotation_id, pc_annotation);
-}*/
 
 // Visit (and thus lift) a delayed instruction. When lifting a delayed
 // instruction, we need to know if we're one the taken path of a control-flow
