@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <unordered_map>
 
 namespace anvill {
 
@@ -277,7 +278,7 @@ bool SpecificationImpl::ParseControlFlowTargets(
       }
 
       auto destination = maybe_target_address.getValue();
-      std::map<std::string, uint64_t> &assignment_list =
+      std::unordered_map<std::string, uint64_t> &assignment_list =
           target_list->target_addresses.insert({destination, {}}).first->second;
 
       for (const auto &[k, v] : *maybe_context_assignments) {

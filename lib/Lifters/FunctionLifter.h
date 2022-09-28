@@ -294,7 +294,7 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
                                  const remill::DecodingContext &prev_context);
 
   remill::DecodingContext
-  ApplyTargetList(const std::map<std::string, uint64_t> assignments,
+  ApplyTargetList(const std::unordered_map<std::string, uint64_t> &assignments,
                   remill::DecodingContext prev_context);
 
 

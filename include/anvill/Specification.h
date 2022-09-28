@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "JSON.h"
@@ -67,7 +68,8 @@ struct ControlFlowTargetList final {
   // same body).
 
   /// The addresses map a target to a given context mapping.
-  std::map<std::uint64_t, std::map<std::string, uint64_t>> target_addresses;
+  std::map<std::uint64_t, std::unordered_map<std::string, uint64_t>>
+      target_addresses;
 
 
   // True if this destination list appears to be complete. As a

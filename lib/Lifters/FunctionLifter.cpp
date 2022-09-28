@@ -39,6 +39,7 @@
 #include <remill/OS/OS.h>
 
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -336,7 +337,7 @@ void FunctionLifter::VisitDirectJump(
 }
 
 remill::DecodingContext FunctionLifter::ApplyTargetList(
-    const std::map<std::string, uint64_t> assignments,
+    const std::unordered_map<std::string, uint64_t> &assignments,
     remill::DecodingContext prev_context) {
   for (const auto &[k, v] : assignments) {
     prev_context.UpdateContextReg(k, v);

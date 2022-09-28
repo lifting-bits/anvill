@@ -200,6 +200,9 @@ struct FunctionDecl : public CallableDecl {
   std::uint64_t num_bytes_in_redzone{0};
 
 
+  // The set of context assignments that occur at the entry point to this function.
+  // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
+  // So we declare the context assignments that occur at the entry point to a function.
   std::unordered_map<std::string, uint64_t> context_assignments;
 
   // Declare this function in an LLVM module.
