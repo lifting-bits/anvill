@@ -153,6 +153,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
       
       - name: Select the remill version
+        shell: bash
         run: |
           remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
 
