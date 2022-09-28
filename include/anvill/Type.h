@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <vector>
 
 #include "Result.h"
 
@@ -54,10 +55,75 @@ enum class TypeKind : unsigned char {
   kPadding
 };
 
-enum class TypeSign : unsigned char {
-  kUnknown,
-  kSigned,
-  kUnsigned
+enum class TypeSign : unsigned char { kUnknown, kSigned, kUnsigned };
+
+enum class BaseType : int {
+  Bool = 0,
+  Char = 1,
+  SignedChar = 2,
+  UnsignedChar = 3,
+  Int8 = 4,
+  UInt8 = 5,
+  Int16 = 6,
+  UInt16 = 7,
+  Int24 = 8,
+  UInt24 = 9,
+  Int32 = 10,
+  UInt32 = 11,
+  Int64 = 12,
+  UInt64 = 13,
+  Int128 = 14,
+  UInt128 = 15,
+  Float16 = 16,
+  Float32 = 17,
+  Float64 = 18,
+  Float80 = 19,
+  Float96 = 20,
+  Float128 = 21,
+  MMX64 = 22,
+  Void = 23,
+  Padding = 24
+};
+
+struct PointerType;
+struct VectorType;
+struct ArrayType;
+struct StructType;
+struct FunctionType;
+
+struct UnknownType {
+  unsigned size;
+};
+
+using TypeSpec =
+    std::variant<BaseType, std::shared_ptr<PointerType>,
+                 std::shared_ptr<VectorType>, std::shared_ptr<ArrayType>,
+                 std::shared_ptr<StructType>, std::shared_ptr<FunctionType>,
+                 UnknownType>;
+
+struct PointerType {
+  TypeSpec pointee;
+  bool is_const;
+};
+
+struct VectorType {
+  TypeSpec base;
+  unsigned size;
+};
+
+struct ArrayType {
+  TypeSpec base;
+  unsigned size;
+};
+
+struct StructType {
+  std::vector<TypeSpec> members;
+};
+
+struct FunctionType {
+  TypeSpec return_type;
+  std::vector<TypeSpec> arguments;
+  bool is_variadic;
 };
 
 // Dictionary of types to be used by the type specifier.
@@ -107,11 +173,6 @@ class TypeDictionary {
   // Convert a value to a specific type.
   llvm::Value *ConvertValueToType(llvm::IRBuilderBase &, llvm::Value *,
                                   llvm::Type *) const;
-
-  // Return the general type of a type, whether or not it is signed, and its
-  // size in bits.
-  std::tuple<TypeKind, TypeSign, unsigned> Profile(
-      llvm::Type *type, const llvm::DataLayout &dl);
 
   // Returns `true` if `type` is the padding type, or is entirely made up
   // of padding bytes (e.g. an array of the padding type).
@@ -172,12 +233,8 @@ class TypeTranslator {
       llvm::Type *type,
       EncodingFormat alphanum = EncodingFormat::kDefault) const;
 
-  // Parse an encoded type string into its represented type.
-  //
-  // See `docs/TypeEncoding.md` for information on how different types are
-  // represented.
   Result<llvm::Type *, TypeSpecificationError>
-  DecodeFromString(const std::string_view str) const;
+  DecodeFromSpec(TypeSpec spec) const;
 };
 
 }  // namespace anvill
