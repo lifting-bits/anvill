@@ -77,7 +77,7 @@ WORKDIR /dependencies/remill_build
 
 RUN cmake -G Ninja -B build -S  /dependencies/remill \
     -DREMILL_ENABLE_INSTALL=true \
-    -DCMAKE_INSTALL_PREFIX=/usr/local/ \
+    -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
     && \
@@ -110,8 +110,8 @@ COPY . ./
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
     -DANVILL_ENABLE_INSTALL=true \
-    -Dremill_DIR=/usr/local/lib/cmake/remill \
-    -Dsleigh_DIR=/usr/local/lib/cmake/sleigh \
+    -Dremill_DIR=${LIBRARIES}/cmake/remill \
+    -Dsleigh_DIR=${LIBRARIES}/cmake/sleigh \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
