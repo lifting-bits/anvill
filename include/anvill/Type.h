@@ -102,16 +102,28 @@ using TypeSpec =
                  UnknownType>;
 
 struct PointerType {
+  template <typename T>
+  PointerType(T &&pointee, bool is_const)
+      : pointee(std::forward<T>(pointee)),
+        is_const(is_const) {}
   TypeSpec pointee;
   bool is_const;
 };
 
 struct VectorType {
+  template <typename T>
+  VectorType(T &&base, unsigned size)
+      : base(std::forward<T>(base)),
+        size(size) {}
   TypeSpec base;
   unsigned size;
 };
 
 struct ArrayType {
+  template <typename T>
+  ArrayType(T &&base, unsigned size)
+      : base(std::forward<T>(base)),
+        size(size) {}
   TypeSpec base;
   unsigned size;
 };
@@ -121,6 +133,12 @@ struct StructType {
 };
 
 struct FunctionType {
+  FunctionType() = default;
+  template <typename T0, typename T1>
+  FunctionType(T0 &&return_type, T1 &&arguments, bool is_variadic)
+      : return_type(std::forward<T0>(return_type)),
+        arguments(std::forward<T1>(arguments)),
+        is_variadic(is_variadic) {}
   TypeSpec return_type;
   std::vector<TypeSpec> arguments;
   bool is_variadic;
