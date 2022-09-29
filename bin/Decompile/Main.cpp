@@ -106,22 +106,16 @@ int main(int argc, char *argv[]) {
 
   const std::unique_ptr<llvm::MemoryBuffer> &buff =
       remill::GetReference(maybe_buff);
-  auto maybe_json = llvm::json::parse(buff->getBuffer());
-  if (remill::IsError(maybe_json)) {
-    std::cerr << "Unable to parse JSON spec file '" << FLAGS_spec
-              << "': " << remill::GetErrorString(maybe_json) << std::endl;
-    return EXIT_FAILURE;
-  }
 
   llvm::LLVMContext context;
   context.enableOpaquePointers();
   llvm::Module module("lifted_code", context);
 
-  auto maybe_spec = anvill::Specification::DecodeFromJSON(
-      context, remill::GetReference(maybe_json));
+  auto maybe_spec =
+      anvill::Specification::DecodeFromPB(context, buff->getBuffer().str());
 
   if (!maybe_spec.Succeeded()) {
-    std::cerr << maybe_spec.TakeError().message << std::endl;
+    std::cerr << maybe_spec.TakeError() << std::endl;
     return EXIT_FAILURE;
   }
 
