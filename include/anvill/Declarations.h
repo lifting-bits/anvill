@@ -108,6 +108,8 @@ struct CallableDecl {
   // The architecture from which this function's code derives.
   const remill::Arch *arch{nullptr};
 
+  std::shared_ptr<FunctionType> spec_type;
+
   // ABI-level type of this function.
   llvm::FunctionType *type{nullptr};
 

@@ -95,7 +95,7 @@ message Register {
 }
 
 message Memory {
-  string base_reg = 1;
+  optional string base_reg = 1;
   int64 offset = 2;
 }
 
