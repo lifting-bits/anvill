@@ -132,6 +132,7 @@ message Function {
   bool is_variadic = 5;
   bool is_noreturn = 6;
   CallingConvention calling_convention = 7;
+  optional TypeSpec type = 8;
 }
 
 message GlobalVariable {
@@ -192,4 +193,3 @@ message Specification {
   repeated MemoryRange memory_ranges = 6;
   ControlFlowOverrides overrides = 7;
 }
-

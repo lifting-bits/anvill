@@ -53,7 +53,7 @@ class ProtobufTranslator {
   llvm::Type *const dict_void_type;
 
   anvill::Result<TypeSpec, std::string>
-  DecodeType(const ::specification::TypeSpec &obj);
+  DecodeType(const ::specification::TypeSpec &obj) const;
 
   // Parse the location of a value. This applies to both parameters and
   // return values.
