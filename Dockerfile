@@ -83,10 +83,6 @@ RUN cmake -G Ninja -B build -S  /dependencies/remill \
     && \
     cmake --build build --target install 
 
-RUN touch /tmp/aaaaa
-RUN ls /usr/local/lib
-RUN ls /usr/local/lib/cmake/remill
-
 # Source code build
 FROM deps AS build
 WORKDIR /anvill
