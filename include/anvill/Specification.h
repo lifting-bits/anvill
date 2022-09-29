@@ -52,6 +52,20 @@ class SpecificationTypeProvider;
 class TypeDictionary;
 class TypeTranslator;
 
+struct ControlFlowOverride {
+  std::uint64_t address;
+  bool stop;
+};
+
+struct Jump : ControlFlowOverride {
+  std::vector<std::uint64_t> targets;
+};
+
+struct Call : ControlFlowOverride {
+  std::optional<std::uint64_t> return_address;
+  bool is_tailcall;
+};
+
 // Describes a list of targets reachable from a given source address. This tells
 // us where the flows go, not the mechanics of how they get there.
 struct ControlFlowTargetList final {
@@ -148,6 +162,11 @@ class Specification {
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(
       std::function<bool(std::uint64_t, std::uint64_t)> cb) const;
+
+  void ForEachJump(std::function<bool(const Jump&)> cb) const;
+  void ForEachCall(std::function<bool(const Call&)> cb) const;
+  void ForEachReturn(std::function<bool(const ControlFlowOverride&)> cb) const;
+  void ForEachMiscOverride(std::function<bool(const ControlFlowOverride&)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();

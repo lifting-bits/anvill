@@ -18,10 +18,12 @@
 #include <specification.pb.h>
 
 #include <algorithm>
+#include <optional>
 #include <sstream>
 
 #include "Protobuf.h"
 #include "anvill/Declarations.h"
+#include "anvill/Specification.h"
 #include "anvill/Type.h"
 
 namespace anvill {
@@ -125,6 +127,43 @@ SpecificationImpl::ParseSpecification(
       ent.first = range.values()[j];
       ent.second = byte_perms;
     }
+  }
+
+  if(!spec.has_overrides()) {
+    return {"Spec has no control flow overrides"};
+  }
+
+  for(auto &jump : spec.overrides().jumps()) {
+    Jump jmp{};
+    jmp.stop = jump.stop();
+    jmp.address = jump.address();
+    jmp.targets = {jump.targets().begin(), jump.targets().end()};
+    jumps.push_back(jmp);
+  }
+
+  for(auto &call : spec.overrides().calls()) {
+    Call callspec{};
+    callspec.stop = call.stop();
+    callspec.address = call.address();
+    if(call.has_return_address()) {
+      callspec.return_address = call.return_address();
+    }
+    callspec.is_tailcall = call.is_tailcall();
+    calls.push_back(callspec);
+  }
+
+  for(auto &ret : spec.overrides().returns()) {
+    ControlFlowOverride overr;
+    overr.stop = ret.stop();
+    overr.address = ret.address();
+    returns.push_back(overr);
+  }
+
+  for(auto &misc : spec.overrides().other()) {
+    ControlFlowOverride overr;
+    overr.stop = misc.stop();
+    overr.address = misc.address();
+    misc_overrides.push_back(overr);
   }
 
   // TODO(frabert): Parse everything else
@@ -358,6 +397,40 @@ void Specification::ForEachControlFlowRedirect(
     std::function<bool(std::uint64_t, std::uint64_t)> cb) const {
   for (auto [from, to] : impl->redirections) {
     if (!cb(from, to)) {
+      return;
+    }
+  }
+}
+
+void Specification::ForEachJump(std::function<bool(const Jump &)> cb) const {
+  for (auto &jump : impl->jumps) {
+    if (!cb(jump)) {
+      return;
+    }
+  }
+}
+
+void Specification::ForEachCall(std::function<bool(const Call &)> cb) const {
+  for (auto &call : impl->calls) {
+    if (!cb(call)) {
+      return;
+    }
+  }
+}
+
+void Specification::ForEachReturn(
+    std::function<bool(const ControlFlowOverride &)> cb) const {
+  for (auto &ret : impl->returns) {
+    if (!cb(ret)) {
+      return;
+    }
+  }
+}
+
+void Specification::ForEachMiscOverride(
+    std::function<bool(const ControlFlowOverride &)> cb) const {
+  for (auto &misc : impl->misc_overrides) {
+    if (!cb(misc)) {
       return;
     }
   }

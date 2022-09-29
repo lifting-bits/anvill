@@ -82,6 +82,11 @@ class SpecificationImpl
   // Call-site specific target information.
   std::map<std::pair<std::uint64_t, std::uint64_t>, const CallSiteDecl *>
       loc_to_call_site;
+
+  std::vector<Jump> jumps;
+  std::vector<Call> calls;
+  std::vector<ControlFlowOverride> returns;
+  std::vector<ControlFlowOverride> misc_overrides;
 };
 
 }  // namespace anvill
