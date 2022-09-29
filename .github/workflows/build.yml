@@ -793,7 +793,7 @@ jobs:
           remill_commit_id="master"
           echo "WARNING: Builds/tests will work against remill main commit"
         fi
-        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENC    
+        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV    
     - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       run: |
         docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
