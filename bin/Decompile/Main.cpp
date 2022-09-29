@@ -127,7 +127,6 @@ int main(int argc, char *argv[]) {
   if (!FLAGS_default_callable_spec.empty()) {
     anvill::TypeDictionary ty_dict(context);
     anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
-    anvill::JSONTranslator trans(ty_trans, spec.Arch().get());
 
     auto maybe_buff =
         llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
@@ -140,27 +139,13 @@ int main(int argc, char *argv[]) {
 
     const std::unique_ptr<llvm::MemoryBuffer> &buff =
         remill::GetReference(maybe_buff);
-    auto maybe_json = llvm::json::parse(buff->getBuffer());
-    if (remill::IsError(maybe_json)) {
-      std::cerr << "Unable to parse default callable_spec file '"
-                << FLAGS_default_callable_spec
-                << "': " << remill::GetErrorString(maybe_json) << std::endl;
-      return EXIT_FAILURE;
-    }
-    const llvm::json::Value &json = remill::GetReference(maybe_json);
-    auto obj = json.getAsObject();
-    if (obj == nullptr) {
-      std::cerr << "default callable_spec file is not a json object'"
-                << FLAGS_default_callable_spec
-                << "': " << remill::GetErrorString(maybe_json) << std::endl;
-      return EXIT_FAILURE;
-    }
 
-    auto maybe_default_callable = trans.DecodeDefaultCallableDecl(obj);
+    auto maybe_default_callable =
+        anvill::CallableDecl::DecodeFromPB(context, buff->getBuffer().str());
     if (!maybe_default_callable.Succeeded()) {
       std::cerr << "default callable_spec did not parse as callable decl: "
                 << FLAGS_default_callable_spec << " "
-                << maybe_default_callable.TakeError().message << std::endl;
+                << maybe_default_callable.TakeError() << std::endl;
     }
 
     remill::ArchName arch_name = spec.Arch().get()->arch_name;

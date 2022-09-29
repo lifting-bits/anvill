@@ -21,6 +21,16 @@
 #include <sstream>
 
 namespace anvill {
+
+ProtobufTranslator::ProtobufTranslator(
+    const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_)
+    : arch(arch_),
+      type_translator(type_translator_),
+      context(*(arch->context)),
+      void_type(llvm::Type::getVoidTy(context)),
+      dict_void_type(remill::RecontextualizeType(
+          type_translator.Dictionary().u.named.void_, context)) {}
+
 anvill::Result<TypeSpec, std::string>
 ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) {
   if (obj.has_base()) {
@@ -97,6 +107,16 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) {
   }
 
   return {"Unknown/invalid data type"};
+}
+
+Result<FunctionDecl, std::string>
+ProtobufTranslator::DecodeFunction(const ::specification::Function &) const {
+  return {"Not implemented!"};
+}
+
+Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
+    const ::specification::GlobalVariable &) const {
+  return {"Not implemented!"};
 }
 
 }  // namespace anvill

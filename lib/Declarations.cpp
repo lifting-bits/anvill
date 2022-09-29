@@ -188,9 +188,14 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   }
 }
 
+anvill::Result<CallableDecl, std::string>
+CallableDecl::DecodeFromPB(llvm::LLVMContext &, const std::string &) {
+  return {"Not implemented!"};
+}
+
 // Create a Function Declaration from an `llvm::Function`.
-Result<FunctionDecl, std::string>
-FunctionDecl::Create(llvm::Function &func, const remill::Arch *arch) {
+Result<FunctionDecl, std::string> FunctionDecl::Create(
+    llvm::Function &func, const remill::Arch *arch) {
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch

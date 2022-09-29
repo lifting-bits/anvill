@@ -158,6 +158,15 @@ struct CallableDecl {
                       const remill::IntrinsicTable &intrinsics,
                       llvm::BasicBlock *block, llvm::Value *state_ptr,
                       llvm::Value *mem_ptr) const;
+
+  // Try to create a callable decl from a protobuf default callable decl
+  // specification. Returns a string error if something went wrong.
+  //
+  // NOTE(alex): This is following the same pattern as where we decode an entire
+  // specification. Not sure how others feel about this but it does save us from
+  // having to expose all the Protobuf stuff in the public headers.
+  static anvill::Result<CallableDecl, std::string>
+  DecodeFromPB(llvm::LLVMContext &context, const std::string& pb);
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
