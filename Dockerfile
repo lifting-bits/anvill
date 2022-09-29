@@ -1,6 +1,6 @@
 ARG LLVM_VERSION=14
 ARG ARCH=amd64
-ARG UBUNTU_VERSION=18.04
+ARG UBUNTU_VERSION=20.04
 ARG CXX_COMMON_VERSION=0.2.10
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
@@ -17,12 +17,7 @@ ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubunt
 # Saves a bit of space in the base image.
 # Also better for not repeating ourselves when installing remill
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends unzip && \
-    rm -rf /var/lib/apt/lists/* && \
-    unzip remill_packages.zip && \
-    rm remill_packages.zip && \
-    mv ubuntu-${UBUNTU_VERSION}_llvm${LLVM_VERSION}_deb_package/remill-*.deb ../remill.deb && \
-    cd .. && rm -rf tmp
+    apt-get install -qqy --no-install-recommends unzip
 
 
 # Run-time dependencies go here
@@ -30,17 +25,23 @@ FROM ${BUILD_BASE} AS base
 ARG UBUNTU_VERSION
 ARG LIBRARIES
 ARG LLVM_VERSION
+ARG CXX_COMMON_VERSION
+ARG DEBIAN_FRONTEND=noninteractive 
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils && \
+    apt-get install -qqy --no-install-recommends git libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils cmake && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /dependencies
 
+ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+
+
 #### NOTE ####
 # Remill needs to be installed in the base _and_ deps stages, because they have
 # different base images
-COPY --from=store /dependencies/remill.deb .
-RUN dpkg -i remill.deb
+
 
 # Build-time dependencies go here
 FROM trailofbits/cxx-common-vcpkg-builder-ubuntu:${UBUNTU_VERSION} as deps
@@ -49,6 +50,7 @@ ARG ARCH
 ARG LLVM_VERSION
 ARG CXX_COMMON_VERSION
 ARG LIBRARIES
+ARG REMILL_COMMIT_ID=master
 
 RUN apt-get update && \
     apt-get install -qqy xz-utils python3.8-venv make rpm && \
@@ -57,14 +59,33 @@ RUN apt-get update && \
 # Build dependencies
 WORKDIR /dependencies
 
+
+
 # cxx-common
 ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
-# Remill again (see above in the base image where this is repeated)
-COPY --from=store /dependencies/remill.deb .
-RUN dpkg -i remill.deb
+
+RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
+RUN git clone "https://github.com/lifting-bits/remill.git" remill && cd remill && git checkout ${REMILL_COMMIT_ID}
+
+RUN mkdir /dependencies/remill_build
+
+WORKDIR /dependencies/remill_build
+
+
+RUN cmake -G Ninja -B build -S  /dependencies/remill \
+    -DREMILL_ENABLE_INSTALL=true \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/ \
+    -DCMAKE_VERBOSE_MAKEFILE=True \
+    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+    && \
+    cmake --build build --target install 
+
+RUN touch /tmp/aaaaa
+RUN ls /usr/local/lib
+RUN ls /usr/local/lib/cmake/remill
 
 # Source code build
 FROM deps AS build
@@ -89,7 +110,8 @@ COPY . ./
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
     -DANVILL_ENABLE_INSTALL=true \
-    -Dremill_DIR:PATH=/usr/local/lib/cmake/remill \
+    -Dremill_DIR=/usr/local/lib/cmake/remill \
+    -Dsleigh_DIR=/usr/local/lib/cmake/sleigh \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \

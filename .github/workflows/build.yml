@@ -781,9 +781,22 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Set remill-commit-id
+      shell: bash
+      run: |
+        remill_commit_id_path=".remill_commit_id"
+        
+        if [[ -f "${remill_commit_id_path}" ]] ; then
+          remill_commit_id=$(cat ${remill_commit_id_path})
+          echo "Using the following remill commit: ${remill_commit_id} in docker"
+        else
+          remill_commit_id="master"
+          echo "WARNING: Builds/tests will work against remill main commit"
+        fi
+        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENC    
     - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       run: |
-        docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
+        docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
     - name: Test Docker image
       run: |
         docker run --rm -v $(pwd):/workspace -w /workspace docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -spec /workspace/bin/Decompile/tests/specs/ret0.json -bc_out /tmp/ret0.bc -ir_out /tmp/ret0.ir
@@ -796,7 +809,7 @@ jobs:
 
     - name: Build with Binja
       run: |
-        docker build . -t anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg BINJA_VERSION=${{ matrix.binja.version }} --build-arg BINJA_CHANNEL=${{ matrix.binja.channel }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }} --build-arg BINJA_DECODE_KEY=${{ secrets.BINJA_DECODE_KEY }} --target binja
+        docker build . -t anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg BINJA_VERSION=${{ matrix.binja.version }} --build-arg BINJA_CHANNEL=${{ matrix.binja.channel }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }} --build-arg BINJA_DECODE_KEY=${{ secrets.BINJA_DECODE_KEY }} --target binja
     - name: Test with Binja
       run: |
         docker run --rm -v $(pwd):/workspace -w /workspace anvill-binja-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest --bin_in /usr/bin/yes --spec_out /tmp/yes.json
