@@ -79,7 +79,7 @@ SpecificationImpl::ParseSpecification(
 
     auto var_ptr = new VariableDecl(std::move(var_obj));
     variables.emplace_back(var_ptr);
-    address_to_function.emplace(var_address, var_ptr);
+    address_to_var.emplace(var_address, var_ptr);
   }
 
   std::sort(variables.begin(), variables.end(),

@@ -124,17 +124,15 @@ const ValueType *Result<ValueType, ErrorType>::operator->(void) const {
 }
 
 template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(const ValueType &value) {
-  data = value;
-  destroyed = false;
-}
+Result<ValueType, ErrorType>::Result(const ValueType &value)
+    : destroyed(false),
+      data(value) {}
 
 
 template <typename ValueType, typename ErrorType>
-Result<ValueType, ErrorType>::Result(const ErrorType &error) {
-  data = error;
-  destroyed = false;
-}
+Result<ValueType, ErrorType>::Result(const ErrorType &error)
+    : destroyed(false),
+      data(error) {}
 
 template <typename ValueType, typename ErrorType>
 Result<ValueType, ErrorType>::Result(Result &&other) noexcept {
