@@ -124,6 +124,11 @@ enum CallingConvention {
   CALLING_CONVENTION_VECTORCALL = 80;
 }
 
+message Assignment {
+  string name = 1;
+  uint64 value = 2;
+}
+
 message Function {
   uint64 entry_address = 1;
   Value return_address = 2;
@@ -133,6 +138,7 @@ message Function {
   bool is_noreturn = 6;
   CallingConvention calling_convention = 7;
   optional TypeSpec type = 8;
+  repeated Assignment context_assignments = 9;
 }
 
 message GlobalVariable {
