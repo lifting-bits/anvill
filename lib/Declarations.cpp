@@ -27,6 +27,7 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include "Protobuf.h"
 #include "Arch/Arch.h"
 
 namespace anvill {
@@ -189,8 +190,23 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
 }
 
 anvill::Result<CallableDecl, std::string>
-CallableDecl::DecodeFromPB(llvm::LLVMContext &, const std::string &) {
-  return {"Not implemented!"};
+CallableDecl::DecodeFromPB(const remill::Arch *arch, const std::string &pb) {
+  ::specification::Function function;
+  if (!function.ParseFromString(pb)) {
+    return {"Failed to parse callable decl"};
+  }
+
+  const TypeDictionary type_dictionary(*(arch->context));
+  const TypeTranslator type_translator(type_dictionary, arch);
+  ProtobufTranslator translator(type_translator, arch);
+
+  auto default_callable_decl_res =
+      translator.DecodeDefaultCallableDecl(function);
+  if (!default_callable_decl_res.Succeeded()) {
+    return {"Failed to decode to default callable decl"};
+  }
+
+  return default_callable_decl_res.TakeValue();
 }
 
 // Create a Function Declaration from an `llvm::Function`.

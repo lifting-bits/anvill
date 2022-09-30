@@ -168,7 +168,7 @@ struct CallableDecl {
   // specification. Not sure how others feel about this but it does save us from
   // having to expose all the Protobuf stuff in the public headers.
   static anvill::Result<CallableDecl, std::string>
-  DecodeFromPB(llvm::LLVMContext &context, const std::string& pb);
+  DecodeFromPB(const remill::Arch *arch, const std::string& pb);
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,

@@ -138,8 +138,8 @@ int main(int argc, char *argv[]) {
     const std::unique_ptr<llvm::MemoryBuffer> &buff =
         remill::GetReference(maybe_buff);
 
-    auto maybe_default_callable =
-        anvill::CallableDecl::DecodeFromPB(context, buff->getBuffer().str());
+    auto maybe_default_callable = anvill::CallableDecl::DecodeFromPB(
+        spec.Arch().get(), buff->getBuffer().str());
     if (!maybe_default_callable.Succeeded()) {
       std::cerr << "default callable_spec did not parse as callable decl: "
                 << FLAGS_default_callable_spec << " "

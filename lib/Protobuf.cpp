@@ -459,6 +459,18 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
   return {"Unknown/invalid data type"};
 }
 
+Result<CallableDecl, std::string> ProtobufTranslator::DecodeDefaultCallableDecl(
+    const ::specification::Function &function) const {
+  CallableDecl decl;
+
+  auto parse_res = this->ParseIntoCallableDecl(function, std::nullopt, decl);
+  if (!parse_res.Succeeded()) {
+    return parse_res.TakeError();
+  }
+
+  return decl;
+}
+
 Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     const ::specification::Function &function) const {
   FunctionDecl decl;
