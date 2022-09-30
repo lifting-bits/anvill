@@ -24,7 +24,7 @@ class ControlFlowTargetList:
     """A list of targets reachable from a given address"""
 
     source: int = 0
-    destination_list: List[int] = field(default_factory=list)
+    destination_list: List[Tuple[int, Dict[str, int]]] = field(default_factory=list)
     complete: bool = False
 
 
@@ -79,6 +79,12 @@ class Specification(ABC):
                 return self.get_variable_impl(ea)
             except Exception as e:
                 raise type(e)(f"Error when trying to get variable {ea:x}: {str(e)}") from e
+
+
+
+    @abstractmethod
+    def get_context_assignments_for_addr(self, ea: int) -> Dict[str, int]:
+        ...
 
     @abstractmethod
     def get_symbols_impl(self, ea: int) -> Iterator[str]:
@@ -166,40 +172,51 @@ class Specification(ABC):
         if source_ea in self._control_flow_targets:
             return False
 
+
+        target_list_enriched = [[dest_addr, self.get_context_assignments_for_addr(dest_addr)] for dest_addr in destination_list]
+
+
         entry = ControlFlowTargetList()
         entry.source = source_ea
-        entry.destination_list = destination_list
+        entry.destination_list = target_list_enriched
         entry.complete = complete
 
         self._control_flow_targets[entry.source] = entry
         return True
 
+    def try_add_function_definition(self,  ea: int, add_refs_as_defs: bool) -> bool:
+        try:
+            return self.add_function_definition(ea, add_refs_as_defs)
+        except InvalidFunctionException:
+            return False
+
+    def try_add_function_declaration(self,  ea: int, add_refs_as_defs: bool) -> bool:
+        try:
+            return self.add_function_declaration(ea, add_refs_as_defs)
+        except InvalidFunctionException:
+            return False
+
     def try_add_referenced_entity(self, ea: int, add_refs_as_defs=False, ignore_no_refs=False) -> bool:
-        DEBUG(f"Attempting to add ref entity: {ea:x} {add_refs_as_defs}")
+        DEBUG(f"Attempting to add ref entity: {ea:x} with refs as defs: {add_refs_as_defs}")
         if add_refs_as_defs:
-            try:
-                DEBUG(f"Adding ref as function {ea:x}")
-                if self.add_function_definition(ea, add_refs_as_defs):
-                    DEBUG(f"Added function {ea:x}")
-                    return True
-            except InvalidFunctionException as e1:
-                pass
+            DEBUG(f"Adding ref as function {ea:x}")
+            if self.try_add_function_definition(ea, add_refs_as_defs):
+                DEBUG(f"Added function {ea:x}")
+                return True
             try:
                 DEBUG(f"Adding ref as variable {ea:x}")
                 if self.add_variable_definition(ea, add_refs_as_defs, ignore_no_refs):
                     DEBUG(f"Variable added {ea:x}")
                     return True
-            except InvalidVariableException as e2:
+            except InvalidVariableException:
                 pass
-        try:
-            self.add_function_declaration(ea, False)
+        
+        if self.try_add_function_declaration(ea, False):
             return True
-        except InvalidFunctionException as e1:
-            try:
-                self.add_variable_declaration(ea, False)
-                return True
-            except InvalidVariableException as e2:
-                return False
+        try:
+            return self.add_variable_declaration(ea, False)
+        except InvalidVariableException:
+            return False
 
     @property
     def memory(self) -> Memory:

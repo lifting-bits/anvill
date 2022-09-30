@@ -10,10 +10,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "JSON.h"
@@ -64,7 +66,11 @@ struct ControlFlowTargetList final {
   // is, a given indirect jump may target the same address in multiple different
   // ways (e.g. multiple `case` labels in a `switch` statement that share the
   // same body).
-  std::set<std::uint64_t> target_addresses;
+
+  /// The addresses map a target to a given context mapping.
+  std::map<std::uint64_t, std::unordered_map<std::string, uint64_t>>
+      target_addresses;
+
 
   // True if this destination list appears to be complete. As a
   // general rule, this is set to true when the target recovery has
@@ -99,8 +105,8 @@ class Specification {
 
   // Try to create a program from a JSON specification. Returns a string error
   // if something went wrong.
-  static anvill::Result<Specification, JSONDecodeError> DecodeFromJSON(
-      llvm::LLVMContext &context, const llvm::json::Value &val);
+  static anvill::Result<Specification, JSONDecodeError>
+  DecodeFromJSON(llvm::LLVMContext &context, const llvm::json::Value &val);
 
   // Try to encode the specification into JSON.
   anvill::Result<llvm::json::Object, JSONEncodeError> EncodeToJSON(void);
@@ -112,12 +118,12 @@ class Specification {
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;
 
   // Return the global variable containing `address`, or an empty `shared_ptr`.
-  std::shared_ptr<const VariableDecl> VariableContaining(
-      std::uint64_t address) const;
+  std::shared_ptr<const VariableDecl>
+  VariableContaining(std::uint64_t address) const;
 
   // Call `cb` on each symbol in the spec, until `cb` returns `false`.
-  void ForEachSymbol(std::function<bool(std::uint64_t,
-                                        const std::string &)> cb) const;
+  void ForEachSymbol(
+      std::function<bool(std::uint64_t, const std::string &)> cb) const;
 
   // Call `cb` on each function in the spec, until `cb` returns `false`.
   void ForEachFunction(
@@ -133,7 +139,8 @@ class Specification {
 
   // Call `cb` on each control-flow target list, until `cb` returns `false`.
   void ForEachControlFlowTargetList(
-      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb) const;
+      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
+      const;
 
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(

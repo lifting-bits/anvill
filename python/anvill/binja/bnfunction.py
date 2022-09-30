@@ -5,6 +5,7 @@
 # This source code is licensed in accordance with the terms specified in
 # the LICENSE file found in the root directory of this source tree.
 #
+from platform import architecture
 import traceback
 from typing import Tuple, Optional, Iterator, Set, Union, cast
 
@@ -56,6 +57,19 @@ class BNExternalFunction(Function):
         pass
 
 
+
+THUMB_MODE_REG_NAME = "TMReg"
+
+def get_entry_assignments(f: bn.Function) -> Dict[str, int]:
+    if f.arch == bn.Architecture['thumb2'] or f.arch == bn.Architecture['thumb2eb']:
+        return {THUMB_MODE_REG_NAME: 1}
+    elif f.arch == bn.Architecture['armv7'] or  f.arch == bn.Architecture['armv7eb']:
+        return {THUMB_MODE_REG_NAME: 0}
+    else:
+        return {}
+    
+
+
 class BNFunction(Function):
     def __init__(
         self,
@@ -69,7 +83,7 @@ class BNFunction(Function):
         is_external=False
     ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list,
-                                         func_type, is_entrypoint=is_entrypoint)
+                                         func_type, context_assignments=get_entry_assignments(bn_func), is_entrypoint=is_entrypoint)
         self._is_external: bool = is_external
         self._bn_func: bn.Function = bn_func
 
@@ -335,13 +349,6 @@ class BNFunction(Function):
         DEBUG(f"Visiting {self.address()}")
         program = cast('BNSpecification', program_)
 
-        # The lifter does not support thumb2 instruction set. If the function
-        # is of arch type `thumb2` then don't visit them and fill the memory
-        # bytes. These functions will be declared but not defined in the lifted
-        # code
-        if self._bn_func is None or self._bn_func.arch.name == "thumb2":
-            return
-
         mem = program.memory
 
         ref_eas: Set[int] = set()
@@ -363,7 +370,6 @@ class BNFunction(Function):
         # function is a declaration, then Anvill only needs to know its symbols
         # and prototypes if its a definition, then Anvill will perform analysis
         # of the function and produce information for the function.
-        print(ref_eas)
         for ref_ea in ref_eas:
             DEBUG(f"Attempting to add referenced entity {ref_ea:x}")
             # If ref_ea is an invalid address
