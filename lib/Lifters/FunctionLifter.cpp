@@ -273,7 +273,7 @@ bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
     return options.arch->DecodeDelayedInstruction(
         addr, inst_out->bytes, *inst_out, std::move(context));
   } else {
-    LOG(INFO) << "Ops emplace: " << inst_out->operands.size();
+    DLOG(INFO) << "Ops emplace: " << inst_out->operands.size();
     return options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out,
                                            std::move(context));
   }
@@ -749,16 +749,6 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
     return {pc, ret_pc};
   }
 }
-
-namespace {
-template <class... Ts>
-struct overloaded : Ts... {
-  using Ts::operator()...;
-};
-// explicit deduction guide (not needed as of C++20)
-template <class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-}  // namespace
 
 // Enact relevant control-flow changes after a function call. This figures
 // out the return address targeted by the callee and links it into the
@@ -1439,11 +1429,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       auto res = llvm::InlineFunction(*call_inst, info);
 
       CHECK(res.isSuccess());
-      if (!res.isSuccess()) {
-        DLOG(ERROR) << "Failed to inline: "
-                    << remill::LLVMThingToString(call_inst->getCalledFunction())
-                    << res.getFailureReason();
-      }
+
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {
         for (auto &inst : llvm::instructions(*native_func)) {
@@ -1508,7 +1494,6 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
-  LOG(INFO) << "Attempting to lift inside function lifter";
   addr_to_func.clear();
   edge_work_list.clear();
   edge_to_dest_block.clear();
@@ -1610,7 +1595,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
 
-  LOG(INFO) << "Visiting insns";
+  DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitInstructions(func_address);
 
