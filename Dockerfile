@@ -19,12 +19,6 @@ RUN apt-get update && \
     apt-get install -qqy --no-install-recommends git libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils cmake && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /dependencies
-
-RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
-    rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
-
-
 #### NOTE ####
 # Remill needs to be installed in the base _and_ deps stages, because they have
 # different base images
