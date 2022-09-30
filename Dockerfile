@@ -7,18 +7,6 @@ ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
 ARG BINJA_DECODE_KEY
 
-# Used for downloading remill and then copied to required stages
-FROM ${BUILD_BASE} as store
-ARG UBUNTU_VERSION
-ARG LLVM_VERSION
-
-WORKDIR /dependencies/tmp
-ADD https://github.com/lifting-bits/remill/releases/latest/download/remill_ubuntu-${UBUNTU_VERSION}_packages.zip remill_packages.zip
-# Saves a bit of space in the base image.
-# Also better for not repeating ourselves when installing remill
-RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends unzip
-
 
 # Run-time dependencies go here
 FROM ${BUILD_BASE} AS base
@@ -33,7 +21,6 @@ RUN apt-get update && \
 
 WORKDIR /dependencies
 
-ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
