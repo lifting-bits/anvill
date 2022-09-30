@@ -124,11 +124,6 @@ enum CallingConvention {
   CALLING_CONVENTION_VECTORCALL = 80;
 }
 
-message Assignment {
-  string name = 1;
-  uint64 value = 2;
-}
-
 message Function {
   uint64 entry_address = 1;
   Value return_address = 2;
@@ -138,7 +133,7 @@ message Function {
   bool is_noreturn = 6;
   CallingConvention calling_convention = 7;
   optional TypeSpec type = 8;
-  repeated Assignment context_assignments = 9;
+  map<string, uint64> context_assignments = 9;
 }
 
 message GlobalVariable {
@@ -158,10 +153,14 @@ message MemoryRange {
   bytes values = 4;
 }
 
+message JumpTarget {
+  uint64 address = 1;
+  map<string, uint64> context_assignments = 2;
+}
 
 message Jump {
   uint64 address = 1;
-  repeated uint64 targets = 2;
+  repeated JumpTarget targets = 2;
   bool stop = 3;
 }
 
@@ -199,3 +198,4 @@ message Specification {
   repeated MemoryRange memory_ranges = 6;
   ControlFlowOverrides overrides = 7;
 }
+

@@ -480,6 +480,8 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }
+  decl.context_assignments = {function.context_assignments().begin(),
+                              function.context_assignments().end()};
 
   return decl;
 }

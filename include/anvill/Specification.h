@@ -10,13 +10,14 @@
 
 #include <cstdint>
 #include <functional>
+#include <istream>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <variant>
 #include <vector>
-#include <istream>
 
 #include "Result.h"
 
@@ -57,8 +58,13 @@ struct ControlFlowOverride {
   bool stop;
 };
 
+struct JumpTarget {
+  std::uint64_t address;
+  std::unordered_map<std::string, std::uint64_t> context_assignments;
+};
+
 struct Jump : ControlFlowOverride {
-  std::vector<std::uint64_t> targets;
+  std::vector<JumpTarget> targets;
 };
 
 struct Call : ControlFlowOverride {
@@ -121,12 +127,12 @@ class Specification {
   // Try to create a program from a protobuf specification. Returns a string error
   // if something went wrong.
   static anvill::Result<Specification, std::string>
-  DecodeFromPB(llvm::LLVMContext &context, const std::string& pb);
+  DecodeFromPB(llvm::LLVMContext &context, const std::string &pb);
 
   // Try to create a program from a protobuf specification. Returns a string error
   // if something went wrong.
   static anvill::Result<Specification, std::string>
-  DecodeFromPB(llvm::LLVMContext &context, std::istream& pb);
+  DecodeFromPB(llvm::LLVMContext &context, std::istream &pb);
 
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
@@ -163,10 +169,18 @@ class Specification {
   void ForEachControlFlowRedirect(
       std::function<bool(std::uint64_t, std::uint64_t)> cb) const;
 
-  void ForEachJump(std::function<bool(const Jump&)> cb) const;
-  void ForEachCall(std::function<bool(const Call&)> cb) const;
-  void ForEachReturn(std::function<bool(const ControlFlowOverride&)> cb) const;
-  void ForEachMiscOverride(std::function<bool(const ControlFlowOverride&)> cb) const;
+  // Call `cb` on each jump, until `cb` returns `false`.
+  void ForEachJump(std::function<bool(const Jump &)> cb) const;
+
+  // Call `cb` on each call, until `cb` returns `false`.
+  void ForEachCall(std::function<bool(const Call &)> cb) const;
+
+  // Call `cb` on each return, until `cb` returns `false`.
+  void ForEachReturn(std::function<bool(const ControlFlowOverride &)> cb) const;
+
+  // Call `cb` on each miscellaneous control flow override, until `cb` returns `false`.
+  void ForEachMiscOverride(
+      std::function<bool(const ControlFlowOverride &)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();

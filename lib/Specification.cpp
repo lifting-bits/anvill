@@ -129,42 +129,59 @@ SpecificationImpl::ParseSpecification(
     }
   }
 
-  if(!spec.has_overrides()) {
+  if (!spec.has_overrides()) {
     return {"Spec has no control flow overrides"};
   }
 
-  for(auto &jump : spec.overrides().jumps()) {
+  for (auto &jump : spec.overrides().jumps()) {
     Jump jmp{};
     jmp.stop = jump.stop();
     jmp.address = jump.address();
-    jmp.targets = {jump.targets().begin(), jump.targets().end()};
+    for (auto &target : jump.targets()) {
+      JumpTarget jmp_target;
+      auto &assignments = target.context_assignments();
+      jmp_target.context_assignments = {assignments.begin(), assignments.end()};
+      jmp_target.address = target.address();
+      jmp.targets.push_back(jmp_target);
+    }
+    std::sort(jmp.targets.begin(), jmp.targets.end(), [](const auto& a, const auto& b) {
+      return a.address < b.address;
+    });
     jumps.push_back(jmp);
   }
+  std::sort(jumps.begin(), jumps.end(),
+            [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  for(auto &call : spec.overrides().calls()) {
+  for (auto &call : spec.overrides().calls()) {
     Call callspec{};
     callspec.stop = call.stop();
     callspec.address = call.address();
-    if(call.has_return_address()) {
+    if (call.has_return_address()) {
       callspec.return_address = call.return_address();
     }
     callspec.is_tailcall = call.is_tailcall();
     calls.push_back(callspec);
   }
+  std::sort(calls.begin(), calls.end(),
+            [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  for(auto &ret : spec.overrides().returns()) {
+  for (auto &ret : spec.overrides().returns()) {
     ControlFlowOverride overr;
     overr.stop = ret.stop();
     overr.address = ret.address();
     returns.push_back(overr);
   }
+  std::sort(returns.begin(), returns.end(),
+            [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  for(auto &misc : spec.overrides().other()) {
+  for (auto &misc : spec.overrides().other()) {
     ControlFlowOverride overr;
     overr.stop = misc.stop();
     overr.address = misc.address();
     misc_overrides.push_back(overr);
   }
+  std::sort(misc_overrides.begin(), misc_overrides.end(),
+            [](const auto &a, const auto &b) { return a.address < b.address; });
 
   // TODO(frabert): Parse everything else
 

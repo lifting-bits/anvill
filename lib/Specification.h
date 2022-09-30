@@ -83,6 +83,7 @@ class SpecificationImpl
   std::map<std::pair<std::uint64_t, std::uint64_t>, const CallSiteDecl *>
       loc_to_call_site;
 
+  // Sorted list of jumps, calls, returns and other control flow overrides
   std::vector<Jump> jumps;
   std::vector<Call> calls;
   std::vector<ControlFlowOverride> returns;
