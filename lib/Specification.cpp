@@ -44,10 +44,11 @@ SpecificationImpl::ParseSpecification(
   for (auto &func : spec.functions()) {
     auto maybe_func = translator.DecodeFunction(func);
     if (!maybe_func.Succeeded()) {
-      auto err = maybe_func.TakeError();
+      auto err = maybe_func.Error();
       dec_err.push_back(err);
+      continue;
     }
-    auto func_obj = maybe_func.TakeValue();
+    auto func_obj = maybe_func.Value();
     auto func_address = func_obj.address;
     if (address_to_function.count(func_address)) {
       std::stringstream ss;
@@ -69,10 +70,10 @@ SpecificationImpl::ParseSpecification(
   for (auto &var : spec.global_variables()) {
     auto maybe_var = translator.DecodeGlobalVar(var);
     if (!maybe_var.Succeeded()) {
-      auto err = maybe_var.TakeError();
+      auto err = maybe_var.Error();
       dec_err.push_back(err);
     }
-    auto var_obj = maybe_var.TakeValue();
+    auto var_obj = maybe_var.Value();
     auto var_address = var_obj.address;
     if (address_to_function.count(var_address)) {
       std::stringstream ss;
@@ -160,6 +161,9 @@ SpecificationImpl::ParseSpecification(
     callspec.address = call.address();
     if (call.has_return_address()) {
       callspec.return_address = call.return_address();
+    }
+    if (call.has_target_address()) {
+      callspec.target_address = call.target_address();
     }
     callspec.is_tailcall = call.is_tailcall();
     calls.push_back(callspec);
@@ -285,10 +289,10 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
   if (!maybe_warnings.Succeeded()) {
-    return maybe_warnings.TakeError();
+    return maybe_warnings.Error();
   }
 
-  auto warnings = maybe_warnings.TakeValue();
+  auto warnings = maybe_warnings.Value();
   for (auto w : warnings) {
     LOG(ERROR) << w;
   }
@@ -314,10 +318,10 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
   if (!maybe_warnings.Succeeded()) {
-    return maybe_warnings.TakeError();
+    return maybe_warnings.Error();
   }
 
-  auto warnings = maybe_warnings.TakeValue();
+  auto warnings = maybe_warnings.Value();
   for (auto w : warnings) {
     LOG(ERROR) << w;
   }

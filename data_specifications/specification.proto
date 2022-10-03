@@ -169,6 +169,7 @@ message Call {
   optional uint64 return_address = 2;
   bool is_tailcall = 3;
   bool stop = 4;
+  optional uint64 target_address = 5;
 }
 
 message Return {

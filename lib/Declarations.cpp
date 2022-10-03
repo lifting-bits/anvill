@@ -27,8 +27,8 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
-#include "Protobuf.h"
 #include "Arch/Arch.h"
+#include "Protobuf.h"
 
 namespace anvill {
 
@@ -206,12 +206,12 @@ CallableDecl::DecodeFromPB(const remill::Arch *arch, const std::string &pb) {
     return {"Failed to decode to default callable decl"};
   }
 
-  return default_callable_decl_res.TakeValue();
+  return default_callable_decl_res.Value();
 }
 
 // Create a Function Declaration from an `llvm::Function`.
-Result<FunctionDecl, std::string> FunctionDecl::Create(
-    llvm::Function &func, const remill::Arch *arch) {
+Result<FunctionDecl, std::string>
+FunctionDecl::Create(llvm::Function &func, const remill::Arch *arch) {
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch

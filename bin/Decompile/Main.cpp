@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 
   if (FLAGS_spec.empty()) {
     std::cerr
-        << "Please specify a path to a JSON specification file in '--spec'"
+        << "Please specify a path to a Protobuf specification file in '--spec'"
         << std::endl;
     return EXIT_FAILURE;
   }
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
 
   auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_spec);
   if (remill::IsError(maybe_buff)) {
-    std::cerr << "Unable to read JSON spec file '" << FLAGS_spec
+    std::cerr << "Unable to read Protobuf spec file '" << FLAGS_spec
               << "': " << remill::GetErrorString(maybe_buff) << std::endl;
     return EXIT_FAILURE;
   }
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  anvill::Specification spec = maybe_spec.TakeValue();
+  anvill::Specification spec = maybe_spec.Value();
   anvill::SpecificationTypeProvider spec_tp(spec);
 
   std::unique_ptr<anvill::TypeProvider> tp =
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
     auto maybe_buff =
         llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
     if (remill::IsError(maybe_buff)) {
-      std::cerr << "Unable to read JSON default callable_spec file '"
+      std::cerr << "Unable to read Protobuf default callable_spec file '"
                 << FLAGS_default_callable_spec
                 << "': " << remill::GetErrorString(maybe_buff) << std::endl;
       return EXIT_FAILURE;
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
     remill::ArchName arch_name = spec.Arch().get()->arch_name;
     auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
                                                                      spec_tp);
-    dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
+    dtp->SetDefault(arch_name, maybe_default_callable.Value());
 
     tp = std::move(dtp);
   }

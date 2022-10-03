@@ -62,7 +62,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
       return {ss.str()};
     }
 
-    auto type_spec = type_spec_result.TakeValue();
+    auto type_spec = type_spec_result.Value();
     auto type_result = type_translator.DecodeFromSpec(type_spec);
     if (!type_result.Succeeded()) {
       std::string spec;
@@ -75,7 +75,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     }
 
     auto func_type = llvm::dyn_cast<llvm::FunctionType>(
-        remill::RecontextualizeType(type_result.TakeValue(), context));
+        remill::RecontextualizeType(type_result.Value(), context));
     if (!func_type) {
       std::string spec;
       function.SerializeToString(&spec);
@@ -121,7 +121,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
       return {ss.str()};
     }
 
-    decl = maybe_decl.TakeValue();
+    decl = maybe_decl.Value();
 
     // The function is not external and does not have associated type
     // in the spec. Fallback to processing parameters and return values
@@ -131,7 +131,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     for (const ::specification::Parameter &param : function.parameters()) {
       auto maybe_param = DecodeParameter(param);
       if (maybe_param.Succeeded()) {
-        decl.params.emplace_back(maybe_param.TakeValue());
+        decl.params.emplace_back(maybe_param.Value());
       } else {
         auto err = maybe_param.TakeError();
         std::stringstream ss;
@@ -155,7 +155,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
         return {ss.str()};
 
       } else {
-        decl.return_address = maybe_ret.TakeValue();
+        decl.return_address = maybe_ret.Value();
 
         // Looks like a void return type, i.e. function with no return address,
         // so make sure there's no location/value info.
@@ -236,7 +236,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     for (const ::specification::Value &ret : function.returns()) {
       auto maybe_ret = DecodeReturnValue(ret);
       if (maybe_ret.Succeeded()) {
-        decl.returns.emplace_back(maybe_ret.TakeValue());
+        decl.returns.emplace_back(maybe_ret.Value());
       } else {
         auto err = maybe_ret.TakeError();
         std::stringstream ss;
@@ -339,7 +339,7 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
     return ss.str();
   }
 
-  decl.spec_type = type.TakeValue();
+  decl.spec_type = type.Value();
   auto llvm_type = type_translator.DecodeFromSpec(decl.spec_type);
   if (!llvm_type.Succeeded()) {
     std::stringstream ss;
@@ -347,7 +347,7 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
        << "': " << llvm_type.Error().message;
     return ss.str();
   }
-  decl.type = remill::RecontextualizeType(llvm_type.TakeValue(), context);
+  decl.type = remill::RecontextualizeType(llvm_type.Value(), context);
 
   return decl;
 }
@@ -366,7 +366,7 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
   }
 
   ParameterDecl decl;
-  reinterpret_cast<ValueDecl &>(decl) = maybe_decl.TakeValue();
+  reinterpret_cast<ValueDecl &>(decl) = maybe_decl.Value();
 
   if (param.has_name()) {
     decl.name = param.name();
@@ -514,7 +514,7 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
     return ss.str();
   }
 
-  auto type = llvm_type.TakeValue();
+  auto type = llvm_type.Value();
   if (type->isFunctionTy()) {
     std::stringstream ss;
     ss << "Global variable at address " << std::hex << address
