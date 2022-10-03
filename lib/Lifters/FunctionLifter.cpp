@@ -98,10 +98,9 @@ static void MuteStateEscape(llvm::CallInst *call) {
 // inside lifted code; It takes the address type to generate the function
 // parameters of correct type.
 static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
-                                           llvm::Type *type, bool complete) {
+                                           llvm::Type *type) {
 
-  const auto &func_name =
-      complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
+  const auto &func_name = kAnvillSwitchCompleteFunc;
 
   auto func = module.getFunction(func_name);
   if (func != nullptr) {
@@ -423,6 +422,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
   } else {
     llvm::BasicBlock *default_case{nullptr};
 
+    // Create a default case that is not reachable
     add_remill_jump = false;
     default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
 
@@ -443,7 +443,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
     // Invoke the anvill switch
     auto &module = *block->getModule();
-    auto anvill_switch_func = GetAnvillSwitchFunc(module, address_type, true);
+    auto anvill_switch_func = GetAnvillSwitchFunc(module, address_type);
 
     llvm::IRBuilder<> ir(block);
     auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
@@ -607,17 +607,29 @@ llvm::Value *FunctionLifter::CallCallableDecl(llvm::BasicBlock *block,
 // a function call to that address in `block`. Failing this, add a call
 // to `__remill_function_call`.
 bool FunctionLifter::CallFunction(const remill::Instruction &inst,
-                                  llvm::BasicBlock *block) {
+                                  llvm::BasicBlock *block,
+                                  std::optional<std::uint64_t> target_pc) {
   auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
   if (!std::holds_alternative<Call>(cf)) {
     LOG(FATAL) << "Invalid spec for call at " << std::hex << inst.pc;
   }
   auto call_spec = std::get<Call>(cf);
+  std::optional<CallableDecl> maybe_decl;
 
-  auto target_pc = call_spec.address;
+  if (target_pc && call_spec.target_address.has_value()) {
+    // First, try to see if it's actually related to another function. This is
+    // equivalent to a tail-call in the original code.
+    auto redirected_addr = *call_spec.target_address;
 
-  // Now, get the type of the target given the source and destination.
-  auto maybe_decl = TryGetTargetFunctionType(inst, target_pc);
+    // Now, get the type of the target given the source and destination.
+    maybe_decl = TryGetTargetFunctionType(inst, redirected_addr);
+    target_pc = redirected_addr;
+  } else {
+
+    // If we don't know a concrete target address, then just try to get the
+    // target given the source.
+    maybe_decl = type_provider.TryGetCalledFunctionType(func_address, inst);
+  }
 
   if (!maybe_decl) {
     LOG(ERROR) << "Missing type information for function called at address "
@@ -637,14 +649,15 @@ bool FunctionLifter::CallFunction(const remill::Instruction &inst,
 
   if (target_pc) {
     dest_addr =
-        options.program_counter_init_procedure(ir, pc_reg, target_pc);
+        options.program_counter_init_procedure(ir, pc_reg, target_pc.value());
   } else {
     dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
   }
 
   AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+  auto is_noreturn = maybe_decl->is_noreturn;
   (void) CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
-  return !call_spec.stop;
+  return !is_noreturn;
 }
 
 // Visit a direct function call control-flow instruction. The target is known
@@ -657,7 +670,7 @@ void FunctionLifter::VisitDirectFunctionCall(
     const remill::Instruction::DirectFunctionCall &dcall,
     const remill::DecodingContext &prev_context) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  bool can_return = CallFunction(inst, block);
+  bool can_return = CallFunction(inst, block, inst.branch_taken_pc);
   VisitAfterFunctionCall(inst, block, dcall, can_return, prev_context);
 }
 
@@ -675,7 +688,7 @@ void FunctionLifter::VisitIndirectFunctionCall(
     const remill::DecodingContext &prev_context) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
-  bool can_return = CallFunction(inst, block);
+  bool can_return = CallFunction(inst, block, std::nullopt);
   VisitAfterFunctionCall(inst, block, icall, can_return, prev_context);
 }
 
@@ -691,6 +704,7 @@ void FunctionLifter::VisitIndirectFunctionCall(
 std::pair<uint64_t, llvm::Value *>
 FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
                                           llvm::BasicBlock *block) {
+
   const auto pc = inst.branch_not_taken_pc;
 
   // The semantics for handling a call save the expected return program counter

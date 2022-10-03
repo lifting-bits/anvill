@@ -207,7 +207,7 @@ class FunctionLifter {
   GetOrCreateTargetBlock(const remill::Instruction &from_inst, uint64_t to_addr,
                          const remill::DecodingContext &mapper);
 
-  void InsertError(llvm::BasicBlock* block);
+  void InsertError(llvm::BasicBlock *block);
 
   /*
 NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
@@ -325,7 +325,8 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // a function call to that address in `block`. Failing this, add a call
   // to `__remill_function_call`.
   // Returns true if the callee may return, false otherwise.
-  bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block);
+  bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
+                    std::optional<std::uint64_t> target_pc);
 
   // A wrapper around the type provider's TryGetFunctionType that makes use
   // of the control flow provider to handle control flow redirections for
