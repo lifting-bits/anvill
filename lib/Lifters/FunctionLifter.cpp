@@ -352,25 +352,29 @@ void FunctionLifter::VisitDirectJump(
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::Instruction::DirectJump &mapper) {
   auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
-  if (!std::holds_alternative<Jump>(cf)) {
-    LOG(FATAL) << "No spec exists for direct jump at " << std::hex << inst.pc;
-  }
+  if (std::holds_alternative<Jump>(cf)) {
+    auto jmp_spec = std::get<Jump>(cf);
 
-  auto jmp_spec = std::get<Jump>(cf);
-  if (jmp_spec.targets.size() != 1) {
-    LOG(FATAL) << "Invalid number of targets for direct jump at " << std::hex
-               << inst.pc;
-  }
+    if (jmp_spec.targets.size() != 1) {
+      LOG(FATAL) << "Invalid number of targets for direct jump at " << std::hex
+                 << inst.pc;
+    }
 
-  // TODO(frabert): The stop condition should probably be handled in VisitConditionalInst
-  CHECK_EQ(mapper.taken_flow.known_target, jmp_spec.targets[0].address)
-      << "Spec and remill don't agree on jump target at " << std::hex
-      << inst.pc;
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
-                             mapper.taken_flow.static_context),
-      block);
+    CHECK_EQ(mapper.taken_flow.known_target, jmp_spec.targets[0].address)
+        << "Spec and remill don't agree on jump target at " << std::hex
+        << inst.pc;
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    llvm::BranchInst::Create(
+        GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
+                               mapper.taken_flow.static_context),
+        block);
+  } else if (std::holds_alternative<Call>(cf)) {
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    CallFunction(inst, block, inst.branch_taken_pc);
+    InsertError(block);
+  } else {
+    LOG(FATAL) << "Invalid spec for direct jump at " << std::hex << inst.pc;
+  }
 }
 
 remill::DecodingContext FunctionLifter::ApplyTargetList(
@@ -487,36 +491,41 @@ void FunctionLifter::VisitIndirectJump(
     const remill::Instruction::IndirectJump &mapper,
     const remill::DecodingContext &prev_context) {
   auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
-  if (!std::holds_alternative<Jump>(cf)) {
-    LOG(FATAL) << "Invalid spec for indirect jump at " << std::hex << inst.pc;
-  }
-  auto jmp_spec = std::get<Jump>(cf);
+  if (std::holds_alternative<Jump>(cf)) {
+    auto jmp_spec = std::get<Jump>(cf);
 
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
 
-  // Try to get the target type given the source. This is like a tail-call,
-  // e.g. `jmp [fseek]`.
-  if (auto maybe_decl =
-          type_provider.TryGetCalledFunctionType(func_address, inst)) {
-    llvm::IRBuilder<> ir(block);
-    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
-    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
-    auto new_mem_ptr =
-        CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
-    ir.CreateRet(new_mem_ptr);
+    // Try to get the target type given the source. This is like a tail-call,
+    // e.g. `jmp [fseek]`.
+    if (auto maybe_decl =
+            type_provider.TryGetCalledFunctionType(func_address, inst)) {
+      llvm::IRBuilder<> ir(block);
+      llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
+      AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+      auto new_mem_ptr =
+          CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
+      ir.CreateRet(new_mem_ptr);
 
-    // Attempt to get the target list for this control flow instruction
-    // so that we can handle this jump in a less generic way.
-  } else if (jmp_spec.targets.size() > 0) {
+      // Attempt to get the target list for this control flow instruction
+      // so that we can handle this jump in a less generic way.
+    } else if (jmp_spec.targets.size() > 0) {
 
-    DoSwitchBasedIndirectJump(inst, block, jmp_spec.targets, mapper,
-                              prev_context);
+      DoSwitchBasedIndirectJump(inst, block, jmp_spec.targets, mapper,
+                                prev_context);
 
-    // No good info; do an indirect jump.
+      // No good info; do an indirect jump.
+    } else {
+      auto jump =
+          remill::AddTerminatingTailCall(block, intrinsics.jump, intrinsics);
+      AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
+    }
+  } else if (std::holds_alternative<Call>(cf)) {
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    CallFunction(inst, block, std::nullopt);
+    InsertError(block);
   } else {
-    auto jump =
-        remill::AddTerminatingTailCall(block, intrinsics.jump, intrinsics);
-    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
+    LOG(FATAL) << "Invalid spec for indirect jump at " << std::hex << inst.pc;
   }
 }
 
