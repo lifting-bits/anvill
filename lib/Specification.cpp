@@ -145,10 +145,11 @@ SpecificationImpl::ParseSpecification(
       jmp_target.address = target.address();
       jmp.targets.push_back(jmp_target);
     }
-    std::sort(jmp.targets.begin(), jmp.targets.end(), [](const auto& a, const auto& b) {
-      return a.address < b.address;
-    });
+    std::sort(
+        jmp.targets.begin(), jmp.targets.end(),
+        [](const auto &a, const auto &b) { return a.address < b.address; });
     jumps.push_back(jmp);
+    control_flow_overrides[jmp.address] = jmp;
   }
   std::sort(jumps.begin(), jumps.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
@@ -162,24 +163,27 @@ SpecificationImpl::ParseSpecification(
     }
     callspec.is_tailcall = call.is_tailcall();
     calls.push_back(callspec);
+    control_flow_overrides[callspec.address] = callspec;
   }
   std::sort(calls.begin(), calls.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
   for (auto &ret : spec.overrides().returns()) {
-    ControlFlowOverride overr;
+    Return overr;
     overr.stop = ret.stop();
     overr.address = ret.address();
     returns.push_back(overr);
+    control_flow_overrides[overr.address] = overr;
   }
   std::sort(returns.begin(), returns.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
   for (auto &misc : spec.overrides().other()) {
-    ControlFlowOverride overr;
+    Misc overr;
     overr.stop = misc.stop();
     overr.address = misc.address();
     misc_overrides.push_back(overr);
+    control_flow_overrides[overr.address] = overr;
   }
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
@@ -398,18 +402,6 @@ void Specification::ForEachCallSite(
   }
 }
 
-// Call `cb` on each control-flow target list, until `cb` returns `false`.
-void Specification::ForEachControlFlowTargetList(
-    std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
-    const {
-  for (const auto &ent : impl->targets) {
-    std::shared_ptr<const ControlFlowTargetList> ptr(impl, ent.get());
-    if (!cb(std::move(ptr))) {
-      return;
-    }
-  }
-}
-
 // Call `cb` on each control-flow redirection, until `cb` returns `false`.
 void Specification::ForEachControlFlowRedirect(
     std::function<bool(std::uint64_t, std::uint64_t)> cb) const {
@@ -437,7 +429,7 @@ void Specification::ForEachCall(std::function<bool(const Call &)> cb) const {
 }
 
 void Specification::ForEachReturn(
-    std::function<bool(const ControlFlowOverride &)> cb) const {
+    std::function<bool(const Return &)> cb) const {
   for (auto &ret : impl->returns) {
     if (!cb(ret)) {
       return;
@@ -446,7 +438,7 @@ void Specification::ForEachReturn(
 }
 
 void Specification::ForEachMiscOverride(
-    std::function<bool(const ControlFlowOverride &)> cb) const {
+    std::function<bool(const Misc &)> cb) const {
   for (auto &misc : impl->misc_overrides) {
     if (!cb(misc)) {
       return;

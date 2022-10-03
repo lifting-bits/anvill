@@ -54,7 +54,7 @@ class SpecificationTypeProvider;
 class TypeDictionary;
 class TypeTranslator;
 
-struct ControlFlowOverride {
+struct ControlFlowOverrideSpec {
   std::uint64_t address;
   bool stop;
 };
@@ -64,39 +64,20 @@ struct JumpTarget {
   std::unordered_map<std::string, std::uint64_t> context_assignments;
 };
 
-struct Jump : ControlFlowOverride {
+struct Jump : ControlFlowOverrideSpec {
   std::vector<JumpTarget> targets;
 };
 
-struct Call : ControlFlowOverride {
+struct Call : ControlFlowOverrideSpec {
   std::optional<std::uint64_t> return_address;
   bool is_tailcall;
 };
 
-// Describes a list of targets reachable from a given source address. This tells
-// us where the flows go, not the mechanics of how they get there.
-struct ControlFlowTargetList final {
+struct Return : ControlFlowOverrideSpec {};
 
-  // Address of an indirect jump.
-  std::uint64_t address{};
+struct Misc : ControlFlowOverrideSpec {};
 
-  // List of addresses targeted by the indirect jump. This is a set, and thus
-  // does not track the multiplicity of those targets, nor the order that they
-  // appear in any kind of binary-specific structure (e.g. a jump table). That
-  // is, a given indirect jump may target the same address in multiple different
-  // ways (e.g. multiple `case` labels in a `switch` statement that share the
-  // same body).
-
-  /// The addresses map a target to a given context mapping.
-  std::map<std::uint64_t, std::unordered_map<std::string, uint64_t>>
-      target_addresses;
-
-
-  // True if this destination list appears to be complete. As a
-  // general rule, this is set to true when the target recovery has
-  // been completely performed by the disassembler tool.
-  bool is_complete{false};
-};
+using ControlFlowOverride = std::variant<std::monostate, Jump, Call, Return, Misc>;
 
 struct CallSiteDecl;
 struct FunctionDecl;
@@ -165,11 +146,6 @@ class Specification {
   void ForEachCallSite(
       std::function<bool(std::shared_ptr<const CallSiteDecl>)> cb) const;
 
-  // Call `cb` on each control-flow target list, until `cb` returns `false`.
-  void ForEachControlFlowTargetList(
-      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
-      const;
-
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(
       std::function<bool(std::uint64_t, std::uint64_t)> cb) const;
@@ -181,11 +157,11 @@ class Specification {
   void ForEachCall(std::function<bool(const Call &)> cb) const;
 
   // Call `cb` on each return, until `cb` returns `false`.
-  void ForEachReturn(std::function<bool(const ControlFlowOverride &)> cb) const;
+  void ForEachReturn(std::function<bool(const Return &)> cb) const;
 
   // Call `cb` on each miscellaneous control flow override, until `cb` returns `false`.
   void ForEachMiscOverride(
-      std::function<bool(const ControlFlowOverride &)> cb) const;
+      std::function<bool(const Misc &)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();

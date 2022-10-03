@@ -9,6 +9,7 @@
 #pragma once
 
 #include <anvill/Declarations.h>
+#include <anvill/Specification.h>
 #include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/IR/CallingConv.h>
@@ -206,6 +207,8 @@ class FunctionLifter {
   GetOrCreateTargetBlock(const remill::Instruction &from_inst, uint64_t to_addr,
                          const remill::DecodingContext &mapper);
 
+  void InsertError(llvm::BasicBlock* block);
+
   /*
 NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
                    IndirectJump, IndirectFunctionCall, DirectFunctionCall,
@@ -289,7 +292,7 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // Visit an indirect jump that is a jump table.
   void DoSwitchBasedIndirectJump(const remill::Instruction &inst,
                                  llvm::BasicBlock *block,
-                                 const ControlFlowTargetList &target_list,
+                                 const std::vector<JumpTarget> &target_list,
                                  const remill::Instruction::IndirectJump &norm,
                                  const remill::DecodingContext &prev_context);
 
@@ -322,8 +325,7 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // a function call to that address in `block`. Failing this, add a call
   // to `__remill_function_call`.
   // Returns true if the callee may return, false otherwise.
-  bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
-                    std::optional<std::uint64_t> target_pc);
+  bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block);
 
   // A wrapper around the type provider's TryGetFunctionType that makes use
   // of the control flow provider to handle control flow redirections for
