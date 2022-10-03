@@ -14,6 +14,9 @@ using many documents to represent a single binary.
     "functions": [
         {
             "address": 4416,
+            "context_assignments": {
+                "TMReg": 1
+            },
             "return_address": {
                 "memory": {
                     "register": "RSP",
@@ -92,18 +95,18 @@ specifications.
 The following is a list of available architectures. Architecture names are
 case-sensitive.
 
-| Name | Address Width | Endianness | Description |
-|--|--|--|--|
-| x86 | 32 | Little | x86 architecture, including x87, MMX and SSE instruction sets. |
-| x86_avx | 32 | Little | x86 architecture, including x87, MMX, SSE, and AVX instruction sets. |
-| x86_avx512 | 32 | Little | x86 architecture, including x87, MMX, SSE, AVX, and AVX512 instruction sets. |
-| amd64 | 64 | Little | x86-64 architecture, including x87, MMX and SSE instruction sets. |
-| amd64_avx | 64 | Little | x86-64 architecture, including x87, MMX, SSE, and AVX instruction sets. |
-| amd64_avx512 | 64 | Little | x86-64 architecture, including x87, MMX, SSE, AVX, and AVX512 instruction sets. |
-| aarch64 | 64 | Little | ARMv8 64-bit architecture, inclding NEON. |
-| aarch32 | 32 | Little | ARMv8 32-bit architecture, backwards-compatible with ARMv7. |
-| sparc32 | 32 | Big | SPARCv8+ architecture. |
-| sparc64 | 64 | Big | SPARCv9 architecture. |
+| Name         | Address Width | Endianness | Description                                                                     |
+| ------------ | ------------- | ---------- | ------------------------------------------------------------------------------- |
+| x86          | 32            | Little     | x86 architecture, including x87, MMX and SSE instruction sets.                  |
+| x86_avx      | 32            | Little     | x86 architecture, including x87, MMX, SSE, and AVX instruction sets.            |
+| x86_avx512   | 32            | Little     | x86 architecture, including x87, MMX, SSE, AVX, and AVX512 instruction sets.    |
+| amd64        | 64            | Little     | x86-64 architecture, including x87, MMX and SSE instruction sets.               |
+| amd64_avx    | 64            | Little     | x86-64 architecture, including x87, MMX, SSE, and AVX instruction sets.         |
+| amd64_avx512 | 64            | Little     | x86-64 architecture, including x87, MMX, SSE, AVX, and AVX512 instruction sets. |
+| aarch64      | 64            | Little     | ARMv8 64-bit architecture, inclding NEON.                                       |
+| aarch32      | 32            | Little     | ARMv8 32-bit architecture, backwards-compatible with ARMv7.                     |
+| sparc32      | 32            | Big        | SPARCv8+ architecture.                                                          |
+| sparc64      | 64            | Big        | SPARCv9 architecture.                                                           |
 
 If a given binary contains code for multiple architectures, then separate documents
 should be used to represent those portions of code.
@@ -128,11 +131,11 @@ names are case-sensitive. Operating system names are not tied to a specific vers
 of the operating system. That is, there is no distinction between Windows XP and
 Windows 10.
 
-| Name | Description |
-|--|--|
-| linux | Linux |
-| macos | Apple macOS |
-| windows | Microsoft Windows |
+| Name    | Description        |
+| ------- | ------------------ |
+| linux   | Linux              |
+| macos   | Apple macOS        |
+| windows | Microsoft Windows  |
 | solaris | Sun/Oracle Solaris |
 
 ### Function list
@@ -171,6 +174,18 @@ and does not imply "external to the binary from which the specification is deriv
 ```json
         {
             "address": 4416,
+```
+
+#### Entry Context Assignments
+
+Sometimes instruction decoders require contextual values to determine how a given set of bits decodes. This contextual information
+is stored in context registers. One such example is the the Thumb mode bit on ARM. Since Anvill lifts entities at a function level, we need to know
+what the initial value of these context registers are on entry to a function. These initial values are specified as a dictionary of register to value mappings shown below:
+
+```
+    "context_assignments": {
+        "TMReg": 1
+    },
 ```
 
 #### Return address
@@ -361,15 +376,15 @@ to LLVM's internal calling convention representation.
 The following table documents the supported calling conventions. A more exhaustive
 list can be found [here](https://code.woboq.org/llvm/llvm/include/llvm/IR/CallingConv.h.html#29).
 
-| Integral value | Description |
-|--|--|
-| 0 | Default calling convention for C functions |
-| 64 | `stdcall` on x86 |
-| 65 | `fastcall` on x86 |
-| 70 | `thiscall` on x86|
-| 78 | AMD64 SysV ABI, default on Linux and macOS on x86-64 |
-| 79 | Win64 |
-| 80 | `vectorcall` on x86 |
+| Integral value | Description                                          |
+| -------------- | ---------------------------------------------------- |
+| 0              | Default calling convention for C functions           |
+| 64             | `stdcall` on x86                                     |
+| 65             | `fastcall` on x86                                    |
+| 70             | `thiscall` on x86                                    |
+| 78             | AMD64 SysV ABI, default on Linux and macOS on x86-64 |
+| 79             | Win64                                                |
+| 80             | `vectorcall` on x86                                  |
 
 ### Global variables
 
@@ -445,4 +460,24 @@ as executabled with `"is_executable": true`.
             "is_executable": true,
             "data": "f30f1efa41574c8d3da32c000041564989d641554989f541544189fc55488d2d942c0000534c29fd4883ec08e88ffeffff48c1fd03741f31db0f1f80000000004c89f24c89ee4489e741ff14df4883c3014839dd75ea4883c4085b5d415c415d415e415fc3"
         }
+```
+
+
+#### Control Flow Targets List 
+
+Targets of indirect jumps are required in order to determine where to lift additional basic blocks into a target function. 
+A control flow target list specifies for an instruction at a given address with indirect control flow what the possible successor addresses are.
+Additionally, the control flow target also specifies context register assignments that may occur along a given branch of control flow. `is_complete` specifies wether the list specifies all possible control flow targets soundly or if there may be unknown targets.
+
+```json
+  "control_flow_targets": [
+    {
+      "source": 4144,
+      "is_complete": true,
+      "destinations": [
+        [
+          16488,
+          {"TMReg": 1}
+        ]
+      ]
 ```

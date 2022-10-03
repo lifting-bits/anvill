@@ -58,6 +58,13 @@ class BNSpecification(Specification):
     def bv(self):
         return self._bv
 
+    def get_context_assignments_for_addr(self, ea: int) -> Dict[str, int]:
+        func = next(iter(self._bv.get_functions_containing(ea)),None)
+        if func:
+            return get_entry_assignments(func) 
+        else:
+            return {}
+
     @property
     def type_cache(self):
         return self._type_cache

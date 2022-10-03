@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
 
 #include "Protobuf.h"
 #include "anvill/Declarations.h"

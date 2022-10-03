@@ -39,7 +39,9 @@
 #include <remill/OS/OS.h>
 
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
+#include <variant>
 
 #include "EntityLifter.h"
 
@@ -57,6 +59,7 @@ static void ClearVariableNames(llvm::Function *func) {
     }
   }
 }
+
 
 // A function that ensures that the memory pointer escapes, and thus none of
 // the memory writes at the end of a function are lost.
@@ -188,7 +191,7 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_)
 
 llvm::BranchInst *
 FunctionLifter::BranchToInst(uint64_t from_addr, uint64_t to_addr,
-                             const remill::DecodingContext::ContextMap &mapper,
+                             const remill::DecodingContext &mapper,
                              llvm::BasicBlock *from_block) {
   auto br = llvm::BranchInst::Create(
       GetOrCreateBlock(from_addr, to_addr, mapper), from_block);
@@ -200,9 +203,9 @@ FunctionLifter::BranchToInst(uint64_t from_addr, uint64_t to_addr,
 // function drives a work list, where the first time we ask for the
 // instruction at `addr`, we enqueue a bit of work to decode and lift that
 // instruction.
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
-    uint64_t from_addr, uint64_t to_addr,
-    const remill::DecodingContext::ContextMap &mapper) {
+llvm::BasicBlock *
+FunctionLifter::GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr,
+                                 const remill::DecodingContext &mapper) {
   auto &block = edge_to_dest_block[{from_addr, to_addr}];
   if (block) {
     return block;
@@ -217,14 +220,14 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(
   //            lift them as such, rather than as jumps back into the first
   //            lifted block.
   edge_work_list.emplace(to_addr, from_addr);
-  this->decoding_contexts.emplace(std::make_pair(to_addr, from_addr),
-                                  mapper(to_addr));
+  this->decoding_contexts.emplace(std::make_pair(to_addr, from_addr), mapper);
   return block;
 }
 
-llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(
-    const remill::Instruction &from_inst, uint64_t to_addr,
-    const remill::DecodingContext::ContextMap &mapper) {
+llvm::BasicBlock *
+FunctionLifter::GetOrCreateTargetBlock(const remill::Instruction &from_inst,
+                                       uint64_t to_addr,
+                                       const remill::DecodingContext &mapper) {
   return GetOrCreateBlock(from_inst.pc, to_addr, mapper);
 }
 
@@ -232,11 +235,10 @@ llvm::BasicBlock *FunctionLifter::GetOrCreateTargetBlock(
 // the context map of the decoded instruction if successful and std::nullopt otherwise. `is_delayed` tells the decoder
 // whether or not the instruction being decoded is being decoded inside of a
 // delay slot of another instruction.
-std::optional<remill::DecodingContext::ContextMap>
-FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
-                                      remill::Instruction *inst_out,
-                                      remill::DecodingContext context) {
-  static const auto max_inst_size = options.arch->MaxInstructionSize();
+bool FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
+                                           remill::Instruction *inst_out,
+                                           remill::DecodingContext context) {
+  static const auto max_inst_size = options.arch->MaxInstructionSize(context);
   inst_out->Reset();
 
   // Read the maximum number of bytes possible for instructions on this
@@ -271,6 +273,7 @@ FunctionLifter::DecodeInstructionInto(const uint64_t addr, bool is_delayed,
     return options.arch->DecodeDelayedInstruction(
         addr, inst_out->bytes, *inst_out, std::move(context));
   } else {
+    DLOG(INFO) << "Ops emplace: " << inst_out->operands.size();
     return options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out,
                                            std::move(context));
   }
@@ -302,17 +305,19 @@ void FunctionLifter::VisitError(
 // to the next instruction (`inst.next_pc`).
 void FunctionLifter::VisitNormal(
     const remill::Instruction &inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, inst.next_pc, mapper),
-                           block);
+    const remill::Instruction::NormalInsn &mapper) {
+  llvm::BranchInst::Create(
+      GetOrCreateTargetBlock(inst, inst.next_pc,
+                             mapper.fallthrough.fallthrough_context),
+      block);
 }
 
 // Visit a no-op instruction. These behave identically to normal instructions
 // from a control-flow perspective.
-void FunctionLifter::VisitNoOp(
-    const remill::Instruction &inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  VisitNormal(inst, block, mapper);
+void FunctionLifter::VisitNoOp(const remill::Instruction &inst,
+                               llvm::BasicBlock *block,
+                               const remill::Instruction::NoOp &mapper) {
+  VisitNormal(inst, block, mapper.fallthrough);
 }
 
 // Visit a direct jump control-flow instruction. The target of the jump is
@@ -322,17 +327,30 @@ void FunctionLifter::VisitNoOp(
 void FunctionLifter::VisitDirectJump(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::DirectJump &mapper) {
+
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_taken_pc, mapper), block);
+      GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
+                             mapper.taken_flow.static_context),
+      block);
+}
+
+remill::DecodingContext FunctionLifter::ApplyTargetList(
+    const std::unordered_map<std::string, uint64_t> &assignments,
+    remill::DecodingContext prev_context) {
+  for (const auto &[k, v] : assignments) {
+    prev_context.UpdateContextReg(k, v);
+  }
+  return prev_context;
 }
 
 // Visit an indirect jump that is a jump table.
 void FunctionLifter::DoSwitchBasedIndirectJump(
     const remill::Instruction &inst, llvm::BasicBlock *block,
     const ControlFlowTargetList &target_list,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::IndirectJump &mapper,
+    const remill::DecodingContext &prev_context) {
 
   auto add_remill_jump{true};
   llvm::BasicBlock *current_bb = block;
@@ -352,8 +370,13 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     add_remill_jump = false;
 
     auto destination = *(target_list.target_addresses.begin());
-    llvm::BranchInst::Create(GetOrCreateTargetBlock(inst, destination, mapper),
-                             block);
+
+
+    llvm::BranchInst::Create(
+        GetOrCreateTargetBlock(
+            inst, destination.first,
+            this->ApplyTargetList(destination.second, prev_context)),
+        block);
 
     // We have multiple destinations. Handle this with a switch. If the target
     // list is not marked as complete, then we'll still add __remill_jump
@@ -387,7 +410,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
     for (auto destination : target_list.target_addresses) {
       switch_parameters.push_back(
-          llvm::ConstantInt::get(pc_reg->type, destination));
+          llvm::ConstantInt::get(pc_reg->type, destination.first));
     }
 
     // Invoke the anvill switch
@@ -405,7 +428,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     auto dest_id{0u};
 
     for (auto dest : target_list.target_addresses) {
-      auto dest_block = GetOrCreateTargetBlock(inst, dest, mapper);
+      auto dest_block = GetOrCreateTargetBlock(
+          inst, dest.first, this->ApplyTargetList(dest.second, prev_context));
       auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
       switch_inst->addCase(dest_case, dest_block);
     }
@@ -432,7 +456,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 void FunctionLifter::VisitIndirectJump(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::IndirectJump &mapper,
+    const remill::DecodingContext &prev_context) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
 
@@ -452,7 +477,8 @@ void FunctionLifter::VisitIndirectJump(
   } else if (auto maybe_target_list =
                  options.control_flow_provider.TryGetControlFlowTargets(inst)) {
 
-    DoSwitchBasedIndirectJump(inst, block, *maybe_target_list, mapper);
+    DoSwitchBasedIndirectJump(inst, block, *maybe_target_list, mapper,
+                              prev_context);
 
     // No good info; do an indirect jump.
   } else {
@@ -462,13 +488,12 @@ void FunctionLifter::VisitIndirectJump(
   }
 }
 
-// Visit a conditional indirect jump control-flow instruction. This is a mix
-// between indirect jumps and conditional jumps that appears on the
-// ARMv7 (AArch32) architecture, where many instructions are predicated.
-void FunctionLifter::VisitConditionalIndirectJump(
+void FunctionLifter::VisitConditionalInstruction(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::ConditionalInstruction &conditional_insn,
+    const remill::DecodingContext &prev_context) {
+
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block =
@@ -478,29 +503,16 @@ void FunctionLifter::VisitConditionalIndirectJump(
 
   auto cond_jump_fallthrough_br =
       llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
+
+  FlowVisitor visitor = {*this, inst, taken_block, delayed_inst, prev_context};
+  std::visit(visitor, conditional_insn.taken_branch);
+
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
 
-  // Try to get the target type given the source. This is a conditional tail-
-  // call.
-  if (auto maybe_decl =
-          type_provider.TryGetCalledFunctionType(func_address, inst)) {
-    llvm::IRBuilder<> ir(taken_block);
-    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
-    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
-    auto new_mem_ptr =
-        CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
-    ir.CreateRet(new_mem_ptr);
-
-    // No target type info.
-  } else {
-    auto jump = remill::AddTerminatingTailCall(taken_block, intrinsics.jump,
-                                               intrinsics);
-    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
-  }
 
   auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
+      GetOrCreateTargetBlock(inst, inst.next_pc,
+                             conditional_insn.fall_through.fallthrough_context),
       not_taken_block);
 
   AnnotateInstruction(cond_jump_fallthrough_br, pc_annotation_id,
@@ -520,36 +532,6 @@ void FunctionLifter::VisitFunctionReturn(
       block, intrinsics.function_return, intrinsics);
   AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
   MuteStateEscape(func_return);
-}
-
-// Visit a conditional function return control-flow instruction, which is a
-// variant that is half-way between a return and a conditional jump. These
-// are possible on ARMv7 (AArch32).
-void FunctionLifter::VisitConditionalFunctionReturn(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_branch_to_return_fallthrough =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  auto func_return = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.function_return, intrinsics);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_block = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  MuteStateEscape(func_return);
-  AnnotateInstruction(func_return, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(cond_branch_to_return_fallthrough, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_block, pc_annotation_id, pc_annotation);
 }
 
 std::optional<CallableDecl>
@@ -652,42 +634,13 @@ bool FunctionLifter::CallFunction(const remill::Instruction &inst,
 void FunctionLifter::VisitDirectFunctionCall(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::DirectFunctionCall &dcall,
+    const remill::DecodingContext &prev_context) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   bool can_return = CallFunction(inst, block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, block, mapper, can_return);
+  VisitAfterFunctionCall(inst, block, dcall, can_return, prev_context);
 }
 
-// Visit a conditional direct function call control-flow instruction. The
-// target is known at decode time, and its realized address is stored in
-// `inst.branch_taken_pc`. In practice, what we do in this situation is try
-// to call the lifted function function at the target address if the condition
-// is satisfied. Note that it is up to the semantics of the conditional call
-// instruction to "tell us" if the condition is met.
-void FunctionLifter::VisitConditionalDirectFunctionCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_function_call_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  bool can_return = CallFunction(inst, taken_block, inst.branch_taken_pc);
-  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_function_call_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-}
 
 // Visit an indirect function call control-flow instruction. Similar to
 // indirect jumps, we invoke an intrinsic function, `__remill_function_call`;
@@ -698,39 +651,14 @@ void FunctionLifter::VisitConditionalDirectFunctionCall(
 void FunctionLifter::VisitIndirectFunctionCall(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
+    const remill::Instruction::IndirectFunctionCall &icall,
+    const remill::DecodingContext &prev_context) {
 
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   bool can_return = CallFunction(inst, block, std::nullopt);
-  VisitAfterFunctionCall(inst, block, mapper, can_return);
+  VisitAfterFunctionCall(inst, block, icall, can_return, prev_context);
 }
 
-// Visit a conditional indirect function call control-flow instruction.
-// This is a cross between conditional jumps and indirect function calls.
-void FunctionLifter::VisitConditionalIndirectFunctionCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_func_call_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  bool can_return = CallFunction(inst, taken_block, std::nullopt);
-  VisitAfterFunctionCall(inst, taken_block, mapper, can_return);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_func_call_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-}
 
 // Helper to figure out the address where execution will resume after a
 // function call. In practice this is the instruction following the function
@@ -827,15 +755,19 @@ FunctionLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
 // control-flow graph.
 void FunctionLifter::VisitAfterFunctionCall(
     const remill::Instruction &inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper, bool can_return) {
+    const std::variant<remill::Instruction::IndirectFunctionCall,
+                       remill::Instruction::DirectFunctionCall> &call,
+    bool can_return, const remill::DecodingContext &prev_context) {
   const auto [ret_pc, ret_pc_val] = LoadFunctionReturnAddress(inst, block);
 
   llvm::IRBuilder<> ir(block);
   if (can_return) {
+
+
     auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
     auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
     auto branch_to_next_pc =
-        ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, mapper));
+        ir.CreateBr(GetOrCreateTargetBlock(inst, ret_pc, prev_context));
 
     AnnotateInstruction(update_pc, pc_annotation_id, pc_annotation);
     AnnotateInstruction(update_next_pc, pc_annotation_id, pc_annotation);
@@ -848,44 +780,6 @@ void FunctionLifter::VisitAfterFunctionCall(
   }
 }
 
-// Visit a conditional control-flow branch. Both the taken and not taken
-// targets are known by the decoder and their addresses are available in
-// `inst.branch_taken_pc` and `inst.branch_not_taken_pc`, respectively.
-// Here we need to orchestrate the two-way control-flow, as well as the
-// possible execution of a delayed instruction on either or both paths,
-// depending on the presence/absence of delay slot annulment bits.
-void FunctionLifter::VisitConditionalBranch(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  std::stringstream taken_ss;
-  taken_ss << "inst_" << std::hex << inst.pc << "_taken_"
-           << inst.branch_taken_pc;
-
-  std::stringstream not_taken_ss;
-  not_taken_ss << "inst_" << std::hex << inst.pc << "_not_taken_"
-               << inst.branch_not_taken_pc;
-
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, taken_ss.str(), lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, not_taken_ss.str(), lifted_func);
-  auto cond_taken_nottaken_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-  auto taken_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_taken_pc, mapper), taken_block);
-  auto not_taken_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_taken_nottaken_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(taken_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(not_taken_br, pc_annotation_id, pc_annotation);
-}
 
 // Visit an asynchronous hyper call control-flow instruction. These are non-
 // local control-flow transfers, such as system calls. We treat them like
@@ -896,36 +790,6 @@ void FunctionLifter::VisitAsyncHyperCall(
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   remill::AddTerminatingTailCall(block, intrinsics.async_hyper_call,
                                  intrinsics);
-}
-
-// Visit conditional asynchronous hyper calls. These are conditional, non-
-// local control-flow transfers, e.g. `bound` on x86.
-void FunctionLifter::VisitConditionalAsyncHyperCall(
-    const remill::Instruction &inst,
-    std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
-    const remill::DecodingContext::ContextMap &mapper) {
-  const auto lifted_func = block->getParent();
-  const auto cond = remill::LoadBranchTaken(block);
-  const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-  auto cond_hypercall_fallthrough_br =
-      llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
-  VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
-  VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);
-
-  auto hc = remill::AddTerminatingTailCall(
-      taken_block, intrinsics.async_hyper_call, intrinsics);
-
-  auto fallthrough_br = llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.branch_not_taken_pc, mapper),
-      not_taken_block);
-
-  AnnotateInstruction(cond_hypercall_fallthrough_br, pc_annotation_id,
-                      pc_annotation);
-  AnnotateInstruction(fallthrough_br, pc_annotation_id, pc_annotation);
-  AnnotateInstruction(hc, pc_annotation_id, pc_annotation);
 }
 
 // Visit (and thus lift) a delayed instruction. When lifting a delayed
@@ -1037,8 +901,7 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
 // lifters to enact a change in control-flow.
 void FunctionLifter::VisitInstruction(
     remill::Instruction &inst, llvm::BasicBlock *block,
-    remill::DecodingContext prev_insn_context,
-    const remill::DecodingContext::ContextMap &mapper) {
+    remill::DecodingContext prev_insn_context) {
   curr_inst = &inst;
 
   std::optional<remill::Instruction> delayed_inst;
@@ -1076,60 +939,9 @@ void FunctionLifter::VisitInstruction(
   pc_annotation = GetPCAnnotation(inst.pc);
   AnnotateInstructions(block, pc_annotation_id, pc_annotation);
 
-  switch (inst.category) {
-    // Invalid means failed to decode.
-    case remill::Instruction::kCategoryInvalid:
-      VisitInvalid(inst, block);
-      break;
+  FlowVisitor visitor = {*this, inst, block, delayed_inst, prev_insn_context};
+  std::visit(visitor, inst.flows);
 
-    // Error is a valid instruction, but specifies error semantics for the
-    // processor. The canonical example is x86's `UD2` instruction.
-    case remill::Instruction::kCategoryError:
-      VisitError(inst, delayed_inst, block);
-      break;
-    case remill::Instruction::kCategoryNormal:
-      VisitNormal(inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryNoOp:
-      VisitNoOp(inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryDirectJump:
-      VisitDirectJump(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryIndirectJump:
-      VisitIndirectJump(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryConditionalIndirectJump:
-      VisitConditionalIndirectJump(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryFunctionReturn:
-      VisitFunctionReturn(inst, delayed_inst, block);
-      break;
-    case remill::Instruction::kCategoryConditionalFunctionReturn:
-      VisitConditionalFunctionReturn(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryDirectFunctionCall:
-      VisitDirectFunctionCall(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryConditionalDirectFunctionCall:
-      VisitConditionalDirectFunctionCall(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryIndirectFunctionCall:
-      VisitIndirectFunctionCall(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryConditionalIndirectFunctionCall:
-      VisitConditionalIndirectFunctionCall(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryConditionalBranch:
-      VisitConditionalBranch(inst, delayed_inst, block, mapper);
-      break;
-    case remill::Instruction::kCategoryAsyncHyperCall:
-      VisitAsyncHyperCall(inst, delayed_inst, block);
-      break;
-    case remill::Instruction::kCategoryConditionalAsyncHyperCall:
-      VisitConditionalAsyncHyperCall(inst, delayed_inst, block, mapper);
-      break;
-  }
 
   // Do a second pass of annotations to apply to the control-flow branching
   // instructions added in by the above `Visit*` calls.
@@ -1249,13 +1061,14 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
         // possibly recover via a tail-call to a redirection address!
         if (inst_addr != func_address) {
           // TODO(Ian): is this context right?
-          auto cont =
-              remill::DecodingContext::UniformContextMapping(insn_context);
-          this->BranchToInst(func_address, inst_addr, cont, block);
+          this->BranchToInst(func_address, inst_addr, insn_context, block);
           continue;
         }
       }
 
+
+      // TODO(Ian): If we hit this in our new model then the low level lift is a failure and we need to mark this somehow...
+      // otherwise we are inventing the abscence of control flow...
       LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
                  << " reachable from instruction " << from_addr
                  << " in function at " << func_address << std::dec;
@@ -1274,7 +1087,7 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
       MuteStateEscape(call);
       continue;
     } else {
-      VisitInstruction(inst, block, insn_context, *next_context);
+      VisitInstruction(inst, block, insn_context);
     }
   }
 }
@@ -1580,6 +1393,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   std::vector<llvm::CallInst *> calls_to_inline;
 
+  CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
+
   // Set of instructions that we should not annotate because we can't tie them
   // to a particular instruction address.
   std::unordered_set<llvm::Instruction *> insts_without_provenance;
@@ -1611,7 +1426,9 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
       }
 
       llvm::InlineFunctionInfo info;
-      llvm::InlineFunction(*call_inst, info);
+      auto res = llvm::InlineFunction(*call_inst, info);
+
+      CHECK(res.isSuccess());
 
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {
@@ -1677,7 +1494,6 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
-
   addr_to_func.clear();
   edge_work_list.clear();
   edge_to_dest_block.clear();
@@ -1696,6 +1512,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
       memory_provider.Query(func_address);
   if (!MemoryProvider::IsValidAddress(first_byte_avail) ||
       !MemoryProvider::IsExecutable(first_byte_perms)) {
+    LOG(ERROR) << "Address is not valid for func " << std::hex << decl.address;
     return nullptr;
   }
 
@@ -1714,6 +1531,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // The address is valid, the memory is executable, but we don't actually have
   // the data available for lifting, so leave us with just a declaration.
   if (!MemoryProvider::HasByte(first_byte_avail)) {
+    LOG(ERROR) << "Memprov does not have bytes for func: " << std::hex
+               << decl.address;
     return native_func;
   }
 
@@ -1765,13 +1584,18 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   // TODO(Ian): for a thumb vs arm function we need to figure out how to setup the correct initial context,
   // maybe the spec should have a section (Context reg assignments or something), where we apply those assingments to a defautl initial context
-  auto default_mapping = remill::DecodingContext::UniformContextMapping(
-      options.arch->CreateInitialContext());
+
+  auto default_mapping = options.arch->CreateInitialContext();
+  for (const auto &[k, v] : decl.context_assignments) {
+    default_mapping.UpdateContextReg(k, v);
+  }
+
   ir.CreateBr(GetOrCreateBlock(0u, func_address, default_mapping));
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
 
+  DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitInstructions(func_address);
 
@@ -1782,6 +1606,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
+
 
   return native_func;
 }
@@ -2012,6 +1837,61 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
   }
 
   return new_version;
+}
+
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::NormalInsn &normal) {
+  this->lifter.VisitNormal(this->inst, this->block, normal);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::InvalidInsn &) {
+  this->lifter.VisitInvalid(inst, block);
+}
+
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::ErrorInsn &) {
+  this->lifter.VisitError(inst, delayed_inst, block);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::DirectJump &djump) {
+  this->lifter.VisitDirectJump(inst, delayed_inst, block, djump);
+}
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::IndirectJump &ijump) {
+  this->lifter.VisitIndirectJump(inst, delayed_inst, block, ijump,
+                                 prev_context);
+}
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::IndirectFunctionCall &icall) {
+  this->lifter.VisitIndirectFunctionCall(inst, delayed_inst, block, icall,
+                                         prev_context);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::DirectFunctionCall &dcall) {
+  this->lifter.VisitDirectFunctionCall(inst, delayed_inst, block, dcall,
+                                       prev_context);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::FunctionReturn &) {
+  this->lifter.VisitFunctionReturn(inst, delayed_inst, block);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::AsyncHyperCall &async_hcall) {
+  this->lifter.VisitAsyncHyperCall(inst, delayed_inst, block);
+}
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::ConditionalInstruction &cond_insn) {
+  this->lifter.VisitConditionalInstruction(inst, delayed_inst, block, cond_insn,
+                                           this->prev_context);
+}
+
+void FunctionLifter::FlowVisitor::operator()(
+    const remill::Instruction::NoOp &noop) {
+  this->lifter.VisitNoOp(inst, block, noop);
 }
 
 }  // namespace anvill

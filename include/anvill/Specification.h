@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <istream>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -85,7 +86,11 @@ struct ControlFlowTargetList final {
   // is, a given indirect jump may target the same address in multiple different
   // ways (e.g. multiple `case` labels in a `switch` statement that share the
   // same body).
-  std::set<std::uint64_t> target_addresses;
+
+  /// The addresses map a target to a given context mapping.
+  std::map<std::uint64_t, std::unordered_map<std::string, uint64_t>>
+      target_addresses;
+
 
   // True if this destination list appears to be complete. As a
   // general rule, this is set to true when the target recovery has
