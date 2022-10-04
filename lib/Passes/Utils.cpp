@@ -9,6 +9,7 @@
 #include "Utils.h"
 
 #include <glog/logging.h>
+#include <llvm/ADT/Triple.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
