@@ -221,8 +221,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
 
-  // TODO(alex): Need to rewrite this pass to somehow not rely on typed pointers.
-  // AddConvertIntegerToPointerOperations(fpm);
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
   AddBranchRecovery(fpm);
 

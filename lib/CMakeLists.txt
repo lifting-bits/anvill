@@ -24,7 +24,6 @@ include("${PROJECT_SOURCE_DIR}/cmake/git_watcher.cmake")
 # `.cpp` file.
 set(anvill_passes
   ConvertAddressesToEntityUses
-  ConvertIntegerToPointerOperations
   ConvertMasksToCasts
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
@@ -207,7 +206,7 @@ if(ANVILL_ENABLE_INSTALL)
     PUBLIC_HEADER DESTINATION
       "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
   )
-  
+
   install(
     FILES
       ${anvill_passes_HEADERS}
