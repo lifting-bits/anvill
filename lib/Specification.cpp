@@ -182,7 +182,7 @@ SpecificationImpl::ParseSpecification(
   std::sort(returns.begin(), returns.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  for (auto &misc : spec.overrides().other()) {
+  for (auto &misc : spec.overrides().others()) {
     Misc overr;
     overr.stop = misc.stop();
     overr.address = misc.address();

@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include "anvill/Type.h"
 #include "specification.pb.h"
 
 namespace llvm {
@@ -58,8 +59,8 @@ class ProtobufTranslator {
   // Parse the location of a value. This applies to both parameters and
   // return values.
   anvill::Result<ValueDecl, std::string>
-  DecodeValue(const ::specification::Value &obj, const char *desc,
-              bool allow_void = false) const;
+  DecodeValue(const ::specification::Value &obj, TypeSpec type,
+              const char *desc) const;
 
 
   Result<std::monostate, std::string>
@@ -76,7 +77,7 @@ class ProtobufTranslator {
       const std::unique_ptr<const remill::Arch> &arch_)
       : ProtobufTranslator(type_translator_, arch_.get()) {}
 
-  // Parse a parameter from the JSON spec. Parameters should have names,
+  // Parse a parameter from the Protobuf spec. Parameters should have names,
   // as that makes the bitcode slightly easier to read, but names are
   // not required. They must have types, and these types should be mostly
   // reflective of what you would see if you compiled C/C++ source code to
@@ -85,23 +86,13 @@ class ProtobufTranslator {
   Result<ParameterDecl, std::string>
   DecodeParameter(const ::specification::Parameter &obj) const;
 
-  // Parse a return value from the JSON spec.
-  Result<ValueDecl, std::string>
-  DecodeReturnValue(const ::specification::Value &obj) const;
-
-  // Try to decode function info from a JSON specification. These
+  // Try to decode function info from a Protobuf specification. These
   // are really function prototypes / declarations, and not any instruction
   // data (that is separate, if present).
   Result<FunctionDecl, std::string>
   DecodeFunction(const ::specification::Function &obj) const;
 
-  // Try to decode call site information from a JSON specification. This is a
-  // lot like function declarations, but is specific to a call site, rather
-  // than specific to the function's entrypoint.
-  Result<CallSiteDecl, std::string>
-  DecodeCallSite(const llvm::json::Object *obj) const;
-
-  // Try to decode global variable information from a JSON specification. These
+  // Try to decode global variable information from a Protobuf specification. These
   // are really variable prototypes / declarations.
   Result<VariableDecl, std::string>
   DecodeGlobalVar(const ::specification::GlobalVariable &obj) const;

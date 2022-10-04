@@ -25,6 +25,13 @@
 
 namespace anvill {
 
+static BaseType SizeToType(unsigned size) {
+  std::unordered_map<unsigned, BaseType> types = {
+      {8, BaseType::UInt8},   {16, BaseType::UInt16}, {24, BaseType::UInt24},
+      {32, BaseType::UInt32}, {64, BaseType::UInt64}, {128, BaseType::UInt128}};
+  return types[size];
+}
+
 Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     const ::specification::Function &function, std::optional<uint64_t> address,
     CallableDecl &decl) const {
@@ -145,49 +152,16 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     // Get the return address location.
     if (function.has_return_address()) {
       auto ret_addr = function.return_address();
-      auto maybe_ret =
-          DecodeValue(ret_addr, "return address", true /* allow_void */);
+      auto maybe_ret = DecodeValue(ret_addr, SizeToType(arch->address_size),
+                                   "return address");
       if (!maybe_ret.Succeeded()) {
         auto err = maybe_ret.TakeError();
         std::stringstream ss;
         ss << "Could not parse return address of function at address "
            << address_str << ": " << err;
         return {ss.str()};
-
-      } else {
-        decl.return_address = maybe_ret.Value();
-
-        // Looks like a void return type, i.e. function with no return address,
-        // so make sure there's no location/value info.
-        if (decl.return_address.type == void_type ||
-            decl.return_address.type == dict_void_type) {
-          if (decl.return_address.mem_offset || decl.return_address.mem_reg ||
-              decl.return_address.reg) {
-            std::stringstream ss;
-            ss << "Return address of function at address " << address_str
-               << " is marked as having a void type, but a location was "
-               << "specified";
-            return {ss.str()};
-          }
-
-          decl.return_address.type = void_type;
-
-          // Make sure the return address is address-sized.
-        } else {
-          auto dl = arch->DataLayout();
-          if (auto num_bits =
-                  dl.getTypeAllocSizeInBits(decl.return_address.type);
-              num_bits != arch->address_size) {
-            std::stringstream ss;
-            ss << "Return address of function at address " << address_str
-               << std::dec << " is a " << num_bits
-               << "-bit value, but address size for "
-               << remill::GetArchName(arch->arch_name) << " is "
-               << arch->address_size;
-            return {ss.str()};
-          }
-        }
       }
+      decl.return_address = maybe_ret.Value();
 
       // A lack of a return address suggests that this function has no return
       // address, e.g. is something like `_start` on Linux, where there is no
@@ -232,9 +206,14 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     }
     */
 
+    auto maybe_ret_type = DecodeType(function.return_().type());
+    if (!maybe_ret_type.Succeeded()) {
+      return maybe_ret_type.TakeError();
+    }
+
     i = 0u;
-    for (const ::specification::Value &ret : function.returns()) {
-      auto maybe_ret = DecodeReturnValue(ret);
+    for (const ::specification::Value &ret : function.return_().values()) {
+      auto maybe_ret = DecodeValue(ret, maybe_ret_type.Value(), "return value");
       if (maybe_ret.Succeeded()) {
         decl.returns.emplace_back(maybe_ret.Value());
       } else {
@@ -295,7 +274,7 @@ ProtobufTranslator::ProtobufTranslator(
 // return values.
 anvill::Result<ValueDecl, std::string>
 ProtobufTranslator::DecodeValue(const ::specification::Value &value,
-                                const char *desc, bool allow_void) const {
+                                TypeSpec type, const char *desc) const {
   ValueDecl decl;
 
   if (value.has_reg()) {
@@ -326,20 +305,7 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
     return ss.str();
   }
 
-  if (!value.has_type()) {
-    std::stringstream ss;
-    ss << "A " << desc << " must specify a 'type'";
-    return ss.str();
-  }
-
-  auto type = DecodeType(value.type());
-  if (!type.Succeeded()) {
-    std::stringstream ss;
-    ss << "Couldn't parse the type for '" << desc << "': " << type.Error();
-    return ss.str();
-  }
-
-  decl.spec_type = type.Value();
+  decl.spec_type = type;
   auto llvm_type = type_translator.DecodeFromSpec(decl.spec_type);
   if (!llvm_type.Succeeded()) {
     std::stringstream ss;
@@ -360,7 +326,27 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
 // the bitcode.
 Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
     const ::specification::Parameter &param) const {
-  auto maybe_decl = DecodeValue(param.value(), "function parameter");
+  if (!param.has_repr_var()) {
+    return {"Parameter with no representation"};
+  }
+  auto &repr_var = param.repr_var();
+  if (repr_var.values_size() != 1) {
+    std::stringstream ss;
+    ss << "Unsupported number of values for parameter spec: "
+       << repr_var.values_size();
+    return ss.str();
+  }
+
+  if (!repr_var.has_type()) {
+    return {"Parameter without type spec"};
+  }
+  auto maybe_type = DecodeType(repr_var.type());
+  if (!maybe_type.Succeeded()) {
+    return maybe_type.TakeError();
+  }
+
+  auto &val = repr_var.values()[0];
+  auto maybe_decl = DecodeValue(val, maybe_type.Value(), "function parameter");
   if (!maybe_decl.Succeeded()) {
     return maybe_decl.TakeError();
   }
@@ -373,12 +359,6 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
   }
 
   return decl;
-}
-
-// Decode a return value from the JSON spec.
-Result<ValueDecl, std::string>
-ProtobufTranslator::DecodeReturnValue(const ::specification::Value &ret) const {
-  return DecodeValue(ret, "function return value");
 }
 
 anvill::Result<TypeSpec, std::string>

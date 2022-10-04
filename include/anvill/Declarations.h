@@ -31,10 +31,6 @@ class Value;
 namespace CallingConv {
 using ID = unsigned;
 }  // namespace CallingConv
-namespace json {
-class Object;
-class Value;
-}  // namespace json
 }  // namespace llvm
 namespace remill {
 class Arch;

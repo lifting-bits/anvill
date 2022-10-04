@@ -104,13 +104,17 @@ message Value {
     Register reg = 1;
     Memory mem = 2;
   }
+}
 
-  TypeSpec type = 3;
+
+message Variable {
+  repeated Value values = 1;
+  TypeSpec type = 2;
 }
 
 message Parameter {
   optional string name = 1;
-  Value value = 2;
+  Variable repr_var = 2;
 }
 
 enum CallingConvention {
@@ -124,11 +128,14 @@ enum CallingConvention {
   CALLING_CONVENTION_VECTORCALL = 80;
 }
 
+
+
+
 message Function {
   uint64 entry_address = 1;
   Value return_address = 2;
   repeated Parameter parameters = 3;
-  repeated Value returns = 4;
+  optional Variable return = 4;
   bool is_variadic = 5;
   bool is_noreturn = 6;
   CallingConvention calling_convention = 7;
@@ -186,7 +193,7 @@ message ControlFlowOverrides {
   repeated Jump jumps = 1;
   repeated Call calls = 2;
   repeated Return returns = 3;
-  repeated Other other = 4;
+  repeated Other others = 4;
 }
 
 
