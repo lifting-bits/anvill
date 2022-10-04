@@ -11,6 +11,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/SourceMgr.h>
+#include <remill/BC/Version.h>
 
 #include <iostream>
 
@@ -81,7 +82,9 @@ const PlatformList &GetSupportedPlatforms(void) {
 
 std::unique_ptr<llvm::LLVMContext> CreateContextWithOpaquePointers(void) {
   auto context = std::make_unique<llvm::LLVMContext>();
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
   context->enableOpaquePointers();
+#endif
   return context;
 }
 

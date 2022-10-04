@@ -23,6 +23,7 @@
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 #include <remill/OS/OS.h>
 
 #include <algorithm>
@@ -53,7 +54,9 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
   context.enableOpaquePointers();
+#endif
   auto module = remill::LoadModuleFromFile(&context, FLAGS_bc_in);
   remill::Arch::ArchPtr arch = remill::Arch::GetModuleArch(*module);
   if (!arch) {

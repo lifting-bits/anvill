@@ -114,7 +114,9 @@ int main(int argc, char *argv[]) {
   }
 
   llvm::LLVMContext context;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
   context.enableOpaquePointers();
+#endif
   llvm::Module module("lifted_code", context);
 
   auto maybe_spec = anvill::Specification::DecodeFromJSON(

@@ -10,6 +10,7 @@
 
 #include <doctest/doctest.h>
 #include <llvm/IR/Module.h>
+#include <remill/BC/Version.h>
 
 #include <vector>
 
@@ -38,7 +39,9 @@ TEST_SUITE("TypeSpecifier") {
 
     for (const auto &test_entry : kTestEntryList) {
       llvm::LLVMContext llvm_context;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
       llvm_context.enableOpaquePointers();
+#endif
       llvm::DataLayout dl("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
 
       anvill::TypeDictionary type_dict(llvm_context);
@@ -70,7 +73,9 @@ TEST_SUITE("TypeSpecifier") {
     };
 
     llvm::LLVMContext llvm_context;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
     llvm_context.enableOpaquePointers();
+#endif
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
@@ -215,7 +220,9 @@ TEST_SUITE("TypeSpecifier") {
     // clang-format on
 
     llvm::LLVMContext llvm_context;
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
     llvm_context.enableOpaquePointers();
+#endif
     llvm::Module module("TypeSpecifierTests", llvm_context);
 
     const auto &data_layout = module.getDataLayout();
