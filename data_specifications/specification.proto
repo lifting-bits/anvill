@@ -128,6 +128,10 @@ enum CallingConvention {
   CALLING_CONVENTION_VECTORCALL = 80;
 }
 
+message ReturnStackPointer {
+  Register reg = 1;
+  optional int64 offset = 2;
+}
 
 
 
@@ -141,6 +145,7 @@ message Function {
   CallingConvention calling_convention = 7;
   optional TypeSpec type = 8;
   map<string, uint64> context_assignments = 9;
+  ReturnStackPointer return_stack_pointer = 10;
 }
 
 message GlobalVariable {
@@ -206,4 +211,3 @@ message Specification {
   repeated MemoryRange memory_ranges = 6;
   ControlFlowOverrides overrides = 7;
 }
-

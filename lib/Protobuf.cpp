@@ -171,40 +171,37 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
       decl.return_address.type = void_type;
     }
 
-    /*
     // Decode the value of the stack pointer on exit from the function, which is
     // defined in terms of `reg + offset` for a value of a register `reg`
     // on entry to the function.
-    if (auto ret_sp = obj->getObject("return_stack_pointer")) {
-      auto maybe_reg = ret_sp->getString("register");
-      if (maybe_reg) {
-        std::string reg_name = maybe_reg->str();
+    if (function.has_return_stack_pointer()) {
+      auto ret_sp = function.return_stack_pointer();
+      if (ret_sp.has_reg()) {
+        std::string reg_name = ret_sp.reg().register_name();
         decl.return_stack_pointer = arch->RegisterByName(reg_name);
         if (!decl.return_stack_pointer) {
           std::stringstream ss;
           ss << "Unable to locate register '" << reg_name
              << "' used computing the exit value of the "
              << "stack pointer in function at " << address_str;
-          return JSONDecodeError(ss.str(), ret_sp);
+          return {ss.str()};
         }
       } else {
         std::stringstream ss;
         ss << "Non-present or non-string 'register' in 'return_stack_pointer' "
            << "object of function specification at " << address_str;
-        return JSONDecodeError(ss.str(), ret_sp);
+        return {ss.str()};
       }
 
-      auto maybe_offset = ret_sp->getInteger("offset");
-      if (maybe_offset) {
-        decl.return_stack_pointer_offset = *maybe_offset;
+      if (ret_sp.has_offset()) {
+        decl.return_stack_pointer_offset = ret_sp.offset();
       }
     } else {
       std::stringstream ss;
       ss << "Non-present or non-object 'return_stack_pointer' in function "
          << "specification at " << address_str;
-      return JSONDecodeError(ss.str(), obj);
+      return {ss.str()};
     }
-    */
 
     auto maybe_ret_type = DecodeType(function.return_().type());
     if (!maybe_ret_type.Succeeded()) {
