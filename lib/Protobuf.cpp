@@ -18,6 +18,7 @@
 #include <remill/OS/OS.h>
 
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <variant>
 
@@ -259,13 +260,15 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
 }
 
 ProtobufTranslator::ProtobufTranslator(
-    const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_)
+    const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
+    std::unordered_map<std::int64_t, TypeSpec> &type_map)
     : arch(arch_),
       type_translator(type_translator_),
       context(*(arch->context)),
       void_type(llvm::Type::getVoidTy(context)),
       dict_void_type(remill::RecontextualizeType(
-          type_translator.Dictionary().u.named.void_, context)) {}
+          type_translator.Dictionary().u.named.void_, context)),
+      type_map(type_map) {}
 
 // Decode the location of a value. This applies to both parameters and
 // return values.
@@ -432,6 +435,9 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
       res->arguments.push_back(std::move(maybe_argtype.Value()));
     }
   }
+  if (obj.has_alias()) {
+    return type_map.at(obj.alias());
+  }
 
   return {"Unknown/invalid data type"};
 }
@@ -513,6 +519,103 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
   decl.type = type;
 
   return decl;
+}
+
+anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
+    const ::specification::TypeSpec &obj,
+    const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map) {
+  if (obj.has_alias()) {
+    auto alias = obj.alias();
+    if (type_map.count(alias)) {
+      return type_map[alias];
+    }
+    auto &type = type_map[alias];
+    auto res = DecodeType(map.at(alias), map);
+    if (!res.Succeeded()) {
+      return res.TakeError();
+    }
+    type = res.TakeValue();
+    return type;
+  }
+  if (obj.has_pointer()) {
+    auto pointer = obj.pointer();
+    TypeSpec pointee = BaseType::Void;
+    if (pointer.has_pointee()) {
+      auto maybe_pointee = DecodeType(pointer.pointee(), map);
+      if (!maybe_pointee.Succeeded()) {
+        return maybe_pointee.Error();
+      }
+      pointee = maybe_pointee.Value();
+    }
+    return {std::make_shared<PointerType>(pointee, pointer.const_())};
+  }
+  if (obj.has_vector()) {
+    auto vector = obj.vector();
+    if (!vector.has_base()) {
+      return {"Vector type without base type"};
+    }
+    auto maybe_base = DecodeType(vector.base(), map);
+    if (!maybe_base.Succeeded()) {
+      return maybe_base.Error();
+    }
+    return {std::make_shared<VectorType>(maybe_base.Value(), vector.size())};
+  }
+  if (obj.has_array()) {
+    auto array = obj.array();
+    if (!array.has_base()) {
+      return {"Array type without base type"};
+    }
+    auto maybe_base = DecodeType(array.base(), map);
+    if (!maybe_base.Succeeded()) {
+      return maybe_base.Error();
+    }
+    return {std::make_shared<ArrayType>(maybe_base.Value(), array.size())};
+  }
+  if (obj.has_struct_()) {
+    auto res = std::make_shared<StructType>();
+    for (auto elem : obj.struct_().members()) {
+      auto maybe_type = DecodeType(elem, map);
+      if (!maybe_type.Succeeded()) {
+        return maybe_type.Error();
+      }
+      res->members.push_back(std::move(maybe_type.Value()));
+    }
+    return {std::move(res)};
+  }
+  if (obj.has_function()) {
+    auto func = obj.function();
+    if (!func.has_return_type()) {
+      return {"Function without return type"};
+    }
+    auto res = std::make_shared<FunctionType>();
+    auto maybe_ret = DecodeType(func.return_type(), map);
+    if (!maybe_ret.Succeeded()) {
+      return maybe_ret.Error();
+    }
+    res->return_type = std::move(maybe_ret.Value());
+    res->is_variadic = func.is_variadic();
+    for (auto arg : func.arguments()) {
+      auto maybe_argtype = DecodeType(arg, map);
+      if (!maybe_argtype.Succeeded()) {
+        return maybe_argtype.Error();
+      }
+      res->arguments.push_back(std::move(maybe_argtype.Value()));
+    }
+  }
+
+  return DecodeType(obj);
+}
+
+Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
+    const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
+        &map) {
+  for (auto &[k, v] : map) {
+    auto res = DecodeType(v, {map.begin(), map.end()});
+    if (!res.Succeeded()) {
+      return res.Error();
+    }
+  }
+  return std::monostate{};
 }
 
 }  // namespace anvill

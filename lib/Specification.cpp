@@ -39,8 +39,13 @@ SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_)
 Result<std::vector<std::string>, std::string>
 SpecificationImpl::ParseSpecification(
     const ::specification::Specification &spec) {
-  ProtobufTranslator translator(type_translator, arch.get());
   std::vector<std::string> dec_err;
+  std::unordered_map<std::int64_t, TypeSpec> type_map;
+  ProtobufTranslator translator(type_translator, arch.get(), type_map);
+  auto map_res = translator.DecodeTypeMap(spec.type_aliases());
+  if (!map_res.Succeeded()) {
+    dec_err.push_back(map_res.Error());
+  }
   for (auto &func : spec.functions()) {
     auto maybe_func = translator.DecodeFunction(func);
     if (!maybe_func.Succeeded()) {

@@ -87,6 +87,7 @@ message TypeSpec {
     StructType struct = 5;
     FunctionType function = 6;
     uint32 unknown = 7;
+    int64 alias = 8;
   }
 }
 
@@ -210,4 +211,5 @@ message Specification {
   repeated Symbol symbols = 5;
   repeated MemoryRange memory_ranges = 6;
   ControlFlowOverrides overrides = 7;
+  map<int64, TypeSpec> type_aliases = 8;
 }

@@ -53,8 +53,14 @@ class ProtobufTranslator {
   llvm::Type *const void_type;
   llvm::Type *const dict_void_type;
 
+  std::unordered_map<std::int64_t, TypeSpec> &type_map;
+
   anvill::Result<TypeSpec, std::string>
   DecodeType(const ::specification::TypeSpec &obj) const;
+
+  anvill::Result<TypeSpec, std::string> DecodeType(
+      const ::specification::TypeSpec &obj,
+      const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map);
 
   // Parse the location of a value. This applies to both parameters and
   // return values.
@@ -69,13 +75,15 @@ class ProtobufTranslator {
                         CallableDecl &decl) const;
 
  public:
-  explicit ProtobufTranslator(const anvill::TypeTranslator &type_translator_,
-                              const remill::Arch *arch_);
+  explicit ProtobufTranslator(
+      const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
+      std::unordered_map<std::int64_t, TypeSpec> &type_map);
 
   inline explicit ProtobufTranslator(
       const anvill::TypeTranslator &type_translator_,
-      const std::unique_ptr<const remill::Arch> &arch_)
-      : ProtobufTranslator(type_translator_, arch_.get()) {}
+      const std::unique_ptr<const remill::Arch> &arch_,
+      std::unordered_map<std::int64_t, TypeSpec> &type_map)
+      : ProtobufTranslator(type_translator_, arch_.get(), type_map) {}
 
   // Parse a parameter from the Protobuf spec. Parameters should have names,
   // as that makes the bitcode slightly easier to read, but names are
@@ -99,6 +107,10 @@ class ProtobufTranslator {
 
   Result<CallableDecl, std::string>
   DecodeDefaultCallableDecl(const ::specification::Function &obj) const;
+
+  Result<std::monostate, std::string>
+  DecodeTypeMap(const ::google::protobuf::Map<std::int64_t,
+                                              ::specification::TypeSpec> &map);
 };
 
 }  // namespace anvill
