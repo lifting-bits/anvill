@@ -625,7 +625,7 @@ bool FunctionLifter::CallFunction(const remill::Instruction &inst,
   auto call_spec = std::get<Call>(cf);
   std::optional<CallableDecl> maybe_decl;
 
-  if (target_pc && call_spec.target_address.has_value()) {
+  if (call_spec.target_address.has_value()) {
     // First, try to see if it's actually related to another function. This is
     // equivalent to a tail-call in the original code.
     auto redirected_addr = *call_spec.target_address;
@@ -633,6 +633,10 @@ bool FunctionLifter::CallFunction(const remill::Instruction &inst,
     // Now, get the type of the target given the source and destination.
     maybe_decl = TryGetTargetFunctionType(inst, redirected_addr);
     target_pc = redirected_addr;
+  } else if (target_pc.has_value()) {
+
+    maybe_decl =
+        type_provider.TryGetCalledFunctionType(func_address, inst, *target_pc);
   } else {
 
     // If we don't know a concrete target address, then just try to get the
