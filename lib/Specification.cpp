@@ -155,7 +155,8 @@ SpecificationImpl::ParseSpecification(
         jmp.targets.begin(), jmp.targets.end(),
         [](const auto &a, const auto &b) { return a.address < b.address; });
     jumps.push_back(jmp);
-    control_flow_overrides[jmp.address] = jmp;
+    const auto res = control_flow_overrides.emplace(jmp.address, jmp);
+    CHECK(res.second);
   }
   std::sort(jumps.begin(), jumps.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
@@ -172,7 +173,8 @@ SpecificationImpl::ParseSpecification(
     }
     callspec.is_tailcall = call.is_tailcall();
     calls.push_back(callspec);
-    control_flow_overrides[callspec.address] = callspec;
+    const auto res = control_flow_overrides.emplace(callspec.address, callspec);
+    CHECK(res.second);
   }
   std::sort(calls.begin(), calls.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
@@ -182,7 +184,8 @@ SpecificationImpl::ParseSpecification(
     overr.stop = ret.stop();
     overr.address = ret.address();
     returns.push_back(overr);
-    control_flow_overrides[overr.address] = overr;
+    const auto res = control_flow_overrides.emplace(overr.address, overr);
+    CHECK(res.second);
   }
   std::sort(returns.begin(), returns.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
@@ -192,9 +195,8 @@ SpecificationImpl::ParseSpecification(
     overr.stop = misc.stop();
     overr.address = misc.address();
     misc_overrides.push_back(overr);
-
-    // Don't displace existing control flow overrides
-    control_flow_overrides.emplace(overr.address, overr);
+    const auto res = control_flow_overrides.emplace(overr.address, overr);
+    CHECK(res.second);
   }
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
