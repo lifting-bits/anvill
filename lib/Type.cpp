@@ -537,7 +537,10 @@ TypeTranslator::DecodeFromSpec(TypeSpec spec) const {
 
   if (std::holds_alternative<UnknownType>(spec)) {
     auto unk = std::get<UnknownType>(spec);
-    return llvm::IntegerType::get(impl->context, unk.size * 8);
+    // NOTE(alex): Ghidra seems to list undefined types as having a size of UINT32_MAX.
+    // Perhaps a fix belongs in the plugin, but for now let's just keep things moving.
+    return llvm::IntegerType::get(impl->context,
+                                  unk.size == UINT32_MAX ? 32 : unk.size * 8);
   }
 
   return TypeSpecificationError{TypeSpecificationError::ErrorCode::InvalidState,
