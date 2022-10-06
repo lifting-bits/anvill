@@ -610,10 +610,14 @@ Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
     const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
         &map) {
   for (auto &[k, v] : map) {
+    if (type_map.count(k)) {
+      continue;
+    }
     auto res = DecodeType(v, {map.begin(), map.end()});
     if (!res.Succeeded()) {
       return res.Error();
     }
+    type_map[k] = res.Value();
   }
   return std::monostate{};
 }
