@@ -15,6 +15,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -27,6 +28,8 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
+#include <llvm/Support/Casting.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
@@ -637,6 +640,9 @@ void FunctionLifter::VisitDirectFunctionCall(
     const remill::Instruction::DirectFunctionCall &dcall,
     const remill::DecodingContext &prev_context) {
   VisitDelayedInstruction(inst, delayed_inst, block, true);
+  if (inst.branch_taken_pc == 0) {
+    DLOG(ERROR) << "Branch taken pc is zero";
+  }
   bool can_return = CallFunction(inst, block, inst.branch_taken_pc);
   VisitAfterFunctionCall(inst, block, dcall, can_return, prev_context);
 }
@@ -1463,6 +1469,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
                << remill::LLVMThingToString(native_func->getType());
   }
 
+
   llvm::legacy::FunctionPassManager fpm(semantics_module.get());
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createPromoteMemoryToRegisterPass());
@@ -1475,6 +1482,17 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   fpm.doInitialization();
   fpm.run(*native_func);
   fpm.doFinalization();
+
+
+  for (auto &insn : llvm::instructions(native_func)) {
+    if (auto br = llvm::dyn_cast<llvm::Instruction>(&insn)) {
+      for (auto &op : br->operands()) {
+        if (llvm::isa_and_nonnull<llvm::UndefValue>(op.get())) {
+          DLOG(ERROR) << "Undef insn: " << remill::LLVMThingToString(br);
+        }
+      }
+    }
+  }
 
   ClearVariableNames(native_func);
 }
