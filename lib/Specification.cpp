@@ -192,7 +192,9 @@ SpecificationImpl::ParseSpecification(
     overr.stop = misc.stop();
     overr.address = misc.address();
     misc_overrides.push_back(overr);
-    control_flow_overrides[overr.address] = overr;
+
+    // Don't displace existing control flow overrides
+    control_flow_overrides.emplace(overr.address, overr);
   }
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
