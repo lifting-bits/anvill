@@ -17,10 +17,13 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <variant>
+#include <vector>
 
 #include "anvill/Declarations.h"
 
@@ -139,7 +142,10 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     for (const ::specification::Parameter &param : function.parameters()) {
       auto maybe_param = DecodeParameter(param);
       if (maybe_param.Succeeded()) {
-        decl.params.emplace_back(maybe_param.Value());
+        for (auto p : maybe_param.Value()) {
+          decl.params.emplace_back(p);
+        }
+
       } else {
         auto err = maybe_param.TakeError();
         std::stringstream ss;
@@ -318,24 +324,54 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
   return decl;
 }
 
+
+Result<std::vector<ParameterDecl>, std::string>
+ProtobufTranslator::SplitParameter(
+    const ::specification::Parameter &param,
+    const std::shared_ptr<StructType> &ty) const {
+  if (ty->members.size() !=
+      static_cast<size_t>(param.repr_var().values_size())) {
+    return std::string(
+        "Unsupported struct split where values are not of the same length as the structure");
+  }
+
+  std::vector<ParameterDecl> split_params;
+
+  for (size_t i = 0; i < ty->members.size(); i++) {
+    auto &val = param.repr_var().values()[i];
+    auto val_ty = ty->members[i];
+
+    auto maybe_decl = DecodeValue(val, val_ty, "function parameter");
+    if (!maybe_decl.Succeeded()) {
+      return maybe_decl.TakeError();
+    }
+
+    ParameterDecl decl;
+    reinterpret_cast<ValueDecl &>(decl) = maybe_decl.Value();
+
+    if (param.has_name()) {
+      decl.name = param.name() + "_field_" + std::to_string(i);
+    }
+
+    split_params.emplace_back(decl);
+  }
+
+  return split_params;
+}
 // Decode a parameter from the JSON spec. Parameters should have names,
 // as that makes the bitcode slightly easier to read, but names are
 // not required. They must have types, and these types should be mostly
 // reflective of what you would see if you compiled C/C++ source code to
 // LLVM bitcode, and inspected the type of the corresponding parameter in
 // the bitcode.
-Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
+Result<std::vector<ParameterDecl>, std::string>
+ProtobufTranslator::DecodeParameter(
     const ::specification::Parameter &param) const {
   if (!param.has_repr_var()) {
     return {"Parameter with no representation"};
   }
+
   auto &repr_var = param.repr_var();
-  if (repr_var.values_size() != 1) {
-    std::stringstream ss;
-    ss << "Unsupported number of values for parameter spec: "
-       << repr_var.values_size();
-    return ss.str();
-  }
 
   if (!repr_var.has_type()) {
     return {"Parameter without type spec"};
@@ -344,6 +380,22 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
   if (!maybe_type.Succeeded()) {
     return maybe_type.TakeError();
   }
+
+  auto ty = maybe_type.Value();
+
+  if (repr_var.values_size() != 1 &&
+      !std::holds_alternative<std::shared_ptr<anvill::StructType>>(ty)) {
+    std::stringstream ss;
+    ss << "Unsupported number of values for parameter spec and type is unsplittable: "
+       << repr_var.values_size();
+    return ss.str();
+  }
+
+  if (repr_var.values_size() != 1) {
+    return this->SplitParameter(
+        param, std::get<std::shared_ptr<anvill::StructType>>(ty));
+  }
+
 
   auto &val = repr_var.values()[0];
   auto maybe_decl = DecodeValue(val, maybe_type.Value(), "function parameter");
@@ -358,7 +410,7 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
     decl.name = param.name();
   }
 
-  return decl;
+  return {{decl}};
 }
 
 anvill::Result<TypeSpec, std::string>
