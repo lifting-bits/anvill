@@ -466,7 +466,17 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.context_assignments = {function.context_assignments().begin(),
                               function.context_assignments().end()};
 
-  auto link = function.func_linkage;
+  auto link = function.func_linkage();
+
+  if (link == specification::FUNCTION_LINKAGE_DECL) {
+    decl.lift_as_decl = true;
+  } else if (link == specification::FUNCTION_LINKAGE_EXTERNAL) {
+    decl.lift_as_decl = true;
+    decl.is_extern = true;
+  } else {
+    decl.lift_as_decl = false;
+    decl.is_extern = false;
+  }
 
   return decl;
 }
