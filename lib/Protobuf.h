@@ -16,7 +16,6 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <vector>
 
 #include "anvill/Type.h"
 #include "specification.pb.h"
@@ -75,13 +74,6 @@ class ProtobufTranslator {
                         std::optional<uint64_t> address,
                         CallableDecl &decl) const;
 
-
- private:
-  // attempt to split a composite into multiple parameters
-  Result<std::vector<ParameterDecl>, std::string>
-  SplitParameter(const ::specification::Parameter &,
-                 const std::shared_ptr<StructType> &) const;
-
  public:
   explicit ProtobufTranslator(
       const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
@@ -99,7 +91,7 @@ class ProtobufTranslator {
   // reflective of what you would see if you compiled C/C++ source code to
   // LLVM bitcode, and inspected the type of the corresponding parameter in
   // the bitcode.
-  Result<std::vector<ParameterDecl>, std::string>
+  Result<ParameterDecl, std::string>
   DecodeParameter(const ::specification::Parameter &obj) const;
 
   // Try to decode function info from a Protobuf specification. These
