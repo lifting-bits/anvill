@@ -331,8 +331,10 @@ ProtobufTranslator::SplitParameter(
     const std::shared_ptr<StructType> &ty) const {
   if (ty->members.size() !=
       static_cast<size_t>(param.repr_var().values_size())) {
-    return std::string(
-        "Unsupported struct split where values are not of the same length as the structure");
+    std::stringstream ss;
+    ss << "Unsupported struct split where values are not of the same length as the structure "
+       << ty->members.size() << " vs " << param.repr_var().values_size();
+    return ss.str();
   }
 
   std::vector<ParameterDecl> split_params;
