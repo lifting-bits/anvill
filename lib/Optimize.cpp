@@ -118,6 +118,11 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
     used->eraseFromParent();
   }
 
+  if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
+    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
+    used->eraseFromParent();
+  }
+
   LOG(INFO) << "Optimizing module.";
 
   if (auto memory_escape = module.getFunction(kMemoryPointerEscapeFunction)) {
