@@ -466,6 +466,8 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.context_assignments = {function.context_assignments().begin(),
                               function.context_assignments().end()};
 
+  auto link = function.func_linkage;
+
   return decl;
 }
 

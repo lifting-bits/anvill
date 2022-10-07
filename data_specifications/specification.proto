@@ -134,7 +134,11 @@ message ReturnStackPointer {
   optional int64 offset = 2;
 }
 
-
+enum FunctionLinkage {
+  FUNCTION_LINKAGE_NORMAL_UNSPECIFIED = 0;
+  FUNCTION_LINKAGE_DECL = 1;
+  FUNCTION_LINKAGE_EXTERNAL = 2;
+}
 
 message Function {
   uint64 entry_address = 1;
@@ -147,6 +151,7 @@ message Function {
   optional TypeSpec type = 8;
   map<string, uint64> context_assignments = 9;
   ReturnStackPointer return_stack_pointer = 10;
+  FunctionLinkage func_linkage = 11; 
 }
 
 message GlobalVariable {

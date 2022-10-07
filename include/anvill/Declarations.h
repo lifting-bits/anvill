@@ -192,6 +192,9 @@ struct FunctionDecl : public CallableDecl {
   // below the stack pointer on x86/amd64).
   std::uint64_t num_bytes_in_redzone{0};
 
+  bool lift_as_decl{false};
+  bool is_extern{false};
+
   // The set of context assignments that occur at the entry point to this function.
   // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a function.

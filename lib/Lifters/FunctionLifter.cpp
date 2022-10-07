@@ -1524,6 +1524,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
     return native_func;
   }
 
+  if (decl.lift_as_decl) {
+    return native_func;
+  }
+
   // The address is valid, the memory is executable, but we don't actually have
   // the data available for lifting, so leave us with just a declaration.
   if (!MemoryProvider::HasByte(first_byte_avail)) {
