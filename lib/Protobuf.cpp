@@ -23,6 +23,7 @@
 #include <variant>
 
 #include "anvill/Declarations.h"
+#include "specification.pb.h"
 
 namespace anvill {
 
@@ -34,7 +35,7 @@ static BaseType SizeToType(unsigned size) {
 }
 
 Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
-    const ::specification::Function &function, std::optional<uint64_t> address,
+    const ::specification::Callable &function, std::optional<uint64_t> address,
     CallableDecl &decl) const {
   decl.arch = arch;
   decl.is_noreturn = function.is_noreturn();
@@ -439,14 +440,20 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     return type_map.at(obj.alias());
   }
 
-  return {"Unknown/invalid data type"};
+  return {"Unknown/invalid data type" + obj.DebugString()};
 }
 
 Result<CallableDecl, std::string> ProtobufTranslator::DecodeDefaultCallableDecl(
     const ::specification::Function &function) const {
   CallableDecl decl;
 
-  auto parse_res = this->ParseIntoCallableDecl(function, std::nullopt, decl);
+
+  if (!function.has_callable()) {
+    return std::string("all functions should have a callable");
+  }
+
+  auto parse_res =
+      this->ParseIntoCallableDecl(function.callable(), std::nullopt, decl);
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }
@@ -454,12 +461,38 @@ Result<CallableDecl, std::string> ProtobufTranslator::DecodeDefaultCallableDecl(
   return decl;
 }
 
+
+Result<CallSiteDecl, std::string>
+ProtobufTranslator::DecodeCallsite(const ::specification::Callsite &cs) const {
+  CallSiteDecl cs_decl;
+
+  if (!cs.has_callable()) {
+    return std::string("all callsites should have a callable");
+  }
+
+  auto parse_res =
+      this->ParseIntoCallableDecl(cs.callable(), std::nullopt, cs_decl);
+  if (!parse_res.Succeeded()) {
+    return parse_res.TakeError();
+  }
+
+  cs_decl.address = cs.call_address();
+  cs_decl.function_address = cs.inside_function_address();
+
+  return cs_decl;
+}
+
 Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     const ::specification::Function &function) const {
   FunctionDecl decl;
   decl.address = function.entry_address();
 
-  auto parse_res = this->ParseIntoCallableDecl(function, {decl.address}, decl);
+  if (!function.has_callable()) {
+    return std::string("all functions should have a callable");
+  }
+
+  auto parse_res =
+      this->ParseIntoCallableDecl(function.callable(), {decl.address}, decl);
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }

@@ -16,6 +16,7 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 #include <specification.pb.h>
+#include <stddef.h>
 
 #include <algorithm>
 #include <optional>
@@ -69,6 +70,39 @@ SpecificationImpl::ParseSpecification(
   std::sort(functions.begin(), functions.end(),
             [](const FunctionDeclPtr &a, const FunctionDeclPtr &b) {
               return a->address < b->address;
+            });
+
+  for (auto &callsite : spec.callsites()) {
+    auto maybe_cs = translator.DecodeCallsite(callsite);
+    if (!maybe_cs.Succeeded()) {
+      auto err = maybe_cs.Error();
+      dec_err.push_back(err);
+      continue;
+    }
+    auto cs_obj = maybe_cs.Value();
+    std::pair<uint64_t, uint64_t> loc{cs_obj.function_address, cs_obj.address};
+
+    if (loc_to_call_site.count(loc)) {
+      std::stringstream ss;
+      ss << "Duplicate callsite for address " << std::hex << loc.second
+         << " in function " << std::hex << loc.first;
+      return ss.str();
+    }
+
+    auto cs_ptr = new CallSiteDecl(std::move(cs_obj));
+    call_sites.emplace_back(cs_ptr);
+    loc_to_call_site.emplace(loc, cs_ptr);
+  }
+
+  std::sort(call_sites.begin(), call_sites.end(),
+            [](const CallSiteDeclPtr &a, const CallSiteDeclPtr &b) {
+              if (a->function_address < b->function_address) {
+                return true;
+              } else if (a->function_address > b->function_address) {
+                return false;
+              } else {
+                return a->address < b->address;
+              }
             });
 
 

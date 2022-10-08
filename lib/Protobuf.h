@@ -70,7 +70,7 @@ class ProtobufTranslator {
 
 
   Result<std::monostate, std::string>
-  ParseIntoCallableDecl(const ::specification::Function &obj,
+  ParseIntoCallableDecl(const ::specification::Callable &obj,
                         std::optional<uint64_t> address,
                         CallableDecl &decl) const;
 
@@ -99,6 +99,9 @@ class ProtobufTranslator {
   // data (that is separate, if present).
   Result<FunctionDecl, std::string>
   DecodeFunction(const ::specification::Function &obj) const;
+
+  Result<CallSiteDecl, std::string>
+  DecodeCallsite(const ::specification::Callsite &cs) const;
 
   // Try to decode global variable information from a Protobuf specification. These
   // are really variable prototypes / declarations.

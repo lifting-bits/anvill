@@ -140,8 +140,14 @@ enum FunctionLinkage {
   FUNCTION_LINKAGE_EXTERNAL = 2;
 }
 
-message Function {
-  uint64 entry_address = 1;
+
+message Callsite {
+  uint64 call_address = 1;
+  uint64 inside_function_address = 2;
+  Callable callable = 3;
+}
+
+message Callable {
   Value return_address = 2;
   repeated Parameter parameters = 3;
   optional Variable return = 4;
@@ -149,9 +155,14 @@ message Function {
   bool is_noreturn = 6;
   CallingConvention calling_convention = 7;
   optional TypeSpec type = 8;
-  map<string, uint64> context_assignments = 9;
   ReturnStackPointer return_stack_pointer = 10;
-  FunctionLinkage func_linkage = 11; 
+}
+
+message Function {
+  uint64 entry_address = 1;
+  map<string, uint64> context_assignments = 2;
+  FunctionLinkage func_linkage = 3; 
+  Callable callable = 4;
 }
 
 message GlobalVariable {
@@ -208,13 +219,15 @@ message ControlFlowOverrides {
 }
 
 
+
 message Specification {
   Arch arch = 1;
   OS operating_system = 2;
   repeated Function functions = 3;
-  repeated GlobalVariable global_variables = 4;
-  repeated Symbol symbols = 5;
-  repeated MemoryRange memory_ranges = 6;
-  ControlFlowOverrides overrides = 7;
-  map<int64, TypeSpec> type_aliases = 8;
+  repeated Callsite callsites = 4;
+  repeated GlobalVariable global_variables = 5;
+  repeated Symbol symbols = 6;
+  repeated MemoryRange memory_ranges = 7;
+  ControlFlowOverrides overrides = 8;
+  map<int64, TypeSpec> type_aliases = 9;
 }
