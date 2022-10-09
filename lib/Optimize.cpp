@@ -257,12 +257,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   }
 
 
-  if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
-    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
-    used->eraseFromParent();
-  }
-
-
   // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();
   fam.clear();
