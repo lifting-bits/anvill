@@ -251,9 +251,12 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   mpm.run(module, mam);
 
   // Get rid of all final uses of `__anvill_pc`.
-  if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {
-    remill::ReplaceAllUsesOfConstant(
-        anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), &module);
+  if (lifter.Options().should_remove_anvill_pc) {
+    if (auto anvill_pc = module.getGlobalVariable(::anvill::kSymbolicPCName)) {
+      remill::ReplaceAllUsesOfConstant(
+          anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()),
+          &module);
+    }
   }
 
 
