@@ -12,6 +12,7 @@
 #include <doctest/doctest.h>
 #include <llvm/IR/Verifier.h>
 #include "Utils.h"
+#include <ostream>
 
 namespace anvill {
 
