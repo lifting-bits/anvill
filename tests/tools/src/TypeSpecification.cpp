@@ -210,12 +210,12 @@ TEST_SUITE("TypeSpecifier") {
                  std::make_shared<PointerType>(BaseType::Void, false),
                  BaseType::Int32},
              false),
-         "void (i32, i8, ptr, i8, i32)"},
+         "void (i32, i8, ptr, i32)"},
         {BaseType::Int8, "i8"},
         {BaseType::Int16, "i16"},
         {BaseType::Int32, "i32"},
         {BaseType::Int64, "i64"},
-        {BaseType::Float16, "float"},
+        {BaseType::Float16, "half"},
         {std::make_shared<PointerType>(BaseType::Void, false), "ptr"},
     };
 
@@ -239,7 +239,7 @@ TEST_SUITE("TypeSpecifier") {
       os.flush();
 
       REQUIRE(type != nullptr);
-      auto ll_type_var = ll_type;
+      auto ll_type_var = std::string(ll_type);
       REQUIRE(out == ll_type_var);
     }
   }
