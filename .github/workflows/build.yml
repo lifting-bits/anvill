@@ -157,6 +157,10 @@ jobs:
         run: |
           cargo install just
 
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "temurin"
+          java-version: "11"
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v2
         with:
