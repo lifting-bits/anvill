@@ -147,10 +147,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
       - name: Install stable rust
-        uses: actions-rs/toolchain@v1.0.6
-        with:
-          toolchain: stable
-          override: true
+        shell: bash
+        run: |
+          apt-get install cargo
 
       - name: "Install Just"
         shell: bash
