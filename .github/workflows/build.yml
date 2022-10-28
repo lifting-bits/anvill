@@ -15,17 +15,14 @@ on:
 
   push:
     branches:
-      - '*'
+      - "*"
 
     tags:
-      - '*'
+      - "*"
 
   pull_request:
     branches:
-      - '*'
-
-
-
+      - "*"
 
 jobs:
   cleanup_stale_workflows:
@@ -47,9 +44,6 @@ jobs:
         run: |
           python3 .github/scripts/abort_previous_workflows.py
 
-
-
-
   build_linux:
     needs: cleanup_stale_workflows
 
@@ -57,11 +51,11 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { name: 'ubuntu', tag: '20.04' }
+          - { name: "ubuntu", tag: "20.04" }
         binja:
-          - {channel: 'headless', version: '3.1.3479'}
-        llvm: [ '14' ]
-        cxxcommon_version: [ 'v0.2.10' ]
+          - { channel: "headless", version: "3.1.3479" }
+        llvm: ["14"]
+        cxxcommon_version: ["v0.2.10"]
 
     runs-on: ubuntu-20.04
     container:
@@ -142,16 +136,16 @@ jobs:
       - name: Clone the remill repository
         uses: actions/checkout@v2
         with:
-          repository: 'lifting-bits/remill'
+          repository: "lifting-bits/remill"
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
-      
+
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-      
+
       - name: Select the remill version
         shell: bash
         run: |
@@ -312,13 +306,13 @@ jobs:
         run: |
           scripts/build-preset.sh debug
 
-      - name: 'Setup Ghidra'
+      - name: "Setup Ghidra"
         run: |
           wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.1.5_build/ghidra_10.1.5_PUBLIC_20220726.zip --output-document=ghidra.zip
           unzip ghidra.zip
           echo "GHIDRA_INSTALL_DIR=$(pwd)/ghidra_10.1.5_PUBLIC" >> $GITHUB_ENV
 
-      - name: 'Install Just'
+      - name: "Install Just"
         run: |
           cargo install just
 
@@ -338,10 +332,8 @@ jobs:
           just install-irene3-ghidra
 
       - name: Install Binary Ninja
-
         env:
           BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
-
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
         run: |
@@ -395,25 +387,25 @@ jobs:
         run: |
           python3 -m anvill --help
 
-     - name: Run Integration Tests (AMP Challenge Binaries)
-       shell: bash
-       working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
-       run: |
-         python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
-         scripts/test-amp-challenge-bins.sh \
-           --python-cmd "python3 -m anvill" \
-           --decompile-cmd "anvill-decompile-json"
-       env:
-         TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
+      - name: Run Integration Tests (AMP Challenge Binaries)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+        run: |
+          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+          scripts/test-amp-challenge-bins.sh \
+          --python-cmd "python3 -m anvill" \
+          --decompile-cmd "anvill-decompile-json"
+        env:
+          TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
 
-#      - name: Run Integration Tests (AnghaBench 1K)
-#        shell: bash
-#        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
-#        run: |
-#          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
-#          scripts/test-angha-1k.sh \
-#            --python-cmd "python3 -m anvill" \
-#            --decompile-cmd "anvill-decompile-json"
+      #      - name: Run Integration Tests (AnghaBench 1K)
+      #        shell: bash
+      #        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+      #        run: |
+      #          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+      #          scripts/test-angha-1k.sh \
+      #            --python-cmd "python3 -m anvill" \
+      #            --decompile-cmd "anvill-decompile-json"
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v1
@@ -433,9 +425,6 @@ jobs:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
-
-
-
   # Note that we have a limit of 5 concurrent workers, org-wide.
   # It is best to try and keep the amount of macOS jobs as low
   # as possible.
@@ -445,9 +434,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ 'macos-11' ]
-        llvm: [ '14' ]
-        cxxcommon_version: [ 'v0.2.10' ]
+        os: ["macos-11"]
+        llvm: ["14"]
+        cxxcommon_version: ["v0.2.10"]
 
     runs-on: ${{ matrix.os }}
 
@@ -516,10 +505,10 @@ jobs:
       - name: Clone the remill repository
         uses: actions/checkout@v2
         with:
-          repository: 'lifting-bits/remill'
+          repository: "lifting-bits/remill"
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
-          
+
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
@@ -720,12 +709,9 @@ jobs:
           name: ${{ matrix.os }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
-
-
-
   release_packages:
     # Do not run the release procedure if any of the builds has failed
-    needs: [ build_linux, build_macos ]
+    needs: [build_linux, build_macos]
     runs-on: ubuntu-20.04
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
@@ -801,24 +787,24 @@ jobs:
         llvm: ["14"]
         ubuntu: ["20.04"]
         binja:
-          - {channel: 'headless', version: '3.1.3479'}
+          - { channel: "headless", version: "3.1.3479" }
     steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: true
-    - name: Set remill-commit-id
-      shell: bash
-      run: |
-        remill_commit_id_path=".remill_commit_id"
-        
-        if [[ -f "${remill_commit_id_path}" ]] ; then
-          remill_commit_id=$(cat ${remill_commit_id_path})
-          echo "Using the following remill commit: ${remill_commit_id} in docker"
-        else
-          remill_commit_id="master"
-          echo "WARNING: Builds/tests will work against remill main commit"
-        fi
-        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV    
-    - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
-      run: |
-        docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Set remill-commit-id
+        shell: bash
+        run: |
+          remill_commit_id_path=".remill_commit_id"
+
+          if [[ -f "${remill_commit_id_path}" ]] ; then
+            remill_commit_id=$(cat ${remill_commit_id_path})
+            echo "Using the following remill commit: ${remill_commit_id} in docker"
+          else
+            remill_commit_id="master"
+            echo "WARNING: Builds/tests will work against remill main commit"
+          fi
+          echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV
+      - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
+        run: |
+          docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
