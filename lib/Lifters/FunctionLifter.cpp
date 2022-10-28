@@ -525,6 +525,8 @@ void FunctionLifter::VisitIndirectJump(
     CallFunction(inst, block, std::nullopt);
     InsertError(block);
   } else if (std::holds_alternative<Return>(cf)) {
+    // TODO(Ian): It feels like we should be able to handle overrides/control flow much more uniformally, I think it would be good to do so in
+    // a separate PR.
     this->VisitFunctionReturn(inst, delayed_inst, block);
   } else {
     LOG(FATAL) << "Invalid spec for indirect jump at " << std::hex << inst.pc;
