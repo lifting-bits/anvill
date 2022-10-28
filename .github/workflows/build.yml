@@ -146,11 +146,11 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: "Install Rust"
-        shell: bash
-        run: |
-          curl https://sh.rustup.rs -sSf | bash -s -- -y
-          source "$HOME/.cargo/env"
+      - name: Install stable rust
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: stable
+          override: true
 
       - name: "Install Just"
         shell: bash
