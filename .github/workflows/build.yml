@@ -149,7 +149,7 @@ jobs:
       - name: Install stable rust
         shell: bash
         run: |
-          apt-get install cargo
+          apt-get install -y cargo
 
       - name: "Install Just"
         shell: bash
