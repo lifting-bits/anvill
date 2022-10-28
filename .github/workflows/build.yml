@@ -408,7 +408,7 @@ jobs:
         run: |
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
-          --python-cmd "python3 -m anvill" \
+          --ghidra-install-dir $GHIDRA_INSTALL_DIR \
           --decompile-cmd "anvill-decompile-json"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
