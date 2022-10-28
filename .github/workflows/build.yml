@@ -166,6 +166,10 @@ jobs:
           submodules: false
           ssh-key: "${{ secrets.IRENE3_DEPLOY }}"
 
+      - name: Add cargo bin to path
+        run: |
+          echo ~/.cargo/bin >>$GITHUB_PATH
+
       - name: Install Ghidra Spec Generation
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
