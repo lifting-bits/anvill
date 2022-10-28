@@ -170,6 +170,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
       // logical place to return, and no return address is initialized in the
       // appropriate place in a register / on the stack by the kernel.
     } else {
+      DLOG(INFO) << "Function at: " << address_str << " has no return";
       decl.return_address.type = void_type;
     }
 

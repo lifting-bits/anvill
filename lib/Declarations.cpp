@@ -13,6 +13,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -22,6 +23,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -129,6 +131,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // Get the return address.
   auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, block,
                                   state_ptr, mem_ptr);
+  CHECK(ret_addr && !llvm::isa_and_nonnull<llvm::UndefValue>(ret_addr));
 
   // Get the parameters.
   for (const auto &param_decl : params) {

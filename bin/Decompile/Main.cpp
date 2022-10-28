@@ -77,7 +77,6 @@ static void SetVersion(void) {
 }
 
 int main(int argc, char *argv[]) {
-
   // get version string from git, and put as output to --version
   // from gflags
   SetVersion();

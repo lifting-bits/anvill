@@ -524,6 +524,8 @@ void FunctionLifter::VisitIndirectJump(
     VisitDelayedInstruction(inst, delayed_inst, block, true);
     CallFunction(inst, block, std::nullopt);
     InsertError(block);
+  } else if (std::holds_alternative<Return>(cf)) {
+    this->VisitFunctionReturn(inst, delayed_inst, block);
   } else {
     LOG(FATAL) << "Invalid spec for indirect jump at " << std::hex << inst.pc;
   }
