@@ -125,7 +125,7 @@ jobs:
                              ninja-build \
                              ccache \
                              rpm \
-                             openssh-client
+                             openssh-clients
 
       - name: Clone the anvill repository
         uses: actions/checkout@v2
@@ -158,14 +158,12 @@ jobs:
           cargo install just
 
       - name: Clone Ghidra Spec Generation
-        env:
-          SSHK: ${{ secrets.IRENE3_DEPLOY }}
-        run: |
-          mkdir -p $HOME/.ssh
-          echo "$SSHK" > $HOME/.ssh/ssh.key
-          chmod 600 $HOME/.ssh/ssh.key
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/ssh.key"
-          git clone git@github.com:trailofbits/irene3.git
+        uses: actions/checkout@v2
+        with:
+          repository: "trailofbits/irene3"
+          fetch-depth: 0
+          submodules: false
+          ssh-key: "${{ secrets.IRENE3_DEPLOY }}"
 
       - name: Install Ghidra Spec Generation
         shell: bash
