@@ -149,7 +149,7 @@ jobs:
       - name: "Install Rust"
         shell: bash
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s --y
+          curl https://sh.rustup.rs -sSf | bash -s -- --y
 
       - name: "Install Just"
         run: |
