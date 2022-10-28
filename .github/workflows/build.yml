@@ -150,8 +150,10 @@ jobs:
         shell: bash
         run: |
           curl https://sh.rustup.rs -sSf | bash -s -- -y
+          source "$HOME/.cargo/env"
 
       - name: "Install Just"
+        shell: bash
         run: |
           cargo install just
 
