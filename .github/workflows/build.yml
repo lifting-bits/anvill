@@ -167,6 +167,7 @@ jobs:
           ssh-key: "${{ secrets.IRENE3_DEPLOY }}"
 
       - name: Add cargo bin to path
+        shell: bash
         run: |
           echo ~/.cargo/bin >>$GITHUB_PATH
 
