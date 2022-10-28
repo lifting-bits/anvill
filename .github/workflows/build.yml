@@ -160,6 +160,7 @@ jobs:
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v2
         with:
+          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
           fetch-depth: 0
           submodules: false
@@ -167,6 +168,7 @@ jobs:
 
       - name: Install Ghidra Spec Generation
         shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
         run: |
           just install-irene3-ghidra
 
