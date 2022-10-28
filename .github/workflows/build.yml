@@ -124,7 +124,8 @@ jobs:
                              make \
                              ninja-build \
                              ccache \
-                             rpm
+                             rpm \
+                             openssh-client
 
       - name: Clone the anvill repository
         uses: actions/checkout@v2
