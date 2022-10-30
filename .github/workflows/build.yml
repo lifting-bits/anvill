@@ -60,8 +60,8 @@ jobs:
           - { name: 'ubuntu', tag: '20.04' }
         binja:
           - {channel: 'headless', version: '3.1.3479'}
-        llvm: [ '14' ]
-        cxxcommon_version: [ 'v0.2.10' ]
+        llvm: [ '14', '15' ]
+        cxxcommon_version: [ 'v0.2.12' ]
 
     runs-on: ubuntu-20.04
     container:
@@ -145,13 +145,13 @@ jobs:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
-      
+
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-      
+
       - name: Select the remill version
         shell: bash
         run: |
@@ -421,7 +421,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ 'macos-11' ]
-        llvm: [ '14' ]
+        llvm: [ '14', '15' ]
         cxxcommon_version: [ 'v0.2.10' ]
 
     runs-on: ${{ matrix.os }}
@@ -494,7 +494,7 @@ jobs:
           repository: 'lifting-bits/remill'
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
           fetch-depth: 0
-          
+
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
@@ -773,7 +773,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["14"]
+        llvm: ["14", "15"]
         ubuntu: ["20.04"]
         binja:
           - {channel: 'headless', version: '3.1.3479'}
@@ -785,7 +785,7 @@ jobs:
       shell: bash
       run: |
         remill_commit_id_path=".remill_commit_id"
-        
+
         if [[ -f "${remill_commit_id_path}" ]] ; then
           remill_commit_id=$(cat ${remill_commit_id_path})
           echo "Using the following remill commit: ${remill_commit_id} in docker"
@@ -793,7 +793,7 @@ jobs:
           remill_commit_id="master"
           echo "WARNING: Builds/tests will work against remill main commit"
         fi
-        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV    
+        echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV
     - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
       run: |
         docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
