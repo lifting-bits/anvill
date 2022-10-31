@@ -1,7 +1,7 @@
-ARG LLVM_VERSION=14
+ARG LLVM_VERSION=15
 ARG ARCH=amd64
 ARG UBUNTU_VERSION=20.04
-ARG CXX_COMMON_VERSION=0.2.10
+ARG CXX_COMMON_VERSION=0.2.12
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
@@ -14,7 +14,7 @@ ARG UBUNTU_VERSION
 ARG LIBRARIES
 ARG LLVM_VERSION
 ARG CXX_COMMON_VERSION
-ARG DEBIAN_FRONTEND=noninteractive 
+ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -qqy --no-install-recommends git libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils cmake && \
     rm -rf /var/lib/apt/lists/*
@@ -62,7 +62,7 @@ RUN cmake -G Ninja -B build -S  /dependencies/remill \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
     && \
-    cmake --build build --target install 
+    cmake --build build --target install
 
 # Source code build
 FROM deps AS build

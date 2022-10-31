@@ -422,7 +422,7 @@ jobs:
       matrix:
         os: [ 'macos-11' ]
         llvm: [ '14', '15' ]
-        cxxcommon_version: [ 'v0.2.10' ]
+        cxxcommon_version: [ 'v0.2.12' ]
 
     runs-on: ${{ matrix.os }}
 
