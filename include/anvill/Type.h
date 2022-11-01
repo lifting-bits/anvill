@@ -55,8 +55,6 @@ enum class TypeKind : unsigned char {
   kPadding
 };
 
-enum class TypeSign : unsigned char { kUnknown, kSigned, kUnsigned };
-
 enum class BaseType : int {
   Bool = 0,
   Char = 1,
@@ -200,10 +198,7 @@ class TypeDictionary {
   TypeDictionary(void) = delete;
 };
 
-enum EncodingFormat : bool {
-  kDefault = false,
-  kValidSymbolCharsOnly = true
-};
+enum EncodingFormat : bool { kDefault = false, kValidSymbolCharsOnly = true };
 
 // Translates between two type formats:
 //
@@ -247,9 +242,9 @@ class TypeTranslator {
   //
   // See `docs/TypeEncoding.md` for information on how different types are
   // represented.
-  std::string EncodeToString(
-      llvm::Type *type,
-      EncodingFormat alphanum = EncodingFormat::kDefault) const;
+  std::string
+  EncodeToString(llvm::Type *type,
+                 EncodingFormat alphanum = EncodingFormat::kDefault) const;
 
   Result<llvm::Type *, TypeSpecificationError>
   DecodeFromSpec(TypeSpec spec) const;
