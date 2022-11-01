@@ -346,21 +346,7 @@ jobs:
 
         run: |
           scripts/build-preset.sh debug
-      - name: Install Binary Ninja
-        env:
-          BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
-        shell: bash
-        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
-        run: |
-          ./install_binja.sh
-      - name: Update Binary Ninja
-        shell: bash
-        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/ci
-        run: |
-          python3 ./switcher.py --version_string ${{ matrix.binja.version }} ${{ matrix.binja.channel }}
-
       - name: Run the tests
-
         env:
           BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
           CTEST_OUTPUT_ON_FAILURE: 1
