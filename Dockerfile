@@ -44,7 +44,7 @@ WORKDIR /dependencies
 # cxx-common
 #ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 RUN curl -L https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz \
-         -o vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    -o vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
@@ -113,7 +113,7 @@ COPY --from=build ${LIBRARIES} ${LIBRARIES}
 
 # Target no longer installs at a version
 
-ENTRYPOINT ["anvill-decompile-json"]
+ENTRYPOINT ["anvill-decompile-spec"]
 
 
 FROM dist as binja

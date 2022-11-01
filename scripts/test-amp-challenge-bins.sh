@@ -3,7 +3,7 @@ DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 SRC_DIR=$( cd "$( dirname "${DIR}" )" && pwd )
 
 GHIDRA_INSTALL_DIR="~/ghidra_10.1.5_PUBLIC/"
-ANVILL_DECOMPILE="anvill-decompile-json"
+ANVILL_DECOMPILE="anvill-decompile-spec"
 function Help
 {
   echo "Run Anvill on AMP Challenge Binaries"

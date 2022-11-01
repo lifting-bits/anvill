@@ -1,4 +1,4 @@
-# anvill-decompile-json
+# anvill-decompile-spec
 
 ## TODO
 
