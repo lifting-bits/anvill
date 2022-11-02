@@ -384,10 +384,6 @@ jobs:
         run: |
           dpkg -i ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
-      - name: Test the DEB package
-        run: |
-          python3 -m anvill --help
-
       - name: Run Integration Tests (AMP Challenge Binaries)
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
