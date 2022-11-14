@@ -170,8 +170,11 @@ TEST_SUITE("TypeSpecifier") {
             non_variadic_alphanum_func_description);
 
     // packed struct vs non-packed
-    std::vector<llvm::Type *> struct_part_list3 = {array_type, struct_type,
-                                                   array_type, struct_type};
+    std::vector<llvm::Type *> struct_part_list3 = {
+        array_type,  llvm::Type::getInt8Ty(llvm_context),
+        struct_type, llvm::Type::getInt8Ty(llvm_context),
+        array_type,  llvm::Type::getInt8Ty(llvm_context),
+        struct_type};
 
     auto non_packed_struct_type =
         llvm::StructType::create(struct_part_list3, "", false);
