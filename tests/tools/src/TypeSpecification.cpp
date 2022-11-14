@@ -143,7 +143,7 @@ TEST_SUITE("TypeSpecifier") {
       auto encoded_with_alphanum = specifier.EncodeToString(decoded_with_alphanum.TakeValue(), anvill::EncodingFormat::kValidSymbolCharsOnly);
 
       CHECK_EQ(without_alphanum, encoded_without_alphanum);
-      WARN_EQ(with_alphanum, encoded_with_alphanum);
+      CHECK_EQ(with_alphanum, encoded_with_alphanum);
     }
 
     //
@@ -158,7 +158,7 @@ TEST_SUITE("TypeSpecifier") {
     auto non_variadic_func_description =
         specifier.EncodeToString(function_type, anvill::EncodingFormat::kDefault);
 
-    WARN_NE(variadic_func_description, non_variadic_func_description);
+    CHECK_NE(variadic_func_description, non_variadic_func_description);
 
     auto variadic_alphanum_func_description =
         specifier.EncodeToString(variadic_function_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
@@ -166,8 +166,8 @@ TEST_SUITE("TypeSpecifier") {
     auto non_variadic_alphanum_func_description =
         specifier.EncodeToString(function_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
-    WARN_NE(variadic_alphanum_func_description,
-            non_variadic_alphanum_func_description);
+    CHECK_NE(variadic_alphanum_func_description,
+             non_variadic_alphanum_func_description);
 
     // packed struct vs non-packed
     std::vector<llvm::Type *> struct_part_list3 = {
@@ -186,7 +186,7 @@ TEST_SUITE("TypeSpecifier") {
         specifier.EncodeToString(non_packed_struct_type,  anvill::EncodingFormat::kDefault);
     auto packed_struct = specifier.EncodeToString(packed_struct_type,  anvill::EncodingFormat::kDefault);
 
-    WARN_NE(non_packed_struct, packed_struct);
+    CHECK_NE(non_packed_struct, packed_struct);
 
     auto alphanum_non_packed_struct =
         specifier.EncodeToString(non_packed_struct_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
@@ -194,7 +194,7 @@ TEST_SUITE("TypeSpecifier") {
     auto alphanum_packed_struct =
         specifier.EncodeToString(packed_struct_type, anvill::EncodingFormat::kValidSymbolCharsOnly);
 
-    WARN_NE(alphanum_non_packed_struct, alphanum_packed_struct);
+    CHECK_NE(alphanum_non_packed_struct, alphanum_packed_struct);
   }
 
   TEST_CASE("Simple spec -> type -> spec roundtrip") {
