@@ -1,5 +1,5 @@
 {
-    "timeout.seconds": "400",
+    "timeout.seconds": "800",
     "tests.ignore": [
         "challenge-3_amd64_program_go_patched.elf/output.json",
         "challenge-3_amd64_program_go.elf/output.json",

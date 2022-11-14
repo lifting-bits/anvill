@@ -13,6 +13,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -22,12 +23,14 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
 #include "Arch/Arch.h"
+#include "Protobuf.h"
 
 namespace anvill {
 
@@ -128,6 +131,7 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // Get the return address.
   auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, block,
                                   state_ptr, mem_ptr);
+  CHECK(ret_addr && !llvm::isa_and_nonnull<llvm::UndefValue>(ret_addr));
 
   // Get the parameters.
   for (const auto &param_decl : params) {
@@ -186,6 +190,27 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   } else {
     return mem_ptr;
   }
+}
+
+anvill::Result<CallableDecl, std::string>
+CallableDecl::DecodeFromPB(const remill::Arch *arch, const std::string &pb) {
+  ::specification::Function function;
+  if (!function.ParseFromString(pb)) {
+    return {"Failed to parse callable decl"};
+  }
+
+  const TypeDictionary type_dictionary(*(arch->context));
+  const TypeTranslator type_translator(type_dictionary, arch);
+  std::unordered_map<std::int64_t, TypeSpec> type_map;
+  ProtobufTranslator translator(type_translator, arch, type_map);
+
+  auto default_callable_decl_res =
+      translator.DecodeDefaultCallableDecl(function);
+  if (!default_callable_decl_res.Succeeded()) {
+    return {"Failed to decode to default callable decl"};
+  }
+
+  return default_callable_decl_res.Value();
 }
 
 // Create a Function Declaration from an `llvm::Function`.

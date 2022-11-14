@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "Result.h"
+#include "Type.h"
 
 namespace llvm {
 class BasicBlock;
@@ -30,10 +31,6 @@ class Value;
 namespace CallingConv {
 using ID = unsigned;
 }  // namespace CallingConv
-namespace json {
-class Object;
-class Value;
-}  // namespace json
 }  // namespace llvm
 namespace remill {
 class Arch;
@@ -64,6 +61,8 @@ struct ValueDecl {
   const remill::Register *mem_reg{nullptr};
   std::int64_t mem_offset{0};
 
+  TypeSpec spec_type;
+
   // Type of this value.
   llvm::Type *type{nullptr};
 };
@@ -73,25 +72,6 @@ struct ParameterDecl : public ValueDecl {
 
   // Name of the parameter.
   std::string name;
-};
-
-// The type, and possibly a concrete value, associated with a specific register
-// at a specific point in time. The actual point in time is not defined in here.
-struct TypedRegisterDecl {
-
-  // Register
-  const remill::Register *reg{nullptr};
-
-  // Type of the register. This represents the type of values inhabiting the
-  // register at this point in time. For example, with a vector register, this
-  // could represent a particular specialization of the lane types of that
-  // vector register.
-  llvm::Type *type{nullptr};
-
-  // Concrete value inhabiting this register at some specific point in time.
-  //
-  // TODO(pag): Make this an `llvm::APVal`, perhaps.
-  std::optional<std::uint64_t> value;
 };
 
 // A typed location in memory, that isn't actually code. This roughly
@@ -104,6 +84,8 @@ struct VariableDecl {
   // can also infer that at address `0x10` there is an `int`, and at address
   // `0x14` there is also an `int`.
   llvm::Type *type{nullptr};
+
+  TypeSpec spec_type;
 
   // Address of this global variable.
   std::uint64_t address{0};
@@ -122,6 +104,8 @@ struct CallableDecl {
 
   // The architecture from which this function's code derives.
   const remill::Arch *arch{nullptr};
+
+  std::shared_ptr<FunctionType> spec_type;
 
   // ABI-level type of this function.
   llvm::FunctionType *type{nullptr};
@@ -173,6 +157,15 @@ struct CallableDecl {
                       const remill::IntrinsicTable &intrinsics,
                       llvm::BasicBlock *block, llvm::Value *state_ptr,
                       llvm::Value *mem_ptr) const;
+
+  // Try to create a callable decl from a protobuf default callable decl
+  // specification. Returns a string error if something went wrong.
+  //
+  // NOTE(alex): This is following the same pattern as where we decode an entire
+  // specification. Not sure how others feel about this but it does save us from
+  // having to expose all the Protobuf stuff in the public headers.
+  static anvill::Result<CallableDecl, std::string>
+  DecodeFromPB(const remill::Arch *arch, const std::string &pb);
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -199,11 +192,13 @@ struct FunctionDecl : public CallableDecl {
   // below the stack pointer on x86/amd64).
   std::uint64_t num_bytes_in_redzone{0};
 
+  bool lift_as_decl{false};
+  bool is_extern{false};
 
   // The set of context assignments that occur at the entry point to this function.
   // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a function.
-  std::unordered_map<std::string, uint64_t> context_assignments;
+  std::unordered_map<std::string, std::uint64_t> context_assignments;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;

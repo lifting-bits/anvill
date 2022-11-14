@@ -200,7 +200,7 @@ class LifterOptions {
         add_breakpoints(false),
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
-        stack_pointer_is_signed(false) {
+        stack_pointer_is_signed(false), should_remove_anvill_pc(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -275,6 +275,8 @@ class LifterOptions {
 
   // Should we treat the stack pointer as signed when simplifying sign flags.
   bool stack_pointer_is_signed : 1;
+
+  bool should_remove_anvill_pc: 1;
 
  private:
   LifterOptions(void) = delete;

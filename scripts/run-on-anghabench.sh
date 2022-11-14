@@ -70,7 +70,7 @@ tool_run_scripts/anvill.py \
     --run-name "[${RUN_NAME}] [size: ${RUN_SIZE}] [anvill: ${ANVILL_BRANCH}]" \
     --input-dir $(pwd)/binaries \
     --output-dir $(pwd)/anvill_bitcode \
-    --anvill-decompile /usr/local/bin/anvill-decompile-json \
+    --anvill-decompile /usr/local/bin/anvill-decompile-spec \
     --slack-notify
 
 # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY passed in from original invocation environment

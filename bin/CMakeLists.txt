@@ -7,4 +7,3 @@
 #
 
 add_subdirectory("Decompile")
-add_subdirectory("Specify")

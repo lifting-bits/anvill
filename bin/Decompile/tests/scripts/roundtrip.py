@@ -147,7 +147,7 @@ class TestRoundtrip(unittest.TestCase):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("anvill", help="path to anvill-decompile-json")
+    parser.add_argument("anvill", help="path to anvill-decompile-spec")
     parser.add_argument("tests", help="path to test directory")
     parser.add_argument("clang", help="path to clang")
     parser.add_argument("workspace", nargs="?", default=None,

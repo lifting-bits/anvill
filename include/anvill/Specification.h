@@ -10,15 +10,16 @@
 
 #include <cstdint>
 #include <functional>
+#include <istream>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
-#include "JSON.h"
 #include "Result.h"
 
 namespace llvm {
@@ -53,30 +54,37 @@ class SpecificationTypeProvider;
 class TypeDictionary;
 class TypeTranslator;
 
-// Describes a list of targets reachable from a given source address. This tells
-// us where the flows go, not the mechanics of how they get there.
-struct ControlFlowTargetList final {
-
-  // Address of an indirect jump.
-  std::uint64_t address{};
-
-  // List of addresses targeted by the indirect jump. This is a set, and thus
-  // does not track the multiplicity of those targets, nor the order that they
-  // appear in any kind of binary-specific structure (e.g. a jump table). That
-  // is, a given indirect jump may target the same address in multiple different
-  // ways (e.g. multiple `case` labels in a `switch` statement that share the
-  // same body).
-
-  /// The addresses map a target to a given context mapping.
-  std::map<std::uint64_t, std::unordered_map<std::string, uint64_t>>
-      target_addresses;
-
-
-  // True if this destination list appears to be complete. As a
-  // general rule, this is set to true when the target recovery has
-  // been completely performed by the disassembler tool.
-  bool is_complete{false};
+struct ControlFlowOverrideSpec {
+  std::uint64_t address;
+  bool stop;
 };
+
+struct JumpTarget {
+  std::uint64_t address;
+  std::unordered_map<std::string, std::uint64_t> context_assignments;
+};
+
+struct Jump : ControlFlowOverrideSpec {
+  std::vector<JumpTarget> targets;
+};
+
+struct Call : ControlFlowOverrideSpec {
+  std::optional<std::uint64_t> return_address;
+  bool is_tailcall;
+  std::optional<std::uint64_t> target_address;
+};
+
+struct Return : ControlFlowOverrideSpec {};
+
+struct Misc : ControlFlowOverrideSpec {};
+
+using ControlFlowOverride = std::variant<std::monostate, Jump, Call, Return, Misc>;
+
+struct CallSiteDecl;
+struct FunctionDecl;
+struct VariableDecl;
+struct ParameterDecl;
+struct ValueDecl;
 
 // Represents the data pulled out of a JSON (sub-)program specification.
 class Specification {
@@ -103,13 +111,15 @@ class Specification {
   // Return the type translator used by this specification.
   const ::anvill::TypeTranslator &TypeTranslator(void) const;
 
-  // Try to create a program from a JSON specification. Returns a string error
+  // Try to create a program from a protobuf specification. Returns a string error
   // if something went wrong.
-  static anvill::Result<Specification, JSONDecodeError>
-  DecodeFromJSON(llvm::LLVMContext &context, const llvm::json::Value &val);
+  static anvill::Result<Specification, std::string>
+  DecodeFromPB(llvm::LLVMContext &context, const std::string &pb);
 
-  // Try to encode the specification into JSON.
-  anvill::Result<llvm::json::Object, JSONEncodeError> EncodeToJSON(void);
+  // Try to create a program from a protobuf specification. Returns a string error
+  // if something went wrong.
+  static anvill::Result<Specification, std::string>
+  DecodeFromPB(llvm::LLVMContext &context, std::istream &pb);
 
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
@@ -137,14 +147,22 @@ class Specification {
   void ForEachCallSite(
       std::function<bool(std::shared_ptr<const CallSiteDecl>)> cb) const;
 
-  // Call `cb` on each control-flow target list, until `cb` returns `false`.
-  void ForEachControlFlowTargetList(
-      std::function<bool(std::shared_ptr<const ControlFlowTargetList>)> cb)
-      const;
-
   // Call `cb` on each control-flow redirection, until `cb` returns `false`.
   void ForEachControlFlowRedirect(
       std::function<bool(std::uint64_t, std::uint64_t)> cb) const;
+
+  // Call `cb` on each jump, until `cb` returns `false`.
+  void ForEachJump(std::function<bool(const Jump &)> cb) const;
+
+  // Call `cb` on each call, until `cb` returns `false`.
+  void ForEachCall(std::function<bool(const Call &)> cb) const;
+
+  // Call `cb` on each return, until `cb` returns `false`.
+  void ForEachReturn(std::function<bool(const Return &)> cb) const;
+
+  // Call `cb` on each miscellaneous control flow override, until `cb` returns `false`.
+  void ForEachMiscOverride(
+      std::function<bool(const Misc &)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();

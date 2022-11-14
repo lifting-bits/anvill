@@ -6,9 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/CrossReferenceFolder.h>
-
 #include <anvill/ABI.h>
+#include <anvill/CrossReferenceFolder.h>
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Lifters.h>
 #include <anvill/Providers.h>
@@ -19,9 +18,11 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/Casting.h>
 #include <remill/BC/Util.h>
 
 #include <unordered_map>
@@ -50,7 +51,8 @@ static int64_t Signed(uint64_t val, uint64_t size) {
 
 }  // namespace
 
-using ResolvedCrossReferenceCache = std::unordered_map<llvm::Value *, ResolvedCrossReference>;
+using ResolvedCrossReferenceCache =
+    std::unordered_map<llvm::Value *, ResolvedCrossReference>;
 
 class CrossReferenceFolderImpl {
  public:
@@ -63,6 +65,8 @@ class CrossReferenceFolderImpl {
   ResolvedCrossReference ResolveConstant(llvm::Constant *const_val);
   ResolvedCrossReference ResolveGlobalValue(llvm::GlobalValue *const_val);
   ResolvedCrossReference ResolveConstantExpr(llvm::ConstantExpr *const_val);
+
+  ResolvedCrossReference ResolveLoad(llvm::LoadInst *ld);
 
   // Try to resolve `val` as a cross-reference.
   ResolvedCrossReference ResolveCall(llvm::CallInst *val);
@@ -209,6 +213,18 @@ ResolvedCrossReference CrossReferenceFolderImpl::MergeLeft(
 }
 
 ResolvedCrossReference
+CrossReferenceFolderImpl::ResolveLoad(llvm::LoadInst *ld) {
+  auto ptr = ld->getPointerOperand();
+  if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
+    if (gv->isConstant() && gv->hasInitializer()) {
+      auto init = gv->getInitializer();
+      return this->ResolveConstant(init);
+    }
+  }
+  return {};
+}
+
+ResolvedCrossReference
 CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
 
   auto it = xref_cache.find(inst_val);
@@ -281,6 +297,10 @@ CrossReferenceFolderImpl::ResolveInstruction(llvm::Instruction *inst_val) {
     FOLD_CASE(URem)
 
 #undef FOLD_CASE
+
+    case llvm::Instruction::Load: {
+      return this->ResolveLoad(llvm::cast<llvm::LoadInst>(inst_val));
+    }
 
     case llvm::Instruction::ZExt: {
       xr = ResolveValue(inst_val->getOperand(0));
@@ -611,7 +631,7 @@ CrossReferenceFolderImpl::ResolveCall(llvm::CallInst *call) {
     xr.size = dl.getPointerSizeInBits(0);
     return xr;
 
-  // Not a call through a type hint, ignore it.
+    // Not a call through a type hint, ignore it.
   } else {
     return {};
   }
@@ -670,7 +690,8 @@ CrossReferenceFolder::TryResolveReferenceWithCaching(llvm::Value *val) const {
 }
 
 ResolvedCrossReference
-CrossReferenceFolder::TryResolveReferenceWithClearedCache(llvm::Value *val) const {
+CrossReferenceFolder::TryResolveReferenceWithClearedCache(
+    llvm::Value *val) const {
   // If the application is not using cache, invalidate it before resolving
   // the cross references. It is done to avoid stale `val` sitting in the
   // cache if it has been changed/deleted.

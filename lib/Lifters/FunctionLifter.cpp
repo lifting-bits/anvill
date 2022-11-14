@@ -98,10 +98,9 @@ static void MuteStateEscape(llvm::CallInst *call) {
 // inside lifted code; It takes the address type to generate the function
 // parameters of correct type.
 static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
-                                           llvm::Type *type, bool complete) {
+                                           llvm::Type *type) {
 
-  const auto &func_name =
-      complete ? kAnvillSwitchCompleteFunc : kAnvillSwitchIncompleteFunc;
+  const auto &func_name = kAnvillSwitchCompleteFunc;
 
   auto func = module.getFunction(func_name);
   if (func != nullptr) {
@@ -300,16 +299,40 @@ void FunctionLifter::VisitError(
       remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics));
 }
 
+void FunctionLifter::InsertError(llvm::BasicBlock *block) {
+  llvm::IRBuilder<> ir{block};
+  auto tail = remill::AddTerminatingTailCall(
+      ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
+  AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
+  AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
+}
+
 // Visit a normal instruction. Normal instructions have straight line control-
 // flow semantics, i.e. after executing the instruction, execution proceeds
 // to the next instruction (`inst.next_pc`).
 void FunctionLifter::VisitNormal(
     const remill::Instruction &inst, llvm::BasicBlock *block,
     const remill::Instruction::NormalInsn &mapper) {
-  llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, inst.next_pc,
-                             mapper.fallthrough.fallthrough_context),
-      block);
+  auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
+  bool stop = false;
+
+  if (std::holds_alternative<Misc>(cf)) {
+    auto spec = std::get<Misc>(cf);
+    stop = spec.stop;
+  } else if (!std::holds_alternative<std::monostate>(cf)) {
+    LOG(ERROR)
+        << "Found invalid control flow override for normal instruction at "
+        << std::hex << inst.pc;
+  }
+
+  if (stop) {
+    InsertError(block);
+  } else {
+    llvm::BranchInst::Create(
+        GetOrCreateTargetBlock(inst, inst.next_pc,
+                               mapper.fallthrough.fallthrough_context),
+        block);
+  }
 }
 
 // Visit a no-op instruction. These behave identically to normal instructions
@@ -328,12 +351,30 @@ void FunctionLifter::VisitDirectJump(
     const remill::Instruction &inst,
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::Instruction::DirectJump &mapper) {
+  auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
+  if (std::holds_alternative<Jump>(cf)) {
+    auto jmp_spec = std::get<Jump>(cf);
 
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
-  llvm::BranchInst::Create(
-      GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
-                             mapper.taken_flow.static_context),
-      block);
+    if (jmp_spec.targets.size() != 1) {
+      LOG(FATAL) << "Invalid number of targets for direct jump at " << std::hex
+                 << inst.pc;
+    }
+
+    CHECK_EQ(mapper.taken_flow.known_target, jmp_spec.targets[0].address)
+        << "Spec and remill don't agree on jump target at " << std::hex
+        << inst.pc;
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    llvm::BranchInst::Create(
+        GetOrCreateTargetBlock(inst, mapper.taken_flow.known_target,
+                               mapper.taken_flow.static_context),
+        block);
+  } else if (std::holds_alternative<Call>(cf)) {
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    CallFunction(inst, block, inst.branch_taken_pc);
+    InsertError(block);
+  } else {
+    LOG(FATAL) << "Invalid spec for direct jump at " << std::hex << inst.pc;
+  }
 }
 
 remill::DecodingContext FunctionLifter::ApplyTargetList(
@@ -348,7 +389,7 @@ remill::DecodingContext FunctionLifter::ApplyTargetList(
 // Visit an indirect jump that is a jump table.
 void FunctionLifter::DoSwitchBasedIndirectJump(
     const remill::Instruction &inst, llvm::BasicBlock *block,
-    const ControlFlowTargetList &target_list,
+    const std::vector<JumpTarget> &target_list,
     const remill::Instruction::IndirectJump &mapper,
     const remill::DecodingContext &prev_context) {
 
@@ -366,16 +407,17 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
   // If the target list is complete and has only one destination, then we
   // can handle it as normal jump
-  if (target_list.target_addresses.size() == 1U && target_list.is_complete) {
+  if (target_list.size() == 1U) {
     add_remill_jump = false;
 
-    auto destination = *(target_list.target_addresses.begin());
+    auto destination = target_list[0];
 
 
     llvm::BranchInst::Create(
         GetOrCreateTargetBlock(
-            inst, destination.first,
-            this->ApplyTargetList(destination.second, prev_context)),
+            inst, destination.address,
+            this->ApplyTargetList(destination.context_assignments,
+                                  prev_context)),
         block);
 
     // We have multiple destinations. Handle this with a switch. If the target
@@ -385,21 +427,11 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     llvm::BasicBlock *default_case{nullptr};
 
     // Create a default case that is not reachable
-    if (target_list.is_complete) {
-      add_remill_jump = false;
-      default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+    add_remill_jump = false;
+    default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
 
-      llvm::IRBuilder<> builder(default_case);
-      builder.CreateUnreachable();
-
-      // Create a default case that will contain the __remill_jump. For this
-      // to work, we need to update `current_bb`
-    } else {
-      add_remill_jump = true;
-
-      default_case = llvm::BasicBlock::Create(llvm_context, "", lifted_func);
-      current_bb = default_case;
-    }
+    llvm::IRBuilder<> builder(default_case);
+    builder.CreateUnreachable();
 
     // Create the parameters for the special anvill switch
     auto pc = this->op_lifter->LoadRegValue(
@@ -408,28 +440,28 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     std::vector<llvm::Value *> switch_parameters;
     switch_parameters.push_back(pc);
 
-    for (auto destination : target_list.target_addresses) {
+    for (auto destination : target_list) {
       switch_parameters.push_back(
-          llvm::ConstantInt::get(pc_reg->type, destination.first));
+          llvm::ConstantInt::get(pc_reg->type, destination.address));
     }
 
     // Invoke the anvill switch
     auto &module = *block->getModule();
-    auto anvill_switch_func =
-        GetAnvillSwitchFunc(module, address_type, target_list.is_complete);
+    auto anvill_switch_func = GetAnvillSwitchFunc(module, address_type);
 
     llvm::IRBuilder<> ir(block);
     auto next_pc = ir.CreateCall(anvill_switch_func, switch_parameters);
 
     // Now use the anvill switch output with a SwitchInst, mapping cases
     // by index
-    auto dest_count = target_list.target_addresses.size();
+    auto dest_count = target_list.size();
     auto switch_inst = ir.CreateSwitch(next_pc, default_case, dest_count);
     auto dest_id{0u};
 
-    for (auto dest : target_list.target_addresses) {
+    for (auto dest : target_list) {
       auto dest_block = GetOrCreateTargetBlock(
-          inst, dest.first, this->ApplyTargetList(dest.second, prev_context));
+          inst, dest.address,
+          this->ApplyTargetList(dest.context_assignments, prev_context));
       auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
       switch_inst->addCase(dest_case, dest_block);
     }
@@ -458,33 +490,46 @@ void FunctionLifter::VisitIndirectJump(
     std::optional<remill::Instruction> &delayed_inst, llvm::BasicBlock *block,
     const remill::Instruction::IndirectJump &mapper,
     const remill::DecodingContext &prev_context) {
+  auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
+  if (std::holds_alternative<Jump>(cf)) {
+    auto jmp_spec = std::get<Jump>(cf);
 
-  VisitDelayedInstruction(inst, delayed_inst, block, true);
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
 
-  // Try to get the target type given the source. This is like a tail-call,
-  // e.g. `jmp [fseek]`.
-  if (auto maybe_decl =
-          type_provider.TryGetCalledFunctionType(func_address, inst)) {
-    llvm::IRBuilder<> ir(block);
-    llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
-    AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
-    auto new_mem_ptr =
-        CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
-    ir.CreateRet(new_mem_ptr);
+    // Try to get the target type given the source. This is like a tail-call,
+    // e.g. `jmp [fseek]`.
+    if (auto maybe_decl =
+            type_provider.TryGetCalledFunctionType(func_address, inst)) {
+      llvm::IRBuilder<> ir(block);
+      llvm::Value *dest_addr = ir.CreateLoad(pc_reg_type, pc_reg_ref);
+      AnnotateInstruction(dest_addr, pc_annotation_id, pc_annotation);
+      auto new_mem_ptr =
+          CallCallableDecl(block, dest_addr, std::move(maybe_decl.value()));
+      ir.CreateRet(new_mem_ptr);
 
-    // Attempt to get the target list for this control flow instruction
-    // so that we can handle this jump in a less generic way.
-  } else if (auto maybe_target_list =
-                 options.control_flow_provider.TryGetControlFlowTargets(inst)) {
+      // Attempt to get the target list for this control flow instruction
+      // so that we can handle this jump in a less generic way.
+    } else if (jmp_spec.targets.size() > 0) {
 
-    DoSwitchBasedIndirectJump(inst, block, *maybe_target_list, mapper,
-                              prev_context);
+      DoSwitchBasedIndirectJump(inst, block, jmp_spec.targets, mapper,
+                                prev_context);
 
-    // No good info; do an indirect jump.
+      // No good info; do an indirect jump.
+    } else {
+      auto jump =
+          remill::AddTerminatingTailCall(block, intrinsics.jump, intrinsics);
+      AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
+    }
+  } else if (std::holds_alternative<Call>(cf)) {
+    VisitDelayedInstruction(inst, delayed_inst, block, true);
+    CallFunction(inst, block, std::nullopt);
+    InsertError(block);
+  } else if (std::holds_alternative<Return>(cf)) {
+    // TODO(Ian): It feels like we should be able to handle overrides/control flow much more uniformally, I think it would be good to do so in
+    // a separate PR.
+    this->VisitFunctionReturn(inst, delayed_inst, block);
   } else {
-    auto jump =
-        remill::AddTerminatingTailCall(block, intrinsics.jump, intrinsics);
-    AnnotateInstruction(jump, pc_annotation_id, pc_annotation);
+    LOG(FATAL) << "Invalid spec for indirect jump at " << std::hex << inst.pc;
   }
 }
 
@@ -577,20 +622,25 @@ llvm::Value *FunctionLifter::CallCallableDecl(llvm::BasicBlock *block,
 bool FunctionLifter::CallFunction(const remill::Instruction &inst,
                                   llvm::BasicBlock *block,
                                   std::optional<std::uint64_t> target_pc) {
-
+  auto cf = options.control_flow_provider.GetControlFlowOverride(inst.pc);
+  if (!std::holds_alternative<Call>(cf)) {
+    LOG(FATAL) << "Invalid spec for call at " << std::hex << inst.pc;
+  }
+  auto call_spec = std::get<Call>(cf);
   std::optional<CallableDecl> maybe_decl;
 
-  if (target_pc) {
+  if (call_spec.target_address.has_value()) {
     // First, try to see if it's actually related to another function. This is
     // equivalent to a tail-call in the original code.
-    auto target_addr = target_pc.value();
-    const auto redirected_addr =
-        options.control_flow_provider.GetCallRedirection(target_addr);
+    auto redirected_addr = *call_spec.target_address;
 
     // Now, get the type of the target given the source and destination.
     maybe_decl = TryGetTargetFunctionType(inst, redirected_addr);
     target_pc = redirected_addr;
+  } else if (target_pc.has_value()) {
 
+    maybe_decl =
+        type_provider.TryGetCalledFunctionType(func_address, inst, *target_pc);
   } else {
 
     // If we don't know a concrete target address, then just try to get the
@@ -762,8 +812,6 @@ void FunctionLifter::VisitAfterFunctionCall(
 
   llvm::IRBuilder<> ir(block);
   if (can_return) {
-
-
     auto update_pc = ir.CreateStore(ret_pc_val, pc_reg_ref, false);
     auto update_next_pc = ir.CreateStore(ret_pc_val, next_pc_reg_ref, false);
     auto branch_to_next_pc =
@@ -988,54 +1036,6 @@ void FunctionLifter::VisitInstructions(uint64_t address) {
     CHECK_NOTNULL(block);
     if (!block->empty()) {
       continue;  // Already handled.
-    }
-
-    // Is this edge to a function redirected?
-    std::uint64_t redir_addr =
-        options.control_flow_provider.GetCallRedirection(inst_addr);
-
-    std::optional<FunctionDecl> inst_func;
-
-    if (redir_addr != func_address) {
-      inst_func = options.type_provider.TryGetFunctionTypeOrDefault(redir_addr);
-
-      // It looks like a self tail-call.
-    } else if (from_addr) {
-      inst_func = *curr_decl;
-    }
-
-
-    pc_annotation = GetPCAnnotation(inst_addr);
-
-    // If it looks like we have a destination function, then see if we have
-    // a call-site specific declaration, and if so, use it, otherwise, use
-    // the destination function type.
-    if (inst_func) {
-      std::optional<CallableDecl> maybe_decl;
-      if (from_addr) {
-        maybe_decl = TryGetTargetFunctionType(inst, redir_addr);
-      }
-
-      if (!maybe_decl) {
-        maybe_decl = std::move(inst_func.value());
-      }
-
-      auto is_noreturn = maybe_decl->is_noreturn;
-      llvm::IRBuilder<> ir(block);
-      auto new_mem_ptr = CallCallableDecl(
-          block, options.program_counter_init_procedure(ir, pc_reg, redir_addr),
-          std::move(maybe_decl.value()));
-
-
-      if (is_noreturn) {
-        auto tail = remill::AddTerminatingTailCall(
-            ir.GetInsertBlock(), intrinsics.error, this->intrinsics);
-        AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
-      } else {
-        llvm::Instruction *ret = ir.CreateRet(new_mem_ptr);
-        AnnotateInstruction(ret, pc_annotation_id, pc_annotation);
-      }
-      continue;
     }
 
     llvm::BasicBlock *&inst_block = addr_to_block[inst_addr];
@@ -1525,6 +1525,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   // Check if we already lifted this function. If so, do not re-lift it.
   if (!native_func->isDeclaration()) {
+    return native_func;
+  }
+
+  if (decl.lift_as_decl) {
     return native_func;
   }
 

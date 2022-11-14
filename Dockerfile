@@ -5,7 +5,6 @@ ARG CXX_COMMON_VERSION=0.2.10
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
 ARG LIBRARIES=/opt/trailofbits
-ARG BINJA_DECODE_KEY
 
 
 # Run-time dependencies go here
@@ -43,10 +42,11 @@ WORKDIR /dependencies
 
 
 # cxx-common
-ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
-RUN tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+#ADD https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
+RUN curl -L https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_COMMON_VERSION}/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz \
+    -o vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
+    tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
-
 
 RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
 RUN git clone "https://github.com/lifting-bits/remill.git" remill && cd remill && git checkout ${REMILL_COMMIT_ID}
@@ -87,6 +87,7 @@ COPY . ./
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
     -DANVILL_ENABLE_INSTALL=true \
+    -DANVILL_ENABLE_TESTS=true \
     -Dremill_DIR=${LIBRARIES}/cmake/remill \
     -Dsleigh_DIR=${LIBRARIES}/cmake/sleigh \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
@@ -94,6 +95,9 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
     -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
     && \
     cmake --build build --target install
+
+# Run Anvill tests
+RUN cd build && CTEST_OUTPUT_ON_FAILURE=1 ctest -V
 
 FROM base AS dist
 ARG LLVM_VERSION
@@ -109,13 +113,10 @@ COPY --from=build ${LIBRARIES} ${LIBRARIES}
 
 # Target no longer installs at a version
 
-ENTRYPOINT ["anvill-decompile-json"]
+ENTRYPOINT ["anvill-decompile-spec"]
 
 
 FROM dist as binja
-ARG BINJA_DECODE_KEY
-ARG BINJA_VERSION
-ARG BINJA_CHANNEL
 
 ENV VIRTUAL_ENV=/opt/trailofbits/venv
 
@@ -123,16 +124,6 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && \
     apt-get install -qqy gpg unzip && \
     rm -rf /var/lib/apt/lists/*
-
-COPY ci /dependencies/binja_install
-
-RUN export BINJA_DECODE_KEY="${BINJA_DECODE_KEY}" && \
-    source ${VIRTUAL_ENV}/bin/activate && \
-    cd /dependencies/binja_install && \
-    if [[ "${BINJA_DECODE_KEY}" != "" ]]; then ./install_binja.sh && python3 switcher.py --version_string ${BINJA_VERSION} ${BINJA_CHANNEL}; fi
-
-# Keep this here to sanity check Binary Ninja API Installation & version
-RUN python3 --version && python3 -c "import binaryninja; print(binaryninja.core_version())"
 
 COPY scripts/docker-spec-entrypoint.sh /opt/trailofbits/docker-spec-entrypoint.sh
 ENTRYPOINT ["/opt/trailofbits/docker-spec-entrypoint.sh"]

@@ -8,9 +8,11 @@
 
 #include "anvill/Utils.h"
 
-#include <sstream>
+#include <anvill/ABI.h>
+#include <anvill/Declarations.h>
+#include <anvill/Type.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
-
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -20,14 +22,11 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
-
-#include <anvill/ABI.h>
-#include <anvill/Declarations.h>
-#include <anvill/Type.h>
-#include <anvill/Utils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
+
+#include <sstream>
 
 namespace anvill {
 
@@ -49,8 +48,8 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
         CopyMetadataTo(src, dest);
         return dest;
       } else if (dest_size == 1u) {
-        auto dest = ir.CreateICmpNE(
-            src, llvm::ConstantInt::getNullValue(src_type));
+        auto dest =
+            ir.CreateICmpNE(src, llvm::ConstantInt::getNullValue(src_type));
         CopyMetadataTo(src, dest);
         return dest;
       } else {
@@ -62,8 +61,7 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
     } else if (auto dest_ptr_type =
                    llvm::dyn_cast<llvm::PointerType>(dest_type);
                dest_ptr_type) {
-      auto inter_type =
-          llvm::PointerType::get(ir.getContext(), 0);
+      auto inter_type = llvm::PointerType::get(ir.getContext(), 0);
 
       llvm::Value *inter_val = nullptr;
       if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(src); pti) {
@@ -112,13 +110,12 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
         return dest;
       }
 
-    // Convert the pointer to an integer.
+      // Convert the pointer to an integer.
     } else if (auto dest_int_type =
                    llvm::dyn_cast<llvm::IntegerType>(dest_type);
                dest_int_type) {
       if (src_ptr_type->getAddressSpace()) {
-        src_ptr_type =
-            llvm::PointerType::get(ir.getContext(), 0);
+        src_ptr_type = llvm::PointerType::get(ir.getContext(), 0);
         auto dest = ir.CreateAddrSpaceCast(src, src_ptr_type);
         CopyMetadataTo(src, dest);
         src = dest;
@@ -237,11 +234,8 @@ void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
       case llvm::LLVMContext::MD_tbaa:
       case llvm::LLVMContext::MD_tbaa_struct:
       case llvm::LLVMContext::MD_noalias:
-      case llvm::LLVMContext::MD_alias_scope:
-        break;
-      default:
-        dst_inst->setMetadata(id, node);
-        break;
+      case llvm::LLVMContext::MD_alias_scope: break;
+      default: dst_inst->setMetadata(id, node); break;
     }
   }
 }
@@ -293,9 +287,10 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     return mem_ptr;
 
-  // Store it to memory.
+    // Store it to memory.
   } else if (decl.mem_reg) {
-    auto mem_reg_type = remill::RecontextualizeType(decl.mem_reg->type, context);
+    auto mem_reg_type =
+        remill::RecontextualizeType(decl.mem_reg->type, context);
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
 
     llvm::IRBuilder<> ir(in_block);
@@ -304,25 +299,23 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
-          addr,
-          llvm::ConstantInt::get(
-              mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
-              false));
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
+                    false));
       CopyMetadataTo(native_val, addr);
 
     } else if (0ll > decl.mem_offset) {
       addr = ir.CreateSub(
-        addr,
-        llvm::ConstantInt::get(
-            mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
-            false));
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
+                    false));
       CopyMetadataTo(native_val, addr);
     }
 
     return remill::StoreToMemory(intrinsics, in_block, native_val, mem_ptr,
                                  addr);
 
-  // Store to memory at an absolute offset.
+    // Store to memory at an absolute offset.
   } else if (decl.mem_offset) {
     llvm::IRBuilder<> ir(in_block);
     const auto addr = llvm::ConstantInt::get(
@@ -363,57 +356,58 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
     if (adapted_val) {
       return adapted_val;
     } else {
-      auto bc = ir.CreateBitCast(ptr_to_reg,
-                                 llvm::PointerType::get(context, 0));
+      auto bc =
+          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(context, 0));
       auto li = ir.CreateLoad(decl_type, bc);
       CopyMetadataTo(mem_ptr, bc);
       CopyMetadataTo(mem_ptr, li);
       return li;
     }
 
-  // Load it out of memory.
+    // Load it out of memory.
   } else if (decl.mem_reg) {
-    auto mem_reg_type = remill::RecontextualizeType(decl.mem_reg->type, context);
+    auto mem_reg_type =
+        remill::RecontextualizeType(decl.mem_reg->type, context);
     auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, in_block);
     llvm::IRBuilder<> ir(in_block);
     llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(mem_ptr, addr);
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
-          addr,
-          llvm::ConstantInt::get(
-              mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
-              false));
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
+                    false));
       CopyMetadataTo(mem_ptr, addr);
 
     } else if (0ll > decl.mem_offset) {
       addr = ir.CreateSub(
-        addr,
-        llvm::ConstantInt::get(
-            mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
-            false));
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
+                    false));
       CopyMetadataTo(mem_ptr, addr);
     }
 
-    auto val = remill::LoadFromMemory(intrinsics, in_block, decl_type,
-                                      mem_ptr, addr);
+    auto val =
+        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr);
     ir.SetInsertPoint(in_block);
     return types.ConvertValueToType(ir, val, decl_type);
 
-  // Store to memory at an absolute offset.
+    // Store to memory at an absolute offset.
   } else if (decl.mem_offset) {
     llvm::IRBuilder<> ir(in_block);
     const auto addr = llvm::ConstantInt::get(
         remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
         static_cast<std::uint64_t>(decl.mem_offset), false);
-    auto val = remill::LoadFromMemory(
-        intrinsics, in_block, decl_type, mem_ptr, addr);
+    auto val =
+        remill::LoadFromMemory(intrinsics, in_block, decl_type, mem_ptr, addr);
 
     CopyMetadataTo(mem_ptr, val);
     ir.SetInsertPoint(in_block);
     return types.ConvertValueToType(ir, val, decl_type);
 
   } else {
+    DLOG(ERROR) << "Unable to load lifted value of type: "
+                << remill::LLVMThingToString(decl.type);
     return llvm::UndefValue::get(decl_type);
   }
 }
@@ -493,8 +487,8 @@ static bool IsCallRelatedToStackPointerItrinsic(llvm::CallBase *call) {
   if (intrinsic_id == llvm::Intrinsic::sponentry) {
     return true;
 
-  // This intrinsic can be used for getting the address of the stack
-  // pointer.
+    // This intrinsic can be used for getting the address of the stack
+    // pointer.
   } else if (intrinsic_id == llvm::Intrinsic::read_register) {
     auto reg_val = call->getArgOperand(0);
     auto reg_tuple_md = llvm::cast<llvm::MDTuple>(
@@ -517,7 +511,7 @@ class StackPointerResolverImpl {
 
   inline explicit StackPointerResolverImpl(llvm::Module *m) : module(m) {}
 
-  llvm::Module * const module;
+  llvm::Module *const module;
   std::unordered_map<llvm::Value *, bool> cache;
 };
 
@@ -559,8 +553,7 @@ bool StackPointerResolverImpl::ResolveFromValue(llvm::Value *val) {
   return result;
 }
 
-bool StackPointerResolverImpl::ResolveFromConstantExpr(
-    llvm::ConstantExpr *ce) {
+bool StackPointerResolverImpl::ResolveFromConstantExpr(llvm::ConstantExpr *ce) {
   if (ce->getOpcode()) {
     switch (ce->getOpcode()) {
       case llvm::Instruction::IntToPtr:
@@ -638,7 +631,7 @@ bool IsProgramCounter(llvm::Module *, llvm::Value *val) {
   } else if (auto load = llvm::dyn_cast<llvm::LoadInst>(val)) {
     return IsLoadOfUnmodelledRegister(load, IsProgramCounterRegName);
 
-  // TODO(pag): Cover arguments to remill three-argument form functions?
+    // TODO(pag): Cover arguments to remill three-argument form functions?
   } else {
     return false;
   }
