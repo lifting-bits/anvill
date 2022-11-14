@@ -11,9 +11,9 @@ equivalent C function.
 
 <!-- ## Build Status
 
-|       | master                                                                                                                                               |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux | [![Build Status](https://github.com/lifting-bits/anvill/workflows/CI/badge.svg)](https://github.com/lifting-bits/anvill/actions?query=workflow%3ACI) | --> |
+|       | master |
+| ----- | ------ |
+| Linux | [![Build Status](https://github.com/lifting-bits/anvill/workflows/CI/badge.svg)](https://github.com/lifting-bits/anvill/actions?query=workflow%3ACI)| -->
 
 ## Note on Specification Generation
 
