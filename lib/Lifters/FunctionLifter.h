@@ -9,9 +9,11 @@
 #pragma once
 
 #include <anvill/Declarations.h>
-#include <anvill/Specification.h>
 #include <anvill/Lifters.h>
+#include <anvill/Specification.h>
 #include <anvill/Type.h>
+#include <llvm/IR/Argument.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/CallingConv.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
@@ -47,6 +49,15 @@ class EntityLifterImpl;
 class MemoryProvider;
 class TypeProvider;
 struct ControlFlowTargetList;
+
+
+struct LiftedFunction {
+  llvm::Function *func;
+  llvm::Argument *state_ptr;
+  llvm::Argument *pc_arg;
+  llvm::Argument *mem_ptr;
+};
+
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter {
@@ -169,17 +180,15 @@ class FunctionLifter {
   std::map<std::pair<uint64_t, uint64_t>, remill::DecodingContext>
       decoding_contexts;
 
-  // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
-  // with `to_pc`.
-  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *>
-      edge_to_dest_block;
-
   // Maps an instruction address to a basic block that will hold the lifted code
   // for that instruction.
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
 
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+
+
+  llvm::BasicBlock *invalid_successor_block{nullptr};
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
@@ -198,8 +207,7 @@ class FunctionLifter {
   // function drives a work list, where the first time we ask for the
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr,
-                                     const remill::DecodingContext &mapper);
+  llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
 
   // Attempts to lookup any redirection of the given address, and then
   // calls GetOrCreateBlock
@@ -415,6 +423,17 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // with an instruction's address just before that instruction executes. These
   // are nifty to spot checking bitcode.
   void InstrumentCallBreakpointFunction(llvm::BasicBlock *block);
+
+  void VisitBlock(CodeBlock entry_context);
+
+  LiftedFunction CreateLiftedFunction(const std::string &name);
+
+  llvm::BasicBlock *
+  LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
+                             const CodeBlock &blk);
+
+
+  void VisitBlocks();
 
   // Visit an instruction, and lift it into a basic block. Then, based off of
   // the category of the instruction, invoke one of the category-specific

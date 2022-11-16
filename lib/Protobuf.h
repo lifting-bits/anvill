@@ -74,6 +74,10 @@ class ProtobufTranslator {
                         std::optional<uint64_t> address,
                         CallableDecl &decl) const;
 
+  void ParseCFGIntoFunction(const ::specification::Function &obj,
+                            FunctionDecl &decl) const;
+
+
  public:
   explicit ProtobufTranslator(
       const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,

@@ -8,12 +8,15 @@
 
 #pragma once
 
+#include <_types/_uint64_t.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Result.h"
@@ -38,6 +41,12 @@ class IntrinsicTable;
 struct Register;
 }  // namespace remill
 namespace anvill {
+
+struct CodeBlock {
+  uint64_t addr;
+  uint32_t size;
+  std::unordered_set<uint64_t> outgoing_edges;
+};
 
 class TypeDictionary;
 
@@ -195,10 +204,14 @@ struct FunctionDecl : public CallableDecl {
   bool lift_as_decl{false};
   bool is_extern{false};
 
+
   // The set of context assignments that occur at the entry point to this function.
   // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a function.
   std::unordered_map<std::string, std::uint64_t> context_assignments;
+
+  // These are the blocks contained within the function representing the CFG.
+  std::unordered_map<std::uint64_t, CodeBlock> cfg;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;

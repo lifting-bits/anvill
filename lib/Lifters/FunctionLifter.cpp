@@ -8,13 +8,16 @@
 
 #include "FunctionLifter.h"
 
+#include <_types/_uint64_t.h>
 #include <anvill/ABI.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -32,13 +35,17 @@
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
+#include <remill/Arch/Context.h>
 #include <remill/Arch/Instruction.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Version.h>
 #include <remill/OS/OS.h>
 
+#include <array>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -192,34 +199,22 @@ llvm::BranchInst *
 FunctionLifter::BranchToInst(uint64_t from_addr, uint64_t to_addr,
                              const remill::DecodingContext &mapper,
                              llvm::BasicBlock *from_block) {
-  auto br = llvm::BranchInst::Create(
-      GetOrCreateBlock(from_addr, to_addr, mapper), from_block);
+  auto br = llvm::BranchInst::Create(GetOrCreateBlock(to_addr), from_block);
   AnnotateInstruction(br, pc_annotation_id, pc_annotation);
   return br;
 }
 
-// Helper to get the basic block to contain the instruction at `addr`. This
-// function drives a work list, where the first time we ask for the
-// instruction at `addr`, we enqueue a bit of work to decode and lift that
-// instruction.
-llvm::BasicBlock *
-FunctionLifter::GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr,
-                                 const remill::DecodingContext &mapper) {
-  auto &block = edge_to_dest_block[{from_addr, to_addr}];
+
+llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t baddr) {
+  auto &block = this->addr_to_block[baddr];
   if (block) {
     return block;
   }
 
   std::stringstream ss;
-  ss << "inst_" << std::hex << to_addr;
+  ss << "inst_" << std::hex << baddr;
   block = llvm::BasicBlock::Create(llvm_context, ss.str(), lifted_func);
 
-  // NOTE(pag): We always add to the work list without consulting/updating
-  //            `addr_to_block` so that we can observe self-tail-calls and
-  //            lift them as such, rather than as jumps back into the first
-  //            lifted block.
-  edge_work_list.emplace(to_addr, from_addr);
-  this->decoding_contexts.emplace(std::make_pair(to_addr, from_addr), mapper);
   return block;
 }
 
@@ -227,7 +222,7 @@ llvm::BasicBlock *
 FunctionLifter::GetOrCreateTargetBlock(const remill::Instruction &from_inst,
                                        uint64_t to_addr,
                                        const remill::DecodingContext &mapper) {
-  return GetOrCreateBlock(from_inst.pc, to_addr, mapper);
+  return GetOrCreateBlock(to_addr);
 }
 
 // Try to decode an instruction at address `addr` into `*inst_out`. Returns
@@ -1020,77 +1015,6 @@ llvm::Value *FunctionLifter::TryCallNativeFunction(FunctionDecl decl,
   return mem_ptr;
 }
 
-// Visit all instructions. This runs the work list and lifts instructions.
-void FunctionLifter::VisitInstructions(uint64_t address) {
-  remill::Instruction inst;
-
-  // Recursively decode and lift all instructions that we come across.
-  while (!edge_work_list.empty()) {
-    auto [inst_addr, from_addr] = *(edge_work_list.begin());
-    auto insn_context = this->decoding_contexts[{inst_addr, from_addr}];
-
-
-    edge_work_list.erase(edge_work_list.begin());
-
-    llvm::BasicBlock *const block = edge_to_dest_block[{from_addr, inst_addr}];
-    CHECK_NOTNULL(block);
-    if (!block->empty()) {
-      continue;  // Already handled.
-    }
-
-    llvm::BasicBlock *&inst_block = addr_to_block[inst_addr];
-    if (!inst_block) {
-      inst_block = block;
-
-      // We've already lifted this instruction via another control-flow edge.
-    } else {
-      auto br = llvm::BranchInst::Create(inst_block, block);
-      AnnotateInstruction(br, pc_annotation_id, pc_annotation);
-      continue;
-    }
-
-    // Decode.
-    auto next_context = DecodeInstructionInto(inst_addr, false /* is_delayed */,
-                                              &inst, insn_context);
-    if (!next_context) {
-      if (inst_addr == func_address) {
-        inst.pc = inst_addr;
-        inst.arch_name = options.arch->arch_name;
-
-        // Failed to decode the first instruction of the function, but we can
-        // possibly recover via a tail-call to a redirection address!
-        if (inst_addr != func_address) {
-          // TODO(Ian): is this context right?
-          this->BranchToInst(func_address, inst_addr, insn_context, block);
-          continue;
-        }
-      }
-
-
-      // TODO(Ian): If we hit this in our new model then the low level lift is a failure and we need to mark this somehow...
-      // otherwise we are inventing the abscence of control flow...
-      LOG(ERROR) << "Could not decode instruction at " << std::hex << inst_addr
-                 << " reachable from instruction " << from_addr
-                 << " in function at " << func_address << std::dec;
-
-      auto call =
-          remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
-      AnnotateInstruction(call, pc_annotation_id, pc_annotation);
-      MuteStateEscape(call);
-      continue;
-
-      // Didn't get a valid instruction.
-    } else if (!inst.IsValid() || inst.IsError()) {
-      auto call =
-          remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
-      AnnotateInstruction(call, pc_annotation_id, pc_annotation);
-      MuteStateEscape(call);
-      continue;
-    } else {
-      VisitInstruction(inst, block, insn_context);
-    }
-  }
-}
 
 // Get the annotation for the program counter `pc`, or `nullptr` if we're
 // not doing annotations.
@@ -1491,12 +1415,92 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
+
+llvm::BasicBlock *
+FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
+                                           const CodeBlock &blk) {
+  auto bb = llvm::BasicBlock::Create(basic_block_function.func->getContext(),
+                                     "", basic_block_function.func);
+  remill::Instruction inst;
+
+  auto reached_addr = blk.addr;
+  // TODO(Ian): use a different context
+  auto init_context = this->options.arch->CreateInitialContext();
+  while (reached_addr < blk.addr + blk.size) {
+    auto res =
+        this->DecodeInstructionInto(reached_addr, false, &inst, init_context);
+    if (!res) {
+      LOG(FATAL) << "Failed to decode insn in block";
+    }
+
+    reached_addr += inst.bytes.size();
+
+    // Even when something isn't supported or is invalid, we still lift
+    // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
+    // to treat instruction lifting as an operation that can't fail.
+    std::ignore = inst.GetLifter()->LiftIntoBlock(
+        inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
+  }
+  return bb;
+}
+
+void FunctionLifter::VisitBlock(CodeBlock blk) {
+
+  auto llvm_blk = this->GetOrCreateBlock(blk.addr);
+  llvm::IRBuilder<> builder(llvm_blk);
+  auto bb_lifted_func =
+      this->CreateLiftedFunction("basic_block_func" + std::to_string(blk.addr));
+
+
+  this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
+  std::array<llvm::Value *, remill::kNumBlockArgs> args;
+  args[remill::kStatePointerArgNum] = state_ptr;
+  args[remill::kPCArgNum] =
+      options.program_counter_init_procedure(builder, pc_reg, blk.addr);
+  args[remill::kMemoryPointerArgNum] = bb_lifted_func.mem_ptr;
+
+  builder.CreateCall(bb_lifted_func.func, args);
+  auto pc = this->op_lifter->LoadRegValue(
+      llvm_blk, state_ptr, options.arch->ProgramCounterRegisterName());
+
+  auto sw = builder.CreateSwitch(pc, this->invalid_successor_block);
+
+  for (uint64_t succ : blk.outgoing_edges) {
+    sw->addCase(llvm::ConstantInt::get(
+                    llvm::IntegerType::get(this->llvm_context, 64), succ),
+                this->GetOrCreateBlock(succ));
+  }
+}
+
+void FunctionLifter::VisitBlocks() {
+  for (const auto &[addr, blk] : this->curr_decl->cfg) {
+    DLOG(INFO) << "Visiting: " << std::hex << addr;
+    this->VisitBlock(blk);
+  }
+}
+
+
+LiftedFunction FunctionLifter::CreateLiftedFunction(const std::string &name) {
+  auto new_func =
+      options.arch->DefineLiftedFunction(name, semantics_module.get());
+
+  auto state_ptr = remill::NthArgument(new_func, remill::kStatePointerArgNum);
+  auto pc_arg = remill::NthArgument(new_func, remill::kPCArgNum);
+  auto mem_arg = remill::NthArgument(new_func, remill::kMemoryPointerArgNum);
+
+
+  new_func->removeFnAttr(llvm::Attribute::NoInline);
+  new_func->addFnAttr(llvm::Attribute::InlineHint);
+  new_func->addFnAttr(llvm::Attribute::AlwaysInline);
+  new_func->setLinkage(llvm::GlobalValue::InternalLinkage);
+
+  return {new_func, state_ptr, pc_arg, mem_arg};
+}
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
 llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   addr_to_func.clear();
   edge_work_list.clear();
-  edge_to_dest_block.clear();
   addr_to_block.clear();
   this->op_lifter->ClearCache();
   curr_decl = &decl;
@@ -1543,17 +1547,21 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Every lifted function starts as a clone of __remill_basic_block. That
   // prototype has multiple arguments (memory pointer, state pointer, program
   // counter). This extracts the state pointer.
-  lifted_func = options.arch->DefineLiftedFunction(
-      native_func->getName().str() + ".lifted", semantics_module.get());
+  auto lifted_func_st =
+      this->CreateLiftedFunction(native_func->getName().str() + ".lifted");
+  lifted_func = lifted_func_st.func;
 
-  state_ptr = remill::NthArgument(lifted_func, remill::kStatePointerArgNum);
+  state_ptr = lifted_func_st.state_ptr;
 
-  lifted_func->removeFnAttr(llvm::Attribute::NoInline);
-  lifted_func->addFnAttr(llvm::Attribute::InlineHint);
-  lifted_func->addFnAttr(llvm::Attribute::AlwaysInline);
-  lifted_func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  const auto pc = remill::NthArgument(lifted_func, remill::kPCArgNum);
+  invalid_successor_block =
+      llvm::BasicBlock::Create(lifted_func_st.func->getContext(),
+                               "invalid_successor", lifted_func_st.func);
+  remill::AddTerminatingTailCall(invalid_successor_block, intrinsics.error,
+                                 intrinsics);
+
+
+  const auto pc = lifted_func_st.pc_arg;
   const auto entry_block = &(lifted_func->getEntryBlock());
   pc_reg_ref =
       this->op_lifter->LoadRegAddress(entry_block, state_ptr, pc_reg->name)
@@ -1586,30 +1594,31 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
 
-  // TODO(Ian): for a thumb vs arm function we need to figure out how to setup the correct initial context,
-  // maybe the spec should have a section (Context reg assignments or something), where we apply those assingments to a defautl initial context
-
   auto default_mapping = options.arch->CreateInitialContext();
   for (const auto &[k, v] : decl.context_assignments) {
     default_mapping.UpdateContextReg(k, v);
   }
 
-  ir.CreateBr(GetOrCreateBlock(0u, func_address, default_mapping));
+  ir.CreateBr(this->GetOrCreateBlock(this->func_address));
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
 
   DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
-  VisitInstructions(func_address);
+  VisitBlocks();
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
   CallLiftedFunctionFromNativeFunction(decl);
 
+
+  this->lifted_func->dump();
+  LOG(FATAL) << "Not fully implemented yet";
+
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
-  RecursivelyInlineLiftedFunctionIntoNativeFunction();
+  //RecursivelyInlineLiftedFunctionIntoNativeFunction();
 
 
   return native_func;

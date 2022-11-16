@@ -158,11 +158,20 @@ message Callable {
   ReturnStackPointer return_stack_pointer = 10;
 }
 
+message CodeBlock {
+  uint64 address = 1;
+  string name = 2;
+  repeated uint64 incoming_blocks = 3;
+  repeated uint64 outgoing_blocks = 4;
+  uint32 size = 5;
+}
+
 message Function {
   uint64 entry_address = 1;
   map<string, uint64> context_assignments = 2;
   FunctionLinkage func_linkage = 3; 
   Callable callable = 4;
+  map<uint64, CodeBlock> blocks = 5;
 }
 
 message GlobalVariable {

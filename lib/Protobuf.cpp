@@ -500,6 +500,8 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.context_assignments = {function.context_assignments().begin(),
                               function.context_assignments().end()};
 
+  this->ParseCFGIntoFunction(function, decl);
+
   auto link = function.func_linkage();
 
   if (link == specification::FUNCTION_LINKAGE_DECL) {
@@ -514,6 +516,19 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 
   return decl;
 }
+
+
+void ProtobufTranslator::ParseCFGIntoFunction(
+    const ::specification::Function &obj, FunctionDecl &decl) const {
+  for (auto blk : obj.blocks()) {
+    CodeBlock nblk = {blk.second.address(),
+                      blk.second.size(),
+                      {blk.second.outgoing_blocks().begin(),
+                       blk.second.outgoing_blocks().end()}};
+    decl.cfg.emplace(blk.first, std::move(nblk));
+  }
+}
+
 
 Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
     const ::specification::GlobalVariable &obj) const {

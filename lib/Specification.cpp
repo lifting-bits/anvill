@@ -449,6 +449,7 @@ void Specification::ForEachCallSite(
   }
 }
 
+
 // Call `cb` on each control-flow redirection, until `cb` returns `false`.
 void Specification::ForEachControlFlowRedirect(
     std::function<bool(std::uint64_t, std::uint64_t)> cb) const {
