@@ -16,6 +16,7 @@
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "Declarations.h"
@@ -330,11 +331,7 @@ class ControlFlowProvider {
  public:
   virtual ~ControlFlowProvider(void) = default;
 
-  virtual std::uint64_t GetCallRedirection(uint64_t from_addres) const = 0;
-
-  // Returns a list of targets reachable from the given address
-  virtual std::optional<ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &from_inst) const = 0;
+  virtual ControlFlowOverride GetControlFlowOverride(uint64_t addr) const = 0;
 
  protected:
   ControlFlowProvider(void) = default;
@@ -351,11 +348,7 @@ class NullControlFlowProvider : public ControlFlowProvider {
  public:
   virtual ~NullControlFlowProvider(void) = default;
 
-
-  std::uint64_t GetCallRedirection(uint64_t from_addres) const override;
-
-  std::optional<ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &) const override;
+  ControlFlowOverride GetControlFlowOverride(uint64_t addr) const override;
 };
 
 class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
@@ -367,10 +360,7 @@ class SpecificationControlFlowProvider : public anvill::ControlFlowProvider {
 
   explicit SpecificationControlFlowProvider(const Specification &spec);
 
-  std::uint64_t GetCallRedirection(uint64_t from_addres) const override;
-
-  std::optional<anvill::ControlFlowTargetList>
-  TryGetControlFlowTargets(const remill::Instruction &from_inst) const final;
+  ControlFlowOverride GetControlFlowOverride(uint64_t addr) const override;
 };
 
 

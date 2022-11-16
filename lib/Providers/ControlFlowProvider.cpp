@@ -13,15 +13,8 @@
 
 namespace anvill {
 
-std::uint64_t
-NullControlFlowProvider::GetCallRedirection(std::uint64_t target) const {
-  return target;
-}
-
-std::optional<ControlFlowTargetList>
-NullControlFlowProvider::TryGetControlFlowTargets(
-    const remill::Instruction &) const {
-  return std::nullopt;
+ControlFlowOverride NullControlFlowProvider::GetControlFlowOverride(uint64_t addr) const {
+  return {};
 }
 
 
@@ -31,25 +24,8 @@ SpecificationControlFlowProvider::SpecificationControlFlowProvider(
     const Specification &spec)
     : impl(spec.impl) {}
 
-std::uint64_t SpecificationControlFlowProvider::GetCallRedirection(
-    std::uint64_t target) const {
-  auto it = impl->redirections.find(target);
-  if (it != impl->redirections.end()) {
-    return it->second;
-  } else {
-    return target;
-  }
-}
-
-std::optional<anvill::ControlFlowTargetList>
-SpecificationControlFlowProvider::TryGetControlFlowTargets(
-    const remill::Instruction &inst) const {
-  auto it = impl->address_to_targets.find(inst.pc);
-  if (it != impl->address_to_targets.end()) {
-    return *(it->second);
-  } else {
-    return std::nullopt;
-  }
+ControlFlowOverride SpecificationControlFlowProvider::GetControlFlowOverride(uint64_t addr) const {
+  return impl->control_flow_overrides[addr];
 }
 
 }  // namespace anvill

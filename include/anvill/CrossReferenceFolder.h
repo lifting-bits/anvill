@@ -8,9 +8,11 @@
 
 #pragma once
 
+#include <llvm/IR/Instructions.h>
+
 #include <cstdint>
-#include <optional>
 #include <memory>
+#include <optional>
 
 namespace llvm {
 class Constant;
@@ -102,6 +104,7 @@ class CrossReferenceFolder {
   // Clear the internal cache.
   void ClearCache(void) const;
 
+
   // Try to resolve `val` as a cross-reference with xrefs caching
   ResolvedCrossReference TryResolveReferenceWithCaching(llvm::Value *val) const;
 
@@ -115,8 +118,7 @@ class CrossReferenceFolder {
   CrossReferenceFolder(const CrossReferenceFolder &) = default;
   CrossReferenceFolder(CrossReferenceFolder &&) noexcept = default;
   CrossReferenceFolder &operator=(const CrossReferenceFolder &) = default;
-  CrossReferenceFolder &
-  operator=(CrossReferenceFolder &&) noexcept = default;
+  CrossReferenceFolder &operator=(CrossReferenceFolder &&) noexcept = default;
 
  private:
   CrossReferenceFolder(void) = delete;

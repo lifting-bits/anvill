@@ -6,7 +6,6 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/JSON.h>
 #include <anvill/Lifters.h>
 #include <anvill/Optimize.h>
 #include <anvill/Providers.h>
@@ -17,7 +16,6 @@
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Error.h>
@@ -79,7 +77,6 @@ static void SetVersion(void) {
 }
 
 int main(int argc, char *argv[]) {
-
   // get version string from git, and put as output to --version
   // from gflags
   SetVersion();
@@ -88,7 +85,7 @@ int main(int argc, char *argv[]) {
 
   if (FLAGS_spec.empty()) {
     std::cerr
-        << "Please specify a path to a JSON specification file in '--spec'"
+        << "Please specify a path to a Protobuf specification file in '--spec'"
         << std::endl;
     return EXIT_FAILURE;
   }
@@ -99,19 +96,13 @@ int main(int argc, char *argv[]) {
 
   auto maybe_buff = llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_spec);
   if (remill::IsError(maybe_buff)) {
-    std::cerr << "Unable to read JSON spec file '" << FLAGS_spec
+    std::cerr << "Unable to read Protobuf spec file '" << FLAGS_spec
               << "': " << remill::GetErrorString(maybe_buff) << std::endl;
     return EXIT_FAILURE;
   }
 
   const std::unique_ptr<llvm::MemoryBuffer> &buff =
       remill::GetReference(maybe_buff);
-  auto maybe_json = llvm::json::parse(buff->getBuffer());
-  if (remill::IsError(maybe_json)) {
-    std::cerr << "Unable to parse JSON spec file '" << FLAGS_spec
-              << "': " << remill::GetErrorString(maybe_json) << std::endl;
-    return EXIT_FAILURE;
-  }
 
   llvm::LLVMContext context;
 #if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
@@ -119,15 +110,15 @@ int main(int argc, char *argv[]) {
 #endif
   llvm::Module module("lifted_code", context);
 
-  auto maybe_spec = anvill::Specification::DecodeFromJSON(
-      context, remill::GetReference(maybe_json));
+  auto maybe_spec =
+      anvill::Specification::DecodeFromPB(context, buff->getBuffer().str());
 
   if (!maybe_spec.Succeeded()) {
-    std::cerr << maybe_spec.TakeError().message << std::endl;
+    std::cerr << maybe_spec.TakeError() << std::endl;
     return EXIT_FAILURE;
   }
 
-  anvill::Specification spec = maybe_spec.TakeValue();
+  anvill::Specification spec = maybe_spec.Value();
   anvill::SpecificationTypeProvider spec_tp(spec);
 
   std::unique_ptr<anvill::TypeProvider> tp =
@@ -135,12 +126,11 @@ int main(int argc, char *argv[]) {
   if (!FLAGS_default_callable_spec.empty()) {
     anvill::TypeDictionary ty_dict(context);
     anvill::TypeTranslator ty_trans(ty_dict, spec.Arch().get());
-    anvill::JSONTranslator trans(ty_trans, spec.Arch().get());
 
     auto maybe_buff =
         llvm::MemoryBuffer::getFileOrSTDIN(FLAGS_default_callable_spec);
     if (remill::IsError(maybe_buff)) {
-      std::cerr << "Unable to read JSON default callable_spec file '"
+      std::cerr << "Unable to read Protobuf default callable_spec file '"
                 << FLAGS_default_callable_spec
                 << "': " << remill::GetErrorString(maybe_buff) << std::endl;
       return EXIT_FAILURE;
@@ -148,33 +138,19 @@ int main(int argc, char *argv[]) {
 
     const std::unique_ptr<llvm::MemoryBuffer> &buff =
         remill::GetReference(maybe_buff);
-    auto maybe_json = llvm::json::parse(buff->getBuffer());
-    if (remill::IsError(maybe_json)) {
-      std::cerr << "Unable to parse default callable_spec file '"
-                << FLAGS_default_callable_spec
-                << "': " << remill::GetErrorString(maybe_json) << std::endl;
-      return EXIT_FAILURE;
-    }
-    const llvm::json::Value &json = remill::GetReference(maybe_json);
-    auto obj = json.getAsObject();
-    if (obj == nullptr) {
-      std::cerr << "default callable_spec file is not a json object'"
-                << FLAGS_default_callable_spec
-                << "': " << remill::GetErrorString(maybe_json) << std::endl;
-      return EXIT_FAILURE;
-    }
 
-    auto maybe_default_callable = trans.DecodeDefaultCallableDecl(obj);
+    auto maybe_default_callable = anvill::CallableDecl::DecodeFromPB(
+        spec.Arch().get(), buff->getBuffer().str());
     if (!maybe_default_callable.Succeeded()) {
       std::cerr << "default callable_spec did not parse as callable decl: "
                 << FLAGS_default_callable_spec << " "
-                << maybe_default_callable.TakeError().message << std::endl;
+                << maybe_default_callable.TakeError() << std::endl;
     }
 
     remill::ArchName arch_name = spec.Arch().get()->arch_name;
     auto dtp = std::make_unique<anvill::DefaultCallableTypeProvider>(arch_name,
                                                                      spec_tp);
-    dtp->SetDefault(arch_name, maybe_default_callable.TakeValue());
+    dtp->SetDefault(arch_name, maybe_default_callable.Value());
 
     tp = std::move(dtp);
   }
