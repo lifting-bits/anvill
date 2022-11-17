@@ -1440,6 +1440,9 @@ FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
     std::ignore = inst.GetLifter()->LiftIntoBlock(
         inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
   }
+
+  auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
+  llvm::ReturnInst::Create(bb->getContext(), memory, bb);
   bb->getParent()->dump();
   return bb;
 }
@@ -1457,9 +1460,15 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
   args[remill::kStatePointerArgNum] = state_ptr;
   args[remill::kPCArgNum] =
       options.program_counter_init_procedure(builder, pc_reg, blk.addr);
-  args[remill::kMemoryPointerArgNum] = bb_lifted_func.mem_ptr;
+  args[remill::kMemoryPointerArgNum] =
+      remill::LoadMemoryPointer(llvm_blk, this->intrinsics);
 
-  builder.CreateCall(bb_lifted_func.func, args);
+  auto new_mem_ptr = builder.CreateCall(bb_lifted_func.func, args);
+
+  auto mem_ptr_ref = remill::LoadMemoryPointerRef(llvm_blk);
+
+  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
+
   auto pc = this->op_lifter->LoadRegValue(
       llvm_blk, state_ptr, options.arch->ProgramCounterRegisterName());
 
