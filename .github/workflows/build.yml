@@ -55,7 +55,7 @@ jobs:
         binja:
           - { channel: "headless", version: "3.1.3479" }
         llvm: ["14", "15"]
-        cxxcommon_version: ["v0.2.12"]
+        cxxcommon_version: ["v0.2.16"]
 
     runs-on: ubuntu-20.04
     container:
@@ -433,7 +433,7 @@ jobs:
       matrix:
         os: ["macos-11"]
         llvm: ["14", "15"]
-        cxxcommon_version: ["v0.2.12"]
+        cxxcommon_version: ["v0.2.16"]
 
     runs-on: ${{ matrix.os }}
 
