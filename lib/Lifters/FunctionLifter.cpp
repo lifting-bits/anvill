@@ -410,11 +410,7 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
 
 
     llvm::BranchInst::Create(
-        GetOrCreateTargetBlock(
-            inst, destination.address,
-            this->ApplyTargetList(destination.context_assignments,
-                                  prev_context)),
-        block);
+        GetOrCreateTargetBlock(inst, destination.address, prev_context), block);
 
     // We have multiple destinations. Handle this with a switch. If the target
     // list is not marked as complete, then we'll still add __remill_jump
@@ -455,9 +451,8 @@ void FunctionLifter::DoSwitchBasedIndirectJump(
     auto dest_id{0u};
 
     for (auto dest : target_list) {
-      auto dest_block = GetOrCreateTargetBlock(
-          inst, dest.address,
-          this->ApplyTargetList(dest.context_assignments, prev_context));
+      auto dest_block =
+          GetOrCreateTargetBlock(inst, dest.address, prev_context);
       auto dest_case = llvm::ConstantInt::get(address_type, dest_id++);
       switch_inst->addCase(dest_case, dest_block);
     }
@@ -1429,6 +1424,8 @@ FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
   auto reached_addr = blk.addr;
   // TODO(Ian): use a different context
   auto init_context = this->options.arch->CreateInitialContext();
+  ApplyTargetList(blk.context_assignments, init_context);
+
   while (reached_addr < blk.addr + blk.size) {
     auto res =
         this->DecodeInstructionInto(reached_addr, false, &inst, init_context);
@@ -1609,12 +1606,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-
-  auto default_mapping = options.arch->CreateInitialContext();
-  for (const auto &[k, v] : decl.context_assignments) {
-    default_mapping.UpdateContextReg(k, v);
-  }
-
   ir.CreateBr(this->GetOrCreateBlock(this->func_address));
 
   AnnotateInstructions(entry_block, pc_annotation_id,

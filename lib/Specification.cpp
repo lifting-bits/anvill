@@ -180,8 +180,6 @@ SpecificationImpl::ParseSpecification(
     jmp.address = jump.address();
     for (auto &target : jump.targets()) {
       JumpTarget jmp_target;
-      auto &assignments = target.context_assignments();
-      jmp_target.context_assignments = {assignments.begin(), assignments.end()};
       jmp_target.address = target.address();
       jmp.targets.push_back(jmp_target);
     }

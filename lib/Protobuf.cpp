@@ -497,8 +497,6 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }
-  decl.context_assignments = {function.context_assignments().begin(),
-                              function.context_assignments().end()};
 
   this->ParseCFGIntoFunction(function, decl);
 
@@ -524,7 +522,9 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     CodeBlock nblk = {blk.second.address(),
                       blk.second.size(),
                       {blk.second.outgoing_blocks().begin(),
-                       blk.second.outgoing_blocks().end()}};
+                       blk.second.outgoing_blocks().end()},
+                      {blk.second.context_assignments().begin(),
+                       blk.second.context_assignments().end()}};
     decl.cfg.emplace(blk.first, std::move(nblk));
   }
 }

@@ -164,11 +164,11 @@ message CodeBlock {
   repeated uint64 incoming_blocks = 3;
   repeated uint64 outgoing_blocks = 4;
   uint32 size = 5;
+  map<string, uint64> context_assignments = 6;
 }
 
 message Function {
   uint64 entry_address = 1;
-  map<string, uint64> context_assignments = 2;
   FunctionLinkage func_linkage = 3; 
   Callable callable = 4;
   map<uint64, CodeBlock> blocks = 5;
@@ -193,7 +193,6 @@ message MemoryRange {
 
 message JumpTarget {
   uint64 address = 1;
-  map<string, uint64> context_assignments = 2;
 }
 
 message Jump {

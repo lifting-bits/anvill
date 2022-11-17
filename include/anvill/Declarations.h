@@ -46,6 +46,10 @@ struct CodeBlock {
   uint64_t addr;
   uint32_t size;
   std::unordered_set<uint64_t> outgoing_edges;
+  // The set of context assignments that occur at the entry point to this block.
+  // A block may have specific decoding context properties such as "TM=1" (the thumb bit is set)
+  // So we declare the context assignments that occur at the entry point to a block.
+  std::unordered_map<std::string, std::uint64_t> context_assignments;
 };
 
 class TypeDictionary;
@@ -203,12 +207,6 @@ struct FunctionDecl : public CallableDecl {
 
   bool lift_as_decl{false};
   bool is_extern{false};
-
-
-  // The set of context assignments that occur at the entry point to this function.
-  // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
-  // So we declare the context assignments that occur at the entry point to a function.
-  std::unordered_map<std::string, std::uint64_t> context_assignments;
 
   // These are the blocks contained within the function representing the CFG.
   std::unordered_map<std::uint64_t, CodeBlock> cfg;

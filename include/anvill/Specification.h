@@ -61,7 +61,6 @@ struct ControlFlowOverrideSpec {
 
 struct JumpTarget {
   std::uint64_t address;
-  std::unordered_map<std::string, std::uint64_t> context_assignments;
 };
 
 struct Jump : ControlFlowOverrideSpec {
@@ -78,7 +77,8 @@ struct Return : ControlFlowOverrideSpec {};
 
 struct Misc : ControlFlowOverrideSpec {};
 
-using ControlFlowOverride = std::variant<std::monostate, Jump, Call, Return, Misc>;
+using ControlFlowOverride =
+    std::variant<std::monostate, Jump, Call, Return, Misc>;
 
 struct CallSiteDecl;
 struct FunctionDecl;
@@ -161,8 +161,7 @@ class Specification {
   void ForEachReturn(std::function<bool(const Return &)> cb) const;
 
   // Call `cb` on each miscellaneous control flow override, until `cb` returns `false`.
-  void ForEachMiscOverride(
-      std::function<bool(const Misc &)> cb) const;
+  void ForEachMiscOverride(std::function<bool(const Misc &)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();
