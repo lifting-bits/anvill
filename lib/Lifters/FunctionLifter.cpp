@@ -50,6 +50,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
+#include <vector>
 
 #include "EntityLifter.h"
 
@@ -1415,9 +1416,8 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 }
 
 
-llvm::BasicBlock *
-FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
-                                           const CodeBlock &blk) {
+llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
+    BasicBlockFunction &basic_block_function, const CodeBlock &blk) {
   auto bb = &basic_block_function.func->getEntryBlock();
   remill::Instruction inst;
 
@@ -1442,6 +1442,11 @@ FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
         inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
   }
 
+
+  llvm::IRBuilder<> builder(bb);
+
+  builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
+                      basic_block_function.next_pc_out_param);
   auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
   llvm::ReturnInst::Create(bb->getContext(), memory, bb);
   this->RecursivelyInlineFunctionCallees(basic_block_function.func);
@@ -1454,18 +1459,20 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
   llvm::IRBuilder<> builder(llvm_blk);
-  auto bb_lifted_func =
-      this->CreateLiftedFunction("basic_block_func" + std::to_string(blk.addr));
+  auto bb_lifted_func = this->CreateBasicBlockFunction(
+      "basic_block_func" + std::to_string(blk.addr));
   bb_lifted_func.func->removeFnAttr(llvm::Attribute::AlwaysInline);
   bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
   this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
-  std::array<llvm::Value *, remill::kNumBlockArgs> args;
+  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args;
   args[remill::kStatePointerArgNum] = state_ptr;
   args[remill::kPCArgNum] =
       options.program_counter_init_procedure(builder, pc_reg, blk.addr);
   args[remill::kMemoryPointerArgNum] =
       remill::LoadMemoryPointer(llvm_blk, this->intrinsics);
+
+  args[remill::kNumBlockArgs] = remill::LoadNextProgramCounterRef(llvm_blk);
 
   auto new_mem_ptr = builder.CreateCall(bb_lifted_func.func, args);
 
@@ -1473,8 +1480,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  auto pc = this->op_lifter->LoadRegValue(
-      llvm_blk, state_ptr, options.arch->ProgramCounterRegisterName());
+  auto pc = remill::LoadNextProgramCounter(llvm_blk, this->intrinsics);
 
   auto sw = builder.CreateSwitch(pc, this->invalid_successor_block);
 
@@ -1492,6 +1498,49 @@ void FunctionLifter::VisitBlocks() {
   }
 }
 
+
+BasicBlockFunction
+FunctionLifter::CreateBasicBlockFunction(const std::string &name_) {
+
+  auto &context = this->semantics_module->getContext();
+  llvm::FunctionType *lifted_func_type =
+      llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
+          this->options.arch->LiftedFunctionType(), context));
+
+  std::vector<llvm::Type *> params = std::vector(
+      lifted_func_type->param_begin(), lifted_func_type->param_end());
+  params.push_back(llvm::PointerType::get(context, 0));
+
+  llvm::FunctionType *func_type =
+      llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
+
+
+  llvm::StringRef name(name_.data(), name_.size());
+  auto func =
+      llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
+                             name, this->semantics_module.get());
+
+  auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
+  auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
+  auto pc = remill::NthArgument(func, remill::kPCArgNum);
+  auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
+  memory->setName("memory");
+  state->setName("state");
+  pc->setName("program_counter");
+  next_pc_out->setName("next_pc_out");
+
+  options.arch->InitializeEmptyLiftedFunction(func);
+
+  auto state_ptr = remill::NthArgument(func, remill::kStatePointerArgNum);
+  auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
+  auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
+
+
+  func->addFnAttr(llvm::Attribute::NoInline);
+  func->setLinkage(llvm::GlobalValue::InternalLinkage);
+
+  return {func, state_ptr, pc_arg, mem_arg, next_pc_out};
+}
 
 LiftedFunction FunctionLifter::CreateLiftedFunction(const std::string &name) {
   auto new_func =

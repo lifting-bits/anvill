@@ -51,6 +51,14 @@ class TypeProvider;
 struct ControlFlowTargetList;
 
 
+struct BasicBlockFunction {
+  llvm::Function *func;
+  llvm::Argument *state_ptr;
+  llvm::Argument *pc_arg;
+  llvm::Argument *mem_ptr;
+  llvm::Argument *next_pc_out_param;
+};
+
 struct LiftedFunction {
   llvm::Function *func;
   llvm::Argument *state_ptr;
@@ -428,8 +436,11 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
 
   LiftedFunction CreateLiftedFunction(const std::string &name);
 
+  BasicBlockFunction CreateBasicBlockFunction(const std::string &name);
+
+
   llvm::BasicBlock *
-  LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
+  LiftBasicBlockIntoFunction(BasicBlockFunction &basic_block_function,
                              const CodeBlock &blk);
 
 
