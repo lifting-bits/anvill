@@ -1419,8 +1419,7 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 llvm::BasicBlock *
 FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
                                            const CodeBlock &blk) {
-  auto bb = llvm::BasicBlock::Create(basic_block_function.func->getContext(),
-                                     "", basic_block_function.func);
+  auto bb = &basic_block_function.func->getEntryBlock();
   remill::Instruction inst;
 
   auto reached_addr = blk.addr;
@@ -1441,6 +1440,7 @@ FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
     std::ignore = inst.GetLifter()->LiftIntoBlock(
         inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
   }
+  bb->getParent()->dump();
   return bb;
 }
 
