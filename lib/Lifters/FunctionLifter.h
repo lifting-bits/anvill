@@ -476,6 +476,10 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // that all semantics and helpers are completely inlined.
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 
+  // inline on arbitrary function.
+  void RecursivelyInlineFunctionCallees(llvm::Function *);
+
+
   // Allocate and initialize the state structure.
   void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
                                            const remill::Arch *arch);

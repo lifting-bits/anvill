@@ -16,6 +16,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/IR/Argument.h>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -1311,19 +1312,15 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   }
 }
 
-// In practice, lifted functions are not workable as is; we need to emulate
-// `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
-// that all semantics and helpers are completely inlined.
-void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
-  std::vector<llvm::CallInst *> calls_to_inline;
 
-  CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
+void FunctionLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
+  std::vector<llvm::CallInst *> calls_to_inline;
 
   // Set of instructions that we should not annotate because we can't tie them
   // to a particular instruction address.
   std::unordered_set<llvm::Instruction *> insts_without_provenance;
   if (options.pc_metadata_name) {
-    for (auto &inst : llvm::instructions(*native_func)) {
+    for (auto &inst : llvm::instructions(*inf)) {
       if (!inst.getMetadata(pc_annotation_id)) {
         insts_without_provenance.insert(&inst);
       }
@@ -1333,7 +1330,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
   for (auto changed = true; changed; changed = !calls_to_inline.empty()) {
     calls_to_inline.clear();
 
-    for (auto &inst : llvm::instructions(*native_func)) {
+    for (auto &inst : llvm::instructions(*inf)) {
       if (auto call_inst = llvm::dyn_cast<llvm::CallInst>(&inst); call_inst) {
         if (auto called_func = call_inst->getCalledFunction();
             called_func && !called_func->isDeclaration() &&
@@ -1356,7 +1353,7 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
 
       // Propagate PC metadata from call sites into inlined call bodies.
       if (options.pc_metadata_name) {
-        for (auto &inst : llvm::instructions(*native_func)) {
+        for (auto &inst : llvm::instructions(*inf)) {
           if (!inst.getMetadata(pc_annotation_id)) {
             if (insts_without_provenance.count(&inst)) {
               continue;
@@ -1402,6 +1399,13 @@ void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
 
   ClearVariableNames(native_func);
 }
+// In practice, lifted functions are not workable as is; we need to emulate
+// `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
+// that all semantics and helpers are completely inlined.
+void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
+  CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
+  this->RecursivelyInlineFunctionCallees(this->native_func);
+}
 
 // Lift a function. Will return `nullptr` if the memory is
 // not accessible or executable.
@@ -1443,6 +1447,8 @@ FunctionLifter::LiftBasicBlockIntoFunction(LiftedFunction &basic_block_function,
 
   auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
   llvm::ReturnInst::Create(bb->getContext(), memory, bb);
+  this->RecursivelyInlineFunctionCallees(basic_block_function.func);
+
   bb->getParent()->dump();
   return bb;
 }
@@ -1453,7 +1459,8 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
   llvm::IRBuilder<> builder(llvm_blk);
   auto bb_lifted_func =
       this->CreateLiftedFunction("basic_block_func" + std::to_string(blk.addr));
-
+  bb_lifted_func.func->removeFnAttr(llvm::Attribute::AlwaysInline);
+  bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
   this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
   std::array<llvm::Value *, remill::kNumBlockArgs> args;
@@ -1622,12 +1629,13 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   CallLiftedFunctionFromNativeFunction(decl);
 
 
-  this->lifted_func->dump();
-  LOG(FATAL) << "Not fully implemented yet";
-
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
-  //RecursivelyInlineLiftedFunctionIntoNativeFunction();
+  RecursivelyInlineLiftedFunctionIntoNativeFunction();
+
+
+  this->native_func->dump();
+  LOG(FATAL) << "Not fully implemented yet";
 
 
   return native_func;
