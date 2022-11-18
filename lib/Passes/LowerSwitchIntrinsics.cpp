@@ -6,11 +6,10 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/LowerSwitchIntrinsics.h>
-
 #include <anvill/ABI.h>
 #include <anvill/Passes/IndirectJumpPass.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/LowerSwitchIntrinsics.h>
 #include <anvill/Transforms.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/ADT/SmallVector.h>
@@ -63,6 +62,7 @@ class PcBinding {
                .getCaseSuccessor()});  //  the argument to a complete switch should always be a constant int
     }
 
+
     return PcBinding(std::move(mapping));
   }
 };
@@ -106,8 +106,7 @@ class SwitchBuilder {
   }
 
  public:
-  SwitchBuilder(llvm::LLVMContext &context,
-                const MemoryProvider &memProv,
+  SwitchBuilder(llvm::LLVMContext &context, const MemoryProvider &memProv,
                 const llvm::DataLayout &dl)
       : context(context),
         mem_prov(memProv),
@@ -118,7 +117,7 @@ class SwitchBuilder {
   // based compiler implementations of this construct back into simple switch
   // cases over an integer index that directly jumps to known labels.
   std::optional<llvm::SwitchInst *>
-  CreateNativeSwitch(const JumpTableResult& jt, const PcBinding &binding,
+  CreateNativeSwitch(const JumpTableResult &jt, const PcBinding &binding,
                      llvm::LLVMContext &context) {
     auto min_index = jt.bounds.lower;
     auto number_of_cases = (jt.bounds.upper - min_index) + 1;
@@ -178,14 +177,20 @@ LowerSwitchIntrinsics::runOnIndirectJump(llvm::CallInst *targetCall,
   auto following_switch = targetCall->getParent()->getTerminator();
 
   if (auto *follower = llvm::dyn_cast<llvm::SwitchInst>(following_switch)) {
-    auto binding = PcBinding::Build(targetCall, follower);
-    std::optional<llvm::SwitchInst *> new_switch =
-        sbuilder.CreateNativeSwitch(jresult->second, binding, context);
+    // Check that the switch uses the complete switch
+    if (follower->getCondition() == targetCall) {
+      auto binding = PcBinding::Build(targetCall, follower);
+      std::optional<llvm::SwitchInst *> new_switch =
+          sbuilder.CreateNativeSwitch(jresult->second, binding, context);
 
-    if (new_switch) {
-      llvm::ReplaceInstWithInst(follower, *new_switch);
-      agg.intersect(llvm::PreservedAnalyses::none());
-      return agg;
+      if (new_switch) {
+        llvm::ReplaceInstWithInst(follower, *new_switch);
+        if (targetCall->uses().empty()) {
+          targetCall->eraseFromParent();
+        }
+        agg.intersect(llvm::PreservedAnalyses::none());
+        return agg;
+      }
     }
   }
 
@@ -197,11 +202,12 @@ llvm::StringRef LowerSwitchIntrinsics::name() {
 }
 
 llvm::PreservedAnalyses LowerSwitchIntrinsics::BuildInitialResult() {
-    return llvm::PreservedAnalyses::all();
+  return llvm::PreservedAnalyses::all();
 }
 
 
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm, const MemoryProvider &memprov) {
+void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
+                              const MemoryProvider &memprov) {
   fpm.addPass(LowerSwitchIntrinsics(memprov));
 }
 
