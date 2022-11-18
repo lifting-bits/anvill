@@ -1,40 +1,7 @@
-; ModuleID = 'lifted_code'
+; ModuleID = 'SwitchLoweringLarge.ll'
 source_filename = "lifted_code"
 target datalayout = "e-m:e-p:32:32-f64:32:64-f80:32-n8:16:32-S128"
 target triple = "i386-pc-linux-gnu-elf"
-
-%struct.Memory = type opaque
-%struct.State = type { %struct.ArchState, [32 x %union.VectorReg], %struct.ArithFlags, %union.anon, %struct.Segments, %struct.AddressSpace, %struct.GPR, %struct.X87Stack, %struct.MMX, %struct.FPUStatusFlags, %union.anon, %union.FPU, %struct.SegmentCaches }
-%struct.ArchState = type { i32, i32, %union.anon }
-%union.VectorReg = type { %union.vec512_t }
-%union.vec512_t = type { %struct.uint64v8_t }
-%struct.uint64v8_t = type { [8 x i64] }
-%struct.ArithFlags = type { i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8 }
-%struct.Segments = type { i16, %union.SegmentSelector, i16, %union.SegmentSelector, i16, %union.SegmentSelector, i16, %union.SegmentSelector, i16, %union.SegmentSelector, i16, %union.SegmentSelector }
-%union.SegmentSelector = type { i16 }
-%struct.AddressSpace = type { i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg }
-%struct.Reg = type { %union.anon.1, i32 }
-%union.anon.1 = type { i32 }
-%struct.GPR = type { i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg, i64, %struct.Reg }
-%struct.X87Stack = type { [8 x %struct.anon.3] }
-%struct.anon.3 = type { [6 x i8], %struct.float80_t }
-%struct.float80_t = type { [10 x i8] }
-%struct.MMX = type { [8 x %struct.anon.4] }
-%struct.anon.4 = type { i64, %union.vec64_t }
-%union.vec64_t = type { %struct.uint64v1_t }
-%struct.uint64v1_t = type { [1 x i64] }
-%struct.FPUStatusFlags = type { i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, i8, [4 x i8] }
-%union.anon = type { i64 }
-%union.FPU = type { %struct.anon.13 }
-%struct.anon.13 = type { %struct.FpuFXSAVE, [96 x i8] }
-%struct.FpuFXSAVE = type { %union.SegmentSelector, %union.SegmentSelector, %union.FPUAbridgedTagWord, i8, i16, i32, %union.SegmentSelector, i16, i32, %union.SegmentSelector, i16, %union.anon.1, %union.anon.1, [8 x %struct.FPUStackElem], [16 x %union.vec128_t] }
-%union.FPUAbridgedTagWord = type { i8 }
-%struct.FPUStackElem = type { %union.anon.11, [6 x i8] }
-%union.anon.11 = type { %struct.float80_t }
-%union.vec128_t = type { %struct.uint128v1_t }
-%struct.uint128v1_t = type { [1 x i128] }
-%struct.SegmentCaches = type { %struct.SegmentShadow, %struct.SegmentShadow, %struct.SegmentShadow, %struct.SegmentShadow, %struct.SegmentShadow, %struct.SegmentShadow }
-%struct.SegmentShadow = type { %union.anon, i32, i32 }
 
 @var_835a000_i = global i32 0
 @var_83632f0_b = external global i8
@@ -55,10 +22,10 @@ target triple = "i386-pc-linux-gnu-elf"
 @__anvill_sp = internal global i8 0
 @__anvill_ra = internal global i8 0
 @__anvill_pc = internal global i8 0
-@llvm.compiler.used = appending global [6 x i8*] [i8* bitcast (i32 ()* @sub_804a04a__Avi_B_0 to i8*), i8* bitcast (i32 ()* @sub_804ec5e__Avi_B_0 to i8*), i8* bitcast (i8* (i8*, i32, i8*, i32*)* @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0 to i8*), i8* bitcast (i32 (i8*, i32, i8*, i32)* @sub_8240110__A_Sbi_Sbii_B_0 to i8*), i8* bitcast (i32* @var_835a000_i to i8*), i8* @var_83632f0_b], section "llvm.metadata"
+@llvm.compiler.used = appending global [6 x ptr] [ptr @sub_804a04a__Avi_B_0, ptr @sub_804ec5e__Avi_B_0, ptr @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0, ptr @sub_8240110__A_Sbi_Sbii_B_0, ptr @var_835a000_i, ptr @var_83632f0_b], section "llvm.metadata"
 
 ; Function Attrs: noinline
-declare i8* @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0(i8*, i32, i8*, i32*) #0
+declare ptr @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0(ptr, i32, ptr, ptr) #0
 
 ; Function Attrs: noinline
 declare i32 @sub_804a04a__Avi_B_0() #0
@@ -67,52 +34,52 @@ declare i32 @sub_804a04a__Avi_B_0() #0
 declare i32 @sub_804ec5e__Avi_B_0() #0
 
 ; Function Attrs: noinline
-define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
-  %5 = load i32, i32* @__anvill_reg_EBX, align 4
-  %6 = load i32, i32* @__anvill_reg_ECX, align 4
-  %7 = load i32, i32* @__anvill_reg_EDX, align 4
-  %8 = load i32, i32* @__anvill_reg_ESI, align 4
-  %9 = load i32, i32* @__anvill_reg_EDI, align 4
-  %10 = load i32, i32* @__anvill_reg_EBP, align 4
-  store i32 ptrtoint (i8* @__anvill_ra to i32), i32* bitcast (i8* @__anvill_sp to i32*), align 4
-  %11 = ptrtoint i8* %0 to i32
-  store i32 %11, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 4) to i32*), align 4
-  store i32 %1, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 8) to i32*), align 4
-  %12 = ptrtoint i8* %2 to i32
-  store i32 %12, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 12) to i32*), align 4
-  store i32 %3, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 16) to i32*), align 4
-  store i32 %10, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -4) to i32*), align 4
-  store i32 %9, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -8) to i32*), align 4
-  store i32 %8, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -12) to i32*), align 4
-  store i32 136577306, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -16) to i32*), align 4
+define i32 @sub_8240110__A_Sbi_Sbii_B_0(ptr %0, i32 %1, ptr %2, i32 %3) #0 {
+  %5 = load i32, ptr @__anvill_reg_EBX, align 4
+  %6 = load i32, ptr @__anvill_reg_ECX, align 4
+  %7 = load i32, ptr @__anvill_reg_EDX, align 4
+  %8 = load i32, ptr @__anvill_reg_ESI, align 4
+  %9 = load i32, ptr @__anvill_reg_EDI, align 4
+  %10 = load i32, ptr @__anvill_reg_EBP, align 4
+  store i32 ptrtoint (ptr @__anvill_ra to i32), ptr @__anvill_sp, align 4
+  %11 = ptrtoint ptr %0 to i32
+  store i32 %11, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 4) to ptr), align 4
+  store i32 %1, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 8) to ptr), align 4
+  %12 = ptrtoint ptr %2 to i32
+  store i32 %12, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 12) to ptr), align 4
+  store i32 %3, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 16) to ptr), align 4
+  store i32 %10, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -4) to ptr), align 4
+  store i32 %9, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -8) to ptr), align 4
+  store i32 %8, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -12) to ptr), align 4
+  store i32 136577306, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -16) to ptr), align 4
   %13 = call i32 @sub_804ec5e__Avi_B_0()
-  store i32 %5, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -16) to i32*), align 4
-  store i32 %7, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -316) to i32*), align 4
-  %14 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 4) to i32*), align 4
-  store i32 %6, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -308) to i32*), align 4
-  store i32 137732096, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -312) to i32*), align 4
-  store i32 %14, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284) to i32*), align 4
+  store i32 %5, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -16) to ptr), align 4
+  store i32 %7, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -316) to ptr), align 4
+  %14 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 4) to ptr), align 4
+  store i32 %6, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -308) to ptr), align 4
+  store i32 137732096, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -312) to ptr), align 4
+  store i32 %14, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284) to ptr), align 4
   %.not = icmp ult i32 %13, %7
   br i1 %.not, label %18, label %15
 
 15:                                               ; preds = %4
-  %16 = load i32, i32* bitcast (i8* @__anvill_sp to i32*), align 4
-  %17 = call %struct.Memory* @__remill_function_return(%struct.State* undef, i32 %16, %struct.Memory* null)
+  %16 = load i32, ptr @__anvill_sp, align 4
+  %17 = call ptr @__remill_function_return(ptr undef, i32 %16, ptr null)
   br label %964
 
 18:                                               ; preds = %4
-  store i32 137769712, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -304) to i32*), align 4
+  store i32 137769712, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -304) to ptr), align 4
   br label %19
 
 19:                                               ; preds = %324, %18
   %.sroa.892.0 = phi i32 [ %13, %18 ], [ %.sroa.892.4, %324 ]
   %.sroa.1272.0 = phi i32 [ 1, %18 ], [ %.sroa.1272.1, %324 ]
   %20 = phi i32 [ 136577368, %18 ], [ %328, %324 ]
-  %21 = inttoptr i32 %.sroa.892.0 to i8*
-  %22 = load i8, i8* %21, align 1
+  %21 = inttoptr i32 %.sroa.892.0 to ptr
+  %22 = load i8, ptr %21, align 1
   %23 = zext i8 %22 to i32
   %24 = add i8 %22, -3
-  store i32 %23, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -320) to i32*), align 4
+  store i32 %23, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -320) to ptr), align 4
   %25 = icmp ult i8 %24, -18
   %26 = icmp eq i8 %22, -15
   %27 = or i1 %26, %25
@@ -126,8 +93,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %33 = zext i8 %24 to i32
   %34 = shl nuw nsw i32 %33, 2
   %35 = add nuw nsw i32 %34, 136967784
-  %36 = inttoptr i32 %35 to i32*
-  %37 = load i32, i32* %36, align 4
+  %36 = inttoptr i32 %35 to ptr
+  %37 = load i32, ptr %36, align 4
   %38 = add i32 %37, 137732096
   %39 = call i32 (i32, ...) @__anvill_complete_switch(i32 %38, i32 134522973, i32 136577416, i32 136577536, i32 136577601, i32 136577616, i32 136577680, i32 136577696, i32 136577752, i32 136577805, i32 136577818, i32 136577855, i32 136577893, i32 136577926, i32 136577948, i32 136577966, i32 136577987, i32 136578001, i32 136578015, i32 136578029, i32 136578086, i32 136578124, i32 136578221, i32 136578306, i32 136578351, i32 136578487, i32 136578552)
   %40 = add i32 %37, 137732105
@@ -162,14 +129,14 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 41:                                               ; preds = %962, %955, %641, %550, %542, %381, %373, %31, %19
   %42 = phi i32 [ %30, %19 ], [ %642, %641 ], [ %963, %962 ], [ %956, %955 ], [ %549, %542 ], [ %558, %550 ], [ %380, %373 ], [ %398, %381 ], [ %40, %31 ]
-  store i32 %42, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -336) to i32*), align 4
+  store i32 %42, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -336) to ptr), align 4
   %43 = call i32 @sub_804a04a__Avi_B_0()
   br label %44
 
 44:                                               ; preds = %869, %825, %732, %699, %360, %329, %304, %287, %242, %172, %150, %146, %133, %119, %106, %102, %91, %78, %61, %41
   %45 = phi i32 [ %42, %41 ], [ %332, %329 ], [ %317, %304 ], [ %838, %825 ], [ %877, %869 ], [ %711, %699 ], [ %740, %732 ], [ %184, %172 ], [ %153, %150 ], [ %149, %146 ], [ %145, %133 ], [ %132, %119 ], [ %118, %106 ], [ %105, %102 ], [ %94, %91 ], [ %90, %78 ], [ %74, %61 ], [ %368, %360 ], [ %256, %242 ], [ %295, %287 ]
   %46 = add i32 %45, 9
-  store i32 %46, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -336) to i32*), align 4
+  store i32 %46, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -336) to ptr), align 4
   %47 = call i32 @sub_804a04a__Avi_B_0()
   unreachable
 
@@ -181,15 +148,15 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %210
 
 51:                                               ; preds = %31
-  %52 = inttoptr i32 %32 to i32*
-  %53 = load i32, i32* %52, align 4
+  %52 = inttoptr i32 %32 to ptr
+  %53 = load i32, ptr %52, align 4
   %54 = add i32 %.sroa.892.0, 5
   %55 = add i32 %37, 137732112
   br label %304
 
 56:                                               ; preds = %31
-  %57 = inttoptr i32 %32 to i32*
-  %58 = load i32, i32* %57, align 4
+  %57 = inttoptr i32 %32 to ptr
+  %58 = load i32, ptr %57, align 4
   %59 = add i32 %.sroa.892.0, 9
   %60 = add i32 %37, 137732047
   br label %304
@@ -237,8 +204,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %92, label %44, label %529
 
 95:                                               ; preds = %31
-  %96 = inttoptr i32 %32 to i16*
-  %97 = load i16, i16* %96, align 2
+  %96 = inttoptr i32 %32 to ptr
+  %97 = load i16, ptr %96, align 2
   %98 = sext i16 %97 to i32
   %99 = add i32 %.sroa.892.0, 3
   %100 = add i32 %99, %98
@@ -267,8 +234,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %116, label %44, label %593
 
 119:                                              ; preds = %31
-  %120 = inttoptr i32 %32 to i8*
-  %121 = load i8, i8* %120, align 1
+  %120 = inttoptr i32 %32 to ptr
+  %121 = load i8, ptr %120, align 1
   %122 = zext i8 %121 to i32
   %123 = add i32 %.sroa.1272.0, -1
   %124 = sub i32 %122, %123
@@ -310,24 +277,24 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %151, label %44, label %620
 
 154:                                              ; preds = %31
-  %155 = inttoptr i32 %32 to i16*
-  %156 = load i16, i16* %155, align 2
+  %155 = inttoptr i32 %32 to ptr
+  %156 = load i16, ptr %155, align 2
   %157 = sext i16 %156 to i32
   %158 = add i32 %.sroa.892.0, 3
   %159 = add i32 %37, 137731661
   br label %304
 
 160:                                              ; preds = %31
-  %161 = inttoptr i32 %32 to i16*
-  %162 = load i16, i16* %161, align 2
+  %161 = inttoptr i32 %32 to ptr
+  %162 = load i16, ptr %161, align 2
   %163 = zext i16 %162 to i32
   %164 = add i32 %.sroa.892.0, 3
   %165 = add i32 %37, 137731647
   br label %304
 
 166:                                              ; preds = %31
-  %167 = inttoptr i32 %32 to i8*
-  %168 = load i8, i8* %167, align 1
+  %167 = inttoptr i32 %32 to ptr
+  %168 = load i8, ptr %167, align 1
   %169 = sext i8 %168 to i32
   %170 = add i32 %.sroa.892.0, 2
   %171 = add i32 %37, 137731633
@@ -349,25 +316,25 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %182, label %44, label %626
 
 185:                                              ; preds = %31
-  store i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288), i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -348) to i32*), align 4
+  store i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288), ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -348) to ptr), align 4
   %186 = add i32 %37, 137732122
-  store i32 %186, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -352) to i32*), align 4
-  %187 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -348) to i32*), align 4
-  %188 = inttoptr i32 %187 to i8*
-  %189 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -344) to i32*), align 4
-  %190 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -340) to i32*), align 4
-  %191 = inttoptr i32 %190 to i8*
-  %192 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -336) to i32*), align 4
-  %193 = inttoptr i32 %192 to i32*
-  %194 = call i8* @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0(i8* %188, i32 %189, i8* %191, i32* %193)
-  %195 = ptrtoint i8* %194 to i32
-  %196 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288) to i32*), align 4
+  store i32 %186, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -352) to ptr), align 4
+  %187 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -348) to ptr), align 4
+  %188 = inttoptr i32 %187 to ptr
+  %189 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -344) to ptr), align 4
+  %190 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -340) to ptr), align 4
+  %191 = inttoptr i32 %190 to ptr
+  %192 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -336) to ptr), align 4
+  %193 = inttoptr i32 %192 to ptr
+  %194 = call ptr @sub_823ff60__A_Sbi_Sb_Si_Sb_B_0(ptr %188, i32 %189, ptr %191, ptr %193)
+  %195 = ptrtoint ptr %194 to i32
+  %196 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288) to ptr), align 4
   %197 = add i32 %37, 137731562
   br label %304
 
 198:                                              ; preds = %31
-  %199 = inttoptr i32 %32 to i8*
-  %200 = load i8, i8* %199, align 1
+  %199 = inttoptr i32 %32 to ptr
+  %200 = load i8, ptr %199, align 1
   %201 = zext i8 %200 to i32
   %202 = add i32 %.sroa.892.0, 2
   %203 = add i32 %37, 137731524
@@ -390,8 +357,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.1225.0 = phi i32 [ 0, %49 ], [ %227, %224 ]
   %.sroa.1330.0 = phi i32 [ %32, %49 ], [ %225, %224 ]
   %211 = phi i32 [ %50, %49 ], [ %230, %224 ]
-  %212 = inttoptr i32 %.sroa.1330.0 to i8*
-  %213 = load i8, i8* %212, align 1
+  %212 = inttoptr i32 %.sroa.1330.0 to ptr
+  %213 = load i8, ptr %212, align 1
   %214 = and i8 %213, 127
   %215 = zext i8 %214 to i32
   %216 = and i32 %.sroa.1109.0, 31
@@ -407,11 +374,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %221 = shl i32 %220, 1
   br label %222
 
-222:                                              ; preds = %210, %218
+222:                                              ; preds = %218, %210
   %223 = phi i32 [ %221, %218 ], [ %217, %210 ]
   br label %224
 
-224:                                              ; preds = %210, %222
+224:                                              ; preds = %222, %210
   %.sroa.892.1 = phi i32 [ %223, %222 ], [ %215, %210 ]
   %225 = add i32 %.sroa.1330.0, 1
   %226 = add i32 %.sroa.1109.0, 7
@@ -467,25 +434,25 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %261 = shl i32 -2, %260
   br label %262
 
-262:                                              ; preds = %257, %259
+262:                                              ; preds = %259, %257
   %263 = phi i32 [ %261, %259 ], [ -2, %257 ]
   br label %264
 
-264:                                              ; preds = %257, %262
+264:                                              ; preds = %262, %257
   %.sroa.892.2 = phi i32 [ %263, %262 ], [ -1, %257 ]
   %265 = add i32 %240, 9
   %266 = or i32 %.sroa.892.2, %227
   br label %242
 
 267:                                              ; preds = %242
-  %268 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -308) to i32*), align 4
+  %268 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -308) to ptr), align 4
   %269 = shl nsw i32 %244, 2
   %270 = add i32 %269, %268
-  %271 = inttoptr i32 %270 to i32*
-  %272 = load i32, i32* %271, align 4
+  %271 = inttoptr i32 %270 to ptr
+  %272 = load i32, ptr %271, align 4
   %273 = add i32 %268, 99
-  %274 = inttoptr i32 %273 to i8*
-  %275 = load i8, i8* %274, align 1
+  %274 = inttoptr i32 %273 to ptr
+  %275 = load i8, ptr %274, align 1
   %276 = and i8 %275, 64
   %.not9 = icmp eq i8 %276, 0
   %277 = select i1 %.not9, i32 20, i32 13
@@ -495,8 +462,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 279:                                              ; preds = %267
   %280 = add i32 %268, 108
   %281 = add i32 %280, %244
-  %282 = inttoptr i32 %281 to i8*
-  %283 = load i8, i8* %282, align 1
+  %282 = inttoptr i32 %281 to ptr
+  %283 = load i8, ptr %282, align 1
   %.not10 = icmp eq i8 %283, 0
   %284 = select i1 %.not10, i32 7, i32 28
   %285 = add i32 %278, %284
@@ -505,10 +472,10 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 287:                                              ; preds = %279, %267
   %288 = phi i32 [ %278, %267 ], [ %285, %279 ]
-  %289 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -304) to i32*), align 4
+  %289 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -304) to ptr), align 4
   %290 = add i32 %244, %289
-  %291 = inttoptr i32 %290 to i8*
-  %292 = load i8, i8* %291, align 1
+  %291 = inttoptr i32 %290 to ptr
+  %292 = load i8, ptr %291, align 1
   %293 = icmp eq i8 %292, 4
   %294 = select i1 %293, i32 19, i32 -2054524
   %295 = add i32 %288, %294
@@ -521,13 +488,13 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %304
 
 299:                                              ; preds = %287
-  %300 = inttoptr i32 %272 to i32*
+  %300 = inttoptr i32 %272 to ptr
   %301 = add i32 %295, 2
-  %302 = load i32, i32* %300, align 4
+  %302 = load i32, ptr %300, align 4
   %303 = add i32 %301, 25
   br label %296
 
-304:                                              ; preds = %724, %741, %352, %369, %957, %952, %927, %914, %908, %878, %767, %672, %655, %620, %611, %603, %569, %566, %563, %560, %525, %522, %519, %515, %512, %499, %496, %481, %468, %464, %461, %459, %449, %439, %428, %415, %400, %296, %198, %185, %166, %160, %154, %75, %56, %51
+304:                                              ; preds = %957, %952, %927, %914, %908, %878, %767, %741, %724, %672, %655, %620, %611, %603, %569, %566, %563, %560, %525, %522, %519, %515, %512, %499, %496, %481, %468, %464, %461, %459, %449, %439, %428, %415, %400, %369, %352, %296, %198, %185, %166, %160, %154, %75, %56, %51
   %.sroa.892.3 = phi i32 [ %901, %908 ], [ %901, %914 ], [ %901, %927 ], [ %808, %878 ], [ %760, %767 ], [ %202, %198 ], [ %195, %185 ], [ %170, %166 ], [ %164, %160 ], [ %158, %154 ], [ %32, %620 ], [ %32, %611 ], [ %604, %603 ], [ %644, %655 ], [ %644, %672 ], [ %644, %957 ], [ %945, %952 ], [ %32, %569 ], [ %32, %566 ], [ %32, %563 ], [ %32, %560 ], [ %32, %525 ], [ %32, %522 ], [ %32, %519 ], [ %32, %515 ], [ %32, %512 ], [ %32, %499 ], [ %32, %496 ], [ %32, %481 ], [ %32, %468 ], [ %32, %464 ], [ %32, %461 ], [ %32, %459 ], [ %32, %449 ], [ %32, %439 ], [ %32, %428 ], [ %32, %415 ], [ %32, %400 ], [ %32, %75 ], [ %59, %56 ], [ %54, %51 ], [ %225, %296 ], [ %32, %369 ], [ %32, %352 ], [ %692, %741 ], [ %692, %724 ]
   %.sroa.989.1 = phi i32 [ %903, %908 ], [ %903, %914 ], [ %928, %927 ], [ %880, %878 ], [ %762, %767 ], [ %201, %198 ], [ %196, %185 ], [ %169, %166 ], [ %163, %160 ], [ %157, %154 ], [ %624, %620 ], [ %615, %611 ], [ %609, %603 ], [ %658, %655 ], [ %675, %672 ], [ %960, %957 ], [ %953, %952 ], [ %571, %569 ], [ %567, %566 ], [ %564, %563 ], [ %561, %560 ], [ %527, %525 ], [ %523, %522 ], [ %520, %519 ], [ %517, %515 ], [ %513, %512 ], [ %510, %499 ], [ %497, %496 ], [ %494, %481 ], [ %479, %468 ], [ %466, %464 ], [ %462, %461 ], [ %.sroa.989.5, %459 ], [ %.sroa.989.4, %449 ], [ %.sroa.989.3, %439 ], [ %429, %428 ], [ %426, %415 ], [ %413, %400 ], [ %76, %75 ], [ %58, %56 ], [ %53, %51 ], [ %298, %296 ], [ %371, %369 ], [ %345, %352 ], [ %743, %741 ], [ %717, %724 ]
   %.sroa.1225.2 = phi i32 [ %.sroa.1272.0, %908 ], [ %.sroa.1272.0, %914 ], [ %.sroa.1272.0, %927 ], [ %.sroa.1272.0, %878 ], [ %.sroa.1272.0, %767 ], [ %.sroa.1272.0, %198 ], [ %.sroa.1272.0, %185 ], [ %.sroa.1272.0, %166 ], [ %.sroa.1272.0, %160 ], [ %.sroa.1272.0, %154 ], [ %.sroa.1272.0, %620 ], [ %.sroa.1272.0, %611 ], [ %.sroa.1272.0, %603 ], [ %530, %655 ], [ %530, %672 ], [ %530, %957 ], [ %530, %952 ], [ %530, %569 ], [ %530, %566 ], [ %530, %563 ], [ %530, %560 ], [ %382, %525 ], [ %382, %522 ], [ %382, %519 ], [ %382, %515 ], [ %382, %512 ], [ %382, %499 ], [ %382, %496 ], [ %382, %481 ], [ %382, %468 ], [ %382, %464 ], [ %382, %461 ], [ %382, %459 ], [ %382, %449 ], [ %382, %439 ], [ %382, %428 ], [ %382, %415 ], [ %382, %400 ], [ %.sroa.1272.0, %75 ], [ %.sroa.1272.0, %56 ], [ %.sroa.1272.0, %51 ], [ %.sroa.1272.0, %296 ], [ %.sroa.1272.0, %369 ], [ %.sroa.1272.0, %352 ], [ %.sroa.1272.0, %741 ], [ %.sroa.1272.0, %724 ]
@@ -548,9 +515,9 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 318:                                              ; preds = %304
   %319 = shl i32 %.sroa.1225.2, 2
-  %320 = add i32 %319, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %321 = inttoptr i32 %320 to i32*
-  store i32 %.sroa.989.1, i32* %321, align 4
+  %320 = add i32 %319, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %321 = inttoptr i32 %320 to ptr
+  store i32 %.sroa.989.1, ptr %321, align 4
   %322 = add i32 %317, 7
   %323 = add i32 %.sroa.1225.2, 1
   br label %324
@@ -559,7 +526,7 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.892.4 = phi i32 [ %32, %208 ], [ %.sroa.892.3, %318 ], [ %32, %626 ], [ %32, %617 ], [ %32, %593 ], [ %577, %585 ], [ %591, %587 ], [ %100, %95 ]
   %.sroa.1272.1 = phi i32 [ %.sroa.1272.0, %208 ], [ %323, %318 ], [ %.sroa.1272.0, %626 ], [ %618, %617 ], [ %.sroa.1272.0, %593 ], [ %576, %585 ], [ %576, %587 ], [ %.sroa.1272.0, %95 ]
   %325 = phi i32 [ %209, %208 ], [ %322, %318 ], [ %640, %626 ], [ %619, %617 ], [ %602, %593 ], [ %586, %585 ], [ %592, %587 ], [ %101, %95 ]
-  %326 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -316) to i32*), align 4
+  %326 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -316) to ptr), align 4
   %.not3 = icmp ugt i32 %326, %.sroa.892.4
   %327 = select i1 %.not3, i32 -200, i32 10
   %328 = add i32 %325, %327
@@ -573,22 +540,22 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 333:                                              ; preds = %329
   %334 = shl i32 %.sroa.1272.1, 2
-  %335 = add i32 %334, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288)
-  %336 = inttoptr i32 %335 to i32*
-  %337 = load i32, i32* %336, align 4
-  %338 = load i32, i32* bitcast (i8* @__anvill_sp to i32*), align 4
-  %339 = call %struct.Memory* @__remill_function_return(%struct.State* undef, i32 %338, %struct.Memory* null)
+  %335 = add i32 %334, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288)
+  %336 = inttoptr i32 %335 to ptr
+  %337 = load i32, ptr %336, align 4
+  %338 = load i32, ptr @__anvill_sp, align 4
+  %339 = call ptr @__remill_function_return(ptr undef, i32 %338, ptr null)
   br label %964
 
 340:                                              ; preds = %61
-  %341 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -308) to i32*), align 4
+  %341 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -308) to ptr), align 4
   %342 = shl nsw i32 %62, 2
   %343 = add i32 %342, %341
-  %344 = inttoptr i32 %343 to i32*
-  %345 = load i32, i32* %344, align 4
+  %344 = inttoptr i32 %343 to ptr
+  %345 = load i32, ptr %344, align 4
   %346 = add i32 %341, 99
-  %347 = inttoptr i32 %346 to i8*
-  %348 = load i8, i8* %347, align 1
+  %347 = inttoptr i32 %346 to ptr
+  %348 = load i8, ptr %347, align 1
   %349 = and i8 %348, 64
   %.not7 = icmp eq i8 %349, 0
   %350 = select i1 %.not7, i32 20, i32 13
@@ -598,8 +565,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 352:                                              ; preds = %340
   %353 = add i32 %341, 108
   %354 = add i32 %353, %62
-  %355 = inttoptr i32 %354 to i8*
-  %356 = load i8, i8* %355, align 1
+  %355 = inttoptr i32 %354 to ptr
+  %356 = load i8, ptr %355, align 1
   %.not8 = icmp eq i8 %356, 0
   %357 = select i1 %.not8, i32 7, i32 28
   %358 = add i32 %351, %357
@@ -608,18 +575,18 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 360:                                              ; preds = %352, %340
   %361 = phi i32 [ %351, %340 ], [ %358, %352 ]
-  %362 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -304) to i32*), align 4
+  %362 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -304) to ptr), align 4
   %363 = add i32 %62, %362
-  %364 = inttoptr i32 %363 to i8*
-  %365 = load i8, i8* %364, align 1
+  %364 = inttoptr i32 %363 to ptr
+  %365 = load i8, ptr %364, align 1
   %366 = icmp eq i8 %365, 4
   %367 = select i1 %366, i32 19, i32 -2054670
   %368 = add i32 %361, %367
   br i1 %366, label %369, label %44
 
 369:                                              ; preds = %360
-  %370 = inttoptr i32 %345 to i32*
-  %371 = load i32, i32* %370, align 4
+  %370 = inttoptr i32 %345 to ptr
+  %371 = load i32, ptr %370, align 4
   %372 = add i32 %368, -119
   br label %304
 
@@ -636,18 +603,18 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 381:                                              ; preds = %373
   %382 = add i32 %.sroa.1272.0, -2
   %383 = shl i32 %.sroa.1272.0, 2
-  %384 = add i32 %383, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288)
-  %385 = inttoptr i32 %384 to i32*
-  %386 = load i32, i32* %385, align 4
+  %384 = add i32 %383, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288)
+  %385 = inttoptr i32 %384 to ptr
+  %386 = load i32, ptr %385, align 4
   %387 = shl i32 %382, 2
-  %388 = add i32 %387, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %389 = inttoptr i32 %388 to i32*
-  %390 = load i32, i32* %389, align 4
+  %388 = add i32 %387, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %389 = inttoptr i32 %388 to ptr
+  %390 = load i32, ptr %389, align 4
   %391 = zext i8 %374 to i32
   %392 = shl nuw nsw i32 %391, 2
   %393 = add nuw nsw i32 %392, 136968740
-  %394 = inttoptr i32 %393 to i32*
-  %395 = load i32, i32* %394, align 4
+  %394 = inttoptr i32 %393 to ptr
+  %395 = load i32, ptr %394, align 4
   %396 = add i32 %395, 137732096
   %397 = call i32 (i32, ...) @__anvill_complete_switch(i32 %396, i32 134522973, i32 136578559, i32 136578574, i32 136578589, i32 136578598, i32 136578609, i32 136578620, i32 136578631, i32 136578640, i32 136578655, i32 136578670, i32 136578685, i32 136578694, i32 136578708, i32 136578717, i32 136578732, i32 136578742, i32 136578751)
   %398 = add i32 %395, 137732105
@@ -729,7 +696,7 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %438 = shl i32 %437, 1
   br label %439
 
-439:                                              ; preds = %433, %435, %431
+439:                                              ; preds = %435, %433, %431
   %.sroa.989.3 = phi i32 [ %390, %431 ], [ %434, %433 ], [ %438, %435 ]
   %440 = add i32 %395, 137731050
   br label %304
@@ -751,7 +718,7 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %448 = lshr i32 %447, 1
   br label %449
 
-449:                                              ; preds = %443, %445, %441
+449:                                              ; preds = %445, %443, %441
   %.sroa.989.4 = phi i32 [ %390, %441 ], [ %448, %445 ], [ %444, %443 ]
   %450 = add i32 %395, 137731039
   br label %304
@@ -773,7 +740,7 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %458 = ashr i32 %457, 1
   br label %459
 
-459:                                              ; preds = %453, %455, %451
+459:                                              ; preds = %455, %453, %451
   %.sroa.989.5 = phi i32 [ %390, %451 ], [ %454, %453 ], [ %458, %455 ]
   %460 = add i32 %395, 137731028
   br label %304
@@ -874,9 +841,9 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 529:                                              ; preds = %91
   %530 = add i32 %.sroa.1272.0, -1
   %531 = shl i32 %530, 2
-  %532 = add i32 %531, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %533 = inttoptr i32 %532 to i32*
-  %534 = load i32, i32* %533, align 4
+  %532 = add i32 %531, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %533 = inttoptr i32 %532 to ptr
+  %534 = load i32, ptr %533, align 4
   %535 = icmp ugt i8 %22, 35
   %536 = select i1 %535, i32 378, i32 16
   %537 = add i32 %94, %536
@@ -902,8 +869,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %551 = zext i8 %543 to i32
   %552 = shl nuw nsw i32 %551, 2
   %553 = add nuw nsw i32 %552, 136968824
-  %554 = inttoptr i32 %553 to i32*
-  %555 = load i32, i32* %554, align 4
+  %554 = inttoptr i32 %553 to ptr
+  %555 = load i32, ptr %554, align 4
   %556 = add i32 %555, 137732096
   %557 = call i32 (i32, ...) @__anvill_complete_switch(i32 %556, i32 134522973, i32 136578775, i32 136578784, i32 136578793, i32 136578809, i32 136578818)
   %558 = add i32 %555, 137732105
@@ -935,8 +902,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %304
 
 569:                                              ; preds = %550
-  %570 = inttoptr i32 %534 to i32*
-  %571 = load i32, i32* %570, align 4
+  %570 = inttoptr i32 %534 to ptr
+  %571 = load i32, ptr %570, align 4
   %572 = add i32 %555, 137730839
   br label %304
 
@@ -948,9 +915,9 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %576 = add i32 %.sroa.1272.0, -1
   %577 = add i32 %.sroa.892.0, 3
   %578 = shl i32 %576, 2
-  %579 = add i32 %578, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %580 = inttoptr i32 %579 to i32*
-  %581 = load i32, i32* %580, align 4
+  %579 = add i32 %578, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %580 = inttoptr i32 %579 to ptr
+  %581 = load i32, ptr %580, align 4
   %582 = icmp eq i32 %581, 0
   %583 = select i1 %582, i32 366, i32 18
   %584 = add i32 %105, %583
@@ -961,8 +928,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %324
 
 587:                                              ; preds = %575
-  %588 = inttoptr i32 %32 to i16*
-  %589 = load i16, i16* %588, align 2
+  %588 = inttoptr i32 %32 to ptr
+  %589 = load i16, ptr %588, align 2
   %590 = sext i16 %589 to i32
   %591 = add i32 %577, %590
   %592 = add i32 %584, -276
@@ -970,15 +937,15 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 593:                                              ; preds = %106
   %594 = shl i32 %.sroa.1272.0, 2
-  %595 = add i32 %594, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -292)
-  %596 = inttoptr i32 %595 to i32*
-  %597 = load i32, i32* %596, align 4
+  %595 = add i32 %594, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -292)
+  %596 = inttoptr i32 %595 to ptr
+  %597 = load i32, ptr %596, align 4
   %598 = shl i32 %107, 2
-  %599 = add i32 %598, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %600 = inttoptr i32 %599 to i32*
-  %601 = load i32, i32* %600, align 4
-  store i32 %597, i32* %600, align 4
-  store i32 %601, i32* %596, align 4
+  %599 = add i32 %598, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %600 = inttoptr i32 %599 to ptr
+  %601 = load i32, ptr %600, align 4
+  store i32 %597, ptr %600, align 4
+  store i32 %601, ptr %596, align 4
   %602 = add i32 %118, -296
   br label %324
 
@@ -986,17 +953,17 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %604 = add i32 %.sroa.892.0, 2
   %605 = sub i32 %123, %122
   %606 = shl i32 %605, 2
-  %607 = add i32 %606, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %608 = inttoptr i32 %607 to i32*
-  %609 = load i32, i32* %608, align 4
+  %607 = add i32 %606, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %608 = inttoptr i32 %607 to ptr
+  %609 = load i32, ptr %608, align 4
   %610 = add i32 %132, -359
   br label %304
 
 611:                                              ; preds = %133
   %612 = shl i32 %.sroa.1272.0, 2
-  %613 = add i32 %612, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -292)
-  %614 = inttoptr i32 %613 to i32*
-  %615 = load i32, i32* %614, align 4
+  %613 = add i32 %612, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -292)
+  %614 = inttoptr i32 %613 to ptr
+  %615 = load i32, ptr %614, align 4
   %616 = add i32 %145, -383
   br label %304
 
@@ -1007,30 +974,30 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 620:                                              ; preds = %150
   %621 = shl i32 %.sroa.1272.0, 2
-  %622 = add i32 %621, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288)
-  %623 = inttoptr i32 %622 to i32*
-  %624 = load i32, i32* %623, align 4
+  %622 = add i32 %621, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288)
+  %623 = inttoptr i32 %622 to ptr
+  %624 = load i32, ptr %623, align 4
   %625 = add i32 %153, -422
   br label %304
 
 626:                                              ; preds = %172
   %627 = shl i32 %.sroa.1272.0, 2
-  %628 = add i32 %627, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -288)
-  %629 = inttoptr i32 %628 to i32*
-  %630 = load i32, i32* %629, align 4
+  %628 = add i32 %627, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -288)
+  %629 = inttoptr i32 %628 to ptr
+  %630 = load i32, ptr %629, align 4
   %631 = shl i32 %173, 2
-  %632 = add i32 %631, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -284)
-  %633 = inttoptr i32 %632 to i32*
-  %634 = load i32, i32* %633, align 4
-  store i32 %630, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -320) to i32*), align 4
+  %632 = add i32 %631, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -284)
+  %633 = inttoptr i32 %632 to ptr
+  %634 = load i32, ptr %633, align 4
+  store i32 %630, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -320) to ptr), align 4
   %635 = shl i32 %.sroa.1272.0, 2
-  %636 = add i32 %635, add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -296)
-  %637 = inttoptr i32 %636 to i32*
-  %638 = load i32, i32* %637, align 4
-  store i32 %634, i32* %629, align 4
-  %639 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -320) to i32*), align 4
-  store i32 %638, i32* %633, align 4
-  store i32 %639, i32* %637, align 4
+  %636 = add i32 %635, add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -296)
+  %637 = inttoptr i32 %636 to ptr
+  %638 = load i32, ptr %637, align 4
+  store i32 %634, ptr %629, align 4
+  %639 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -320) to ptr), align 4
+  store i32 %638, ptr %633, align 4
+  store i32 %639, ptr %637, align 4
   %640 = add i32 %184, -470
   br label %324
 
@@ -1040,8 +1007,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 643:                                              ; preds = %538
   %644 = add i32 %.sroa.892.0, 2
-  %645 = inttoptr i32 %32 to i8*
-  %646 = load i8, i8* %645, align 1
+  %645 = inttoptr i32 %32 to ptr
+  %646 = load i8, ptr %645, align 1
   %647 = icmp eq i8 %646, 4
   %648 = select i1 %647, i32 619, i32 15
   %649 = add i32 %541, %648
@@ -1056,8 +1023,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 655:                                              ; preds = %659, %643
   %656 = phi i32 [ %650, %643 ], [ %663, %659 ]
-  %657 = inttoptr i32 %534 to i32*
-  %658 = load i32, i32* %657, align 4
+  %657 = inttoptr i32 %534 to ptr
+  %658 = load i32, ptr %657, align 4
   br label %304
 
 659:                                              ; preds = %651
@@ -1080,8 +1047,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %669, label %957, label %955
 
 672:                                              ; preds = %664
-  %673 = inttoptr i32 %534 to i8*
-  %674 = load i8, i8* %673, align 1
+  %673 = inttoptr i32 %534 to ptr
+  %674 = load i8, ptr %673, align 1
   %675 = zext i8 %674 to i32
   %676 = add i32 %667, -624
   br label %304
@@ -1091,8 +1058,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.1109.1 = phi i32 [ 0, %204 ], [ %693, %691 ]
   %.sroa.1225.3 = phi i32 [ 0, %204 ], [ %694, %691 ]
   %678 = phi i32 [ %205, %204 ], [ %697, %691 ]
-  %679 = inttoptr i32 %.sroa.892.5 to i8*
-  %680 = load i8, i8* %679, align 1
+  %679 = inttoptr i32 %.sroa.892.5 to ptr
+  %680 = load i8, ptr %679, align 1
   %681 = and i8 %680, 127
   %682 = zext i8 %681 to i32
   %683 = and i32 %.sroa.1109.1, 31
@@ -1108,11 +1075,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %688 = shl i32 %687, 1
   br label %689
 
-689:                                              ; preds = %677, %685
+689:                                              ; preds = %685, %677
   %690 = phi i32 [ %688, %685 ], [ %684, %677 ]
   br label %691
 
-691:                                              ; preds = %677, %689
+691:                                              ; preds = %689, %677
   %.sroa.1173.0 = phi i32 [ %690, %689 ], [ %682, %677 ]
   %692 = add i32 %.sroa.892.5, 1
   %693 = add i32 %.sroa.1109.1, 7
@@ -1139,14 +1106,14 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br i1 %709, label %44, label %712
 
 712:                                              ; preds = %699
-  %713 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -308) to i32*), align 4
+  %713 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -308) to ptr), align 4
   %714 = shl i32 %694, 2
   %715 = add i32 %714, %713
-  %716 = inttoptr i32 %715 to i32*
-  %717 = load i32, i32* %716, align 4
+  %716 = inttoptr i32 %715 to ptr
+  %717 = load i32, ptr %716, align 4
   %718 = add i32 %713, 99
-  %719 = inttoptr i32 %718 to i8*
-  %720 = load i8, i8* %719, align 1
+  %719 = inttoptr i32 %718 to ptr
+  %720 = load i8, ptr %719, align 1
   %721 = and i8 %720, 64
   %.not11 = icmp eq i8 %721, 0
   %722 = select i1 %.not11, i32 20, i32 13
@@ -1156,8 +1123,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 724:                                              ; preds = %712
   %725 = add i32 %713, 108
   %726 = add i32 %725, %694
-  %727 = inttoptr i32 %726 to i8*
-  %728 = load i8, i8* %727, align 1
+  %727 = inttoptr i32 %726 to ptr
+  %728 = load i8, ptr %727, align 1
   %.not6 = icmp eq i8 %728, 0
   %729 = select i1 %.not6, i32 7, i32 23
   %730 = add i32 %723, %729
@@ -1166,18 +1133,18 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 732:                                              ; preds = %724, %712
   %733 = phi i32 [ %723, %712 ], [ %730, %724 ]
-  %734 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -304) to i32*), align 4
+  %734 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -304) to ptr), align 4
   %735 = add i32 %694, %734
-  %736 = inttoptr i32 %735 to i8*
-  %737 = load i8, i8* %736, align 1
+  %736 = inttoptr i32 %735 to ptr
+  %737 = load i8, ptr %736, align 1
   %738 = icmp eq i8 %737, 4
   %739 = select i1 %738, i32 14, i32 -2055301
   %740 = add i32 %733, %739
   br i1 %738, label %741, label %44
 
 741:                                              ; preds = %732
-  %742 = inttoptr i32 %717 to i32*
-  %743 = load i32, i32* %742, align 4
+  %742 = inttoptr i32 %717 to ptr
+  %743 = load i32, ptr %742, align 4
   %744 = add i32 %740, -745
   br label %304
 
@@ -1186,8 +1153,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.1109.2 = phi i32 [ 0, %206 ], [ %761, %759 ]
   %.sroa.1225.4 = phi i32 [ 0, %206 ], [ %762, %759 ]
   %746 = phi i32 [ %207, %206 ], [ %765, %759 ]
-  %747 = inttoptr i32 %.sroa.892.6 to i8*
-  %748 = load i8, i8* %747, align 1
+  %747 = inttoptr i32 %.sroa.892.6 to ptr
+  %748 = load i8, ptr %747, align 1
   %749 = and i8 %748, 127
   %750 = zext i8 %749 to i32
   %751 = and i32 %.sroa.1109.2, 31
@@ -1203,11 +1170,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %756 = shl i32 %755, 1
   br label %757
 
-757:                                              ; preds = %745, %753
+757:                                              ; preds = %753, %745
   %758 = phi i32 [ %756, %753 ], [ %752, %745 ]
   br label %759
 
-759:                                              ; preds = %745, %757
+759:                                              ; preds = %757, %745
   %.sroa.1173.1 = phi i32 [ %758, %757 ], [ %750, %745 ]
   %760 = add i32 %.sroa.892.6, 1
   %761 = add i32 %.sroa.1109.2, 7
@@ -1222,13 +1189,13 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %768 = add i32 %746, -768
   br label %304
 
-769:                                              ; preds = %31, %783
+769:                                              ; preds = %783, %31
   %.sroa.892.7 = phi i32 [ %784, %783 ], [ %32, %31 ]
   %.sroa.1109.3 = phi i32 [ %785, %783 ], [ 0, %31 ]
   %.sroa.1225.5 = phi i32 [ %786, %783 ], [ 0, %31 ]
   %770 = phi i32 [ %789, %783 ], [ %40, %31 ]
-  %771 = inttoptr i32 %.sroa.892.7 to i8*
-  %772 = load i8, i8* %771, align 1
+  %771 = inttoptr i32 %.sroa.892.7 to ptr
+  %772 = load i8, ptr %771, align 1
   %773 = and i8 %772, 127
   %774 = zext i8 %773 to i32
   %775 = and i32 %.sroa.1109.3, 31
@@ -1244,11 +1211,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %780 = shl i32 %779, 1
   br label %781
 
-781:                                              ; preds = %769, %777
+781:                                              ; preds = %777, %769
   %782 = phi i32 [ %780, %777 ], [ %776, %769 ]
   br label %783
 
-783:                                              ; preds = %769, %781
+783:                                              ; preds = %781, %769
   %.sroa.1173.2 = phi i32 [ %782, %781 ], [ %774, %769 ]
   %784 = add i32 %.sroa.892.7, 1
   %785 = add i32 %.sroa.1109.3, 7
@@ -1268,8 +1235,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.1109.4 = phi i32 [ 0, %791 ], [ %809, %807 ]
   %.sroa.1330.1 = phi i32 [ 0, %791 ], [ %810, %807 ]
   %794 = phi i32 [ %792, %791 ], [ %813, %807 ]
-  %795 = inttoptr i32 %.sroa.892.8 to i8*
-  %796 = load i8, i8* %795, align 1
+  %795 = inttoptr i32 %.sroa.892.8 to ptr
+  %796 = load i8, ptr %795, align 1
   %797 = and i8 %796, 127
   %798 = zext i8 %797 to i32
   %799 = and i32 %.sroa.1109.4, 31
@@ -1285,11 +1252,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %804 = shl i32 %803, 1
   br label %805
 
-805:                                              ; preds = %793, %801
+805:                                              ; preds = %801, %793
   %806 = phi i32 [ %804, %801 ], [ %800, %793 ]
   br label %807
 
-807:                                              ; preds = %793, %805
+807:                                              ; preds = %805, %793
   %.sroa.1173.3 = phi i32 [ %806, %805 ], [ %798, %793 ]
   %808 = add i32 %.sroa.892.8, 1
   %809 = add i32 %.sroa.1109.4, 7
@@ -1344,25 +1311,25 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %843 = shl i32 -2, %842
   br label %844
 
-844:                                              ; preds = %839, %841
+844:                                              ; preds = %841, %839
   %845 = phi i32 [ %843, %841 ], [ -2, %839 ]
   br label %846
 
-846:                                              ; preds = %839, %844
+846:                                              ; preds = %844, %839
   %.sroa.1173.4 = phi i32 [ %845, %844 ], [ -1, %839 ]
   %847 = add i32 %823, 9
   %848 = or i32 %.sroa.1173.4, %810
   br label %825
 
 849:                                              ; preds = %825
-  %850 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -308) to i32*), align 4
+  %850 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -308) to ptr), align 4
   %851 = shl i32 %786, 2
   %852 = add i32 %851, %850
-  %853 = inttoptr i32 %852 to i32*
-  %854 = load i32, i32* %853, align 4
+  %853 = inttoptr i32 %852 to ptr
+  %854 = load i32, ptr %853, align 4
   %855 = add i32 %850, 99
-  %856 = inttoptr i32 %855 to i8*
-  %857 = load i8, i8* %856, align 1
+  %856 = inttoptr i32 %855 to ptr
+  %857 = load i8, ptr %856, align 1
   %858 = and i8 %857, 64
   %.not4 = icmp eq i8 %858, 0
   %859 = select i1 %.not4, i32 20, i32 13
@@ -1372,8 +1339,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 861:                                              ; preds = %849
   %862 = add i32 %850, 108
   %863 = add i32 %862, %786
-  %864 = inttoptr i32 %863 to i8*
-  %865 = load i8, i8* %864, align 1
+  %864 = inttoptr i32 %863 to ptr
+  %865 = load i8, ptr %864, align 1
   %.not5 = icmp eq i8 %865, 0
   %866 = select i1 %.not5, i32 7, i32 23
   %867 = add i32 %860, %866
@@ -1382,10 +1349,10 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 
 869:                                              ; preds = %861, %849
   %870 = phi i32 [ %860, %849 ], [ %867, %861 ]
-  %871 = load i32, i32* inttoptr (i32 add (i32 ptrtoint (i8* @__anvill_sp to i32), i32 -304) to i32*), align 4
+  %871 = load i32, ptr inttoptr (i32 add (i32 ptrtoint (ptr @__anvill_sp to i32), i32 -304) to ptr), align 4
   %872 = add i32 %786, %871
-  %873 = inttoptr i32 %872 to i8*
-  %874 = load i8, i8* %873, align 1
+  %873 = inttoptr i32 %872 to ptr
+  %874 = load i8, ptr %873, align 1
   %875 = icmp eq i8 %874, 4
   %876 = select i1 %875, i32 14, i32 -2055480
   %877 = add i32 %870, %876
@@ -1398,19 +1365,19 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %304
 
 881:                                              ; preds = %869
-  %882 = inttoptr i32 %854 to i32*
+  %882 = inttoptr i32 %854 to ptr
   %883 = add i32 %877, 2
-  %884 = load i32, i32* %882, align 4
+  %884 = load i32, ptr %882, align 4
   %885 = add i32 %883, -926
   br label %878
 
-886:                                              ; preds = %31, %900
+886:                                              ; preds = %900, %31
   %.sroa.892.9 = phi i32 [ %901, %900 ], [ %32, %31 ]
   %.sroa.989.8 = phi i32 [ %903, %900 ], [ 0, %31 ]
   %.sroa.1109.5 = phi i32 [ %902, %900 ], [ 0, %31 ]
   %887 = phi i32 [ %906, %900 ], [ %40, %31 ]
-  %888 = inttoptr i32 %.sroa.892.9 to i8*
-  %889 = load i8, i8* %888, align 1
+  %888 = inttoptr i32 %.sroa.892.9 to ptr
+  %889 = load i8, ptr %888, align 1
   %890 = and i8 %889, 127
   %891 = zext i8 %890 to i32
   %892 = and i32 %.sroa.1109.5, 31
@@ -1426,11 +1393,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %897 = shl i32 %896, 1
   br label %898
 
-898:                                              ; preds = %886, %894
+898:                                              ; preds = %894, %886
   %899 = phi i32 [ %897, %894 ], [ %893, %886 ]
   br label %900
 
-900:                                              ; preds = %886, %898
+900:                                              ; preds = %898, %886
   %.sroa.1225.6 = phi i32 [ %899, %898 ], [ %891, %886 ]
   %901 = add i32 %.sroa.892.9, 1
   %902 = add i32 %.sroa.1109.5, 7
@@ -1470,11 +1437,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %924 = shl i32 -2, %923
   br label %925
 
-925:                                              ; preds = %920, %922
+925:                                              ; preds = %922, %920
   %926 = phi i32 [ %924, %922 ], [ -2, %920 ]
   br label %927
 
-927:                                              ; preds = %920, %925
+927:                                              ; preds = %925, %920
   %.sroa.1173.5 = phi i32 [ %926, %925 ], [ -1, %920 ]
   %928 = or i32 %.sroa.1173.5, %903
   %929 = add i32 %918, -986
@@ -1485,8 +1452,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %.sroa.1109.6 = phi i32 [ 0, %573 ], [ %946, %944 ]
   %.sroa.1330.3 = phi i32 [ 0, %573 ], [ %947, %944 ]
   %931 = phi i32 [ %574, %573 ], [ %950, %944 ]
-  %932 = inttoptr i32 %.sroa.892.10 to i8*
-  %933 = load i8, i8* %932, align 1
+  %932 = inttoptr i32 %.sroa.892.10 to ptr
+  %933 = load i8, ptr %932, align 1
   %934 = and i8 %933, 127
   %935 = zext i8 %934 to i32
   %936 = and i32 %.sroa.1109.6, 31
@@ -1502,11 +1469,11 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   %941 = shl i32 %940, 1
   br label %942
 
-942:                                              ; preds = %930, %938
+942:                                              ; preds = %938, %930
   %943 = phi i32 [ %941, %938 ], [ %937, %930 ]
   br label %944
 
-944:                                              ; preds = %930, %942
+944:                                              ; preds = %942, %930
   %.sroa.1173.6 = phi i32 [ %943, %942 ], [ %935, %930 ]
   %945 = add i32 %.sroa.892.10, 1
   %946 = add i32 %.sroa.1109.6, 7
@@ -1527,8 +1494,8 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
   br label %41
 
 957:                                              ; preds = %668
-  %958 = inttoptr i32 %534 to i16*
-  %959 = load i16, i16* %958, align 2
+  %958 = inttoptr i32 %534 to ptr
+  %959 = load i16, ptr %958, align 2
   %960 = zext i16 %959 to i32
   %961 = add i32 %671, -1315
   br label %304
@@ -1543,12 +1510,12 @@ define i32 @sub_8240110__A_Sbi_Sbii_B_0(i8* %0, i32 %1, i8* %2, i32 %3) #0 {
 }
 
 ; Function Attrs: noduplicate noinline nounwind optnone
-declare %struct.Memory* @__remill_function_return(%struct.State* nonnull align 1, i32, %struct.Memory*) local_unnamed_addr #1
+declare ptr @__remill_function_return(ptr nonnull align 1, i32, ptr) local_unnamed_addr #1
 
 ; Function Attrs: readnone
 declare i32 @__anvill_complete_switch(i32, ...) local_unnamed_addr #2
 
-; Function Attrs: nofree nosync nounwind willreturn
+; Function Attrs: inaccessiblememonly nofree nosync nounwind willreturn
 declare void @llvm.assume(i1 noundef) #3
 
 ; Function Attrs: nofree nosync nounwind readnone speculatable willreturn
@@ -1557,5 +1524,5 @@ declare i32 @llvm.abs.i32(i32, i1 immarg) #4
 attributes #0 = { noinline }
 attributes #1 = { noduplicate noinline nounwind optnone "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "no-builtins" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "tune-cpu"="generic" "unsafe-fp-math"="false" "use-soft-float"="false" }
 attributes #2 = { readnone }
-attributes #3 = { nofree nosync nounwind willreturn }
+attributes #3 = { inaccessiblememonly nofree nosync nounwind willreturn }
 attributes #4 = { nofree nosync nounwind readnone speculatable willreturn }

@@ -1,10 +1,10 @@
-; ModuleID = 'SinkSelectionsIntoBranchTargets'
+; ModuleID = 'SinkSelectionsIntoBranchTargets.ll'
 source_filename = "SinkSelectionsIntoBranchTargets"
 
 define void @SimpleCase() {
 entry:
   %0 = alloca i64, align 8
-  %1 = load i64, i64* %0, align 4
+  %1 = load i64, ptr %0, align 4
   %2 = icmp eq i64 %1, 1
   %3 = select i1 %2, i64 10, i64 20
   br i1 %2, label %4, label %6
@@ -25,7 +25,7 @@ entry:
 define void @MultipleSelects() {
 entry:
   %0 = alloca i64, align 8
-  %1 = load i64, i64* %0, align 4
+  %1 = load i64, ptr %0, align 4
   %2 = icmp eq i64 %1, 1
   %3 = select i1 %2, i64 10, i64 20
   %4 = select i1 %2, i64 10, i64 20
@@ -54,7 +54,7 @@ entry:
 define void @MultipleSelectUsages() {
 entry:
   %0 = alloca i64, align 8
-  %1 = load i64, i64* %0, align 4
+  %1 = load i64, ptr %0, align 4
   %2 = icmp eq i64 %1, 1
   %3 = select i1 %2, i64 10, i64 20
   br i1 %2, label %4, label %10

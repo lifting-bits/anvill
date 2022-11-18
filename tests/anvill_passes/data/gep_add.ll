@@ -1,4 +1,4 @@
-; ModuleID = '/home/carson/work/remill/build/lib/Arch/X86/Runtime/amd64.bc'
+; ModuleID = 'gep_add.ll'
 source_filename = "llvm-link"
 target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu-elf"
@@ -69,11 +69,11 @@ target triple = "x86_64-pc-linux-gnu-elf"
 @__anvill_reg_ZF = local_unnamed_addr global i8 0
 
 ; Function Attrs: noinline
-define i32 @main(i32 %0, i8** %1, i8** %2) local_unnamed_addr #0 {
-  %4 = load i64, i64* inttoptr (i64 6295600 to i64*), align 16
+define i32 @main(i32 %0, ptr %1, ptr %2) local_unnamed_addr #0 {
+  %4 = load i64, ptr inttoptr (i64 6295600 to ptr), align 16
   %5 = add i64 %4, 128
-  %6 = inttoptr i64 %5 to i32*
-  %7 = load i32, i32* %6, align 4
+  %6 = inttoptr i64 %5 to ptr
+  %7 = load i32, ptr %6, align 4
   ret i32 %7
 }
 
