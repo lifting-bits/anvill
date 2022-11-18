@@ -76,9 +76,6 @@ bool RunFunctionPass(llvm::Module &module) {
   llvm::FunctionPassManager pass_manager;
   pass_manager.addPass(llvm::DCEPass());
 
-  // TODO(alex): Need to rewrite this pass to somehow not rely on typed pointers.
-  // AddConvertIntegerToPointerOperations(pass_manager);
-
   llvm::FunctionAnalysisManager fam;
 
 

@@ -25,8 +25,8 @@ CURR_DIR=$( pwd )
 BUILD_DIR="${CURR_DIR}/anvill-build"
 REMILL_BUILD_DIR="${CURR_DIR}/remill-build"
 INSTALL_DIR=/usr/local
-LLVM_VERSION=llvm-14
-CXX_COMMON_VERSION="0.2.10"
+LLVM_VERSION=llvm-15
+CXX_COMMON_VERSION="0.2.12"
 OS_VERSION=unknown
 ARCH_VERSION=unknown
 BUILD_FLAGS=
@@ -343,6 +343,10 @@ function GetLLVMVersion
     14)
       LLVM_VERSION=llvm-14
       return 0
+      ;;
+    15)
+      LLVM_VERSION=llvm-15
+      return 0
     ;;
     *)
       # unknown option
@@ -359,7 +363,7 @@ function Help
   echo ""
   echo "Options:"
   echo "  --prefix           Change the default (${INSTALL_DIR}) installation prefix."
-  echo "  --llvm-version     Change the default (9) LLVM version."
+  echo "  --llvm-version     Change the default (15) LLVM version."
   echo "  --build-dir        Change the default (${BUILD_DIR}) build directory."
   echo "  --debug            Build with Debug symbols."
   echo "  --extra-cmake-args Extra CMake arguments to build with."

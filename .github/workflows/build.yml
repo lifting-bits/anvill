@@ -54,8 +54,8 @@ jobs:
           - { name: "ubuntu", tag: "20.04" }
         binja:
           - { channel: "headless", version: "3.1.3479" }
-        llvm: ["14"]
-        cxxcommon_version: ["v0.2.10"]
+        llvm: ["14", "15"]
+        cxxcommon_version: ["v0.2.16"]
 
     runs-on: ubuntu-20.04
     container:
@@ -432,8 +432,8 @@ jobs:
       fail-fast: false
       matrix:
         os: ["macos-11"]
-        llvm: ["14"]
-        cxxcommon_version: ["v0.2.10"]
+        llvm: ["14", "15"]
+        cxxcommon_version: ["v0.2.16"]
 
     runs-on: ${{ matrix.os }}
 
@@ -781,7 +781,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["14"]
+        llvm: ["14", "15"]
         ubuntu: ["20.04"]
         binja:
           - { channel: "headless", version: "3.1.3479" }

@@ -31,7 +31,6 @@ protobuf_generate_cpp(
 # `.cpp` file.
 set(anvill_passes
   ConvertAddressesToEntityUses
-  ConvertIntegerToPointerOperations
   ConvertMasksToCasts
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
@@ -217,7 +216,7 @@ if(ANVILL_ENABLE_INSTALL)
     PUBLIC_HEADER DESTINATION
       "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
   )
-  
+
   install(
     FILES
       ${anvill_passes_HEADERS}

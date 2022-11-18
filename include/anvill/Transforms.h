@@ -190,26 +190,6 @@ void AddLowerRemillMemoryAccessIntrinsics(llvm::FunctionPassManager &fpm);
 // instructions.
 void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm);
 
-//// Anvill-lifted bitcode operates at a very low level, swapping between integer
-//// and pointer representations. It is typically for just-lifted bitcode to
-//// perform integer arithmetic on addresses, then cast those integers into
-//// pointers in order to do a `load` or `store`. This happens because the bitcode
-//// we get from Remill uses memory access intrinsics, which abstract over the
-//// target program's address space and model memory loads/stores in terms of
-//// intrinsic function calls operating on integer addresses. When these intrinsic
-//// calls are lowered into `load` and `store` instructions by
-//// `LowerRemillMemoryAccessIntrinsics`, we are left with a mixed bag in integer
-//// arithmetic and then `inttoptr` casts.
-////
-//// Ideally, we want to comprehensively brighten all integer operations that
-//// produce pointers into pointer operations. For example, integer arithmetic
-//// should instead become `getelementptr` instructions, where possible, which
-//// model pointer arithmetic at a higher level.
-////
-//// This function attempts to apply a battery of pattern-based transforms to
-//// brighten integer operations into pointer operations.
-void AddConvertIntegerToPointerOperations(llvm::FunctionPassManager &fpm);
-
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is
 // likely to always succeed for x86(-64) and aarch64, due to their support
