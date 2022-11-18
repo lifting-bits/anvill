@@ -1,17 +1,21 @@
-#include <anvill/Passes/LowerSwitchIntrinsics.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/LowerSwitchIntrinsics.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <doctest/doctest.h>
 #include <llvm/ADT/SmallSet.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Dominators.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Support/Casting.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
+
 #include <iostream>
 #include <map>
 
@@ -99,14 +103,14 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
-    auto ctrl_flow_provider =
-        anvill::NullControlFlowProvider();
+    auto ctrl_flow_provider = anvill::NullControlFlowProvider();
     TypeDictionary tyDict(*context);
 
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider null_mem_prov;
-    anvill::LifterOptions lift_options(
-        arch.get(), *mod,ty_prov,std::move(ctrl_flow_provider),null_mem_prov);
+    anvill::LifterOptions lift_options(arch.get(), *mod, ty_prov,
+                                       std::move(ctrl_flow_provider),
+                                       null_mem_prov);
     EntityLifter lifter(lift_options);
     fam.registerPass([&] { return JumpTableAnalysis(lifter); });
 
@@ -132,7 +136,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(-1153278);
 
     fpm.addPass(LowerSwitchIntrinsics(*mem_prov.get()));
-    fpm.run(*target_function, fam);
 
 
     const auto &analysis_results =
@@ -141,12 +144,15 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(analysis_results.size() ==
             3);  // check that we resolve all the switches
 
-    std::optional<std::reference_wrapper<const JumpTableResult>> recovered_switch = std::nullopt;
-    llvm::CallInst *instrinsic = nullptr;
-    for (const auto& jumpres : analysis_results) {
+    std::optional<std::reference_wrapper<const JumpTableResult>>
+        recovered_switch = std::nullopt;
+
+
+    llvm::BasicBlock *target_block = nullptr;
+    for (const auto &jumpres : analysis_results) {
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
       llvm::Value *v = jumpres.first->getArgOperand(2);
-      const JumpTableResult& res = jumpres.second;
+      const JumpTableResult &res = jumpres.second;
       auto interp = res.interp.getInterp();
       REQUIRE(llvm::isa<llvm::ConstantInt>(v));
       auto pc1 = llvm::cast<llvm::ConstantInt>(v);
@@ -162,8 +168,8 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.bounds.upper.getLimitedValue() == 35);
           CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 35)) == 136968940);
-          instrinsic = jumpres.first;
           recovered_switch = {res};
+          target_block = jumpres.first->getParent();
           break;
         case 136578559:
           CHECK(res.bounds.lower.getLimitedValue() == 26);
@@ -175,9 +181,11 @@ TEST_SUITE("SwitchLowerLargeFunction") {
       }
     }
 
-    REQUIRE(instrinsic != nullptr);
+    fpm.run(*target_function, fam);
+
+    REQUIRE(target_block != nullptr);
     llvm::SwitchInst *lowered_switch =
-        llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
+        llvm::cast<llvm::SwitchInst>(target_block->getTerminator());
 
     CHECK(lowered_switch->getNumCases() == 5);
     CHECK(lowered_switch->getCondition() ==
@@ -194,6 +202,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
       CHECK(allowed_indices.contains(
           c.getCaseValue()->getValue().getLimitedValue()));
     }
+
 
     lam.clear();
     fam.clear();
@@ -223,14 +232,14 @@ TEST_SUITE("SwitchLowerLargeFunction") {
 
     auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
-    auto ctrl_flow_provider =
-        anvill::NullControlFlowProvider();
+    auto ctrl_flow_provider = anvill::NullControlFlowProvider();
     TypeDictionary tyDict(*context);
 
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider null_mem_prov;
-    anvill::LifterOptions lift_options(
-        arch.get(), *mod,ty_prov,std::move(ctrl_flow_provider),null_mem_prov);
+    anvill::LifterOptions lift_options(arch.get(), *mod, ty_prov,
+                                       std::move(ctrl_flow_provider),
+                                       null_mem_prov);
     EntityLifter lifter(lift_options);
 
     fam.registerPass([&] { return JumpTableAnalysis(lifter); });
@@ -252,8 +261,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     fpm.addPass(llvm::InstCombinePass());
     fpm.addPass(LowerSwitchIntrinsics(*mem_prov));
 
-    fpm.run(*target_function, fam);
-
 
     const auto &analysis_results =
         fam.getResult<JumpTableAnalysis>(*target_function);
@@ -261,13 +268,14 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(analysis_results.size() ==
             1);  // check that we resolve all the switches
 
-    std::optional<std::reference_wrapper<const JumpTableResult>> recovered_switch = std::nullopt;
-    llvm::CallInst *instrinsic = nullptr;
-    for (const auto& jumpres : analysis_results) {
+
+    std::optional<std::reference_wrapper<const JumpTableResult>>
+        recovered_switch = std::nullopt;
+    for (const auto &jumpres : analysis_results) {
       auto interp = jumpres.second.interp.getInterp();
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
       llvm::Value *v = jumpres.first->getArgOperand(2);
-      const JumpTableResult& res = jumpres.second;
+      const JumpTableResult &res = jumpres.second;
       REQUIRE(llvm::isa<llvm::ConstantInt>(v));
       auto pc1 = llvm::cast<llvm::ConstantInt>(v);
       switch (pc1->getValue().getLimitedValue()) {
@@ -277,16 +285,24 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(32, -3, true))
                     .getLimitedValue() == 4294983524);
-          instrinsic = jumpres.first;
           recovered_switch = {res};
           break;
         default: CHECK(false);
       }
     }
 
-    REQUIRE(instrinsic != nullptr);
-    llvm::SwitchInst *lowered_switch =
-        llvm::cast<llvm::SwitchInst>(instrinsic->getParent()->getTerminator());
+    fpm.run(*target_function, fam);
+
+
+    llvm::SwitchInst *lowered_switch = nullptr;
+
+    for (auto &inst : llvm::instructions(target_function)) {
+      if (auto sw = llvm::dyn_cast<llvm::SwitchInst>(&inst)) {
+        lowered_switch = sw;
+      }
+    }
+
+    REQUIRE(lowered_switch != nullptr);
 
     CHECK(lowered_switch->getNumCases() == 4);
     CHECK(lowered_switch->getCondition() ==
