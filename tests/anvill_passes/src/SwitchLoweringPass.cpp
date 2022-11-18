@@ -144,9 +144,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(analysis_results.size() ==
             3);  // check that we resolve all the switches
 
-    std::optional<std::reference_wrapper<const JumpTableResult>>
-        recovered_switch = std::nullopt;
-
 
     llvm::BasicBlock *target_block = nullptr;
     for (const auto &jumpres : analysis_results) {
@@ -168,7 +165,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.bounds.upper.getLimitedValue() == 35);
           CHECK(!res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(8, 35)) == 136968940);
-          recovered_switch = {res};
           target_block = jumpres.first->getParent();
           break;
         case 136578559:
@@ -188,8 +184,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
         llvm::cast<llvm::SwitchInst>(target_block->getTerminator());
 
     CHECK(lowered_switch->getNumCases() == 5);
-    CHECK(lowered_switch->getCondition() ==
-          recovered_switch->get().indexRel.getIndex());
+
 
     llvm::SmallSet<uint64_t, 10> allowed_indices;
     allowed_indices.insert(6);
@@ -269,8 +264,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
             1);  // check that we resolve all the switches
 
 
-    std::optional<std::reference_wrapper<const JumpTableResult>>
-        recovered_switch = std::nullopt;
     for (const auto &jumpres : analysis_results) {
       auto interp = jumpres.second.interp.getInterp();
       // unfortunately values are no longer identifiable by labels because the pass requires the instruction combiner which will now run again so identify switch by first non default pc value.
@@ -285,7 +278,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
           CHECK(res.bounds.isSigned);
           CHECK(res.indexRel.apply(interp, llvm::APInt(32, -3, true))
                     .getLimitedValue() == 4294983524);
-          recovered_switch = {res};
           break;
         default: CHECK(false);
       }
@@ -305,8 +297,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     REQUIRE(lowered_switch != nullptr);
 
     CHECK(lowered_switch->getNumCases() == 4);
-    CHECK(lowered_switch->getCondition() ==
-          recovered_switch->get().indexRel.getIndex());
 
     llvm::SmallSet<uint64_t, 10> allowed_indices;
     allowed_indices.insert(llvm::APInt(32, -4).getLimitedValue());
