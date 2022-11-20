@@ -53,6 +53,7 @@
 #include <vector>
 
 #include "EntityLifter.h"
+#include "anvill/Specification.h"
 
 namespace anvill {
 namespace {
@@ -1416,6 +1417,66 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 }
 
 
+bool FunctionLifter::DoInterProceduralControlFlow(
+    const remill::Instruction &insn, llvm::BasicBlock *block,
+    const anvill::ControlFlowOverride &override) {
+  // only handle inter-proc since intra-proc are handled implicitly by the CFG.
+  // Hmmm need to handle conditionals....
+  llvm::IRBuilder<> builder(block);
+  if (std::holds_alternative<anvill::Call>(override)) {
+    auto cc = std::get<anvill::Call>(override);
+    remill::AddCall(block, this->intrinsics.function_call, this->intrinsics);
+    if (!cc.stop) {
+      auto [_, raddr] = this->LoadFunctionReturnAddress(insn, block);
+      auto npc = remill::LoadNextProgramCounterRef(block);
+      auto pc = remill::LoadProgramCounterRef(block);
+      builder.CreateStore(raddr, npc);
+      builder.CreateStore(raddr, pc);
+    } else {
+      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+    }
+    return !cc.stop;
+  } else if (std::holds_alternative<anvill::Return>(override)) {
+    remill::AddTerminatingTailCall(block, intrinsics.function_return,
+                                   intrinsics);
+    return false;
+  }
+
+  return true;
+}
+void FunctionLifter::ApplyInterProceduralControlFlowOverride(
+    const remill::Instruction &insn, llvm::BasicBlock *&block) {
+
+
+  // if this instruction is conditional and interprocedural then we are going to split the block into a case were we do take it and a branch where we dont and then rejoin
+
+  auto override = options.control_flow_provider.GetControlFlowOverride(insn.pc);
+
+  if ((std::holds_alternative<anvill::Call>(override) ||
+       std::holds_alternative<anvill::Return>(override))) {
+    if (std::holds_alternative<remill::Instruction::ConditionalInstruction>(
+            insn.flows)) {
+      auto btaken = remill::LoadBranchTaken(block);
+      llvm::IRBuilder<> builder(block);
+      auto do_control_flow =
+          llvm::BasicBlock::Create(block->getContext(), "", block->getParent());
+      auto continuation =
+          llvm::BasicBlock::Create(block->getContext(), "", block->getParent());
+      builder.CreateCondBr(btaken, do_control_flow, continuation);
+
+      // if the interprocedural control flow block isnt terminal link it back up
+      if (this->DoInterProceduralControlFlow(insn, do_control_flow, override)) {
+        llvm::BranchInst::Create(continuation, do_control_flow);
+      }
+
+      block = continuation;
+
+    } else {
+      this->DoInterProceduralControlFlow(insn, block, override);
+    }
+  }
+}
+
 llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
     BasicBlockFunction &basic_block_function, const CodeBlock &blk) {
   auto bb = &basic_block_function.func->getEntryBlock();
@@ -1427,8 +1488,8 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
   ApplyTargetList(blk.context_assignments, init_context);
 
   while (reached_addr < blk.addr + blk.size) {
-    auto res =
-        this->DecodeInstructionInto(reached_addr, false, &inst, init_context);
+    auto addr = reached_addr;
+    auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
       LOG(FATAL) << "Failed to decode insn in block";
     }
@@ -1440,6 +1501,7 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
     // to treat instruction lifting as an operation that can't fail.
     std::ignore = inst.GetLifter()->LiftIntoBlock(
         inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
+    this->ApplyInterProceduralControlFlowOverride(inst, bb);
   }
 
 
@@ -1492,6 +1554,8 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 }
 
 void FunctionLifter::VisitBlocks() {
+  DLOG(INFO) << "Num blocks for func " << std::hex << this->curr_decl->address
+             << ": " << this->curr_decl->cfg.size();
   for (const auto &[addr, blk] : this->curr_decl->cfg) {
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk);

@@ -490,6 +490,16 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // inline on arbitrary function.
   void RecursivelyInlineFunctionCallees(llvm::Function *);
 
+  // Manipulates the control flow to restore intra-procedural state when reaching an
+  // inter-procedural effect.
+  void ApplyInterProceduralControlFlowOverride(const remill::Instruction &,
+                                               llvm::BasicBlock *&block);
+
+  bool
+  DoInterProceduralControlFlow(const remill::Instruction &insn,
+                               llvm::BasicBlock *block,
+                               const anvill::ControlFlowOverride &override);
+
 
   // Allocate and initialize the state structure.
   void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
