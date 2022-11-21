@@ -1936,17 +1936,20 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
   const auto target_module = options.module;
   auto &module_context = target_module->getContext();
 
-  for (auto &[block_addr, block] : decl.cfg) {
-    std::string name = "basic_block_func" + std::to_string(block_addr);
-    auto new_version = target_module->getFunction(name);
-    if (!new_version) {
-      auto old_version = semantics_module->getFunction(name);
-      auto type =
-          llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
-              old_version->getFunctionType(), module_context));
-      new_version = llvm::Function::Create(
-          type, llvm::GlobalValue::ExternalLinkage, name, target_module);
-      remill::CloneFunctionInto(old_version, new_version);
+
+  if (!func->isDeclaration()) {
+    for (auto &[block_addr, block] : decl.cfg) {
+      std::string name = "basic_block_func" + std::to_string(block_addr);
+      auto new_version = target_module->getFunction(name);
+      if (!new_version) {
+        auto old_version = semantics_module->getFunction(name);
+        auto type =
+            llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
+                old_version->getFunctionType(), module_context));
+        new_version = llvm::Function::Create(
+            type, llvm::GlobalValue::ExternalLinkage, name, target_module);
+        remill::CloneFunctionInto(old_version, new_version);
+      }
     }
   }
 
