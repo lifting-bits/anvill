@@ -181,6 +181,11 @@ struct CallableDecl {
   DecodeFromPB(const remill::Arch *arch, const std::string &pb);
 };
 
+struct LocalVariableDecl {
+  std::string name;
+  std::vector<ValueDecl> values;
+};
+
 // A function decl, as represented at a "near ABI" level. To be specific,
 // not all C, and most C++ decls, as written would be directly translatable
 // to this. This ought nearly represent how LLVM represents a C/C++ function
@@ -210,6 +215,8 @@ struct FunctionDecl : public CallableDecl {
 
   // These are the blocks contained within the function representing the CFG.
   std::unordered_map<std::uint64_t, CodeBlock> cfg;
+
+  std::unordered_map<std::string, LocalVariableDecl> locals;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;

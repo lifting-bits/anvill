@@ -512,6 +512,22 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     decl.is_extern = false;
   }
 
+  for (auto &[name, local] : function.local_variables()) {
+    decl.locals[name].name = name;
+    auto type_spec = DecodeType(local.type());
+    if (!type_spec.Succeeded()) {
+      return type_spec.Error();
+    }
+
+    for (auto &value : local.values()) {
+      auto value_decl = DecodeValue(value, type_spec.Value(), "local variable");
+      if (!value_decl.Succeeded()) {
+        return value_decl.Error();
+      }
+      decl.locals[name].values.push_back(value_decl.Value());
+    }
+  }
+
   return decl;
 }
 

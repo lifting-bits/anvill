@@ -172,6 +172,7 @@ message Function {
   FunctionLinkage func_linkage = 3; 
   Callable callable = 4;
   map<uint64, CodeBlock> blocks = 5;
+  map<string, Variable> local_variables = 6;
 }
 
 message GlobalVariable {
