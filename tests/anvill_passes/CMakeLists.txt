@@ -22,6 +22,7 @@ add_executable(test_anvill_passes
   src/BranchRecoveryPass.cpp
   src/RemoveStackPointerCExprs.cpp
   src/RecoverEntityUses.cpp
+  src/TestAbstractStackBB.cpp
 )
 
 target_link_libraries(test_anvill_passes PRIVATE
