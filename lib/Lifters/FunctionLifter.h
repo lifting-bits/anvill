@@ -500,6 +500,15 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
                                llvm::BasicBlock *block,
                                const anvill::ControlFlowOverride &override);
 
+  // Same addcall machinery from remill except allows for the 4 argument basic block functio (state, program_counter, memory, next_pc_ref).
+  llvm::CallInst *AddCallFromBasicBlockFunctionToLifted(
+      llvm::BasicBlock *source_block, llvm::Function *dest_func,
+      const remill::IntrinsicTable &intrinsics);
+
+  llvm::CallInst *AddTerminatingTailCallFromBasicBlockFunctionToLifted(
+      llvm::BasicBlock *source_block, llvm::Function *dest_func,
+      const remill::IntrinsicTable &intrinsics);
+
 
   // Allocate and initialize the state structure.
   void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,

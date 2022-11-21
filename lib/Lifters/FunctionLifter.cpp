@@ -1417,15 +1417,45 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 }
 
 
+llvm::CallInst *FunctionLifter::AddCallFromBasicBlockFunctionToLifted(
+    llvm::BasicBlock *source_block, llvm::Function *dest_func,
+    const remill::IntrinsicTable &intrinsics) {
+  auto func = source_block->getParent();
+  llvm::IRBuilder<> ir(source_block);
+  std::array<llvm::Value *, remill::kNumBlockArgs> args;
+  args[remill::kMemoryPointerArgNum] =
+      NthArgument(func, remill::kMemoryPointerArgNum);
+  args[remill::kStatePointerArgNum] =
+      NthArgument(func, remill::kStatePointerArgNum);
+  args[remill::kPCArgNum] = NthArgument(func, remill::kPCArgNum);
+  return ir.CreateCall(dest_func, args);
+}
+
+
+llvm::CallInst *
+FunctionLifter::AddTerminatingTailCallFromBasicBlockFunctionToLifted(
+    llvm::BasicBlock *source_block, llvm::Function *dest_func,
+    const remill::IntrinsicTable &intrinsics) {
+  llvm::IRBuilder<> ir(source_block);
+  auto npc = remill::LoadNextProgramCounter(source_block, intrinsics);
+  auto pc_ref = remill::LoadProgramCounterRef(source_block);
+  ir.CreateStore(npc, pc_ref);
+  auto call = this->AddCallFromBasicBlockFunctionToLifted(
+      source_block, dest_func, intrinsics);
+  call->setTailCall(true);
+  ir.CreateRet(call);
+  return call;
+}
+
 bool FunctionLifter::DoInterProceduralControlFlow(
     const remill::Instruction &insn, llvm::BasicBlock *block,
     const anvill::ControlFlowOverride &override) {
   // only handle inter-proc since intra-proc are handled implicitly by the CFG.
-  // Hmmm need to handle conditionals....
   llvm::IRBuilder<> builder(block);
   if (std::holds_alternative<anvill::Call>(override)) {
     auto cc = std::get<anvill::Call>(override);
-    remill::AddCall(block, this->intrinsics.function_call, this->intrinsics);
+    this->AddCallFromBasicBlockFunctionToLifted(
+        block, this->intrinsics.function_call, this->intrinsics);
     if (!cc.stop) {
       auto [_, raddr] = this->LoadFunctionReturnAddress(insn, block);
       auto npc = remill::LoadNextProgramCounterRef(block);
