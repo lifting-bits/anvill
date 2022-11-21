@@ -105,7 +105,6 @@ class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
 void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   const LifterOptions &options = lifter.Options();
-  const MemoryProvider &mp = lifter.MemoryProvider();
 
   EntityCrossReferenceResolver xr(lifter);
 
@@ -191,7 +190,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   AddRemoveErrorIntrinsics(fpm);
   AddLowerRemillMemoryAccessIntrinsics(fpm);
   AddRemoveCompilerBarriers(fpm);
-  AddLowerTypeHintIntrinsics(fpm);
 
   // TODO(pag): This pass has an issue on the `SMIME_write_ASN1` function
   //            of the ARM64 variant of Challenge 5.
@@ -228,8 +226,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
   AddBranchRecovery(fpm);
-
-  AddLowerSwitchIntrinsics(fpm, mp);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

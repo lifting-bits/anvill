@@ -135,7 +135,7 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(-1153287);
     mem_prov->AddJumpTableOffset(-1153278);
 
-    fpm.addPass(LowerSwitchIntrinsics(*mem_prov.get()));
+    fpm.run(*target_function, fam);
 
 
     const auto &analysis_results =
@@ -254,7 +254,6 @@ TEST_SUITE("SwitchLowerLargeFunction") {
     mem_prov->AddJumpTableOffset(0x30);
 
     fpm.addPass(llvm::InstCombinePass());
-    fpm.addPass(LowerSwitchIntrinsics(*mem_prov));
 
 
     const auto &analysis_results =

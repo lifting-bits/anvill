@@ -40,8 +40,6 @@ set(anvill_passes
   Constraints
   LowerRemillMemoryAccessIntrinsics
   LowerRemillUndefinedIntrinsics
-  LowerSwitchIntrinsics
-  LowerTypeHintIntrinsics
   RecoverBasicStackFrame
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
@@ -169,8 +167,8 @@ add_library(anvill STATIC
 
 set_target_properties(anvill
   PROPERTIES
-    PUBLIC_HEADER "${anvill_PUBLIC_HEADERS}"
-    LINKER_LANGUAGE CXX
+  PUBLIC_HEADER "${anvill_PUBLIC_HEADERS}"
+  LINKER_LANGUAGE CXX
 )
 
 target_include_directories(anvill PUBLIC
@@ -181,46 +179,45 @@ target_include_directories(anvill PUBLIC
 
 target_link_libraries(anvill
   PUBLIC
-    remill
+  remill
   PRIVATE
-    protobuf::libprotobuf
+  protobuf::libprotobuf
 )
 
 add_dependencies(anvill check_git_anvill)
 
-if (ANVILL_ENABLE_PYTHON3_LIBS)
+if(ANVILL_ENABLE_PYTHON3_LIBS)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../python" python)
 endif()
 
-#if(ANVILL_ENABLE_TESTS)
-#  add_subdirectory("tests")
-#endif()
-
+# if(ANVILL_ENABLE_TESTS)
+# add_subdirectory("tests")
+# endif()
 if(ANVILL_ENABLE_INSTALL)
   install(
     TARGETS
-      anvill
+    anvill
 
     EXPORT
-      anvillTargets
+    anvillTargets
 
     LIBRARY DESTINATION
-      lib
+    lib
 
     ARCHIVE DESTINATION
-      lib
+    lib
 
     INCLUDES DESTINATION
-      include
+    include
 
     PUBLIC_HEADER DESTINATION
-      "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
+    "${CMAKE_INSTALL_INCLUDEDIR}/anvill"
   )
 
   install(
     FILES
-      ${anvill_passes_HEADERS}
+    ${anvill_passes_HEADERS}
     DESTINATION
-      "${CMAKE_INSTALL_INCLUDEDIR}/anvill/Passes"
+    "${CMAKE_INSTALL_INCLUDEDIR}/anvill/Passes"
   )
 endif(ANVILL_ENABLE_INSTALL)
