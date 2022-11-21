@@ -158,6 +158,27 @@ message Callable {
   ReturnStackPointer return_stack_pointer = 10;
 }
 
+
+// These arent quite affine relations we just store 
+// relationships of Reg=Reg'+Offset where Reg' is the register value at entry 
+// to the function. 
+// Maybe we want to get more complicated when doing the analysis, 
+// but this is kinda 
+// what we want at the end to determine stack relationships. 
+// This very closely matches ghidra's SymbolicPropogator: 
+// https://ghidra.re/ghidra_docs/api/ghidra/program/util/SymbolicPropogator.Value.html#getRelativeRegister()
+message OffsetDomain {
+  string target_reg = 1;
+  // An empty base indicates a constant.
+  optional string base = 2;
+  int64 offset = 3;
+}
+
+message BlockContext {
+  repeated OffsetDomain symvals = 1;
+}
+
+
 message CodeBlock {
   uint64 address = 1;
   string name = 2;
@@ -173,6 +194,7 @@ message Function {
   Callable callable = 4;
   map<uint64, CodeBlock> blocks = 5;
   map<string, Variable> local_variables = 6;
+  map<uint64, BlockContext> block_context = 7;
 }
 
 message GlobalVariable {
