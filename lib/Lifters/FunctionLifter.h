@@ -437,7 +437,7 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
 
   LiftedFunction CreateLiftedFunction(const std::string &name);
 
-  BasicBlockFunction CreateBasicBlockFunction(const std::string &name);
+  BasicBlockFunction CreateBasicBlockFunction(const CodeBlock &block);
 
 
   llvm::BasicBlock *

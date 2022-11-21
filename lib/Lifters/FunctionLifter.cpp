@@ -1552,8 +1552,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
   llvm::IRBuilder<> builder(llvm_blk);
-  auto bb_lifted_func = this->CreateBasicBlockFunction(
-      "basic_block_func" + std::to_string(blk.addr));
+  auto bb_lifted_func = this->CreateBasicBlockFunction(blk);
   bb_lifted_func.func->removeFnAttr(llvm::Attribute::AlwaysInline);
   bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
@@ -1595,8 +1594,8 @@ void FunctionLifter::VisitBlocks() {
 
 
 BasicBlockFunction
-FunctionLifter::CreateBasicBlockFunction(const std::string &name_) {
-
+FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
+  std::string name_ = "basic_block_func" + std::to_string(block.addr);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
@@ -1770,7 +1769,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
 
   this->native_func->dump();
-  LOG(FATAL) << "Not fully implemented yet";
 
 
   return native_func;
@@ -1937,6 +1935,21 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
 
   const auto target_module = options.module;
   auto &module_context = target_module->getContext();
+
+  for (auto &[block_addr, block] : decl.cfg) {
+    std::string name = "basic_block_func" + std::to_string(block_addr);
+    auto new_version = target_module->getFunction(name);
+    if (!new_version) {
+      auto old_version = semantics_module->getFunction(name);
+      auto type =
+          llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
+              old_version->getFunctionType(), module_context));
+      new_version = llvm::Function::Create(
+          type, llvm::GlobalValue::ExternalLinkage, name, target_module);
+      remill::CloneFunctionInto(old_version, new_version);
+    }
+  }
+
   const auto name = func->getName().str();
   const auto module_func_type = llvm::dyn_cast<llvm::FunctionType>(
       remill::RecontextualizeType(func->getFunctionType(), module_context));
