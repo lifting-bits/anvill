@@ -49,7 +49,7 @@ ValueLifterImpl::GetFunctionPointer(const FunctionDecl &decl,
   auto &func_lifter = ent_lifter.function_lifter;
   auto func = func_lifter.DeclareFunction(decl);
   auto func_in_context =
-      func_lifter.AddFunctionToContext(func, decl.address, ent_lifter);
+      func_lifter.AddFunctionToContext(func, decl, ent_lifter);
   return func_in_context;
 }
 
@@ -127,10 +127,8 @@ static llvm::Constant *UnwrapZeroIndices(llvm::Constant *ret,
 //            entity or plausible entity.
 //
 // NOTE(pag): `hinted_type` can be `nullptr`.
-llvm::Constant *
-ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
-                                         EntityLifterImpl &ent_lifter,
-                                         llvm::Type *hinted_type) const {
+llvm::Constant *ValueLifterImpl::TryGetPointerForAddress(
+    uint64_t ea, EntityLifterImpl &ent_lifter, llvm::Type *hinted_type) const {
 
   // First, try to see if we already have an entity for this address. Give
   // preference to an entity with a matching type. Then to global variables and
@@ -163,8 +161,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
 
   // Try to create a `FunctionDecl` on-demand.
   if (hinted_type) {
-    if (auto func_type =
-            llvm::dyn_cast<llvm::FunctionType>(hinted_type)) {
+    if (auto func_type = llvm::dyn_cast<llvm::FunctionType>(hinted_type)) {
       const auto func =
           llvm::Function::Create(func_type, llvm::GlobalValue::PrivateLinkage,
                                  ".anvill.value_lifter.temp", options.module);
@@ -274,8 +271,8 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       }
 
       // If we successfully lift it as a reference then we're in good shape.
-      if (auto val = GetPointer(address, nullptr,
-                                ent_lifter, loc_ea, addr_space)) {
+      if (auto val =
+              GetPointer(address, nullptr, ent_lifter, loc_ea, addr_space)) {
         return val;
       }
 

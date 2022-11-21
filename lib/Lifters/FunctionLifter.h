@@ -89,7 +89,8 @@ class FunctionLifter {
   // Update the associated entity lifter with information about this
   // function, and copy the function into the context's module. Returns the
   // version of `func` inside the module of the lifter context.
-  llvm::Function *AddFunctionToContext(llvm::Function *func, uint64_t address,
+  llvm::Function *AddFunctionToContext(llvm::Function *func,
+                                       const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
  private:
