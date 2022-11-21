@@ -18,7 +18,6 @@ add_executable(test_anvill_passes
   src/InstructionFolderPass.cpp
   src/BrightenPointers.cpp
   src/TransformRemillJump.cpp
-  src/SwitchLoweringPass.cpp
   src/XorConversionPass.cpp
   src/BranchRecoveryPass.cpp
   src/RemoveStackPointerCExprs.cpp
