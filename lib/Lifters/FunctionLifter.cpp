@@ -1557,7 +1557,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
   bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
   this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
-  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args;
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
   args[remill::kStatePointerArgNum] = state_ptr;
   args[remill::kPCArgNum] =
       options.program_counter_init_procedure(builder, pc_reg, blk.addr);
@@ -1565,6 +1565,19 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
       remill::LoadMemoryPointer(llvm_blk, this->intrinsics);
 
   args[remill::kNumBlockArgs] = remill::LoadNextProgramCounterRef(llvm_blk);
+
+  for (auto &param : curr_decl->params) {
+    args.push_back(LoadLiftedValue(param, type_specifier.Dictionary(),
+                                   intrinsics, llvm_blk, state_ptr,
+                                   args[remill::kMemoryPointerArgNum]));
+  }
+  for (auto &[name, local] : curr_decl->locals) {
+    if (local.values.size() == 1) {
+      args.push_back(LoadLiftedValue(
+          local.values[0], type_specifier.Dictionary(), intrinsics, llvm_blk,
+          state_ptr, args[remill::kMemoryPointerArgNum]));
+    }
+  }
 
   auto new_mem_ptr = builder.CreateCall(bb_lifted_func.func, args);
 
@@ -1604,6 +1617,15 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   std::vector<llvm::Type *> params = std::vector(
       lifted_func_type->param_begin(), lifted_func_type->param_end());
   params.push_back(llvm::PointerType::get(context, 0));
+  size_t first_param_arg = params.size();
+  for (auto &param : curr_decl->params) {
+    params.push_back(param.type);
+  }
+  for (auto &[name, local] : curr_decl->locals) {
+    if (local.values.size() == 1) {
+      params.push_back(local.values[0].type);
+    }
+  }
 
   llvm::FunctionType *func_type =
       llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
@@ -1614,7 +1636,7 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
       llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
                              name, this->semantics_module.get());
 
-  auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
+  llvm::Value *memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
   auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
@@ -1624,6 +1646,23 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   next_pc_out->setName("next_pc_out");
 
   options.arch->InitializeEmptyLiftedFunction(func);
+
+  auto &blk = func->getEntryBlock();
+  for (auto &param : curr_decl->params) {
+    auto arg = func->getArg(first_param_arg++);
+    arg->setName(param.name);
+    memory = StoreNativeValue(arg, param, type_provider.Dictionary(),
+                              intrinsics, &blk, state, memory);
+  }
+  for (auto &[name, local] : curr_decl->locals) {
+    if (local.values.size() == 1) {
+      auto arg = func->getArg(first_param_arg++);
+      arg->setName(name);
+      memory =
+          StoreNativeValue(arg, local.values[0], type_provider.Dictionary(),
+                           intrinsics, &blk, state, memory);
+    }
+  }
 
   auto state_ptr = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
