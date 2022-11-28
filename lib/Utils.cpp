@@ -240,6 +240,39 @@ void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
   }
 }
 
+void StoreNativeValueToRegister(llvm::Value *native_val,
+                                const remill::Register *reg,
+                                const TypeDictionary &types,
+                                const remill::IntrinsicTable &intrinsics,
+                                llvm::BasicBlock *in_block,
+                                llvm::Value *state_ptr) {
+  auto func = in_block->getParent();
+  auto module = func->getParent();
+  auto &context = module->getContext();
+
+  auto reg_type = remill::RecontextualizeType(reg->type, context);
+  auto ptr_to_reg = reg->AddressOf(state_ptr, in_block);
+  llvm::IRBuilder<> ir(in_block);
+
+  llvm::StoreInst *store = nullptr;
+
+  auto ipoint = ir.GetInsertPoint();
+  auto iblock = ir.GetInsertBlock();
+  auto adapted_val = types.ConvertValueToType(ir, native_val, reg_type);
+  ir.SetInsertPoint(iblock, ipoint);
+
+  if (adapted_val) {
+    store = ir.CreateStore(adapted_val, ptr_to_reg);
+
+  } else {
+    auto ptr = ir.CreateBitCast(ptr_to_reg,
+                                llvm::PointerType::get(ir.getContext(), 0));
+    CopyMetadataTo(native_val, ptr);
+    store = ir.CreateStore(native_val, ptr);
+  }
+  CopyMetadataTo(native_val, store);
+}
+
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated
 // with `decl`.
@@ -260,31 +293,8 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
   // Store it to a register.
   if (decl.reg) {
-    auto reg_type = remill::RecontextualizeType(decl.reg->type, context);
-    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, in_block);
-    llvm::IRBuilder<> ir(in_block);
-    if (decl_type != reg_type) {
-      ir.CreateStore(llvm::Constant::getNullValue(reg_type), ptr_to_reg);
-    }
-
-    llvm::StoreInst *store = nullptr;
-
-    auto ipoint = ir.GetInsertPoint();
-    auto iblock = ir.GetInsertBlock();
-    auto adapted_val = types.ConvertValueToType(ir, native_val, reg_type);
-    ir.SetInsertPoint(iblock, ipoint);
-
-    if (adapted_val) {
-      store = ir.CreateStore(adapted_val, ptr_to_reg);
-
-    } else {
-      auto ptr = ir.CreateBitCast(ptr_to_reg,
-                                  llvm::PointerType::get(ir.getContext(), 0));
-      CopyMetadataTo(native_val, ptr);
-      store = ir.CreateStore(native_val, ptr);
-    }
-    CopyMetadataTo(native_val, store);
-
+    StoreNativeValueToRegister(native_val, decl.reg, types, intrinsics,
+                               in_block, state_ptr);
     return mem_ptr;
 
     // Store it to memory.

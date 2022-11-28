@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <remill/Arch/Arch.h>
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -79,11 +81,17 @@ bool CanBeAliased(llvm::Value *val);
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
-llvm::Value *LoadLiftedValue(const ValueDecl &decl,
-                             const TypeDictionary &types,
+llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
+
+void StoreNativeValueToRegister(llvm::Value *native_val,
+                                const remill::Register *reg,
+                                const TypeDictionary &types,
+                                const remill::IntrinsicTable &intrinsics,
+                                llvm::BasicBlock *in_block,
+                                llvm::Value *state_ptr);
 
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated

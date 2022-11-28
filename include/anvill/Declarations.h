@@ -42,6 +42,14 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+struct RegisterOffset {
+  const remill::Register *target;
+
+  // A null base indicates a pure offset
+  const remill::Register *base;
+  std::int64_t offset;
+};
+
 struct CodeBlock {
   uint64_t addr;
   uint32_t size;
@@ -50,6 +58,7 @@ struct CodeBlock {
   // A block may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a block.
   std::unordered_map<std::string, std::uint64_t> context_assignments;
+  std::vector<RegisterOffset> register_offsets;
 };
 
 class TypeDictionary;

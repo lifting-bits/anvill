@@ -1648,6 +1648,20 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   options.arch->InitializeEmptyLiftedFunction(func);
 
   auto &blk = func->getEntryBlock();
+  for (auto &reg_off : block.register_offsets) {
+    llvm::Value *new_value =
+        llvm::ConstantInt::get(pc_reg->type, reg_off.offset, true);
+    if (reg_off.base) {
+      new_value = llvm::BinaryOperator::Create(
+          llvm::BinaryOperator::Add, new_value,
+          op_lifter->LoadRegValue(&blk, state, reg_off.base->name),
+          llvm::Twine(), &blk);
+    }
+    StoreNativeValueToRegister(new_value, reg_off.target,
+                               type_provider.Dictionary(), intrinsics, &blk,
+                               state);
+  }
+
   for (auto &param : curr_decl->params) {
     auto arg = func->getArg(first_param_arg++);
     arg->setName(param.name);

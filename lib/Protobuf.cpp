@@ -540,8 +540,21 @@ void ProtobufTranslator::ParseCFGIntoFunction(
                       {blk.second.outgoing_blocks().begin(),
                        blk.second.outgoing_blocks().end()},
                       {blk.second.context_assignments().begin(),
-                       blk.second.context_assignments().end()}};
+                       blk.second.context_assignments().end()},
+                      {}};
     decl.cfg.emplace(blk.first, std::move(nblk));
+  }
+
+  for (auto &[blk_addr, ctx] : obj.block_context()) {
+    auto blk = decl.cfg[blk_addr];
+    for (auto &symval : ctx.symvals()) {
+      RegisterOffset reg_off{};
+      reg_off.offset = symval.offset();
+      reg_off.target = arch->RegisterByName(symval.target_reg());
+      if (symval.has_base()) {
+        reg_off.base = arch->RegisterByName(symval.base());
+      }
+    }
   }
 }
 
