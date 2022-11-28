@@ -61,6 +61,7 @@ RUN cmake -G Ninja -B build -S  /dependencies/remill \
     -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
     && \
     cmake --build build --target install
 
@@ -93,6 +94,7 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
     -DCMAKE_VERBOSE_MAKEFILE=True \
     -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
     && \
     cmake --build build --target install
 
