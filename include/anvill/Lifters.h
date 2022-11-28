@@ -155,31 +155,33 @@ class LifterOptions {
   //
   //    (ptrtoint __anvill_sp)
   //
-  static llvm::Value *SymbolicStackPointerInit(
-      llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
-      uint64_t func_address);
+  static llvm::Value *SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
+                                               const remill::Register *sp_reg,
+                                               uint64_t func_address);
 
   // Initialize the program counter with a constant expression of the form:
   //
   //    (add (ptrtoint __anvill_pc), <addr>)
   //
-  static llvm::Value *SymbolicProgramCounterInit(
-      llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
-      uint64_t func_address);
+  static llvm::Value *SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
+                                                 const remill::Register *pc_reg,
+                                                 uint64_t func_address);
 
   // Initialize the return address with a constant expression of the form:
   //
   //    (ptrtoint __anvill_ra)
   //
-  static llvm::Value *SymbolicReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *SymbolicReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
   // Initialize the return address with the result of:
   //
   //    call llvm.returnaddress(0)
   //
-  static llvm::Value *ConcreteReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *ConcreteReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
 
   inline explicit LifterOptions(
@@ -200,7 +202,8 @@ class LifterOptions {
         add_breakpoints(false),
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
-        stack_pointer_is_signed(false), should_remove_anvill_pc(true) {
+        stack_pointer_is_signed(false),
+        should_remove_anvill_pc(true) {
     CheckModuleContextMatchesArch();
   }
 
@@ -276,7 +279,7 @@ class LifterOptions {
   // Should we treat the stack pointer as signed when simplifying sign flags.
   bool stack_pointer_is_signed : 1;
 
-  bool should_remove_anvill_pc: 1;
+  bool should_remove_anvill_pc : 1;
 
  private:
   LifterOptions(void) = delete;
@@ -358,7 +361,7 @@ class ValueLifter {
   // Returns an `llvm::Constant *` if the pointer is associated with a
   // known or plausible entity, and an `nullptr` otherwise.
   llvm::Constant *Lift(std::uint64_t ea, llvm::Type *value_type,
-                       unsigned address_space=0u) const;
+                       unsigned address_space = 0u) const;
 
  private:
   std::shared_ptr<EntityLifterImpl> impl;

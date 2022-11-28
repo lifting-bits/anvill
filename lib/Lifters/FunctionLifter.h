@@ -29,6 +29,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include "BasicBlockTransform.h"
+
 namespace llvm {
 class Constant;
 class Function;
@@ -92,6 +94,12 @@ class FunctionLifter {
   llvm::Function *AddFunctionToContext(llvm::Function *func,
                                        const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
+
+  llvm::CallInst *
+  CallBasicBlockFunction(uint64_t block_addr, llvm::BasicBlock *add_to_llvm,
+                         llvm::Function *bb_func,
+                         llvm::ArrayRef<llvm::Value *> extra_args = {},
+                         llvm::Instruction *IP = {}) const;
 
  private:
   const LifterOptions &options;
@@ -203,6 +211,9 @@ class FunctionLifter {
   // not doing annotations.
   llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
 
+  // A metadata node that communicates that this value (should be a function represents the basic block at address x)
+  llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
+
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
@@ -217,6 +228,8 @@ class FunctionLifter {
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
   llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
+
+  void ApplyBasicBlockTransform(BasicBlockTransform &transform);
 
   // Attempts to lookup any redirection of the given address, and then
   // calls GetOrCreateBlock

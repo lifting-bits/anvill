@@ -61,6 +61,17 @@ struct CodeBlock {
   std::vector<RegisterOffset> register_offsets;
 };
 
+
+struct OffsetDomain {
+  remill::Register *target_register;
+  std::optional<remill::Register *> base_register;
+  std::int64_t offset;
+};
+struct SpecStackOffsets {
+  std::vector<OffsetDomain> affine_equalities;
+};
+
+
 class TypeDictionary;
 
 // A value, such as a parameter or a return value. Values are resident
@@ -195,6 +206,21 @@ struct LocalVariableDecl {
   std::vector<ValueDecl> values;
 };
 
+class BasicBlockContext {
+ public:
+  virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
+};
+
+struct FunctionDecl;
+class SpecBlockContext : public BasicBlockContext {
+ private:
+  const FunctionDecl &decl;
+
+ public:
+  SpecBlockContext(const FunctionDecl &decl) : decl(decl) {}
+  virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
+};
+
 // A function decl, as represented at a "near ABI" level. To be specific,
 // not all C, and most C++ decls, as written would be directly translatable
 // to this. This ought nearly represent how LLVM represents a C/C++ function
@@ -210,6 +236,8 @@ struct LocalVariableDecl {
 //            Thumb code in an Arm program, or x86 code in a bootloader that
 //            brings up amd64 code, etc.).
 struct FunctionDecl : public CallableDecl {
+  friend class SpecBlockContext;
+
  public:
   // Address of this function in memory.
   std::uint64_t address{0};
@@ -227,6 +255,8 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::string, LocalVariableDecl> locals;
 
+  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
+
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 
@@ -240,6 +270,8 @@ struct FunctionDecl : public CallableDecl {
   // Create a function declaration from an LLVM function.
   static Result<FunctionDecl, std::string> Create(llvm::Function &func,
                                                   const remill::Arch *arch);
+
+  SpecBlockContext GetBlockContext(std::uint64_t addr) const;
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a

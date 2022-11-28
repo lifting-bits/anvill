@@ -15,6 +15,7 @@
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
@@ -27,10 +28,13 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
+#include <llvm/Support/Casting.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
@@ -44,6 +48,7 @@
 #include <remill/BC/Version.h>
 #include <remill/OS/OS.h>
 
+#include <algorithm>
 #include <array>
 #include <sstream>
 #include <string>
@@ -992,6 +997,7 @@ void FunctionLifter::VisitInstruction(
   curr_inst = nullptr;
 }
 
+
 // In the process of lifting code, we may want to call another native
 // function, `native_func`, for which we have high-level type info. The main
 // lifter operates on a special three-argument form function style, and
@@ -1025,6 +1031,12 @@ llvm::MDNode *FunctionLifter::GetPCAnnotation(uint64_t pc) const {
   } else {
     return nullptr;
   }
+}
+
+llvm::MDNode *FunctionLifter::GetBasicBlockAnnotation(uint64_t addr) const {
+  auto pc_val = llvm::ConstantInt::get(address_type, addr);
+  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
+  return llvm::MDNode::get(llvm_context, pc_md);
 }
 
 // Declare the function decl `decl` and return an `llvm::Function *`.
@@ -1548,6 +1560,31 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
   return bb;
 }
 
+
+llvm::CallInst *FunctionLifter::CallBasicBlockFunction(
+    uint64_t block_addr, llvm::BasicBlock *add_to_llvm, llvm::Function *bb_func,
+    llvm::ArrayRef<llvm::Value *> extra_args, llvm::Instruction *IP) const {
+  llvm::IRBuilder<> builder(add_to_llvm);
+  if (IP) {
+    builder.SetInsertPoint(IP);
+  }
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
+  args[remill::kStatePointerArgNum] = state_ptr;
+  args[remill::kPCArgNum] =
+      options.program_counter_init_procedure(builder, pc_reg, block_addr);
+  args[remill::kMemoryPointerArgNum] =
+      remill::LoadMemoryPointer(add_to_llvm, this->intrinsics);
+
+  args[remill::kNumBlockArgs] = remill::LoadNextProgramCounterRef(add_to_llvm);
+
+  for (auto earg : extra_args) {
+    args.push_back(earg);
+  }
+
+  return builder.CreateCall(bb_func, args);
+}
+
+
 void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
@@ -1557,16 +1594,10 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
   bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
   this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
-  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args;
-  args[remill::kStatePointerArgNum] = state_ptr;
-  args[remill::kPCArgNum] =
-      options.program_counter_init_procedure(builder, pc_reg, blk.addr);
-  args[remill::kMemoryPointerArgNum] =
-      remill::LoadMemoryPointer(llvm_blk, this->intrinsics);
 
-  args[remill::kNumBlockArgs] = remill::LoadNextProgramCounterRef(llvm_blk);
 
-  auto new_mem_ptr = builder.CreateCall(bb_lifted_func.func, args);
+  auto new_mem_ptr =
+      this->CallBasicBlockFunction(blk.addr, llvm_blk, bb_lifted_func.func);
 
   auto mem_ptr_ref = remill::LoadMemoryPointerRef(llvm_blk);
 
@@ -1613,6 +1644,9 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   auto func =
       llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
                              name, this->semantics_module.get());
+
+  func->setMetadata(anvill::kBasicBlockMetadata,
+                    GetBasicBlockAnnotation(block.addr));
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
@@ -1782,12 +1816,37 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
 
-
-  this->native_func->dump();
-
-
+  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
+  this->ApplyBasicBlockTransform(param_pass);
   return native_func;
 }
+
+void FunctionLifter::ApplyBasicBlockTransform(BasicBlockTransform &transform) {
+  for (auto &insn : llvm::instructions(this->native_func)) {
+    if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(&insn)) {
+      auto addr = GetBasicBlockAddr(call->getCalledFunction());
+      if (addr) {
+        auto cont = this->curr_decl->GetBlockContext(*addr);
+        AnvillBasicBlock block = {call->getCalledFunction(), cont};
+        auto res = transform.Transform(block);
+        std::vector<llvm::Value *> lifted_values;
+
+        for (auto arg : res.appended_args) {
+          lifted_values.push_back(LoadLiftedValue(
+              arg, this->options.TypeDictionary(), this->intrinsics,
+              call->getParent(),
+              call->getArgOperand(remill::kStatePointerArgNum),
+              call->getArgOperand(remill::kMemoryPointerArgNum)));
+        }
+        auto new_call = this->CallBasicBlockFunction(
+            *addr, call->getParent(), res.new_func, lifted_values, call);
+        call->replaceAllUsesWith(new_call);
+        // TODO(Ian): need to setup metadata in transform
+      }
+    };
+  }
+}
+
 
 // Returns the address of a named function.
 std::optional<uint64_t>
@@ -1867,6 +1926,7 @@ llvm::Function *EntityLifter::LiftEntity(const FunctionDecl &decl) const {
       func_in_target_module->setName(old_name);
     }
   }
+
 
   return func_in_target_module;
 }

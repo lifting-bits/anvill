@@ -29,6 +29,8 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <vector>
+
 #include "Arch/Arch.h"
 #include "Protobuf.h"
 
@@ -90,6 +92,26 @@ FunctionDecl::DeclareInModule(std::string_view name,
   }
 
   return func;
+}
+
+std::vector<ParameterDecl> SpecBlockContext::GetAvailableVariables() const {
+  std::vector<ParameterDecl> decls;
+  for (auto p : this->decl.params) {
+    decls.push_back(p);
+  }
+
+  for (auto [nm, l] : this->decl.locals) {
+    if (l.values.size() == 1) {
+
+      ParameterDecl d = {
+          {l.values[0].reg, l.values[0].mem_reg, l.values[0].mem_offset,
+           l.values[0].spec_type, l.values[0].type},
+          nm};
+      decls.push_back(std::move(d));
+    }
+  }
+
+  return decls;
 }
 
 // Interpret `target` as being the function to call, and call it from within
@@ -281,5 +303,10 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
     this->type = new_func_type;
   }
 }
+
+SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
+  return SpecBlockContext(*this);
+}
+
 
 }  // namespace anvill

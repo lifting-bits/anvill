@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <llvm/IR/Function.h>
 #include <remill/Arch/Arch.h>
 
 #include <cstdint>
@@ -101,5 +102,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
+
+std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 
 }  // namespace anvill

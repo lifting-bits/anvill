@@ -20,12 +20,14 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <optional>
 #include <sstream>
 
 namespace anvill {
@@ -749,6 +751,17 @@ bool CanBeAliased(llvm::Value *val) {
   } else {
     return false;
   }
+}
+
+std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
+  auto meta = func->getMetadata(kBasicBlockMetadata);
+  if (!meta) {
+    return std::nullopt;
+  }
+
+  auto v = llvm::cast<llvm::ValueAsMetadata>(meta->getOperand(0))->getValue();
+
+  return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
 
 }  // namespace anvill

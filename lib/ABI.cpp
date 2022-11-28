@@ -65,21 +65,23 @@ const std::string kGlobalAliasNamePrefix("data_");
 const std::string kSymbolicStackFrameValuePrefix(kAnvillNamePrefix + "stack_");
 
 // The anvill function used to handle complete switch cases
-const std::string kAnvillSwitchCompleteFunc(
-    kAnvillNamePrefix + "complete_switch");
+const std::string kAnvillSwitchCompleteFunc(kAnvillNamePrefix +
+                                            "complete_switch");
 
 // The anvill function used to handle incomplete switch cases
-const std::string kAnvillSwitchIncompleteFunc(
-    kAnvillNamePrefix + "incomplete_switch");
+const std::string kAnvillSwitchIncompleteFunc(kAnvillNamePrefix +
+                                              "incomplete_switch");
 
 // The name of the uninterpreted function that implements data provenance
 // tracking.
-const std::string kAnvillDataProvenanceFunc(
-    kAnvillNamePrefix + "data_provenance");
+const std::string kAnvillDataProvenanceFunc(kAnvillNamePrefix +
+                                            "data_provenance");
 
 // Metadata ID for annotating stack frame `alloca` instructions, and telling
 // us that what the logical "zero offset" is away from the beginning of the
 // `alloca`.
 const std::string kAnvillStackZero(kAnvillNamePrefix + "stack_zero");
+
+const std::string kBasicBlockMetadata(kAnvillNamePrefix + "basic_block_md");
 
 }  // namespace anvill

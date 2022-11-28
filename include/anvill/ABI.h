@@ -82,4 +82,6 @@ extern const std::string kAnvillDataProvenanceFunc;
 // `alloca`.
 extern const std::string kAnvillStackZero;
 
+extern const std::string kBasicBlockMetadata;
+
 }  // namespace anvill

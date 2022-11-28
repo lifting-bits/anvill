@@ -24,63 +24,6 @@
 namespace anvill {
 
 
-class BasicBlockContext {
- public:
-  virtual const std::vector<ParameterDecl> &GetAvailableVariables() const = 0;
-};
-
-struct AnvillBasicBlock {
-  llvm::Function *func;
-  const BasicBlockContext &context;
-};
-
-
-class InitializeRegisterParameterPass {
- private:
-  AnvillBasicBlock basic_block;
-  remill::Arch::ArchPtr arch;
-
-
- public:
-  InitializeRegisterParameterPass(AnvillBasicBlock basic_block_)
-      : basic_block(basic_block_) {}
-
-
-  llvm::Function *BuildNewFunc() {
-
-    std::vector<llvm::Type *> args(
-        basic_block.func->getFunctionType()->param_begin(),
-        basic_block.func->getFunctionType()->param_end());
-
-    auto num_bb_params = args.size();
-    auto vars = this->basic_block.context.GetAvailableVariables();
-    for (const auto &v : vars) {
-      args.push_back(v.type);
-    }
-
-    auto ntype = llvm::FunctionType::get(
-        this->basic_block.func->getReturnType(), args, false);
-
-    auto nfunc = llvm::Function::Create(
-        ntype, llvm::GlobalValue::ExternalLinkage,
-        this->basic_block.func->getName(), this->basic_block.func->getParent());
-
-
-    llvm::ValueToValueMapTy mp;
-    llvm::SmallVector<llvm::ReturnInst *, 10> rets;
-    llvm::CloneFunctionInto(nfunc, this->basic_block.func, mp,
-                            llvm::CloneFunctionChangeType::LocalChangesOnly,
-                            rets);
-
-    nfunc->dump();
-
-    return nfunc;
-  }
-
-
-  void run() {}
-};
-
 /*
 Register pass plan: 
 1. iterate through all available paramater decls declaring them in the signature.
@@ -96,13 +39,6 @@ Stack pass plan:
 4. This could get arbitrarily more complicated when handling expressions built up over multiple registers and array indexing with multiplication over an index register, so there is stuff to work on here (maybe propagating the abstract domain forward as a separate affine analysis)
 */
 
-
-class MockBasicBlockContext : BasicBlockContext {
-  std::vector<ParameterDecl> paramdecls;
-
- public:
-  virtual const std::vector<ParameterDecl> &GetAvailableVariables() const = 0;
-};
 
 TEST_SUITE("Basic Block tests") {
   TEST_CASE("Convert parameters") {
