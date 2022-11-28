@@ -579,7 +579,7 @@ jobs:
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
               -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
-              -DVCPKG_TARGET_TRIPLET="x64-linux-rel" \
+              -DVCPKG_TARGET_TRIPLET="x64-osx-rel" \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/remill
 
@@ -631,7 +631,7 @@ jobs:
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
               -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
-              -DVCPKG_TARGET_TRIPLET="x64-linux-rel" \
+              -DVCPKG_TARGET_TRIPLET="x64-osx-rel" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -Dsleigh_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/sleigh \
               -DANVILL_ENABLE_TESTS=true \
