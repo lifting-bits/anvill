@@ -60,7 +60,7 @@ RUN cmake -G Ninja -B build -S  /dependencies/remill \
     -DREMILL_ENABLE_INSTALL=true \
     -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
     -DCMAKE_VERBOSE_MAKEFILE=True \
-    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
     && \
     cmake --build build --target install
 
@@ -92,7 +92,7 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
     -Dsleigh_DIR=${LIBRARIES}/cmake/sleigh \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
     -DCMAKE_VERBOSE_MAKEFILE=True \
-    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
     && \
     cmake --build build --target install
 

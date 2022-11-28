@@ -252,7 +252,7 @@ jobs:
 
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
-              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/remill
 
@@ -303,7 +303,7 @@ jobs:
 
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
-              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -Dsleigh_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/sleigh \
               -DANVILL_ENABLE_TESTS=true \
@@ -576,7 +576,7 @@ jobs:
 
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
-              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -G Ninja \
               ${{ steps.build_paths.outputs.SOURCE }}/remill
 
@@ -627,7 +627,7 @@ jobs:
 
           cmake \
               -DCMAKE_VERBOSE_MAKEFILE=true \
-              -DVCPKG_ROOT="${{ steps.cxxcommon_installer.outputs.PATH }}" \
+              -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -Dremill_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/remill \
               -Dsleigh_DIR:PATH=${{ steps.remill_installer.outputs.PATH }}/usr/local/lib/cmake/sleigh \
               -DANVILL_ENABLE_TESTS=true \

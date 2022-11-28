@@ -10,7 +10,6 @@ cmake_minimum_required(VERSION 3.19)
 
 include("cmake/options.cmake")
 include("cmake/ccache.cmake")
-include("cmake/vcpkg_helper.cmake")
 
 project("anvill")
 
@@ -23,7 +22,7 @@ endif(ANVILL_ENABLE_INSTALL)
 
 add_subdirectory("libraries")
 
-set(_VCPKG_SHARE_DIR "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/${CMAKE_INSTALL_DATADIR}")
+set(_VCPKG_SHARE_DIR "${Z_VCPKG_ROOT_DIR}/installed/${VCPKG_TARGET_TRIPLET}/${CMAKE_INSTALL_DATADIR}")
 
 find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
 find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")

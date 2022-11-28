@@ -175,7 +175,7 @@ function DownloadLibraries
 
     #BUILD_FLAGS="${BUILD_FLAGS} -DCMAKE_OSX_SYSROOT=${sdk_root}"
     # Min version supported
-    OS_VERSION="macos-10.11"
+    OS_VERSION="macos-11"
     XCODE_VERSION="13.0"
     if [[ "$(sw_vers -productVersion)" == "11."* ]]; then
       echo "Found MacOS Big Sur"
@@ -199,12 +199,19 @@ function DownloadLibraries
     return 1
   fi
 
+  VCPKG_TARGET_ARCH="${ARCH_VERSION}"
+  if [[ "${VCPKG_TARGET_ARCH}" == "amd64" ]]; then
+    VCPKG_TARGET_ARCH="x64"
+  fi
+
   if [[ "${OS_VERSION}" == "macos-"* ]]; then
     # TODO Figure out Xcode compatibility
     LIBRARY_VERSION="vcpkg_${OS_VERSION}_${LLVM_VERSION}_xcode-${XCODE_VERSION}_${ARCH_VERSION}"
+    VCPKG_TARGET_TRIPLET="${VCPKG_TARGET_ARCH}-osx-rel"
   else
     # TODO Arch version
     LIBRARY_VERSION="vcpkg_${OS_VERSION}_${LLVM_VERSION}_${ARCH_VERSION}"
+    VCPKG_TARGET_TRIPLET="${VCPKG_TARGET_ARCH}-linux-rel"
   fi
 
   echo "[-] Library version is ${LIBRARY_VERSION}"
@@ -230,7 +237,7 @@ function BuildRemill
     git clone https://github.com/lifting-bits/remill.git remill
     cd remill
 
-    remill_commit_id_path="${SRC_DIR}/anvill/.remill_commit_id"
+    remill_commit_id_path="${SRC_DIR}/.remill_commit_id"
 
     if [[ -f "${remill_commit_id_path}" ]] ; then
       remill_commit_id=$(< ${remill_commit_id_path})
@@ -245,7 +252,8 @@ function BuildRemill
     cmake \
         -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
         -DCMAKE_VERBOSE_MAKEFILE=true \
-        -DVCPKG_ROOT="${DOWNLOAD_DIR}/${LIBRARY_VERSION}" \
+        -DCMAKE_TOOLCHAIN_FILE="${DOWNLOAD_DIR}/${LIBRARY_VERSION}/scripts/buildsystems/vcpkg.cmake" \
+        -DVCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET}" \
         -G Ninja \
         ${SRC_DIR}/remill
 
@@ -268,7 +276,8 @@ function Configure
         -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
         -DCMAKE_PREFIX_PATH="${INSTALL_DIR}" \
         -DCMAKE_VERBOSE_MAKEFILE=True \
-        -DVCPKG_ROOT="${DOWNLOAD_DIR}/${LIBRARY_VERSION}" \
+        -DCMAKE_TOOLCHAIN_FILE="${DOWNLOAD_DIR}/${LIBRARY_VERSION}/scripts/buildsystems/vcpkg.cmake" \
+        -DVCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET}" \
         ${BUILD_FLAGS} \
         "${SRC_DIR}"
   ) || exit $?
