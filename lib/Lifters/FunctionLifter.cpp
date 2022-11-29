@@ -16,6 +16,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
@@ -38,6 +39,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Context.h>
@@ -1575,7 +1577,8 @@ llvm::CallInst *FunctionLifter::CallBasicBlockFunction(
     builder.SetInsertPoint(IP);
   }
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
-  args[remill::kStatePointerArgNum] = state_ptr;
+  args[remill::kStatePointerArgNum] = this->state_ptr;
+
   args[remill::kPCArgNum] =
       options.program_counter_init_procedure(builder, pc_reg, block_addr);
   args[remill::kMemoryPointerArgNum] =
@@ -1813,13 +1816,15 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Go lift all instructions!
   VisitBlocks();
 
+
+  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
+  this->ApplyBasicBlockTransform(param_pass);
+
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
   CallLiftedFunctionFromNativeFunction(decl);
 
 
-  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
-  this->ApplyBasicBlockTransform(param_pass);
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
@@ -1828,32 +1833,43 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 }
 
 void FunctionLifter::ApplyBasicBlockTransform(BasicBlockTransform &transform) {
+  llvm::SmallVector<std::pair<llvm::CallInst *, uint64_t>, 10> calls;
   for (auto &insn : llvm::instructions(this->lifted_func)) {
     if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(&insn)) {
       auto addr = GetBasicBlockAddr(call->getCalledFunction());
       LOG(INFO) << "getting basic block addr "
                 << remill::LLVMThingToString(call);
       if (addr) {
-        auto cont = this->curr_decl->GetBlockContext(*addr);
-        AnvillBasicBlock block = {call->getCalledFunction(), cont};
-        LOG(INFO) << "transforming";
-        auto res = transform.Transform(block);
-        std::vector<llvm::Value *> lifted_values;
-
-        for (auto arg : res.appended_args) {
-          lifted_values.push_back(LoadLiftedValue(
-              arg, this->options.TypeDictionary(), this->intrinsics,
-              call->getParent(),
-              call->getArgOperand(remill::kStatePointerArgNum),
-              call->getArgOperand(remill::kMemoryPointerArgNum)));
-        }
-        auto new_call = this->CallBasicBlockFunction(
-            *addr, call->getParent(), res.new_func, lifted_values, call);
-        call->getParent()->dump();
-        call->replaceAllUsesWith(new_call);
-        // TODO(Ian): need to setup metadata in transform
+        calls.emplace_back(call, *addr);
       }
-    };
+    }
+  }
+
+  for (auto [call, addr] : calls) {
+    // avoid iterator invalidation
+    auto cont = this->curr_decl->GetBlockContext(addr);
+    AnvillBasicBlock block = {call->getCalledFunction(), cont};
+    LOG(INFO) << "transforming";
+    auto res = transform.Transform(block);
+    std::vector<llvm::Value *> lifted_values;
+    auto old_block = call->getParent();
+    auto new_block = llvm::SplitBlock(call->getParent(), call);
+
+    old_block->getTerminator()->eraseFromParent();
+    for (auto arg : res.appended_args) {
+      lifted_values.push_back(LoadLiftedValue(
+          arg, this->options.TypeDictionary(), this->intrinsics, old_block,
+          call->getArgOperand(remill::kStatePointerArgNum),
+          call->getArgOperand(remill::kMemoryPointerArgNum)));
+    }
+    auto new_call = this->CallBasicBlockFunction(addr, old_block, res.new_func,
+                                                 lifted_values, call);
+
+    llvm::BranchInst::Create(new_block, old_block);
+    call->replaceAllUsesWith(new_call);
+    call->eraseFromParent();
+    llvm::MergeBlockIntoPredecessor(new_block);
+    // TODO(Ian): need to setup metadata in transform
   }
 }
 
