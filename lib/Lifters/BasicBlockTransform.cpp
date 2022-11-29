@@ -7,6 +7,7 @@
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/ValueHandle.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <remill/BC/ABI.h>
@@ -37,6 +38,12 @@ CallAndInitializeParameters::TransformInternal(const AnvillBasicBlock &bb) {
 
 
   llvm::ValueToValueMapTy mp;
+
+  for (size_t i = 0;
+       i < bb.basic_block_repr_func->getFunctionType()->getNumParams(); i++) {
+    mp.insert({bb.basic_block_repr_func->getArg(i), nfunc->getArg(i)});
+  }
+
   llvm::SmallVector<llvm::ReturnInst *, 10> rets;
   llvm::CloneFunctionInto(nfunc, bb.basic_block_repr_func, mp,
                           llvm::CloneFunctionChangeType::LocalChangesOnly,
@@ -47,9 +54,10 @@ CallAndInitializeParameters::TransformInternal(const AnvillBasicBlock &bb) {
   llvm::Value *mem_ptr = nfunc->getArg(remill::kMemoryPointerArgNum);
   auto state_ptr = nfunc->getArg(remill::kStatePointerArgNum);
 
-  auto dummy = new llvm::GlobalVariable(
-      mem_ptr->getType(), false,
-      llvm::GlobalValue::LinkageTypes::ExternalLinkage);
+
+  llvm::GlobalVariable *dummy = new llvm::GlobalVariable(
+      *bb.basic_block_repr_func->getParent(), mem_ptr->getType(), false,
+      llvm::GlobalValue::ExternalLinkage, nullptr, "");
 
   mem_ptr->replaceAllUsesWith(dummy);
 
