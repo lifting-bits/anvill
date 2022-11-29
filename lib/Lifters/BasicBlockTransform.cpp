@@ -3,14 +3,18 @@
 #include <anvill/Declarations.h>
 #include <anvill/Specification.h>
 #include <anvill/Utils.h>
+#include <glog/logging.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/ValueHandle.h>
+#include <llvm/Support/Casting.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <remill/BC/ABI.h>
+#include <remill/BC/Util.h>
 
 #include "anvill/ABI.h"
 #include "anvill/Lifters.h"
@@ -50,27 +54,28 @@ CallAndInitializeParameters::TransformInternal(const AnvillBasicBlock &bb) {
                           rets);
 
   llvm::IRBuilder<> ir(&nfunc->getEntryBlock());
+  // TODO(Ian): instead of doing this allow StoreNative to take an insertion point that isnt a block end.
+  auto cont_block =
+      llvm::cast<llvm::BranchInst>(nfunc->getEntryBlock().getTerminator())
+          ->getSuccessor(0);
+  nfunc->getEntryBlock().getTerminator()->eraseFromParent();
 
-  llvm::Value *mem_ptr = nfunc->getArg(remill::kMemoryPointerArgNum);
   auto state_ptr = nfunc->getArg(remill::kStatePointerArgNum);
 
-
-  llvm::GlobalVariable *dummy = new llvm::GlobalVariable(
-      *bb.basic_block_repr_func->getParent(), mem_ptr->getType(), false,
-      llvm::GlobalValue::ExternalLinkage, nullptr, "");
-
-  mem_ptr->replaceAllUsesWith(dummy);
+  auto mem_ptr_ref = remill::LoadMemoryPointerRef(&nfunc->getEntryBlock());
+  auto mem_ptr_ty = nfunc->getArg(remill::kMemoryPointerArgNum)->getType();
 
   for (size_t i = 0; i < vars.size(); i++) {
     llvm::Value *native_val = nfunc->getArg(i + num_bb_func_pars);
     auto decl = vars[i];
-    mem_ptr = StoreNativeValue(native_val, decl, this->types, this->intrinsics,
-                               ir.GetInsertBlock(), state_ptr, mem_ptr);
+    auto mem_ptr = ir.CreateLoad(mem_ptr_ty, mem_ptr_ref);
+    auto new_mem =
+        StoreNativeValue(native_val, decl, this->types, this->intrinsics,
+                         ir.GetInsertBlock(), state_ptr, mem_ptr);
+    ir.CreateStore(new_mem, mem_ptr_ref);
   }
 
-  dummy->replaceAllUsesWith(mem_ptr);
-  dummy->eraseFromParent();
-
+  llvm::BranchInst::Create(cont_block, &nfunc->getEntryBlock());
 
   return {nfunc, vars};
 }

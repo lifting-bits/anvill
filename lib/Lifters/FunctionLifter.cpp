@@ -1522,7 +1522,14 @@ void FunctionLifter::ApplyInterProceduralControlFlowOverride(
 
 llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
     BasicBlockFunction &basic_block_function, const CodeBlock &blk) {
-  auto bb = &basic_block_function.func->getEntryBlock();
+  auto entry_block = &basic_block_function.func->getEntryBlock();
+
+  auto bb = llvm::BasicBlock::Create(basic_block_function.func->getContext(),
+                                     "", basic_block_function.func);
+
+
+  llvm::BranchInst::Create(bb, entry_block);
+
   remill::Instruction inst;
 
   auto reached_addr = blk.addr;
@@ -1556,7 +1563,6 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
   llvm::ReturnInst::Create(bb->getContext(), memory, bb);
   this->RecursivelyInlineFunctionCallees(basic_block_function.func);
 
-  bb->getParent()->dump();
   return bb;
 }
 
@@ -1822,12 +1828,15 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 }
 
 void FunctionLifter::ApplyBasicBlockTransform(BasicBlockTransform &transform) {
-  for (auto &insn : llvm::instructions(this->native_func)) {
+  for (auto &insn : llvm::instructions(this->lifted_func)) {
     if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(&insn)) {
       auto addr = GetBasicBlockAddr(call->getCalledFunction());
+      LOG(INFO) << "getting basic block addr "
+                << remill::LLVMThingToString(call);
       if (addr) {
         auto cont = this->curr_decl->GetBlockContext(*addr);
         AnvillBasicBlock block = {call->getCalledFunction(), cont};
+        LOG(INFO) << "transforming";
         auto res = transform.Transform(block);
         std::vector<llvm::Value *> lifted_values;
 
@@ -1840,6 +1849,7 @@ void FunctionLifter::ApplyBasicBlockTransform(BasicBlockTransform &transform) {
         }
         auto new_call = this->CallBasicBlockFunction(
             *addr, call->getParent(), res.new_func, lifted_values, call);
+        call->getParent()->dump();
         call->replaceAllUsesWith(new_call);
         // TODO(Ian): need to setup metadata in transform
       }
