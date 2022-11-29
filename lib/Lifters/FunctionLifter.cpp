@@ -1812,12 +1812,12 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   CallLiftedFunctionFromNativeFunction(decl);
 
 
+  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
+  this->ApplyBasicBlockTransform(param_pass);
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.
   RecursivelyInlineLiftedFunctionIntoNativeFunction();
 
-  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
-  this->ApplyBasicBlockTransform(param_pass);
   return native_func;
 }
 
