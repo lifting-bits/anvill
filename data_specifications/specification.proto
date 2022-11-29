@@ -188,13 +188,28 @@ message CodeBlock {
   map<string, uint64> context_assignments = 6;
 }
 
+message Variables {
+  repeated Variable vars = 1;
+}
+
+message StackEffects {
+  map<uint64, Variables> allocations = 1;
+  map<uint64, Variables> frees = 2;
+  repeated Variable missed_allocs = 3;
+  repeated Variable missed_frees = 4;
+}
+
 message Function {
   uint64 entry_address = 1;
   FunctionLinkage func_linkage = 3; 
   Callable callable = 4;
   map<uint64, CodeBlock> blocks = 5;
   map<string, Variable> local_variables = 6;
+
+  // Keys are addresses of code blocks, each block
+  // may have a corresponding context
   map<uint64, BlockContext> block_context = 7;
+  StackEffects stack_effects = 8;
 }
 
 message GlobalVariable {
