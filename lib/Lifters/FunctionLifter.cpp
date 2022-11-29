@@ -1867,8 +1867,13 @@ void FunctionLifter::ApplyBasicBlockTransform(BasicBlockTransform &transform) {
 
     llvm::BranchInst::Create(new_block, old_block);
     call->replaceAllUsesWith(new_call);
+    std::string fname = std::string(call->getCalledFunction()->getName());
     call->eraseFromParent();
+    call->getCalledFunction()->eraseFromParent();
     llvm::MergeBlockIntoPredecessor(new_block);
+    res.new_func->setName(fname);
+
+
     // TODO(Ian): need to setup metadata in transform
   }
 }
