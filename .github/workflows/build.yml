@@ -287,7 +287,7 @@ jobs:
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
-          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          CMAKE_TOOLCHAIN_FILE: ${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
@@ -343,7 +343,7 @@ jobs:
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
-          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          CMAKE_TOOLCHAIN_FILE: ${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
@@ -613,7 +613,7 @@ jobs:
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
-          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          CMAKE_TOOLCHAIN_FILE: ${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
@@ -669,7 +669,7 @@ jobs:
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
-          VCPKG_ROOT: ${{ steps.cxxcommon_installer.outputs.PATH }}
+          CMAKE_TOOLCHAIN_FILE: ${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake
           INSTALL_DIR: ${{ steps.build_paths.outputs.WORKSPACE }}
 
         run: |
