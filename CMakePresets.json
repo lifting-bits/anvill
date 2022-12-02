@@ -51,7 +51,7 @@
           "generator": "Ninja",
           "cacheVariables": {
               "VCPKG_TARGET_TRIPLET": "$env{VCPKG_TARGET_TRIPLET}",
-              "CMAKE_TOOLCHAIN_FILE": "$env{CMAKE_TOOLCHAIN_FILE},
+              "CMAKE_TOOLCHAIN_FILE": "$env{CMAKE_TOOLCHAIN_FILE}",
               "CMAKE_INSTALL_PREFIX": "$env{INSTALL_DIR}/install",
               "CMAKE_BUILD_WITH_INSTALL_RPATH": "ON",
               "ANVILL_ENABLE_TESTS": "true",
