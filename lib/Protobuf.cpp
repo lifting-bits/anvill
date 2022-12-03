@@ -535,26 +535,46 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
   for (auto blk : obj.blocks()) {
-    CodeBlock nblk = {blk.second.address(),
-                      blk.second.size(),
-                      {blk.second.outgoing_blocks().begin(),
-                       blk.second.outgoing_blocks().end()},
-                      {blk.second.context_assignments().begin(),
-                       blk.second.context_assignments().end()},
-                      {}};
+    CodeBlock nblk = {
+        blk.second.address(),
+        blk.second.size(),
+        {blk.second.outgoing_blocks().begin(),
+         blk.second.outgoing_blocks().end()},
+        {blk.second.context_assignments().begin(),
+         blk.second.context_assignments().end()},
+    };
     decl.cfg.emplace(blk.first, std::move(nblk));
   }
 
+
   for (auto &[blk_addr, ctx] : obj.block_context()) {
+    std::vector<OffsetDomain> affine_equalities;
     auto blk = decl.cfg[blk_addr];
     for (auto &symval : ctx.symvals()) {
-      RegisterOffset reg_off{};
+      OffsetDomain reg_off;
       reg_off.offset = symval.offset();
-      reg_off.target = arch->RegisterByName(symval.target_reg());
-      if (symval.has_base()) {
-        reg_off.base = arch->RegisterByName(symval.base());
+      reg_off.target_register = arch->RegisterByName(symval.target_reg());
+      if (!reg_off.target_register) {
+        LOG(ERROR) << "Missing base register for affine relation: "
+                   << symval.target_reg();
+        continue;
       }
+      if (symval.has_base()) {
+        reg_off.base_register = arch->RegisterByName(symval.base());
+        if (!reg_off.base_register) {
+          LOG(ERROR) << "Missing base register for affine relation: "
+                     << symval.base();
+          continue;
+        }
+      } else {
+        reg_off.base_register = std::nullopt;
+      }
+
+      affine_equalities.push_back(reg_off);
     }
+
+    SpecStackOffsets off = {affine_equalities};
+    decl.stack_offsets.insert({blk_addr, off});
   }
 }
 

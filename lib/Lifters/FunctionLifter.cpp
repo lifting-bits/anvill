@@ -10,6 +10,7 @@
 
 #include <_types/_uint64_t.h>
 #include <anvill/ABI.h>
+#include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
@@ -1669,18 +1670,26 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   options.arch->InitializeEmptyLiftedFunction(func);
 
   auto &blk = func->getEntryBlock();
-  for (auto &reg_off : block.register_offsets) {
-    llvm::Value *new_value =
-        llvm::ConstantInt::get(pc_reg->type, reg_off.offset, true);
-    if (reg_off.base) {
-      new_value = llvm::BinaryOperator::Create(
-          llvm::BinaryOperator::Add, new_value,
-          op_lifter->LoadRegValue(&blk, state, reg_off.base->name),
-          llvm::Twine(), &blk);
+  llvm::IRBuilder<> ir(&blk);
+  // Put registers that are referencing the stack in terms of their displacement so that we
+  // Can resolve these stack references later .
+
+
+  auto stack_offsets = this->curr_decl->stack_offsets.find(block.addr);
+
+  if (stack_offsets != this->curr_decl->stack_offsets.end()) {
+    for (auto &reg_off : stack_offsets->second.affine_equalities) {
+      if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
+        auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
+            ir, this->sp_reg, block.addr, reg_off.offset);
+        LOG(INFO) << reg_off.target_register->name;
+        StoreNativeValueToRegister(new_value, reg_off.target_register,
+                                   type_provider.Dictionary(), intrinsics, &blk,
+                                   state);
+
+        blk.dump();
+      }
     }
-    StoreNativeValueToRegister(new_value, reg_off.target,
-                               type_provider.Dictionary(), intrinsics, &blk,
-                               state);
   }
 
   auto state_ptr = remill::NthArgument(func, remill::kStatePointerArgNum);

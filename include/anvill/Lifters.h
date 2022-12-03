@@ -155,6 +155,10 @@ class LifterOptions {
   //
   //    (ptrtoint __anvill_sp)
   //
+  static llvm::Value *SymbolicStackPointerInitWithOffset(
+      llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
+      uint64_t func_address, std::int64_t offset);
+
   static llvm::Value *SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
                                                const remill::Register *sp_reg,
                                                uint64_t func_address);
