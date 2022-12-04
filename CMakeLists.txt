@@ -22,14 +22,12 @@ endif(ANVILL_ENABLE_INSTALL)
 
 add_subdirectory("libraries")
 
-set(_VCPKG_SHARE_DIR "${Z_VCPKG_ROOT_DIR}/installed/${VCPKG_TARGET_TRIPLET}/${CMAKE_INSTALL_DATADIR}")
-
-find_package(XED CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
-find_package(gflags CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
-find_package(glog CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(XED CONFIG REQUIRED)
+find_package(gflags CONFIG REQUIRED)
+find_package(glog CONFIG REQUIRED)
 find_package(Z3 4.8 CONFIG REQUIRED)
-find_package(doctest CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
-find_package(LLVM CONFIG REQUIRED HINTS "${_VCPKG_SHARE_DIR}")
+find_package(doctest CONFIG REQUIRED)
+find_package(LLVM CONFIG REQUIRED)
 llvm_map_components_to_libnames(llvm_libs support core irreader bitreader bitwriter)
 
 find_package(sleigh CONFIG)
