@@ -74,7 +74,7 @@ RUN mkdir /dependencies/remill_build
 WORKDIR /dependencies/remill_build
 
 
-RUN cmake -G Ninja -B build -S ./remill \
+RUN cmake -G Ninja -B build -S /anvill/remill \
     -DREMILL_ENABLE_INSTALL=true \
     -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
     -DCMAKE_VERBOSE_MAKEFILE=True \
@@ -82,6 +82,8 @@ RUN cmake -G Ninja -B build -S ./remill \
     -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
     && \
     cmake --build build --target install
+
+WORKDIR /anvill
 
 # Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
