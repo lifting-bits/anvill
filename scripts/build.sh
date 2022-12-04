@@ -234,7 +234,7 @@ function BuildRemill
   (
     set -x
     cd ${SRC_DIR}
-    git submodule upgrade --init
+    git submodule update --init
 
     cd ${REMILL_BUILD_DIR}
 

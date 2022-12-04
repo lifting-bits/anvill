@@ -67,7 +67,7 @@ SHELL ["/bin/bash", "-c"]
 COPY . ./
 
 RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
-RUN git submodule upgrade --init
+RUN git submodule update --init
 
 RUN mkdir /dependencies/remill_build
 
