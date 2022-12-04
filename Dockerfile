@@ -47,23 +47,6 @@ RUN curl -L https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_
     tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
-RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
-RUN git submodule init && git submodule update
-
-RUN mkdir /dependencies/remill_build
-
-WORKDIR /dependencies/remill_build
-
-
-RUN cmake -G Ninja -B build -S  /dependencies/remill \
-    -DREMILL_ENABLE_INSTALL=true \
-    -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
-    -DCMAKE_VERBOSE_MAKEFILE=True \
-    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
-    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
-    && \
-    cmake --build build --target install
-
 # Source code build
 FROM deps AS build
 WORKDIR /anvill
@@ -82,6 +65,23 @@ RUN python3.8 -m venv ${VIRTUAL_ENV}
 SHELL ["/bin/bash", "-c"]
 
 COPY . ./
+
+RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
+RUN git submodule upgrade --init
+
+RUN mkdir /dependencies/remill_build
+
+WORKDIR /dependencies/remill_build
+
+
+RUN cmake -G Ninja -B build -S ./remill \
+    -DREMILL_ENABLE_INSTALL=true \
+    -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
+    -DCMAKE_VERBOSE_MAKEFILE=True \
+    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
+    && \
+    cmake --build build --target install
 
 # Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
