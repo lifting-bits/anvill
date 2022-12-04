@@ -234,18 +234,7 @@ function BuildRemill
   (
     set -x
     cd ${SRC_DIR}
-    git clone https://github.com/lifting-bits/remill.git remill
-    cd remill
-
-    remill_commit_id_path="${SRC_DIR}/.remill_commit_id"
-
-    if [[ -f "${remill_commit_id_path}" ]] ; then
-      remill_commit_id=$(< ${remill_commit_id_path})
-      echo "Using the following remill commit: ${remill_commit_id}"
-      git checkout -b remill_commit_id "${remill_commit_id}"
-    else
-      echo "WARNING: Builds/tests will work against an unknown remill version"
-    fi
+    git submodule init && git submodule update
 
     cd ${REMILL_BUILD_DIR}
 

@@ -134,13 +134,6 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      - name: Clone the remill repository
-        uses: actions/checkout@v2
-        with:
-          repository: "lifting-bits/remill"
-          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
-          fetch-depth: 0
-
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
@@ -186,22 +179,6 @@ jobs:
         working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
         run: |
           just install-irene3-ghidra
-
-      - name: Select the remill version
-        shell: bash
-        run: |
-          remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
-
-          if [[ -f "${remill_commit_id_path}" ]] ; then
-            remill_commit_id=$(cat ${remill_commit_id_path})
-            echo "Using the following remill commit: ${remill_commit_id}"
-
-            cd ${{ steps.build_paths.outputs.SOURCE }}/remill
-            git checkout -b remill_commit_id "${remill_commit_id}"
-
-          else
-            echo "WARNING: Builds/tests will work against an unknown remill version"
-          fi
 
       - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
         shell: bash
@@ -501,33 +478,11 @@ jobs:
           fetch-depth: 0
           submodules: true
 
-      - name: Clone the remill repository
-        uses: actions/checkout@v2
-        with:
-          repository: "lifting-bits/remill"
-          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/remill
-          fetch-depth: 0
-
       - name: Setup Git User for Applying Patches
         # See this thread for more details https://github.community/t/github-actions-bot-email-address/17204/5
         run: |
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-
-      - name: Select the remill version
-        run: |
-          remill_commit_id_path="${{ steps.build_paths.outputs.SOURCE }}/anvill/.remill_commit_id"
-
-          if [[ -f "${remill_commit_id_path}" ]] ; then
-            remill_commit_id=$(cat ${remill_commit_id_path})
-            echo "Using the following remill commit: ${remill_commit_id}"
-
-            cd ${{ steps.build_paths.outputs.SOURCE }}/remill
-            git checkout -b remill_commit_id "${remill_commit_id}"
-
-          else
-            echo "WARNING: Builds/tests will work against an unknown remill version"
-          fi
 
       - name: Download the cxx-common ${{ matrix.cxxcommon_version}} package
         shell: bash
@@ -793,19 +748,6 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: true
-      - name: Set remill-commit-id
-        shell: bash
-        run: |
-          remill_commit_id_path=".remill_commit_id"
-
-          if [[ -f "${remill_commit_id_path}" ]] ; then
-            remill_commit_id=$(cat ${remill_commit_id_path})
-            echo "Using the following remill commit: ${remill_commit_id} in docker"
-          else
-            remill_commit_id="master"
-            echo "WARNING: Builds/tests will work against remill main commit"
-          fi
-          echo "REMILL_COMMIT_ID=$remill_commit_id" >> $GITHUB_ENV
       - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
         run: |
-          docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg REMILL_COMMIT_ID=${REMILL_COMMIT_ID} --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}
+          docker build . -t docker.pkg.github.com/lifting-bits/anvill/anvill-llvm${{ matrix.llvm }}-ubuntu${{ matrix.ubuntu }}-amd64:latest -f Dockerfile --target=dist --build-arg UBUNTU_VERSION=${{ matrix.ubuntu }} --build-arg ARCH=amd64 --build-arg LLVM_VERSION=${{ matrix.llvm }}

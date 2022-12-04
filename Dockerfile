@@ -30,7 +30,6 @@ ARG ARCH
 ARG LLVM_VERSION
 ARG CXX_COMMON_VERSION
 ARG LIBRARIES
-ARG REMILL_COMMIT_ID=master
 
 RUN apt-get update && \
     apt-get install -qqy xz-utils python3.8-venv make rpm && \
@@ -49,7 +48,7 @@ RUN curl -L https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
 
 RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
-RUN git clone "https://github.com/lifting-bits/remill.git" remill && cd remill && git checkout ${REMILL_COMMIT_ID}
+RUN git submodule init && git submodule update
 
 RUN mkdir /dependencies/remill_build
 

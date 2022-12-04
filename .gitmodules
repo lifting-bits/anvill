@@ -2,3 +2,6 @@
 	path = libraries/lifting-tools-ci
 	url = https://github.com/lifting-bits/lifting-tools-ci.git
 	branch = master
+[submodule "remill"]
+	path = remill
+	url = https://github.com/lifting-bits/remill.git
