@@ -232,7 +232,7 @@ jobs:
               -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_TARGET_TRIPLET="x64-linux-rel" \
               -G Ninja \
-              ${{ steps.build_paths.outputs.SOURCE }}/remill
+              ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
 
       - name: Build remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -260,7 +260,7 @@ jobs:
           echo ::set-output name=PATH::${DESTDIR}
 
       - name: Build, configure and install remill (Presets)
-        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/remill
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
@@ -536,7 +536,7 @@ jobs:
               -DCMAKE_TOOLCHAIN_FILE="${{ steps.cxxcommon_installer.outputs.PATH }}/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_TARGET_TRIPLET="x64-osx-rel" \
               -G Ninja \
-              ${{ steps.build_paths.outputs.SOURCE }}/remill
+              ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
 
       - name: Build remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -564,7 +564,7 @@ jobs:
           echo ::set-output name=PATH::${DESTDIR}
 
       - name: Build, configure and install remill (Presets)
-        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/remill
+        working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
 
         env:
           CCACHE_DIR: ${{ steps.build_paths.outputs.CCACHE }}
