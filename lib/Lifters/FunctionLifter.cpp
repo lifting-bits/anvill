@@ -16,6 +16,7 @@
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <google/protobuf/map_type_handler.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Argument.h>
@@ -1633,6 +1634,13 @@ void FunctionLifter::VisitBlocks() {
   }
 }
 
+llvm::Function *FunctionLifter::GetBasicBlockFunction(uint64_t address) const {
+  auto it = addr_to_bb_func.find(address);
+  if (it == addr_to_bb_func.end()) {
+    return nullptr;
+  }
+  return it->second.func;
+}
 
 BasicBlockFunction
 FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
@@ -1700,7 +1708,9 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   func->addFnAttr(llvm::Attribute::NoInline);
   func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  return {func, state_ptr, pc_arg, mem_arg, next_pc_out};
+  BasicBlockFunction bbf{func, state_ptr, pc_arg, mem_arg, next_pc_out};
+  addr_to_bb_func[block.addr] = bbf;
+  return bbf;
 }
 
 LiftedFunction FunctionLifter::CreateLiftedFunction(const std::string &name) {

@@ -101,6 +101,8 @@ class FunctionLifter {
                          llvm::ArrayRef<llvm::Value *> extra_args = {},
                          llvm::Instruction *IP = {}) const;
 
+  llvm::Function *GetBasicBlockFunction(uint64_t address) const;
+
  private:
   const LifterOptions &options;
   const MemoryProvider &memory_provider;
@@ -206,6 +208,9 @@ class FunctionLifter {
 
 
   llvm::BasicBlock *invalid_successor_block{nullptr};
+
+  // Maps basic block addresses to lifted functions
+  std::unordered_map<uint64_t, BasicBlockFunction> addr_to_bb_func;
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
