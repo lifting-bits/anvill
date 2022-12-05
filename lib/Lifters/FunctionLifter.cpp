@@ -1480,12 +1480,12 @@ bool FunctionLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
-      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics, true);
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     remill::AddTerminatingTailCall(block, intrinsics.function_return,
-                                   intrinsics);
+                                   intrinsics, true);
     return false;
   }
 
@@ -1628,7 +1628,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   for (uint64_t succ : blk.outgoing_edges) {
     sw->addCase(llvm::ConstantInt::get(
-                    llvm::IntegerType::get(this->llvm_context, 64), succ),
+                    llvm::cast<llvm::IntegerType>(this->pc_reg_type), succ),
                 this->GetOrCreateBlock(succ));
   }
 }
