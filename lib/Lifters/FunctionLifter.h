@@ -462,6 +462,8 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   LiftBasicBlockIntoFunction(BasicBlockFunction &basic_block_function,
                              const CodeBlock &blk);
 
+  remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
+
 
   void VisitBlocks();
 

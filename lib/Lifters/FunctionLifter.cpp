@@ -1524,6 +1524,14 @@ void FunctionLifter::ApplyInterProceduralControlFlowOverride(
   }
 }
 
+
+remill::DecodingContext
+FunctionLifter::CreateDecodingContext(const CodeBlock &blk) {
+  auto init_context = this->options.arch->CreateInitialContext();
+  return this->ApplyTargetList(blk.context_assignments,
+                               std::move(init_context));
+}
+
 llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
     BasicBlockFunction &basic_block_function, const CodeBlock &blk) {
   auto entry_block = &basic_block_function.func->getEntryBlock();
@@ -1538,14 +1546,14 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
 
   auto reached_addr = blk.addr;
   // TODO(Ian): use a different context
-  auto init_context = this->options.arch->CreateInitialContext();
-  ApplyTargetList(blk.context_assignments, init_context);
+
+  auto init_context = this->CreateDecodingContext(blk);
 
   while (reached_addr < blk.addr + blk.size) {
     auto addr = reached_addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
-      LOG(FATAL) << "Failed to decode insn in block";
+      LOG(FATAL) << "Failed to decode insn in block " << std::hex << addr;
     }
 
     reached_addr += inst.bytes.size();

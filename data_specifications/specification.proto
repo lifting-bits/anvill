@@ -199,6 +199,11 @@ message StackEffects {
   repeated Variable missed_frees = 4;
 }
 
+
+message StackFrame {
+    uint64 frame_size = 1;
+}
+
 message Function {
   uint64 entry_address = 1;
   FunctionLinkage func_linkage = 3; 
