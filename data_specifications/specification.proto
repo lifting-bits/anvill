@@ -201,7 +201,7 @@ message StackEffects {
 
 
 message StackFrame {
-    uint64 frame_size = 1;
+  uint64 frame_size = 1;
 }
 
 message Function {
@@ -215,6 +215,7 @@ message Function {
   // may have a corresponding context
   map<uint64, BlockContext> block_context = 7;
   StackEffects stack_effects = 8;
+  StackFrame frame = 9;
 }
 
 message GlobalVariable {

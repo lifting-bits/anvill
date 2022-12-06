@@ -212,8 +212,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
 
   fpm.addPass(llvm::DCEPass());
   AddRemoveStackPointerCExprs(fpm, options.stack_frame_recovery_options);
-  AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
-  AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
+  //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
+  //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROAPass());
 
 
@@ -235,8 +235,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   llvm::FunctionPassManager second_fpm;
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
-  AddRemoveRemillFunctionReturns(second_fpm, xr);
-  AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
+  //AddRemoveRemillFunctionReturns(second_fpm, xr);
+  //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
   AddRemoveFailedBranchHints(second_fpm);
   second_fpm.addPass(llvm::NewGVNPass());
