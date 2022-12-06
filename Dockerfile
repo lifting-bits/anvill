@@ -30,7 +30,6 @@ ARG ARCH
 ARG LLVM_VERSION
 ARG CXX_COMMON_VERSION
 ARG LIBRARIES
-ARG REMILL_COMMIT_ID=master
 
 RUN apt-get update && \
     apt-get install -qqy xz-utils python3.8-venv make rpm && \
@@ -47,22 +46,6 @@ RUN curl -L https://github.com/lifting-bits/cxx-common/releases/download/v${CXX_
     -o vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     tar -xJf vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz && \
     rm vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64.tar.xz
-
-RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
-RUN git clone "https://github.com/lifting-bits/remill.git" remill && cd remill && git checkout ${REMILL_COMMIT_ID}
-
-RUN mkdir /dependencies/remill_build
-
-WORKDIR /dependencies/remill_build
-
-
-RUN cmake -G Ninja -B build -S  /dependencies/remill \
-    -DREMILL_ENABLE_INSTALL=true \
-    -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
-    -DCMAKE_VERBOSE_MAKEFILE=True \
-    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
-    && \
-    cmake --build build --target install
 
 # Source code build
 FROM deps AS build
@@ -83,6 +66,25 @@ SHELL ["/bin/bash", "-c"]
 
 COPY . ./
 
+RUN git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com" && git config --global user.name "github-actions[bot]"
+RUN git submodule update --init
+
+RUN mkdir /dependencies/remill_build
+
+WORKDIR /dependencies/remill_build
+
+
+RUN cmake -G Ninja -B build -S /anvill/remill \
+    -DREMILL_ENABLE_INSTALL=true \
+    -DCMAKE_INSTALL_PREFIX=${LIBRARIES} \
+    -DCMAKE_VERBOSE_MAKEFILE=True \
+    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
+    && \
+    cmake --build build --target install
+
+WORKDIR /anvill
+
 # Source venv, build Anvill, Install binaries & system packages
 RUN source ${VIRTUAL_ENV}/bin/activate && \
     cmake -G Ninja -B build -S . \
@@ -92,7 +94,8 @@ RUN source ${VIRTUAL_ENV}/bin/activate && \
     -Dsleigh_DIR=${LIBRARIES}/cmake/sleigh \
     -DCMAKE_INSTALL_PREFIX:PATH="${LIBRARIES}" \
     -DCMAKE_VERBOSE_MAKEFILE=True \
-    -DVCPKG_ROOT=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64 \
+    -DCMAKE_TOOLCHAIN_FILE=/dependencies/vcpkg_ubuntu-${UBUNTU_VERSION}_llvm-${LLVM_VERSION}_amd64/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux-rel \
     && \
     cmake --build build --target install
 
