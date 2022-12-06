@@ -513,7 +513,8 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
 
   // Manipulates the control flow to restore intra-procedural state when reaching an
   // inter-procedural effect.
-  void ApplyInterProceduralControlFlowOverride(const remill::Instruction &,
+  // Returns a boolean represnting wether decoding should continue (true = non-terminal, false=terminal)
+  bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &,
                                                llvm::BasicBlock *&block);
 
   bool

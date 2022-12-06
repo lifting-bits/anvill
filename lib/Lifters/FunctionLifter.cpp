@@ -38,6 +38,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
@@ -1491,7 +1492,7 @@ bool FunctionLifter::DoInterProceduralControlFlow(
 
   return true;
 }
-void FunctionLifter::ApplyInterProceduralControlFlowOverride(
+bool FunctionLifter::ApplyInterProceduralControlFlowOverride(
     const remill::Instruction &insn, llvm::BasicBlock *&block) {
 
 
@@ -1517,11 +1518,13 @@ void FunctionLifter::ApplyInterProceduralControlFlowOverride(
       }
 
       block = continuation;
-
+      return true;
     } else {
-      this->DoInterProceduralControlFlow(insn, block, override);
+      return this->DoInterProceduralControlFlow(insn, block, override);
     }
   }
+
+  return true;
 }
 
 
@@ -1549,7 +1552,9 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
 
   auto init_context = this->CreateDecodingContext(blk);
 
-  while (reached_addr < blk.addr + blk.size) {
+
+  bool ended_on_terminal = false;
+  while (reached_addr < blk.addr + blk.size && !ended_on_terminal) {
     auto addr = reached_addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
@@ -1563,16 +1568,19 @@ llvm::BasicBlock *FunctionLifter::LiftBasicBlockIntoFunction(
     // to treat instruction lifting as an operation that can't fail.
     std::ignore = inst.GetLifter()->LiftIntoBlock(
         inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
-    this->ApplyInterProceduralControlFlowOverride(inst, bb);
+
+    ended_on_terminal =
+        !this->ApplyInterProceduralControlFlowOverride(inst, bb);
   }
 
+  if (!ended_on_terminal) {
+    llvm::IRBuilder<> builder(bb);
 
-  llvm::IRBuilder<> builder(bb);
-
-  builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
-                      basic_block_function.next_pc_out_param);
-  auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
-  llvm::ReturnInst::Create(bb->getContext(), memory, bb);
+    builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
+                        basic_block_function.next_pc_out_param);
+    auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
+    llvm::ReturnInst::Create(bb->getContext(), memory, bb);
+  }
   this->RecursivelyInlineFunctionCallees(basic_block_function.func);
 
   return bb;
@@ -1614,7 +1622,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk) {
 
   this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
 
-
+  CHECK(!llvm::verifyFunction(*bb_lifted_func.func, &llvm::errs()));
   auto new_mem_ptr =
       this->CallBasicBlockFunction(blk.addr, llvm_blk, bb_lifted_func.func);
 
@@ -1640,6 +1648,8 @@ void FunctionLifter::VisitBlocks() {
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk);
   }
+
+  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 }
 
 llvm::Function *FunctionLifter::GetBasicBlockFunction(uint64_t address) const {
@@ -1718,6 +1728,7 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
 
   BasicBlockFunction bbf{func, state_ptr, pc_arg, mem_arg, next_pc_out};
   addr_to_bb_func[block.addr] = bbf;
+
   return bbf;
 }
 
