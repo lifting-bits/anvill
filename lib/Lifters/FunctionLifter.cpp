@@ -948,60 +948,6 @@ void FunctionLifter::InstrumentCallBreakpointFunction(llvm::BasicBlock *block) {
   ir.CreateCall(func, args);
 }
 
-// Visit an instruction, and lift it into a basic block. Then, based off of
-// the category of the instruction, invoke one of the category-specific
-// lifters to enact a change in control-flow.
-void FunctionLifter::VisitInstruction(
-    remill::Instruction &inst, llvm::BasicBlock *block,
-    remill::DecodingContext prev_insn_context) {
-  curr_inst = &inst;
-
-  std::optional<remill::Instruction> delayed_inst;
-
-  if (options.track_provenance) {
-    InstrumentDataflowProvenance(block);
-  }
-
-  if (options.add_breakpoints) {
-    InstrumentCallBreakpointFunction(block);
-  }
-
-  // Even when something isn't supported or is invalid, we still lift
-  // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
-  // to treat instruction lifting as an operation that can't fail.
-  std::ignore = inst.GetLifter()->LiftIntoBlock(inst, block, state_ptr,
-                                                false /* is_delayed */);
-
-  // Figure out if we have to decode the subsequent instruction as a delayed
-  // instruction.
-  if (options.arch->MayHaveDelaySlot(inst)) {
-    delayed_inst = remill::Instruction();
-
-    if (!DecodeInstructionInto(inst.delayed_pc, true /* is_delayed */,
-                               &*delayed_inst, prev_insn_context)) {
-      LOG(ERROR) << "Unable to decode or use delayed instruction at "
-                 << std::hex << inst.delayed_pc << std::dec << " of "
-                 << inst.Serialize();
-    }
-  }
-
-  // Do an initial annotation of instructions injected by `LiftIntoBlock`,
-  // and prior to any lifting of a delayed instruction that might happen
-  // in any of the below `Visit*` calls.
-  pc_annotation = GetPCAnnotation(inst.pc);
-  AnnotateInstructions(block, pc_annotation_id, pc_annotation);
-
-  FlowVisitor visitor = {*this, inst, block, delayed_inst, prev_insn_context};
-  std::visit(visitor, inst.flows);
-
-
-  // Do a second pass of annotations to apply to the control-flow branching
-  // instructions added in by the above `Visit*` calls.
-  AnnotateInstructions(block, pc_annotation_id, pc_annotation);
-
-  curr_inst = nullptr;
-}
-
 
 // In the process of lifting code, we may want to call another native
 // function, `native_func`, for which we have high-level type info. The main
@@ -1090,47 +1036,51 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
 }
 
 // Allocate and initialize the state structure.
-void FunctionLifter::AllocateAndInitializeStateStructure(
-    llvm::BasicBlock *block, const remill::Arch *arch) {
+llvm::Value *
+FunctionLifter::AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
+                                                    const remill::Arch *arch) {
   llvm::IRBuilder<> ir(block);
   const auto state_type = arch->StateStructType();
+  llvm::Value *new_state_ptr = nullptr;
+
   switch (options.state_struct_init_procedure) {
     case StateStructureInitializationProcedure::kNone:
-      state_ptr = ir.CreateAlloca(state_type);
+      new_state_ptr = ir.CreateAlloca(state_type);
       break;
     case StateStructureInitializationProcedure::kZeroes:
-      state_ptr = ir.CreateAlloca(state_type);
-      ir.CreateStore(llvm::Constant::getNullValue(state_type), state_ptr);
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), new_state_ptr);
       break;
     case StateStructureInitializationProcedure::kUndef:
-      state_ptr = ir.CreateAlloca(state_type);
-      ir.CreateStore(llvm::UndefValue::get(state_type), state_ptr);
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), new_state_ptr);
       break;
     case StateStructureInitializationProcedure::kGlobalRegisterVariables:
-      state_ptr = ir.CreateAlloca(state_type);
+      new_state_ptr = ir.CreateAlloca(state_type);
       InitializeStateStructureFromGlobalRegisterVariables(block);
       break;
     case StateStructureInitializationProcedure::
         kGlobalRegisterVariablesAndZeroes:
-      state_ptr = ir.CreateAlloca(state_type);
-      ir.CreateStore(llvm::Constant::getNullValue(state_type), state_ptr);
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), new_state_ptr);
       InitializeStateStructureFromGlobalRegisterVariables(block);
       break;
     case StateStructureInitializationProcedure::
         kGlobalRegisterVariablesAndUndef:
-      state_ptr = ir.CreateAlloca(state_type);
-      ir.CreateStore(llvm::UndefValue::get(state_type), state_ptr);
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), new_state_ptr);
       InitializeStateStructureFromGlobalRegisterVariables(block);
       break;
   }
 
-  ArchSpecificStateStructureInitialization(block);
+  ArchSpecificStateStructureInitialization(block, new_state_ptr);
+  return new_state_ptr;
 }
 
 // Perform architecture-specific initialization of the state structure
 // in `block`.
 void FunctionLifter::ArchSpecificStateStructureInitialization(
-    llvm::BasicBlock *block) {
+    llvm::BasicBlock *block, llvm::Value *new_state_ptr) {
 
   if (is_x86_or_amd64) {
     llvm::IRBuilder<> ir(block);
@@ -1149,7 +1099,7 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
                   llvm::PointerType::get(block->getContext(), 256)),
               llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
-      ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(state_ptr, ir));
+      ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(new_state_ptr, ir));
     }
 
     if (fsbase_reg) {
@@ -1159,27 +1109,27 @@ void FunctionLifter::ArchSpecificStateStructureInitialization(
                   llvm::PointerType::get(block->getContext(), 257)),
               llvm::PointerType::get(block->getContext(), 0)),
           pc_reg_type);
-      ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(state_ptr, ir));
+      ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(new_state_ptr, ir));
     }
 
     if (ssbase_reg) {
       ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
-                     ssbase_reg->AddressOf(state_ptr, ir));
+                     ssbase_reg->AddressOf(new_state_ptr, ir));
     }
 
     if (dsbase_reg) {
       ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
-                     dsbase_reg->AddressOf(state_ptr, ir));
+                     dsbase_reg->AddressOf(new_state_ptr, ir));
     }
 
     if (esbase_reg) {
       ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
-                     esbase_reg->AddressOf(state_ptr, ir));
+                     esbase_reg->AddressOf(new_state_ptr, ir));
     }
 
     if (csbase_reg) {
       ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
-                     csbase_reg->AddressOf(state_ptr, ir));
+                     csbase_reg->AddressOf(new_state_ptr, ir));
     }
   }
 }
@@ -1237,7 +1187,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::Value *mem_ptr = llvm::Constant::getNullValue(mem_ptr_type);
 
   // Stack-allocate and initialize the state pointer.
-  AllocateAndInitializeStateStructure(block, decl.arch);
+  this->state_ptr = AllocateAndInitializeStateStructure(block, decl.arch);
 
   auto pc_ptr = pc_reg->AddressOf(state_ptr, block);
   auto sp_ptr = sp_reg->AddressOf(state_ptr, block);
@@ -1685,18 +1635,21 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
                     GetBasicBlockAnnotation(block.addr));
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
-  auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
+  auto out_state = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
   auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
   memory->setName("memory");
-  state->setName("state");
+  out_state->setName("state_out");
   pc->setName("program_counter");
   next_pc_out->setName("next_pc_out");
 
   options.arch->InitializeEmptyLiftedFunction(func);
 
+
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
+
+  auto state = this->AllocateAndInitializeStateStructure(&blk, options.arch);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
 
@@ -1708,17 +1661,16 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
       if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
         auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
             ir, this->sp_reg, block.addr, reg_off.offset);
-        LOG(INFO) << reg_off.target_register->name;
         StoreNativeValueToRegister(new_value, reg_off.target_register,
                                    type_provider.Dictionary(), intrinsics, &blk,
                                    state);
-
-        blk.dump();
       }
     }
   }
 
-  auto state_ptr = remill::NthArgument(func, remill::kStatePointerArgNum);
+  blk.dump();
+
+
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
 
@@ -1726,7 +1678,7 @@ FunctionLifter::CreateBasicBlockFunction(const CodeBlock &block) {
   func->addFnAttr(llvm::Attribute::NoInline);
   func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  BasicBlockFunction bbf{func, state_ptr, pc_arg, mem_arg, next_pc_out};
+  BasicBlockFunction bbf{func, state, pc_arg, mem_arg, next_pc_out};
   addr_to_bb_func[block.addr] = bbf;
 
   return bbf;

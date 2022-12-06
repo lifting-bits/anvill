@@ -55,7 +55,7 @@ struct ControlFlowTargetList;
 
 struct BasicBlockFunction {
   llvm::Function *func;
-  llvm::Argument *state_ptr;
+  llvm::Value *state_ptr;
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
@@ -467,12 +467,6 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
 
   void VisitBlocks();
 
-  // Visit an instruction, and lift it into a basic block. Then, based off of
-  // the category of the instruction, invoke one of the category-specific
-  // lifters to enact a change in control-flow.
-  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block,
-                        remill::DecodingContext prev_insn_context);
-
   // In the process of lifting code, we may want to call another native
   // function, `native_func`, for which we have high-level type info. The main
   // lifter operates on a special three-argument form function style, and
@@ -533,12 +527,13 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
 
 
   // Allocate and initialize the state structure.
-  void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
-                                           const remill::Arch *arch);
+  llvm::Value *AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
+                                                   const remill::Arch *arch);
 
   // Perform architecture-specific initialization of the state structure
   // in `block`.
-  void ArchSpecificStateStructureInitialization(llvm::BasicBlock *block);
+  void ArchSpecificStateStructureInitialization(llvm::BasicBlock *block,
+                                                llvm::Value *state_ptr);
 
   // Initialize the state structure with default values, loaded from global
   // variables. The purpose of these global variables is to show that there are

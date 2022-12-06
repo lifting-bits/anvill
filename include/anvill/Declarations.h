@@ -249,6 +249,8 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
 
+  std::uint64_t stack_depth;
+
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 

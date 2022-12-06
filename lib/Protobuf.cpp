@@ -498,6 +498,13 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     return parse_res.TakeError();
   }
 
+
+  if (!function.has_frame()) {
+    return std::string("All functions should have a frame");
+  }
+
+  decl.stack_depth = function.frame().frame_size();
+
   this->ParseCFGIntoFunction(function, decl);
 
   auto link = function.func_linkage();
