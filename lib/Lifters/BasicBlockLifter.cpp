@@ -1,6 +1,7 @@
 #include "BasicBlockLifter.h"
 
 #include <anvill/Type.h>
+#include <anvill/Utils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
@@ -308,6 +309,12 @@ void BasicBlockLifter::LiftBasicBlockIntoFunction(
 }
 
 
+llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
+  auto pc_val = llvm::ConstantInt::get(address_type, addr);
+  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
+  return llvm::MDNode::get(this->semantics_module->getContext(), pc_md);
+}
+
 BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   std::string name_ = "basic_block_func" + std::to_string(this->block_def.addr);
   auto &context = this->semantics_module->getContext();
@@ -326,10 +333,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::StringRef name(name_.data(), name_.size());
   auto func =
       llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
-                             name, this->semantics_module.get());
+                             name, this->semantics_module);
 
   func->setMetadata(anvill::kBasicBlockMetadata,
-                    GetBasicBlockAnnotation(block.addr));
+                    GetBasicBlockAnnotation(this->block_def.addr));
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto out_state = remill::NthArgument(func, remill::kStatePointerArgNum);
@@ -351,17 +358,15 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Can resolve these stack references later .
 
 
-  auto stack_offsets = this->curr_decl->stack_offsets.find(block.addr);
+  auto stack_offsets = this->block_context.GetStackOffsets();
 
-  if (stack_offsets != this->curr_decl->stack_offsets.end()) {
-    for (auto &reg_off : stack_offsets->second.affine_equalities) {
-      if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
-        auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
-            ir, this->sp_reg, block.addr, reg_off.offset);
-        StoreNativeValueToRegister(new_value, reg_off.target_register,
-                                   type_provider.Dictionary(), intrinsics, &blk,
-                                   state);
-      }
+  for (auto &reg_off : stack_offsets.affine_equalities) {
+    if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
+      auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
+          ir, this->sp_reg, this->block_def.addr, reg_off.offset);
+      StoreNativeValueToRegister(new_value, reg_off.target_register,
+                                 type_provider.Dictionary(), intrinsics, &blk,
+                                 state);
     }
   }
 
@@ -374,7 +379,6 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
   BasicBlockFunction bbf{func, state, pc_arg, mem_arg, next_pc_out};
-  addr_to_bb_func[block.addr] = bbf;
 
   return bbf;
 }

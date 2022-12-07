@@ -118,26 +118,6 @@ class FunctionLifter : public CodeLifter {
 
   remill::OperandLifter::OpLifterPtr op_lifter;
 
-  // Specification counter and stack pointer registers.
-  const remill::Register *const pc_reg;
-  const remill::Register *const sp_reg;
-
-  // Are we lifting SPARC code? This affects whether or not we need to do
-  // double checking on function return addresses;
-  const bool is_sparc;
-
-  // Are we lifting x86(-64) code?
-  const bool is_x86_or_amd64;
-
-  // Convenient to keep around.
-  llvm::Type *const i8_type;
-  llvm::Constant *const i8_zero;
-  llvm::Type *const i32_type;
-  llvm::PointerType *const mem_ptr_type;
-  llvm::PointerType *const state_ptr_type;
-  llvm::IntegerType *const address_type;
-  llvm::Type *const pc_reg_type{nullptr};
-
   // Metadata node to attach to lifted instructions to related them to
   // original instructions.
   unsigned pc_annotation_id{0};

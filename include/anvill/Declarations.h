@@ -201,6 +201,7 @@ struct LocalVariableDecl {
 class BasicBlockContext {
  public:
   virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 };
 
 struct FunctionDecl;

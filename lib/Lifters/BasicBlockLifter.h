@@ -29,8 +29,6 @@ class BasicBlockLifter : public CodeLifter {
  private:
   const BasicBlockContext &block_context;
   const CodeBlock &block_def;
-  const LifterOptions &options;
-  llvm::Module *semantics_module;
 
   // The allocated state ptr for the function.
   llvm::Value *state_ptr;
@@ -67,6 +65,10 @@ class BasicBlockLifter : public CodeLifter {
   bool DecodeInstructionInto(const uint64_t addr, bool is_delayed,
                              remill::Instruction *inst_out,
                              remill::DecodingContext context);
+
+
+  llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
+
 
  public:
   llvm::Function *LiftBasicBlockFunction();

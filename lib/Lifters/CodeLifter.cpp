@@ -33,6 +33,140 @@ static void ClearVariableNames(llvm::Function *func) {
 }  // namespace
 
 
+// Perform architecture-specific initialization of the state structure
+// in `block`.
+void CodeLifter::ArchSpecificStateStructureInitialization(
+    llvm::BasicBlock *block, llvm::Value *new_state_ptr) {
+
+  if (is_x86_or_amd64) {
+    llvm::IRBuilder<> ir(block);
+
+    const auto ssbase_reg = options.arch->RegisterByName("SSBASE");
+    const auto fsbase_reg = options.arch->RegisterByName("FSBASE");
+    const auto gsbase_reg = options.arch->RegisterByName("GSBASE");
+    const auto dsbase_reg = options.arch->RegisterByName("DSBASE");
+    const auto esbase_reg = options.arch->RegisterByName("ESBASE");
+    const auto csbase_reg = options.arch->RegisterByName("CSBASE");
+
+    if (gsbase_reg) {
+      const auto gsbase_val = llvm::ConstantExpr::getPtrToInt(
+          llvm::ConstantExpr::getAddrSpaceCast(
+              llvm::ConstantExpr::getNullValue(
+                  llvm::PointerType::get(block->getContext(), 256)),
+              llvm::PointerType::get(block->getContext(), 0)),
+          pc_reg_type);
+      ir.CreateStore(gsbase_val, gsbase_reg->AddressOf(new_state_ptr, ir));
+    }
+
+    if (fsbase_reg) {
+      const auto fsbase_val = llvm::ConstantExpr::getPtrToInt(
+          llvm::ConstantExpr::getAddrSpaceCast(
+              llvm::ConstantExpr::getNullValue(
+                  llvm::PointerType::get(block->getContext(), 257)),
+              llvm::PointerType::get(block->getContext(), 0)),
+          pc_reg_type);
+      ir.CreateStore(fsbase_val, fsbase_reg->AddressOf(new_state_ptr, ir));
+    }
+
+    if (ssbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     ssbase_reg->AddressOf(new_state_ptr, ir));
+    }
+
+    if (dsbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     dsbase_reg->AddressOf(new_state_ptr, ir));
+    }
+
+    if (esbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     esbase_reg->AddressOf(new_state_ptr, ir));
+    }
+
+    if (csbase_reg) {
+      ir.CreateStore(llvm::Constant::getNullValue(pc_reg_type),
+                     csbase_reg->AddressOf(new_state_ptr, ir));
+    }
+  }
+}
+
+
+// Initialize the state structure with default values, loaded from global
+// variables. The purpose of these global variables is to show that there are
+// some unmodelled external dependencies inside of a lifted function.
+void CodeLifter::InitializeStateStructureFromGlobalRegisterVariables(
+    llvm::BasicBlock *block, llvm::Value *state_ptr) {
+
+  // Get or create globals for all top-level registers. The idea here is that
+  // the spec could feasibly miss some dependencies, and so after optimization,
+  // we'll be able to observe uses of `__anvill_reg_*` globals, and handle
+  // them appropriately.
+
+  llvm::IRBuilder<> ir(block);
+
+  options.arch->ForEachRegister([=, &ir](const remill::Register *reg_) {
+    if (auto reg = reg_->EnclosingRegister();
+        reg_ == reg && reg != sp_reg && reg != pc_reg) {
+
+      std::stringstream ss;
+      ss << kUnmodelledRegisterPrefix << reg->name;
+      const auto reg_name = ss.str();
+
+      auto reg_global = semantics_module->getGlobalVariable(reg_name);
+      if (!reg_global) {
+        reg_global = new llvm::GlobalVariable(
+            *semantics_module, reg->type, false,
+            llvm::GlobalValue::ExternalLinkage, nullptr, reg_name);
+      }
+
+      const auto reg_ptr = reg->AddressOf(state_ptr, block);
+      ir.CreateStore(ir.CreateLoad(reg->type, reg_global), reg_ptr);
+    }
+  });
+}
+
+// Allocate and initialize the state structure.
+llvm::Value *
+CodeLifter::AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
+                                                const remill::Arch *arch) {
+  llvm::IRBuilder<> ir(block);
+  const auto state_type = arch->StateStructType();
+  llvm::Value *new_state_ptr = nullptr;
+
+  switch (options.state_struct_init_procedure) {
+    case StateStructureInitializationProcedure::kNone:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      break;
+    case StateStructureInitializationProcedure::kZeroes:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), new_state_ptr);
+      break;
+    case StateStructureInitializationProcedure::kUndef:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), new_state_ptr);
+      break;
+    case StateStructureInitializationProcedure::kGlobalRegisterVariables:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      InitializeStateStructureFromGlobalRegisterVariables(block, new_state_ptr);
+      break;
+    case StateStructureInitializationProcedure::
+        kGlobalRegisterVariablesAndZeroes:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::Constant::getNullValue(state_type), new_state_ptr);
+      InitializeStateStructureFromGlobalRegisterVariables(block, new_state_ptr);
+      break;
+    case StateStructureInitializationProcedure::
+        kGlobalRegisterVariablesAndUndef:
+      new_state_ptr = ir.CreateAlloca(state_type);
+      ir.CreateStore(llvm::UndefValue::get(state_type), new_state_ptr);
+      InitializeStateStructureFromGlobalRegisterVariables(block, new_state_ptr);
+      break;
+  }
+
+  ArchSpecificStateStructureInitialization(block, new_state_ptr);
+  return new_state_ptr;
+}
+
 void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   std::vector<llvm::CallInst *> calls_to_inline;
 
