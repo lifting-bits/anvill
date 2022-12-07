@@ -212,6 +212,7 @@ class SpecBlockContext : public BasicBlockContext {
  public:
   SpecBlockContext(const FunctionDecl &decl) : decl(decl) {}
   virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
+  virtual const SpecStackOffsets &GetStackOffsets() const override;
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,

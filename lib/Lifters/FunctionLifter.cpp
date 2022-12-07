@@ -162,33 +162,10 @@ FunctionLifter::~FunctionLifter(void) {}
 
 FunctionLifter::FunctionLifter(const LifterOptions &options_)
     : options(options_),
-      memory_provider(options.memory_provider),
-      type_provider(options.type_provider),
-      type_specifier(options.TypeDictionary(), options.arch),
       semantics_module(remill::LoadArchSemantics(options.arch)),
       llvm_context(semantics_module->getContext()),
       intrinsics(semantics_module.get()),
-      op_lifter(options.arch->DefaultLifter(intrinsics)),
-      pc_reg(options.arch
-                 ->RegisterByName(options.arch->ProgramCounterRegisterName())
-                 ->EnclosingRegister()),
-      sp_reg(
-          options.arch->RegisterByName(options.arch->StackPointerRegisterName())
-              ->EnclosingRegister()),
-      is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
-      is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
-      i8_type(llvm::Type::getInt8Ty(llvm_context)),
-      i8_zero(llvm::Constant::getNullValue(i8_type)),
-      i32_type(llvm::Type::getInt32Ty(llvm_context)),
-      mem_ptr_type(
-          llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
-              options.arch->MemoryPointerType(), llvm_context))),
-      state_ptr_type(
-          llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
-              options.arch->StatePointerType(), llvm_context))),
-      address_type(
-          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
-      pc_reg_type(pc_reg->type) {
+      op_lifter(options.arch->DefaultLifter(intrinsics)) {
 
   if (options.pc_metadata_name) {
     pc_annotation_id = llvm_context.getMDKindID(options.pc_metadata_name);
