@@ -30,6 +30,7 @@
 #include <utility>
 
 #include "BasicBlockTransform.h"
+#include "CodeLifter.h"
 
 namespace llvm {
 class Constant;
@@ -70,7 +71,7 @@ struct LiftedFunction {
 
 
 // Orchestrates lifting of instructions and control-flow between instructions.
-class FunctionLifter {
+class FunctionLifter : public CodeLifter {
  public:
   ~FunctionLifter(void);
 
@@ -105,9 +106,6 @@ class FunctionLifter {
 
  private:
   const LifterOptions &options;
-  const MemoryProvider &memory_provider;
-  const TypeProvider &type_provider;
-  const TypeTranslator type_specifier;
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;

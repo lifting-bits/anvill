@@ -83,6 +83,8 @@ set(anvill_lifters_HEADERS
   "Lifters/DataLifter.h"
   "Lifters/EntityLifter.h"
   "Lifters/FunctionLifter.h"
+  "Lifters/BasicBlockLifter.h"
+  "Lifters/CodeLifter.h"
   "Lifters/ValueLifter.h"
   "Lifters/BasicBlockTransform.h"
 )
@@ -91,6 +93,8 @@ set(anvill_lifters_SOURCES
   "Lifters/DataLifter.cpp"
   "Lifters/EntityLifter.cpp"
   "Lifters/FunctionLifter.cpp"
+  "Lifters/CodeLifter.cpp"
+  "Lifters/BasicBlockLifter.cpp"
   "Lifters/Options.cpp"
   "Lifters/ValueLifter.cpp"
   "Lifters/BasicBlockTransform.cpp"
