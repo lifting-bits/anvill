@@ -33,6 +33,41 @@ static void ClearVariableNames(llvm::Function *func) {
 }  // namespace
 
 
+CodeLifter::CodeLifter(const LifterOptions &options,
+                       llvm::Module *semantics_module)
+    : options(options),
+      semantics_module(semantics_module),
+      intrinsics(semantics_module),
+      llvm_context(semantics_module->getContext()),
+      op_lifter(options.arch->DefaultLifter(intrinsics)),
+      is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
+      is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
+      pc_reg(options.arch
+                 ->RegisterByName(options.arch->ProgramCounterRegisterName())
+                 ->EnclosingRegister()),
+      sp_reg(
+          options.arch->RegisterByName(options.arch->StackPointerRegisterName())
+              ->EnclosingRegister()),
+      memory_provider(options.memory_provider),
+      type_provider(options.type_provider),
+      type_specifier(options.TypeDictionary(), options.arch),
+      address_type(
+          llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
+      i8_type(llvm::Type::getInt8Ty(llvm_context)),
+      i8_zero(llvm::Constant::getNullValue(i8_type)),
+      i32_type(llvm::Type::getInt32Ty(llvm_context)),
+      mem_ptr_type(
+          llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
+              options.arch->MemoryPointerType(), llvm_context))),
+      state_ptr_type(
+          llvm::dyn_cast<llvm::PointerType>(remill::RecontextualizeType(
+              options.arch->StatePointerType(), llvm_context))),
+      pc_reg_type(pc_reg->type) {
+  if (options.pc_metadata_name) {
+    pc_annotation_id = llvm_context.getMDKindID(options.pc_metadata_name);
+  }
+}
+
 // Perform architecture-specific initialization of the state structure
 // in `block`.
 void CodeLifter::ArchSpecificStateStructureInitialization(

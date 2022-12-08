@@ -160,17 +160,17 @@ static void AnnotateInstructions(llvm::BasicBlock *block, unsigned id,
 
 FunctionLifter::~FunctionLifter(void) {}
 
-FunctionLifter::FunctionLifter(const LifterOptions &options_)
-    : options(options_),
-      semantics_module(remill::LoadArchSemantics(options.arch)),
-      llvm_context(semantics_module->getContext()),
-      intrinsics(semantics_module.get()),
-      op_lifter(options.arch->DefaultLifter(intrinsics)) {
 
-  if (options.pc_metadata_name) {
-    pc_annotation_id = llvm_context.getMDKindID(options.pc_metadata_name);
-  }
+FunctionLifter
+FunctionLifter::CreateFunctionLifter(const LifterOptions &options_) {
+  return FunctionLifter(options_, remill::LoadArchSemantics(options_.arch));
 }
+
+
+FunctionLifter::FunctionLifter(const LifterOptions &options_,
+                               std::unique_ptr<llvm::Module> semantics_module)
+    : CodeLifter(options_, semantics_module.get()),
+      semantics_module(std::move(semantics_module)) {}
 
 
 llvm::BranchInst *

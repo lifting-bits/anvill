@@ -1,5 +1,7 @@
 #include <anvill/ABI.h>
 #include <anvill/Type.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
@@ -15,7 +17,13 @@ class CodeLifter {
   const LifterOptions &options;
 
   // Remill intrinsics inside of `module`.
+
+
+  llvm::Module *semantics_module;
+
   remill::IntrinsicTable intrinsics;
+
+  llvm::LLVMContext &llvm_context;
 
   remill::OperandLifter::OpLifterPtr op_lifter;
 
@@ -36,7 +44,6 @@ class CodeLifter {
   const TypeTranslator type_specifier;
   llvm::IntegerType *const address_type;
 
-  llvm::Module *semantics_module;
 
   // Convenient to keep around.
   llvm::Type *const i8_type;
@@ -65,7 +72,7 @@ class CodeLifter {
   unsigned pc_annotation_id;
 
  public:
-  CodeLifter(const LifterOptions &options);
+  CodeLifter(const LifterOptions &options, llvm::Module *semantics_module);
 };
 
 }  // namespace anvill

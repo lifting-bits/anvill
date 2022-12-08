@@ -9,7 +9,6 @@
 #include "EntityLifter.h"
 
 #include <anvill/Providers.h>
-#include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
@@ -21,6 +20,8 @@
 
 #include <sstream>
 
+#include "Lifters/FunctionLifter.h"
+
 namespace anvill {
 
 EntityLifterImpl::~EntityLifterImpl(void) {}
@@ -30,7 +31,7 @@ EntityLifterImpl::EntityLifterImpl(const LifterOptions &options_)
       memory_provider(&(options.memory_provider)),
       type_provider(&(options.type_provider)),
       value_lifter(options),
-      function_lifter(options),
+      function_lifter(FunctionLifter::CreateFunctionLifter(options_)),
       data_lifter(options) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
@@ -79,8 +80,7 @@ void EntityLifterImpl::ForEachEntityAtAddress(
 
 EntityLifter::~EntityLifter(void) {}
 
-EntityLifter::EntityLifter(
-    const LifterOptions &options_)
+EntityLifter::EntityLifter(const LifterOptions &options_)
     : impl(std::make_shared<EntityLifterImpl>(options_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,

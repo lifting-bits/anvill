@@ -75,7 +75,8 @@ class FunctionLifter : public CodeLifter {
  public:
   ~FunctionLifter(void);
 
-  FunctionLifter(const LifterOptions &options_);
+
+  static FunctionLifter CreateFunctionLifter(const LifterOptions &options_);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -105,18 +106,12 @@ class FunctionLifter : public CodeLifter {
   llvm::Function *GetBasicBlockFunction(uint64_t address) const;
 
  private:
-  const LifterOptions &options;
+  FunctionLifter(const LifterOptions &options_,
+                 std::unique_ptr<llvm::Module> semantics_module);
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
 
-  // Context associated with `module`.
-  llvm::LLVMContext &llvm_context;
-
-  // Remill intrinsics inside of `module`.
-  remill::IntrinsicTable intrinsics;
-
-  remill::OperandLifter::OpLifterPtr op_lifter;
 
   // Metadata node to attach to lifted instructions to related them to
   // original instructions.
