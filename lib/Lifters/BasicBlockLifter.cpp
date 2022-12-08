@@ -4,6 +4,7 @@
 #include <anvill/Utils.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "Lifters/CodeLifter.h"
+#include "anvill/Declarations.h"
 
 namespace anvill {
 
@@ -513,5 +515,19 @@ CallableBasicBlockFunction::CallableBasicBlockFunction(
       in_scope_locals(in_scope_locals),
       block(block),
       bb_lifter(std::move(bb_lifter)) {}
+
+
+const CodeBlock &CallableBasicBlockFunction::GetBlock() const {
+  return this->block;
+}
+
+llvm::Function *CallableBasicBlockFunction::GetFunction() const {
+  return this->func;
+}
+
+const std::vector<ParameterDecl> &
+CallableBasicBlockFunction::GetInScopeVaraibles() const {
+  return this->in_scope_locals;
+}
 
 }  // namespace anvill

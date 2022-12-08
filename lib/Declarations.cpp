@@ -114,6 +114,10 @@ std::vector<ParameterDecl> SpecBlockContext::GetAvailableVariables() const {
   return decls;
 }
 
+const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
+  return this->offsets;
+}
+
 // Interpret `target` as being the function to call, and call it from within
 // a basic block in a lifted bitcode function. Returns the new value of the
 // memory pointer.
@@ -305,7 +309,13 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
 }
 
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
-  return SpecBlockContext(*this);
+  auto offs = this->stack_offsets.find(addr);
+  if (offs != this->stack_offsets.end()) {
+
+    return SpecBlockContext(*this, offs->second);
+  } else {
+    return SpecBlockContext(*this, SpecStackOffsets());
+  }
 }
 
 

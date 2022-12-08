@@ -208,9 +208,12 @@ struct FunctionDecl;
 class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
+  SpecStackOffsets offsets;
 
  public:
-  SpecBlockContext(const FunctionDecl &decl) : decl(decl) {}
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets)
+      : decl(decl),
+        offsets(std::move(offsets)) {}
   virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 };
