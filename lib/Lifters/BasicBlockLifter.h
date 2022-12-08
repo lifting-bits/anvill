@@ -77,10 +77,14 @@ class BasicBlockLifter : public CodeLifter {
 
  public:
   BasicBlockLifter(const BasicBlockContext &block_context,
-                   const CodeBlock &block_def, const LifterOptions &options_);
+                   const CodeBlock &block_def, const LifterOptions &options_,
+                   llvm::Module *semantics_module,
+                   const TypeTranslator &type_specifier);
   static CallableBasicBlockFunction
   LiftBasicBlock(const BasicBlockContext &block_context,
-                 const CodeBlock &block_def, const LifterOptions &options_);
+                 const CodeBlock &block_def, const LifterOptions &options_,
+                 llvm::Module *semantics_module,
+                 const TypeTranslator &type_specifier);
 
 
   CallableBasicBlockFunction LiftBasicBlockFunction() &&;

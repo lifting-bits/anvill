@@ -417,7 +417,8 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 CallableBasicBlockFunction
 FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
   return BasicBlockLifter::LiftBasicBlock(
-      this->curr_decl->GetBlockContext(blk.addr), blk, this->options);
+      this->curr_decl->GetBlockContext(blk.addr), blk, this->options,
+      this->semantics_module.get(), this->type_specifier);
 }
 
 void FunctionLifter::VisitBlock(CodeBlock blk,

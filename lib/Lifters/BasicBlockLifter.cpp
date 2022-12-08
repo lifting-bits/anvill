@@ -13,6 +13,8 @@
 #include <memory>
 #include <vector>
 
+#include "Lifters/CodeLifter.h"
+
 namespace anvill {
 
 CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
@@ -485,14 +487,24 @@ void CallableBasicBlockFunction::CallBasicBlockFunction(
   this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this);
 }
 
-CallableBasicBlockFunction
-BasicBlockLifter::LiftBasicBlock(const BasicBlockContext &block_context,
-                                 const CodeBlock &block_def,
-                                 const LifterOptions &options_) {
+CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlock(
+    const BasicBlockContext &block_context, const CodeBlock &block_def,
+    const LifterOptions &options_, llvm::Module *semantics_module,
+    const TypeTranslator &type_specifier) {
 
-  return BasicBlockLifter(block_context, block_def, options_)
+  return BasicBlockLifter(block_context, block_def, options_, semantics_module,
+                          type_specifier)
       .LiftBasicBlockFunction();
 }
+
+BasicBlockLifter::BasicBlockLifter(const BasicBlockContext &block_context,
+                                   const CodeBlock &block_def,
+                                   const LifterOptions &options_,
+                                   llvm::Module *semantics_module,
+                                   const TypeTranslator &type_specifier)
+    : CodeLifter(options_, semantics_module, type_specifier),
+      block_context(block_context),
+      block_def(block_def) {}
 
 CallableBasicBlockFunction::CallableBasicBlockFunction(
     llvm::Function *func, std::vector<ParameterDecl> in_scope_locals,
