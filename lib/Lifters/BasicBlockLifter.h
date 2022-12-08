@@ -26,33 +26,7 @@ struct BasicBlockFunction {
   llvm::Argument *next_pc_out_param;
 };
 
-class BasicBlockLifter;
-class CallableBasicBlockFunction {
-
- private:
-  llvm::Function *func;
-  std::vector<ParameterDecl> in_scope_locals;
-  CodeBlock block;
-  const BasicBlockLifter &bb_lifter;
-
-
- public:
-  CallableBasicBlockFunction(llvm::Function *func,
-                             std::vector<ParameterDecl> in_scope_locals,
-                             CodeBlock block,
-                             const BasicBlockLifter &bb_lifter);
-
-  const std::vector<ParameterDecl> &GetInScopeVaraibles() const;
-  llvm::Function *GetFunction() const;
-
-  llvm::StructType *GetRetType() const;
-
-  const CodeBlock &GetBlock() const;
-
-  // Calls a basic block function and unpacks the result into the state
-  void CallBasicBlockFunction(llvm::IRBuilder<> &,
-                              llvm::Value *state_ptr) const;
-};
+class CallableBasicBlockFunction;
 
 /**
  * @brief A BasicBlockLifter lifts a basic block as a native function that takes 
@@ -72,9 +46,6 @@ class BasicBlockLifter : public CodeLifter {
       remill::DecodingContext prev_context);
 
   remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
-
-  BasicBlockLifter(const BasicBlockContext &block_context,
-                   const CodeBlock &block_def, const LifterOptions &options_);
 
   void LiftBasicBlockIntoFunction(BasicBlockFunction &basic_block_function);
 
@@ -105,7 +76,14 @@ class BasicBlockLifter : public CodeLifter {
 
 
  public:
-  llvm::Function *LiftBasicBlockFunction();
+  BasicBlockLifter(const BasicBlockContext &block_context,
+                   const CodeBlock &block_def, const LifterOptions &options_);
+  static CallableBasicBlockFunction
+  LiftBasicBlock(const BasicBlockContext &block_context,
+                 const CodeBlock &block_def, const LifterOptions &options_);
+
+
+  CallableBasicBlockFunction LiftBasicBlockFunction() &&;
 
   // Packs in scope variables into a struct
   llvm::Value *PackLocals(llvm::IRBuilder<> &, llvm::Value *from_state_ptr,
@@ -122,6 +100,35 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::StructType *
   StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
+
+  BasicBlockLifter(BasicBlockLifter &&) = default;
 };
+
+class CallableBasicBlockFunction {
+
+ private:
+  llvm::Function *func;
+  std::vector<ParameterDecl> in_scope_locals;
+  CodeBlock block;
+  BasicBlockLifter bb_lifter;
+
+
+ public:
+  CallableBasicBlockFunction(llvm::Function *func,
+                             std::vector<ParameterDecl> in_scope_locals,
+                             CodeBlock block, BasicBlockLifter bb_lifter);
+
+  const std::vector<ParameterDecl> &GetInScopeVaraibles() const;
+  llvm::Function *GetFunction() const;
+
+  llvm::StructType *GetRetType() const;
+
+  const CodeBlock &GetBlock() const;
+
+  // Calls a basic block function and unpacks the result into the state
+  void CallBasicBlockFunction(llvm::IRBuilder<> &,
+                              llvm::Value *state_ptr) const;
+};
+
 
 }  // namespace anvill

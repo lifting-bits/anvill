@@ -170,8 +170,9 @@ FunctionLifter::CreateFunctionLifter(const LifterOptions &options_) {
 
 FunctionLifter::FunctionLifter(const LifterOptions &options_,
                                std::unique_ptr<llvm::Module> semantics_module)
-    : CodeLifter(options_, semantics_module.get()),
-      semantics_module(std::move(semantics_module)) {}
+    : CodeLifter(options_, semantics_module.get(), this->type_specifier),
+      semantics_module(std::move(semantics_module)),
+      type_specifier(options_.TypeDictionary(), options_.arch) {}
 
 
 llvm::BranchInst *
@@ -413,22 +414,11 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
-
-llvm::CallInst *
-FunctionLifter::AddTerminatingTailCallFromBasicBlockFunctionToLifted(
-    llvm::BasicBlock *source_block, llvm::Function *dest_func,
-    const remill::IntrinsicTable &intrinsics) {
-  llvm::IRBuilder<> ir(source_block);
-  auto npc = remill::LoadNextProgramCounter(source_block, intrinsics);
-  auto pc_ref = remill::LoadProgramCounterRef(source_block);
-  ir.CreateStore(npc, pc_ref);
-  auto call = this->AddCallFromBasicBlockFunctionToLifted(
-      source_block, dest_func, intrinsics);
-  call->setTailCall(true);
-  ir.CreateRet(call);
-  return call;
+CallableBasicBlockFunction
+FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
+  return BasicBlockLifter::LiftBasicBlock(
+      this->curr_decl->GetBlockContext(blk.addr), blk, this->options);
 }
-
 
 void FunctionLifter::VisitBlock(CodeBlock blk,
                                 llvm::Value *lifted_function_state) {

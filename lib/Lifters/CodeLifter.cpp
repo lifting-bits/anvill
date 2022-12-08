@@ -17,6 +17,8 @@
 
 #include <unordered_set>
 
+#include "anvill/Type.h"
+
 namespace anvill {
 namespace {
 // Clear out LLVM variable names. They're usually not helpful.
@@ -34,7 +36,8 @@ static void ClearVariableNames(llvm::Function *func) {
 
 
 CodeLifter::CodeLifter(const LifterOptions &options,
-                       llvm::Module *semantics_module)
+                       llvm::Module *semantics_module,
+                       const TypeTranslator &type_specifier)
     : options(options),
       semantics_module(semantics_module),
       intrinsics(semantics_module),
@@ -50,7 +53,7 @@ CodeLifter::CodeLifter(const LifterOptions &options,
               ->EnclosingRegister()),
       memory_provider(options.memory_provider),
       type_provider(options.type_provider),
-      type_specifier(options.TypeDictionary(), options.arch),
+      type_specifier(type_specifier),
       address_type(
           llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),

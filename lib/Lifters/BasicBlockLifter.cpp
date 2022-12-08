@@ -10,14 +10,17 @@
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
 #include <vector>
 
 namespace anvill {
 
-llvm::Function *BasicBlockLifter::LiftBasicBlockFunction() {
+CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftBasicBlockIntoFunction(bbfunc);
-  return bbfunc.func;
+  return CallableBasicBlockFunction(bbfunc.func,
+                                    this->block_context.GetAvailableVariables(),
+                                    block_def, std::move(*this));
 }
 
 
@@ -482,12 +485,21 @@ void CallableBasicBlockFunction::CallBasicBlockFunction(
   this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this);
 }
 
+CallableBasicBlockFunction
+BasicBlockLifter::LiftBasicBlock(const BasicBlockContext &block_context,
+                                 const CodeBlock &block_def,
+                                 const LifterOptions &options_) {
+
+  return BasicBlockLifter(block_context, block_def, options_)
+      .LiftBasicBlockFunction();
+}
+
 CallableBasicBlockFunction::CallableBasicBlockFunction(
     llvm::Function *func, std::vector<ParameterDecl> in_scope_locals,
-    CodeBlock block, const BasicBlockLifter &bb_lifter)
+    CodeBlock block, BasicBlockLifter bb_lifter)
     : func(func),
       in_scope_locals(in_scope_locals),
       block(block),
-      bb_lifter(bb_lifter) {}
+      bb_lifter(std::move(bb_lifter)) {}
 
 }  // namespace anvill

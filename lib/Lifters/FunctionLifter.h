@@ -102,6 +102,8 @@ class FunctionLifter : public CodeLifter {
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
 
+  TypeTranslator type_specifier;
+
 
   // Metadata node to attach to lifted instructions to related them to
   // original instructions.
@@ -318,20 +320,6 @@ class FunctionLifter : public CodeLifter {
                                     llvm::BasicBlock *block,
                                     const anvill::ControlFlowOverride &override,
                                     llvm::Value *state_ptr);
-
-  // Same addcall machinery from remill except allows for the 4 argument basic block functio (state, program_counter, memory, next_pc_ref).
-  llvm::CallInst *AddCallFromBasicBlockFunctionToLifted(
-      llvm::BasicBlock *source_block, llvm::Function *dest_func,
-      const remill::IntrinsicTable &intrinsics);
-
-  llvm::CallInst *AddTerminatingTailCallFromBasicBlockFunctionToLifted(
-      llvm::BasicBlock *source_block, llvm::Function *dest_func,
-      const remill::IntrinsicTable &intrinsics);
-
-
-  // Allocate and initialize the state structure.
-  llvm::Value *AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
-                                                   const remill::Arch *arch);
 
   // Perform architecture-specific initialization of the state structure
   // in `block`.

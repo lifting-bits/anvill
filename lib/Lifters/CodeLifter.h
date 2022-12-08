@@ -43,7 +43,7 @@ class CodeLifter {
 
   const MemoryProvider &memory_provider;
   const TypeProvider &type_provider;
-  const TypeTranslator type_specifier;
+  const TypeTranslator &type_specifier;
   llvm::IntegerType *const address_type;
 
 
@@ -74,7 +74,10 @@ class CodeLifter {
   unsigned pc_annotation_id;
 
  public:
-  CodeLifter(const LifterOptions &options, llvm::Module *semantics_module);
+  CodeLifter(const LifterOptions &options, llvm::Module *semantics_module,
+             const TypeTranslator &type_specifier);
+
+  CodeLifter(CodeLifter &&) = default;
 };
 
 }  // namespace anvill
