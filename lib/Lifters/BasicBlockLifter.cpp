@@ -379,7 +379,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
 
-  auto state = this->AllocateAndInitializeStateStructure(&blk, options.arch);
+  this->state_ptr =
+      this->AllocateAndInitializeStateStructure(&blk, options.arch);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
 
@@ -392,11 +393,11 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
           ir, this->sp_reg, this->block_def.addr, reg_off.offset);
       StoreNativeValueToRegister(new_value, reg_off.target_register,
                                  type_provider.Dictionary(), intrinsics, &blk,
-                                 state);
+                                 this->state_ptr);
     }
   }
 
-  this->UnpackLocals(ir, in_vars, state,
+  this->UnpackLocals(ir, in_vars, this->state_ptr,
                      this->block_context.GetAvailableVariables());
 
 
@@ -407,7 +408,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   func->addFnAttr(llvm::Attribute::NoInline);
   func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  BasicBlockFunction bbf{func, state, pc_arg, mem_arg, next_pc_out};
+  BasicBlockFunction bbf{func, this->state_ptr, pc_arg, mem_arg, next_pc_out};
 
   return bbf;
 }
@@ -496,7 +497,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   // TODO(Ian) move this to an out param: builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  this->UnpackLocals(builder, new_locals, state_ptr,
+  this->UnpackLocals(builder, new_locals, parent_state,
                      cbfunc.GetInScopeVaraibles());
 }
 

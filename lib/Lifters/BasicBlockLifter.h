@@ -41,7 +41,7 @@ class BasicBlockLifter : public CodeLifter {
   llvm::StructType *var_struct_ty{nullptr};
 
   // The allocated state ptr for the function.
-  llvm::Value *state_ptr;
+  llvm::Value *state_ptr{nullptr};
 
   llvm::StructType *
   StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
