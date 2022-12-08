@@ -2,9 +2,15 @@
 
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
+
+#include <algorithm>
+#include <iterator>
+#include <vector>
 
 namespace anvill {
 
@@ -384,6 +390,59 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 }
 
 
+llvm::StructType *BasicBlockLifter::StructTypeFromVars(
+    const std::vector<ParameterDecl> &in_scope_locals) const {
+  std::vector<llvm::Type *> field_types;
+  std::transform(in_scope_locals.begin(), in_scope_locals.end(),
+                 std::back_inserter(field_types),
+                 [](const ParameterDecl &param) { return param.type; });
+
+  return llvm::StructType::create(llvm_context, field_types);
+}
+
+// Packs in scope variables into a struct
+llvm::Value *
+BasicBlockLifter::PackLocals(llvm::IRBuilder<> &bldr,
+                             llvm::Value *from_state_ptr,
+                             const std::vector<ParameterDecl> &decls) const {
+  auto ty = this->StructTypeFromVars(decls);
+  auto sptr = bldr.CreateAlloca(ty);
+  auto i32 = llvm::IntegerType::get(llvm_context, 32);
+  uint64_t field_offset = 0;
+  for (auto decl : decls) {
+    auto ptr = bldr.CreateGEP(ty, sptr,
+                              {llvm::ConstantInt::get(i32, 0),
+                               llvm::ConstantInt::get(i32, field_offset)});
+    field_offset += 1;
+
+    auto state_loaded_value =
+        LoadLiftedValue(decl, this->type_provider.Dictionary(),
+                        this->intrinsics, bldr.GetInsertBlock(), from_state_ptr,
+                        remill::LoadMemoryPointer(bldr, this->intrinsics));
+    bldr.CreateStore(state_loaded_value, ptr);
+  }
+
+  return bldr.CreateLoad(ty, sptr);
+}
+
+void BasicBlockLifter::UnpackLocals(
+    llvm::IRBuilder<> &bldr, llvm::Value *returned_value,
+    llvm::Value *into_state_ptr,
+    const std::vector<ParameterDecl> &decls) const {
+  uint64_t field_offset = 0;
+  for (auto decl : decls) {
+    auto extracted_field =
+        bldr.CreateExtractElement(returned_value, field_offset);
+    auto new_mem_ptr = StoreNativeValue(
+        extracted_field, decl, this->type_provider.Dictionary(),
+        this->intrinsics, bldr.GetInsertBlock(), into_state_ptr,
+        remill::LoadMemoryPointer(bldr, this->intrinsics));
+    bldr.CreateStore(new_mem_ptr,
+                     remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
+  }
+}
+
+
 void BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     const CallableBasicBlockFunction &cbfunc) const {
@@ -407,13 +466,14 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   args.push_back(packed_locals);
 
-  auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
+  auto new_locals = builder.CreateCall(cbfunc.GetFunction(), args);
 
-  auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
+  //auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
 
-  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
+  // TODO(Ian) move this to an out param: builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  this->PackLocals(builder, state_ptr, cbfunc.GetInScopeVaraibles());
+  this->UnpackLocals(builder, new_locals, state_ptr,
+                     cbfunc.GetInScopeVaraibles());
 }
 
 
@@ -421,5 +481,13 @@ void CallableBasicBlockFunction::CallBasicBlockFunction(
     llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state) const {
   this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this);
 }
+
+CallableBasicBlockFunction::CallableBasicBlockFunction(
+    llvm::Function *func, std::vector<ParameterDecl> in_scope_locals,
+    CodeBlock block, const BasicBlockLifter &bb_lifter)
+    : func(func),
+      in_scope_locals(in_scope_locals),
+      block(block),
+      bb_lifter(bb_lifter) {}
 
 }  // namespace anvill

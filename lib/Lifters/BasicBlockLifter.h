@@ -37,6 +37,11 @@ class CallableBasicBlockFunction {
 
 
  public:
+  CallableBasicBlockFunction(llvm::Function *func,
+                             std::vector<ParameterDecl> in_scope_locals,
+                             CodeBlock block,
+                             const BasicBlockLifter &bb_lifter);
+
   const std::vector<ParameterDecl> &GetInScopeVaraibles() const;
   llvm::Function *GetFunction() const;
 
@@ -114,6 +119,9 @@ class BasicBlockLifter : public CodeLifter {
   // Calls a basic block function and unpacks the result into the state
   void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
                               const CallableBasicBlockFunction &) const;
+
+  llvm::StructType *
+  StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
 };
 
 }  // namespace anvill

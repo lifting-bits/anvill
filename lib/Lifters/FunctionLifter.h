@@ -307,9 +307,6 @@ class FunctionLifter : public CodeLifter {
   // that all semantics and helpers are completely inlined.
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 
-  // inline on arbitrary function.
-  void RecursivelyInlineFunctionCallees(llvm::Function *);
-
   // Manipulates the control flow to restore intra-procedural state when reaching an
   // inter-procedural effect.
   // Returns a boolean represnting wether decoding should continue (true = non-terminal, false=terminal)
