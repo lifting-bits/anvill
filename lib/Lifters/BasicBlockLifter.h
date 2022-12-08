@@ -38,8 +38,13 @@ class BasicBlockLifter : public CodeLifter {
   const BasicBlockContext &block_context;
   const CodeBlock &block_def;
 
+  llvm::StructType *var_struct_ty{nullptr};
+
   // The allocated state ptr for the function.
   llvm::Value *state_ptr;
+
+  llvm::StructType *
+  StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
 
   remill::DecodingContext ApplyContextAssignments(
       const std::unordered_map<std::string, uint64_t> &assignments,
@@ -102,8 +107,6 @@ class BasicBlockLifter : public CodeLifter {
   void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
                               const CallableBasicBlockFunction &) const;
 
-  llvm::StructType *
-  StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
