@@ -61,6 +61,7 @@
 #include <variant>
 #include <vector>
 
+#include "BasicBlockLifter.h"
 #include "EntityLifter.h"
 #include "anvill/Declarations.h"
 #include "anvill/Specification.h"
@@ -428,49 +429,20 @@ FunctionLifter::AddTerminatingTailCallFromBasicBlockFunctionToLifted(
   return call;
 }
 
-llvm::CallInst *FunctionLifter::CallBasicBlockFunction(
-    uint64_t block_addr, llvm::BasicBlock *add_to_llvm, llvm::Function *bb_func,
-    llvm::Value *parent_state, llvm::ArrayRef<llvm::Value *> extra_args,
-    llvm::Instruction *IP) const {
-  llvm::IRBuilder<> builder(add_to_llvm);
-  if (IP) {
-    builder.SetInsertPoint(IP);
-  }
-  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
-  args[remill::kStatePointerArgNum] = parent_state;
-
-  args[remill::kPCArgNum] =
-      options.program_counter_init_procedure(builder, pc_reg, block_addr);
-  args[remill::kMemoryPointerArgNum] =
-      remill::LoadMemoryPointer(add_to_llvm, this->intrinsics);
-
-  args[remill::kNumBlockArgs] = remill::LoadNextProgramCounterRef(add_to_llvm);
-
-  for (auto earg : extra_args) {
-    args.push_back(earg);
-  }
-
-  return builder.CreateCall(bb_func, args);
-}
-
 
 void FunctionLifter::VisitBlock(CodeBlock blk,
                                 llvm::Value *lifted_function_state) {
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
   llvm::IRBuilder<> builder(llvm_blk);
-  auto bb_lifted_func = this->CreateBasicBlockFunction(blk);
-  bb_lifted_func.func->removeFnAttr(llvm::Attribute::AlwaysInline);
-  bb_lifted_func.func->addFnAttr(llvm::Attribute::NoInline);
 
-  this->LiftBasicBlockIntoFunction(bb_lifted_func, blk);
 
-  CHECK(!llvm::verifyFunction(*bb_lifted_func.func, &llvm::errs()));
-  auto new_mem_ptr = this->CallBasicBlockFunction(
-      blk.addr, llvm_blk, bb_lifted_func.func, lifted_function_state);
+  auto bbfunc = this->LiftBasicBlockFunction(blk);
 
-  auto mem_ptr_ref = remill::LoadMemoryPointerRef(llvm_blk);
 
-  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
+  CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
+
+  bbfunc.CallBasicBlockFunction(builder, lifted_function_state);
+
 
   auto pc = remill::LoadNextProgramCounter(llvm_blk, this->intrinsics);
 
@@ -492,14 +464,6 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state) {
   }
 
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
-}
-
-llvm::Function *FunctionLifter::GetBasicBlockFunction(uint64_t address) const {
-  auto it = addr_to_bb_func.find(address);
-  if (it == addr_to_bb_func.end()) {
-    return nullptr;
-  }
-  return it->second.func;
 }
 
 
@@ -624,10 +588,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Go lift all instructions!
   VisitBlocks(lifted_func_st.state_ptr);
 
-
-  CallAndInitializeParameters param_pass(options.TypeDictionary(), intrinsics);
-  this->ApplyBasicBlockTransform(param_pass, lifted_func_st.state_ptr);
-
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
   CallLiftedFunctionFromNativeFunction(decl);
@@ -639,56 +599,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   return native_func;
 }
-
-void FunctionLifter::ApplyBasicBlockTransform(
-    BasicBlockTransform &transform, llvm::Value *lifted_function_state) {
-  llvm::SmallVector<std::pair<llvm::CallInst *, uint64_t>, 10> calls;
-  for (auto &insn : llvm::instructions(this->lifted_func)) {
-    if (llvm::CallInst *call = llvm::dyn_cast<llvm::CallInst>(&insn)) {
-      auto addr = GetBasicBlockAddr(call->getCalledFunction());
-      LOG(INFO) << "getting basic block addr "
-                << remill::LLVMThingToString(call);
-      if (addr) {
-        calls.emplace_back(call, *addr);
-      }
-    }
-  }
-
-  for (auto [call, addr] : calls) {
-    // avoid iterator invalidation
-    auto cont = this->curr_decl->GetBlockContext(addr);
-    AnvillBasicBlock block = {call->getCalledFunction(), cont};
-    LOG(INFO) << "transforming";
-    auto res = transform.Transform(block);
-    std::vector<llvm::Value *> lifted_values;
-    auto old_block = call->getParent();
-    auto new_block = llvm::SplitBlock(call->getParent(), call);
-
-    old_block->getTerminator()->eraseFromParent();
-    for (auto arg : res.appended_args) {
-      lifted_values.push_back(LoadLiftedValue(
-          arg, this->options.TypeDictionary(), this->intrinsics, old_block,
-          call->getArgOperand(remill::kStatePointerArgNum),
-          call->getArgOperand(remill::kMemoryPointerArgNum)));
-    }
-    auto new_call = this->CallBasicBlockFunction(addr, old_block, res.new_func,
-                                                 lifted_function_state,
-                                                 lifted_values, call);
-
-    llvm::BranchInst::Create(new_block, old_block);
-    call->replaceAllUsesWith(new_call);
-    std::string fname = std::string(call->getCalledFunction()->getName());
-    call->eraseFromParent();
-    call->getCalledFunction()->eraseFromParent();
-    llvm::MergeBlockIntoPredecessor(new_block);
-    res.new_func->setName(fname);
-
-
-    // TODO(Ian): need to setup metadata in transform
-  }
-}
-
-
 // Returns the address of a named function.
 std::optional<uint64_t>
 FunctionLifter::AddressOfNamedFunction(const std::string &func_name) const {

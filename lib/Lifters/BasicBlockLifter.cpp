@@ -383,4 +383,43 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   return bbf;
 }
 
+
+void BasicBlockLifter::CallBasicBlockFunction(
+    llvm::IRBuilder<> &builder, llvm::Value *parent_state,
+    const CallableBasicBlockFunction &cbfunc) const {
+
+
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
+  args[remill::kStatePointerArgNum] = parent_state;
+
+  args[remill::kPCArgNum] = options.program_counter_init_procedure(
+      builder, pc_reg, cbfunc.GetBlock().addr);
+  args[remill::kMemoryPointerArgNum] =
+      remill::LoadMemoryPointer(builder, this->intrinsics);
+
+  args[remill::kNumBlockArgs] =
+      remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
+
+
+  auto packed_locals =
+      this->PackLocals(builder, parent_state, cbfunc.GetInScopeVaraibles());
+
+
+  args.push_back(packed_locals);
+
+  auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
+
+  auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
+
+  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
+
+  this->PackLocals(builder, state_ptr, cbfunc.GetInScopeVaraibles());
+}
+
+
+void CallableBasicBlockFunction::CallBasicBlockFunction(
+    llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state) const {
+  this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this);
+}
+
 }  // namespace anvill

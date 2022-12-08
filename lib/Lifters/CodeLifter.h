@@ -1,3 +1,5 @@
+#pragma once
+
 #include <anvill/ABI.h>
 #include <anvill/Type.h>
 #include <llvm/IR/LLVMContext.h>

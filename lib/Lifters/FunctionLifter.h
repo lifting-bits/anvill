@@ -31,6 +31,7 @@
 
 #include "BasicBlockTransform.h"
 #include "CodeLifter.h"
+#include "Lifters/BasicBlockLifter.h"
 
 namespace llvm {
 class Constant;
@@ -53,14 +54,6 @@ class MemoryProvider;
 class TypeProvider;
 struct ControlFlowTargetList;
 
-
-struct BasicBlockFunction {
-  llvm::Function *func;
-  llvm::Value *state_ptr;
-  llvm::Argument *pc_arg;
-  llvm::Argument *mem_ptr;
-  llvm::Argument *next_pc_out_param;
-};
 
 struct LiftedFunction {
   llvm::Function *func;
@@ -97,11 +90,8 @@ class FunctionLifter : public CodeLifter {
                                        const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
-  llvm::CallInst *
-  CallBasicBlockFunction(uint64_t block_addr, llvm::BasicBlock *add_to_llvm,
-                         llvm::Function *bb_func, llvm::Value *state_ptr,
-                         llvm::ArrayRef<llvm::Value *> extra_args = {},
-                         llvm::Instruction *IP = {}) const;
+
+  CallableBasicBlockFunction LiftBasicBlockFunction(const CodeBlock &) const;
 
   llvm::Function *GetBasicBlockFunction(uint64_t address) const;
 
@@ -179,9 +169,6 @@ class FunctionLifter : public CodeLifter {
 
 
   llvm::BasicBlock *invalid_successor_block{nullptr};
-
-  // Maps basic block addresses to lifted functions
-  std::unordered_map<uint64_t, BasicBlockFunction> addr_to_bb_func;
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
@@ -295,13 +282,6 @@ class FunctionLifter : public CodeLifter {
   void VisitBlock(CodeBlock entry_context, llvm::Value *lifted_function_state);
 
   LiftedFunction CreateLiftedFunction(const std::string &name);
-
-  BasicBlockFunction CreateBasicBlockFunction(const CodeBlock &block);
-
-
-  llvm::BasicBlock *
-  LiftBasicBlockIntoFunction(BasicBlockFunction &basic_block_function,
-                             const CodeBlock &blk);
 
   remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
 

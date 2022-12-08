@@ -1,10 +1,16 @@
+#pragma once
 
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Providers.h>
 #include <anvill/Specification.h>
 #include <llvm/IR/Argument.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Value.h>
 #include <remill/BC/Lifter.h>
+
+#include <vector>
 
 #include "CodeLifter.h"
 #include "anvill/Declarations.h"
@@ -18,6 +24,29 @@ struct BasicBlockFunction {
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
+};
+
+class BasicBlockLifter;
+class CallableBasicBlockFunction {
+
+ private:
+  llvm::Function *func;
+  std::vector<ParameterDecl> in_scope_locals;
+  CodeBlock block;
+  const BasicBlockLifter &bb_lifter;
+
+
+ public:
+  const std::vector<ParameterDecl> &GetInScopeVaraibles() const;
+  llvm::Function *GetFunction() const;
+
+  llvm::StructType *GetRetType() const;
+
+  const CodeBlock &GetBlock() const;
+
+  // Calls a basic block function and unpacks the result into the state
+  void CallBasicBlockFunction(llvm::IRBuilder<> &,
+                              llvm::Value *state_ptr) const;
 };
 
 /**
@@ -72,6 +101,19 @@ class BasicBlockLifter : public CodeLifter {
 
  public:
   llvm::Function *LiftBasicBlockFunction();
+
+  // Packs in scope variables into a struct
+  llvm::Value *PackLocals(llvm::IRBuilder<> &, llvm::Value *from_state_ptr,
+                          const std::vector<ParameterDecl> &) const;
+
+  void UnpackLocals(llvm::IRBuilder<> &, llvm::Value *returned_value,
+                    llvm::Value *into_state_ptr,
+                    const std::vector<ParameterDecl> &) const;
+
+
+  // Calls a basic block function and unpacks the result into the state
+  void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
+                              const CallableBasicBlockFunction &) const;
 };
 
 }  // namespace anvill
