@@ -105,10 +105,6 @@ class FunctionLifter : public CodeLifter {
   TypeTranslator type_specifier;
 
 
-  // Metadata node to attach to lifted instructions to related them to
-  // original instructions.
-  unsigned pc_annotation_id{0};
-
   llvm::MDNode *pc_annotation{nullptr};
 
   // Address of the function currently being lifted.

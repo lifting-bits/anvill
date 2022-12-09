@@ -399,8 +399,6 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
 // that all semantics and helpers are completely inlined.
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
-  // TODO(Ian): yeah i need to debug why i need to strip debug info
-  //llvm::UpgradeDebugInfo(*this->semantics_module);
   CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
   this->RecursivelyInlineFunctionCallees(this->native_func);
 }
@@ -433,8 +431,6 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 
   auto bbfunc = this->LiftBasicBlockFunction(blk);
 
-  // TODO(Ian): yeah i need to debug why i need to strip debug info
-  //llvm::UpgradeDebugInfo(*this->semantics_module);
   CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
 
   bbfunc.CallBasicBlockFunction(builder, lifted_function_state);
@@ -454,14 +450,12 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state) {
   DLOG(INFO) << "Num blocks for func " << std::hex << this->curr_decl->address
              << ": " << this->curr_decl->cfg.size();
+
+
   for (const auto &[addr, blk] : this->curr_decl->cfg) {
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk, lifted_function_state);
   }
-
-  // TODO(Ian): yeah i need to debug why i need to strip debug info
-  //llvm::UpgradeDebugInfo(*this->semantics_module);
-  this->lifted_func->dump();
 
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 }
@@ -470,7 +464,6 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state) {
 LiftedFunction FunctionLifter::CreateLiftedFunction(const std::string &name) {
   auto new_func =
       options.arch->DefineLiftedFunction(name, semantics_module.get());
-
   auto state_ptr = remill::NthArgument(new_func, remill::kStatePointerArgNum);
   auto pc_arg = remill::NthArgument(new_func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(new_func, remill::kMemoryPointerArgNum);
