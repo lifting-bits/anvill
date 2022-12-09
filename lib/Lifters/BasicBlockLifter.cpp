@@ -19,6 +19,7 @@
 
 #include "Lifters/CodeLifter.h"
 #include "anvill/Declarations.h"
+#include "anvill/Optimize.h"
 
 namespace anvill {
 
@@ -27,7 +28,10 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   this->LiftInstructionsIntoLiftedFunction();
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
+
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
+  anvill::EntityLifter lifter(options);
+
   return CallableBasicBlockFunction(bbfunc.func,
                                     this->block_context.GetAvailableVariables(),
                                     block_def, std::move(*this));
@@ -401,6 +405,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Can resolve these stack references later .
 
 
+  auto sp_ptr = sp_reg->AddressOf(this->state_ptr, ir);
+  // Initialize the stack pointer.
+  ir.CreateStore(
+      options.stack_pointer_init_procedure(ir, sp_reg, this->block_def.addr),
+      sp_ptr);
+
   auto stack_offsets = this->block_context.GetStackOffsets();
 
   for (auto &reg_off : stack_offsets.affine_equalities) {
@@ -422,7 +432,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   func->addFnAttr(llvm::Attribute::NoInline);
-  func->setLinkage(llvm::GlobalValue::InternalLinkage);
+  //func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
   // TODO(Ian): memory pointer isnt quite right
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
@@ -447,7 +457,8 @@ llvm::StructType *BasicBlockLifter::StructTypeFromVars(
                  std::back_inserter(field_types),
                  [](const ParameterDecl &param) { return param.type; });
 
-  return llvm::StructType::create(llvm_context, field_types);
+  return llvm::StructType::create(llvm_context, field_types,
+                                  "sty_for_basic_block_function");
 }
 
 // Packs in scope variables into a struct

@@ -160,7 +160,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   //  mpm.addPass(std::move(inliner));
 
   mpm.addPass(llvm::GlobalOptPass());
+
   mpm.addPass(llvm::GlobalDCEPass());
+
   mpm.addPass(llvm::StripDeadDebugInfoPass());
 
   llvm::FunctionPassManager fpm;
@@ -215,7 +217,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROAPass());
-
 
   AddCombineAdjacentShifts(fpm);
 
