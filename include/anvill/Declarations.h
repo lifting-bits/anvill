@@ -66,6 +66,9 @@ struct ValueDecl {
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  // Untranslated type string of this value.
+  std::string type_string;
 };
 
 // A value declaration corresponding with a named parameter.
@@ -104,6 +107,9 @@ struct VariableDecl {
   // can also infer that at address `0x10` there is an `int`, and at address
   // `0x14` there is also an `int`.
   llvm::Type *type{nullptr};
+
+  // Untranslated type string of this variable.
+  std::string type_string;
 
   // Address of this global variable.
   std::uint64_t address{0};
