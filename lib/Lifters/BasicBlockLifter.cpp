@@ -28,10 +28,6 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
-
-
-  bbfunc.func->dump();
-  //CHECK(false);
   return CallableBasicBlockFunction(bbfunc.func,
                                     this->block_context.GetAvailableVariables(),
                                     block_def, std::move(*this));

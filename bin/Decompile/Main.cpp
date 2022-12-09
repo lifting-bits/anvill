@@ -241,7 +241,7 @@ int main(int argc, char *argv[]) {
     llvm::EnableStatistics();
   }
 
-  anvill::OptimizeModule(lifter, module);
+  //anvill::OptimizeModule(lifter, module);
 
   int ret = EXIT_SUCCESS;
 
