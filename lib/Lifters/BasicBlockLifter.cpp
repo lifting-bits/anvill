@@ -5,7 +5,10 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
 
@@ -21,7 +24,14 @@ namespace anvill {
 
 CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   auto bbfunc = this->CreateBasicBlockFunction();
-  this->LiftBasicBlockIntoFunction(bbfunc);
+  this->LiftInstructionsIntoLiftedFunction();
+  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
+  this->RecursivelyInlineFunctionCallees(bbfunc.func);
+
+
+  bbfunc.func->dump();
+  //CHECK(false);
   return CallableBasicBlockFunction(bbfunc.func,
                                     this->block_context.GetAvailableVariables(),
                                     block_def, std::move(*this));
@@ -265,12 +275,11 @@ bool BasicBlockLifter::DecodeInstructionInto(const uint64_t addr,
 }
 
 
-void BasicBlockLifter::LiftBasicBlockIntoFunction(
-    BasicBlockFunction &basic_block_function) {
-  auto entry_block = &basic_block_function.func->getEntryBlock();
+void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
+  auto entry_block = &this->lifted_func->getEntryBlock();
 
-  auto bb = llvm::BasicBlock::Create(basic_block_function.func->getContext(),
-                                     "", basic_block_function.func);
+  auto bb = llvm::BasicBlock::Create(this->lifted_func->getContext(), "",
+                                     this->lifted_func);
 
 
   llvm::BranchInst::Create(bb, entry_block);
@@ -298,13 +307,10 @@ void BasicBlockLifter::LiftBasicBlockIntoFunction(
     // a call to a semantic, e.g.`INVALID_INSTRUCTION`, so we really want
     // to treat instruction lifting as an operation that can't fail.
 
-    CHECK(llvm::isa_and_nonnull<llvm::Instruction>(
-              basic_block_function.state_ptr) &&
-          llvm::cast<llvm::Instruction>(basic_block_function.state_ptr)
-                  ->getParent()
-                  ->getParent() == basic_block_function.func);
+
     std::ignore = inst.GetLifter()->LiftIntoBlock(
-        inst, bb, basic_block_function.state_ptr, false /* is_delayed */);
+        inst, bb, this->lifted_func->getArg(remill::kStatePointerArgNum),
+        false /* is_delayed */);
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);
@@ -314,21 +320,12 @@ void BasicBlockLifter::LiftBasicBlockIntoFunction(
     llvm::IRBuilder<> builder(bb);
 
     builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
-                        basic_block_function.next_pc_out_param);
+                        this->lifted_func->getArg(remill::kNumBlockArgs));
 
 
-    // TODO(Ian): output this memory somehow auto memory = remill::LoadMemoryPointer(bb, this->intrinsics);
-    CHECK_EQ(this->PackLocals(builder, basic_block_function.state_ptr,
-                              this->block_context.GetAvailableVariables())
-                 ->getType(),
-             basic_block_function.func->getReturnType());
     llvm::ReturnInst::Create(
-        bb->getContext(),
-        this->PackLocals(builder, basic_block_function.state_ptr,
-                         this->block_context.GetAvailableVariables()),
-        bb);
+        bb->getContext(), remill::LoadMemoryPointer(bb, this->intrinsics), bb);
   }
-  this->RecursivelyInlineFunctionCallees(basic_block_function.func);
 }
 
 
@@ -347,11 +344,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   std::vector<llvm::Type *> params = std::vector(
       lifted_func_type->param_begin(), lifted_func_type->param_end());
+
+  // pointer to varstruct
+  params[remill::kStatePointerArgNum] = llvm::PointerType::get(context, 0);
   //next_pc_out
   params.push_back(llvm::PointerType::get(context, 0));
-  params.push_back(var_struct_ty);
   llvm::FunctionType *func_type =
-      llvm::FunctionType::get(this->var_struct_ty, params, false);
+      llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
 
 
   llvm::StringRef name(name_.data(), name_.size());
@@ -363,21 +362,42 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
                     GetBasicBlockAnnotation(this->block_def.addr));
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
-  auto out_state = remill::NthArgument(func, remill::kStatePointerArgNum);
+  auto in_vars = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
   auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
-  auto in_vars = remill::NthArgument(func, remill::kNumBlockArgs + 1);
+
   memory->setName("memory");
-  out_state->setName("state_out");
   pc->setName("program_counter");
   next_pc_out->setName("next_pc_out");
   in_vars->setName("in_vars");
 
-  options.arch->InitializeEmptyLiftedFunction(func);
+
+  auto liftedty = this->options.arch->LiftedFunctionType();
+
+  std::vector<llvm::Type *> new_params;
+  new_params.reserve(liftedty->getNumParams() + 1);
+
+  for (auto param : liftedty->params()) {
+    new_params.push_back(param);
+  }
+  new_params.push_back(llvm::PointerType::get(context, 0));
 
 
+  llvm::FunctionType *new_func_type = llvm::FunctionType::get(
+      lifted_func_type->getReturnType(), new_params, false);
+
+
+  this->lifted_func = llvm::Function::Create(
+      new_func_type, llvm::GlobalValue::ExternalLinkage, 0u,
+      std::string(name) + "lowlift", this->semantics_module);
+
+  options.arch->InitializeEmptyLiftedFunction(this->lifted_func);
+
+
+  llvm::BasicBlock::Create(context, "", func);
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
+  ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
@@ -408,7 +428,17 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   func->addFnAttr(llvm::Attribute::NoInline);
   func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  BasicBlockFunction bbf{func, this->state_ptr, pc_arg, mem_arg, next_pc_out};
+  // TODO(Ian): memory pointer isnt quite right
+  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
+      this->state_ptr, pc, mem_arg, next_pc_out};
+  auto ret_mem = ir.CreateCall(this->lifted_func, args);
+
+
+  this->PackLocals(ir, this->state_ptr, in_vars,
+                   this->block_context.GetAvailableVariables());
+
+  ir.CreateRet(ret_mem);
+  BasicBlockFunction bbf{func, pc_arg, in_vars, mem_arg, next_pc_out};
 
   return bbf;
 }
@@ -425,16 +455,14 @@ llvm::StructType *BasicBlockLifter::StructTypeFromVars(
 }
 
 // Packs in scope variables into a struct
-llvm::Value *
-BasicBlockLifter::PackLocals(llvm::IRBuilder<> &bldr,
-                             llvm::Value *from_state_ptr,
-                             const std::vector<ParameterDecl> &decls) const {
-  auto ty = this->var_struct_ty;
-  auto sptr = bldr.CreateAlloca(ty);
+void BasicBlockLifter::PackLocals(
+    llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
+    llvm::Value *into_vars, const std::vector<ParameterDecl> &decls) const {
+
   auto i32 = llvm::IntegerType::get(llvm_context, 32);
   uint64_t field_offset = 0;
   for (auto decl : decls) {
-    auto ptr = bldr.CreateGEP(ty, sptr,
+    auto ptr = bldr.CreateGEP(this->var_struct_ty, into_vars,
                               {llvm::ConstantInt::get(i32, 0),
                                llvm::ConstantInt::get(i32, field_offset)});
     field_offset += 1;
@@ -445,8 +473,6 @@ BasicBlockLifter::PackLocals(llvm::IRBuilder<> &bldr,
                         remill::LoadMemoryPointer(bldr, this->intrinsics));
     bldr.CreateStore(state_loaded_value, ptr);
   }
-
-  return bldr.CreateLoad(ty, sptr);
 }
 
 void BasicBlockLifter::UnpackLocals(
@@ -454,12 +480,16 @@ void BasicBlockLifter::UnpackLocals(
     llvm::Value *into_state_ptr,
     const std::vector<ParameterDecl> &decls) const {
   uint64_t field_offset = 0;
+  auto i32 = llvm::IntegerType::get(llvm_context, 32);
   for (auto decl : decls) {
-    auto extracted_field =
-        bldr.CreateExtractValue(returned_value, field_offset);
+    auto ptr = bldr.CreateGEP(this->var_struct_ty, returned_value,
+                              {llvm::ConstantInt::get(i32, 0),
+                               llvm::ConstantInt::get(i32, field_offset)});
+
+    auto loaded_var_val = bldr.CreateLoad(decl.type, ptr);
     field_offset += 1;
     auto new_mem_ptr = StoreNativeValue(
-        extracted_field, decl, this->type_provider.Dictionary(),
+        loaded_var_val, decl, this->type_provider.Dictionary(),
         this->intrinsics, bldr.GetInsertBlock(), into_state_ptr,
         remill::LoadMemoryPointer(bldr, this->intrinsics));
     bldr.CreateStore(new_mem_ptr,
@@ -474,7 +504,10 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
-  args[remill::kStatePointerArgNum] = parent_state;
+
+
+  auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
+  args[remill::kStatePointerArgNum] = out_param_locals;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
       builder, pc_reg, cbfunc.GetBlock().addr);
@@ -485,19 +518,16 @@ void BasicBlockLifter::CallBasicBlockFunction(
       remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
 
 
-  auto packed_locals =
-      this->PackLocals(builder, parent_state, cbfunc.GetInScopeVaraibles());
+  this->PackLocals(builder, parent_state, out_param_locals,
+                   cbfunc.GetInScopeVaraibles());
 
+  auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
 
-  args.push_back(packed_locals);
+  auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
 
-  auto new_locals = builder.CreateCall(cbfunc.GetFunction(), args);
+  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  //auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
-
-  // TODO(Ian) move this to an out param: builder.CreateStore(new_mem_ptr, mem_ptr_ref);
-
-  this->UnpackLocals(builder, new_locals, parent_state,
+  this->UnpackLocals(builder, out_param_locals, parent_state,
                      cbfunc.GetInScopeVaraibles());
 }
 

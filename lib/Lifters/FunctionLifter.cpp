@@ -20,6 +20,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/AutoUpgrade.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -398,6 +399,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
 // that all semantics and helpers are completely inlined.
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
+  // TODO(Ian): yeah i need to debug why i need to strip debug info
+  //llvm::UpgradeDebugInfo(*this->semantics_module);
   CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
   this->RecursivelyInlineFunctionCallees(this->native_func);
 }
@@ -421,6 +424,7 @@ FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
       this->semantics_module.get(), this->type_specifier);
 }
 
+
 void FunctionLifter::VisitBlock(CodeBlock blk,
                                 llvm::Value *lifted_function_state) {
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
@@ -429,7 +433,8 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 
   auto bbfunc = this->LiftBasicBlockFunction(blk);
 
-
+  // TODO(Ian): yeah i need to debug why i need to strip debug info
+  //llvm::UpgradeDebugInfo(*this->semantics_module);
   CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
 
   bbfunc.CallBasicBlockFunction(builder, lifted_function_state);
@@ -453,6 +458,10 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state) {
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk, lifted_function_state);
   }
+
+  // TODO(Ian): yeah i need to debug why i need to strip debug info
+  //llvm::UpgradeDebugInfo(*this->semantics_module);
+  this->lifted_func->dump();
 
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 }

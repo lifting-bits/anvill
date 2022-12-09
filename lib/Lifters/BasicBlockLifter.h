@@ -20,8 +20,8 @@ namespace anvill {
 
 struct BasicBlockFunction {
   llvm::Function *func;
-  llvm::Value *state_ptr;
   llvm::Argument *pc_arg;
+  llvm::Argument *variable_ptr;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
 };
@@ -43,6 +43,8 @@ class BasicBlockLifter : public CodeLifter {
   // The allocated state ptr for the function.
   llvm::Value *state_ptr{nullptr};
 
+  llvm::Function *lifted_func{nullptr};
+
   llvm::StructType *
   StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
 
@@ -52,7 +54,7 @@ class BasicBlockLifter : public CodeLifter {
 
   remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
 
-  void LiftBasicBlockIntoFunction(BasicBlockFunction &basic_block_function);
+  void LiftInstructionsIntoLiftedFunction();
 
   BasicBlockFunction CreateBasicBlockFunction();
 
@@ -95,8 +97,9 @@ class BasicBlockLifter : public CodeLifter {
   CallableBasicBlockFunction LiftBasicBlockFunction() &&;
 
   // Packs in scope variables into a struct
-  llvm::Value *PackLocals(llvm::IRBuilder<> &, llvm::Value *from_state_ptr,
-                          const std::vector<ParameterDecl> &) const;
+  void PackLocals(llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
+                  llvm::Value *into_vars,
+                  const std::vector<ParameterDecl> &decls) const;
 
   void UnpackLocals(llvm::IRBuilder<> &, llvm::Value *returned_value,
                     llvm::Value *into_state_ptr,
