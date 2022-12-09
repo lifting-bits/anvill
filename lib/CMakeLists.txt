@@ -32,6 +32,7 @@ protobuf_generate_cpp(
 set(anvill_passes
   ConvertAddressesToEntityUses
   ConvertMasksToCasts
+  ConvertPointerArithmeticToGEP
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis
@@ -42,6 +43,7 @@ set(anvill_passes
   LowerRemillUndefinedIntrinsics
   LowerSwitchIntrinsics
   LowerTypeHintIntrinsics
+  PropagateTypeAnnotations
   RecoverBasicStackFrame
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
