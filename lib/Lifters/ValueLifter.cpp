@@ -49,7 +49,7 @@ ValueLifterImpl::GetFunctionPointer(const FunctionDecl &decl,
   auto &func_lifter = ent_lifter.function_lifter;
   auto func = func_lifter.DeclareFunction(decl);
   auto func_in_context =
-      func_lifter.AddFunctionToContext(func, decl.address, ent_lifter);
+      func_lifter.AddFunctionToContext(func, decl, ent_lifter);
   return func_in_context;
 }
 

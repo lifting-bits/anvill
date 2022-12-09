@@ -23,6 +23,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
@@ -1146,6 +1147,14 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   if (decl.is_noreturn) {
     native_func->addFnAttr(llvm::Attribute::NoReturn);
   }
+
+  std::vector<llvm::Metadata *> args;
+  for (auto &arg : decl.params) {
+    args.push_back(type_specifier.EncodeToMetadata(arg.spec_type));
+  }
+  native_func->setMetadata("anvill.args",
+                           llvm::MDNode::get(llvm_context, args));
+
   return native_func;
 }
 
@@ -1680,7 +1689,7 @@ llvm::Function *EntityLifter::LiftEntity(const FunctionDecl &decl) const {
 
   // Add the function to the entity lifter's target module.
   const auto func_in_target_module =
-      func_lifter.AddFunctionToContext(func, decl.address, *impl);
+      func_lifter.AddFunctionToContext(func, decl, *impl);
 
   // If we had a previous declaration/definition, then we want to make sure
   // that we replaced its body, and we also want to make sure that if our
@@ -1741,7 +1750,7 @@ llvm::Function *EntityLifter::DeclareEntity(const FunctionDecl &decl) const {
 
   if (const auto func = func_lifter.DeclareFunction(decl)) {
     DCHECK(!module->getFunction(func->getName()));
-    return func_lifter.AddFunctionToContext(func, decl.address, *impl);
+    return func_lifter.AddFunctionToContext(func, decl, *impl);
   } else {
     return nullptr;
   }
@@ -1770,7 +1779,8 @@ static void EraseFunctionBody(llvm::Function *func) {
 // function, and copy the function into the context's module. Returns the
 // version of `func` inside the module of the lifter context.
 llvm::Function *
-FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
+FunctionLifter::AddFunctionToContext(llvm::Function *func,
+                                     const FunctionDecl &decl,
                                      EntityLifterImpl &lifter_context) const {
 
   const auto target_module = options.module;
@@ -1794,13 +1804,14 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
     // It's possible that we've lifted this function before, but that it was
     // renamed by user code, and so the above check failed. Go check for that.
   } else {
-    lifter_context.ForEachEntityAtAddress(address, [&](llvm::Constant *gv) {
-      if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);
-          gv_func && gv_func->getFunctionType() == module_func_type) {
-        CHECK(!new_version);
-        new_version = gv_func;
-      }
-    });
+    lifter_context.ForEachEntityAtAddress(
+        decl.address, [&](llvm::Constant *gv) {
+          if (auto gv_func = llvm::dyn_cast<llvm::Function>(gv);
+              gv_func && gv_func->getFunctionType() == module_func_type) {
+            CHECK(!new_version);
+            new_version = gv_func;
+          }
+        });
   }
 
   // This is the first time we're lifting this function, or even the first time
@@ -1818,13 +1829,20 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func, uint64_t address,
   // just in case it will be needed in future lifts.
   EraseFunctionBody(func);
 
-  if (auto func_annotation = GetPCAnnotation(address)) {
+  if (auto func_annotation = GetPCAnnotation(decl.address)) {
     new_version->setMetadata(pc_annotation_id, func_annotation);
   }
 
+  std::vector<llvm::Metadata *> args;
+  for (auto &arg : decl.params) {
+    args.push_back(type_specifier.EncodeToMetadata(arg.spec_type));
+  }
+  new_version->setMetadata("anvill.args",
+                           llvm::MDNode::get(llvm_context, args));
+
   // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
-  lifter_context.AddEntity(new_version, address);
+  lifter_context.AddEntity(new_version, decl.address);
 
   // The function we just lifted may call other functions, so we need to go
   // find those and also use them to update the context.
