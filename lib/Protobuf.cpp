@@ -534,8 +534,9 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
        << decl.address << ": " << spec_type.Error();
     return ss.str();
   }
+  decl.spec_type = spec_type.TakeValue();
 
-  auto llvm_type = type_translator.DecodeFromSpec(spec_type.Value());
+  auto llvm_type = type_translator.DecodeFromSpec(decl.spec_type);
   if (!llvm_type.Succeeded()) {
     std::stringstream ss;
     ss << "Cannot translate type for variable at address " << std::hex
