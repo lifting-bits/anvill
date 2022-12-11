@@ -56,9 +56,11 @@
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
+#include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/Error.h>
@@ -139,6 +141,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
     auto &context = options.module->getContext();
     pc_metadata_id = context.getMDKindID(options.pc_metadata_name);
   }
+
+  ConvertPointerArithmeticToGEP::StructMap structs;
+  ConvertPointerArithmeticToGEP::TypeMap types;
+  ConvertPointerArithmeticToGEP::MDMap md;
 
   llvm::PassBuilder pb;
   llvm::ModulePassManager mpm;
@@ -230,6 +236,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   AddBranchRecovery(fpm);
 
   AddLowerSwitchIntrinsics(fpm, mp);
+  fpm.addPass(ConvertPointerArithmeticToGEP(types, structs, md));
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

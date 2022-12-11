@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <anvill/Type.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/IR/PassManager.h>
@@ -25,6 +26,10 @@ class ConvertPointerArithmeticToGEP final
   std::unique_ptr<Impl> impl;
 
  public:
+  using StructMap = std::unordered_map<StructType *, llvm::StructType *>;
+  using TypeMap = std::unordered_map<llvm::MDNode *, TypeSpec>;
+  using MDMap = std::unordered_map<void *, llvm::MDNode *>;
+
   // Function pass entry point
   llvm::PreservedAnalyses run(llvm::Function &function,
                               llvm::FunctionAnalysisManager &fam);
@@ -32,7 +37,9 @@ class ConvertPointerArithmeticToGEP final
   // Returns the pass name
   static llvm::StringRef name(void);
 
-  ConvertPointerArithmeticToGEP();
+  ConvertPointerArithmeticToGEP(TypeMap &types, StructMap &structs, MDMap &md);
+  ConvertPointerArithmeticToGEP(const ConvertPointerArithmeticToGEP &);
+  ~ConvertPointerArithmeticToGEP();
 };
 
 }  // namespace anvill

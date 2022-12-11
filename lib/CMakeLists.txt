@@ -43,7 +43,6 @@ set(anvill_passes
   LowerRemillUndefinedIntrinsics
   LowerSwitchIntrinsics
   LowerTypeHintIntrinsics
-  PropagateTypeAnnotations
   RecoverBasicStackFrame
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
