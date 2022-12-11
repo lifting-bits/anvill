@@ -29,7 +29,6 @@
 #include <unordered_map>
 #include <utility>
 
-#include "BasicBlockTransform.h"
 #include "CodeLifter.h"
 #include "Lifters/BasicBlockLifter.h"
 
@@ -189,9 +188,6 @@ class FunctionLifter : public CodeLifter {
   // instruction at `addr`, we enqueue a bit of work to decode and lift that
   // instruction.
   llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
-
-  void ApplyBasicBlockTransform(BasicBlockTransform &transform,
-                                llvm::Value *lifted_function_state);
 
   // Attempts to lookup any redirection of the given address, and then
   // calls GetOrCreateBlock
