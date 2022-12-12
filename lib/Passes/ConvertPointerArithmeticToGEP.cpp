@@ -391,15 +391,14 @@ bool ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
   return false;
 }
 
-// Finds `(inttoptr (add (ptrtoint P), A))` and tries to convert to GEP
+// Finds `(add (ptrtoint P), A)` and tries to convert to `(ptrtoint (gep ...))`
 bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
   using namespace llvm::PatternMatch;
   llvm::Value *ptr;
   llvm::ConstantInt *offset_const;
   auto &context = f.getContext();
   auto &dl = f.getParent()->getDataLayout();
-  auto pat =
-      m_IntToPtr(m_Add(m_PtrToInt(m_Value(ptr)), m_ConstantInt(offset_const)));
+  auto pat = m_Add(m_PtrToInt(m_Value(ptr)), m_ConstantInt(offset_const));
   for (auto &insn : llvm::instructions(f)) {
     if (!match(&insn, pat)) {
       continue;
@@ -480,11 +479,14 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
     for (auto i : indices) {
       indices_values.push_back(llvm::ConstantInt::get(i32, i));
     }
-    auto gep =
-        llvm::GetElementPtrInst::Create(pointee_type, ptr, indices_values, "",
-                                        insn.getNextNonDebugInstruction());
+    auto next_insn = insn.getNextNonDebugInstruction();
+    auto gep = llvm::GetElementPtrInst::Create(pointee_type, ptr,
+                                               indices_values, "", next_insn);
     gep->setMetadata("anvill.type", TypeSpecToMD(context, cur_spec));
-    insn.replaceAllUsesWith(gep);
+    auto ptrtoint = new llvm::PtrToIntInst(
+        gep, llvm::Type::getIntNTy(context, dl.getPointerSizeInBits()), "",
+        next_insn);
+    insn.replaceAllUsesWith(ptrtoint);
 
     return true;
   }
