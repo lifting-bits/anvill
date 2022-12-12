@@ -15,6 +15,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
@@ -68,6 +69,7 @@ struct ConvertPointerArithmeticToGEP::Impl {
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, UnknownType t);
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, TypeSpec type);
 
+  void ConvertLoadInt(llvm::Function &f);
   void FoldPtrAdd(llvm::Function &f);
 
   Impl(TypeMap &types, StructMap &structs, MDMap &md)
@@ -278,7 +280,7 @@ llvm::MDNode *ConvertPointerArithmeticToGEP::Impl::TypeSpecToMD(
 
 llvm::MDNode *ConvertPointerArithmeticToGEP::Impl::TypeSpecToMD(
     llvm::LLVMContext &context, std::shared_ptr<StructType> t) {
-  auto str = llvm::MDString::get(context, "ArrayType");
+  auto str = llvm::MDString::get(context, "StructType");
   std::vector<llvm::Metadata *> members;
   members.push_back(str);
   for (auto member : t->members) {
@@ -323,6 +325,68 @@ ConvertPointerArithmeticToGEP::~ConvertPointerArithmeticToGEP() = default;
 
 llvm::StringRef ConvertPointerArithmeticToGEP::name() {
   return "ConvertPointerArithmeticToGEP";
+}
+
+// Finds `(load i64, P)` and converts it to `(ptrtoint (load ptr, P))`
+void ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
+  using namespace llvm::PatternMatch;
+  llvm::Value *ptr;
+  auto &context = f.getContext();
+  auto &dl = f.getParent()->getDataLayout();
+  auto pat = m_Load(m_Value(ptr));
+  for (auto &insn : llvm::instructions(f)) {
+    if (!match(&insn, pat)) {
+      continue;
+    }
+
+    auto old_load = llvm::cast<llvm::LoadInst>(&insn);
+    auto load_ty = old_load->getType();
+    if (load_ty != llvm::Type::getIntNTy(context, dl.getPointerSizeInBits())) {
+      continue;
+    }
+
+    auto maybe_type_info = GetTypeInfo(ptr);
+    if (!maybe_type_info) {
+      continue;
+    }
+    auto type_info = *maybe_type_info;
+
+    if (auto gvar = llvm::dyn_cast<llvm::GlobalVariable>(ptr)) {
+      if (!std::holds_alternative<std::shared_ptr<PointerType>>(type_info)) {
+        continue;
+      }
+
+      auto ptr_type = std::get<std::shared_ptr<PointerType>>(type_info);
+      auto new_load = new llvm::LoadInst(llvm::PointerType::get(context, 0),
+                                         ptr, "", &insn);
+      new_load->setMetadata("anvill.type", TypeSpecToMD(context, type_info));
+      auto ptrtoint = new llvm::PtrToIntInst(new_load, load_ty, "", &insn);
+      insn.replaceAllUsesWith(ptrtoint);
+
+      continue;
+    }
+
+    if (auto ptr_insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
+      if (!std::holds_alternative<std::shared_ptr<PointerType>>(type_info)) {
+        continue;
+      }
+
+      auto ptr_type = std::get<std::shared_ptr<PointerType>>(type_info);
+      if (!std::holds_alternative<std::shared_ptr<PointerType>>(
+              ptr_type->pointee)) {
+        continue;
+      }
+
+      auto new_load = new llvm::LoadInst(llvm::PointerType::get(context, 0),
+                                         ptr, "", &insn);
+      new_load->setMetadata("anvill.type",
+                            TypeSpecToMD(context, ptr_type->pointee));
+      auto ptrtoint = new llvm::PtrToIntInst(new_load, load_ty, "", &insn);
+      insn.replaceAllUsesWith(ptrtoint);
+
+      continue;
+    }
+  }
 }
 
 // Finds `(inttoptr (add (ptrtoint P), A))` and tries to convert to GEP
@@ -425,6 +489,7 @@ void ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
 llvm::PreservedAnalyses
 ConvertPointerArithmeticToGEP::run(llvm::Function &function,
                                    llvm::FunctionAnalysisManager &fam) {
+  impl->ConvertLoadInt(function);
   impl->FoldPtrAdd(function);
   return llvm::PreservedAnalyses::none();
 }
