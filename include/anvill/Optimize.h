@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "anvill/Passes/BasicBlockPass.h"
 namespace llvm {
 class Module;
 }  // namespace llvm
@@ -21,7 +22,7 @@ class EntityLifter;
 
 // Optimize a module. This can be a module with semantics code, lifted
 // code, etc.
-void OptimizeModule(const EntityLifter &lifter_context,
-                    llvm::Module &module);
+void OptimizeModule(const EntityLifter &lifter_context, llvm::Module &module,
+                    const BasicBlockContexts &contexts);
 
 }  // namespace anvill

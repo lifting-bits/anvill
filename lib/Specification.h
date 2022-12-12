@@ -14,9 +14,12 @@
 #include <anvill/Type.h>
 #include <specification.pb.h>
 
+#include <functional>
 #include <map>
 #include <unordered_map>
 #include <utility>
+
+#include "anvill/Passes/BasicBlockPass.h"
 
 namespace llvm {
 class LLVMContext;

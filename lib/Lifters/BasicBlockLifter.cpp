@@ -330,9 +330,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
 
 llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
-  auto pc_val = llvm::ConstantInt::get(address_type, addr);
-  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
-  return llvm::MDNode::get(this->semantics_module->getContext(), pc_md);
+  return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
 
 BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
@@ -450,15 +448,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 }
 
 
-llvm::StructType *BasicBlockLifter::StructTypeFromVars(
-    const std::vector<ParameterDecl> &in_scope_locals) const {
-  std::vector<llvm::Type *> field_types;
-  std::transform(in_scope_locals.begin(), in_scope_locals.end(),
-                 std::back_inserter(field_types),
-                 [](const ParameterDecl &param) { return param.type; });
-
-  return llvm::StructType::create(llvm_context, field_types,
-                                  "sty_for_basic_block_function");
+llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
+  return this->block_context.StructTypeFromVars(this->llvm_context);
 }
 
 // Packs in scope variables into a struct
@@ -493,7 +484,7 @@ void BasicBlockLifter::UnpackLocals(
                               {llvm::ConstantInt::get(i32, 0),
                                llvm::ConstantInt::get(i32, field_offset)});
 
-    auto loaded_var_val = bldr.CreateLoad(decl.type, ptr);
+    auto loaded_var_val = bldr.CreateLoad(decl.type, ptr, decl.name);
     field_offset += 1;
     auto new_mem_ptr = StoreNativeValue(
         loaded_var_val, decl, this->type_provider.Dictionary(),
@@ -562,8 +553,7 @@ BasicBlockLifter::BasicBlockLifter(const BasicBlockContext &block_context,
     : CodeLifter(options_, semantics_module, type_specifier),
       block_context(block_context),
       block_def(block_def) {
-  this->var_struct_ty =
-      this->StructTypeFromVars(this->block_context.GetAvailableVariables());
+  this->var_struct_ty = this->StructTypeFromVars();
 }
 
 CallableBasicBlockFunction::CallableBasicBlockFunction(

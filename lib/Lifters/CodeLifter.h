@@ -73,9 +73,13 @@ class CodeLifter {
 
   unsigned pc_annotation_id;
 
+  llvm::MDNode *GetAddrAnnotation(uint64_t addr,
+                                  llvm::LLVMContext &context) const;
+
  public:
   CodeLifter(const LifterOptions &options, llvm::Module *semantics_module,
              const TypeTranslator &type_specifier);
+
 
   CodeLifter(CodeLifter &&) = default;
 };

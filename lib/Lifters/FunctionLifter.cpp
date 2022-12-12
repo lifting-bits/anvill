@@ -434,7 +434,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
   CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
 
   bbfunc.CallBasicBlockFunction(builder, lifted_function_state);
-
+  CHECK(anvill::GetBasicBlockAddr(bbfunc.GetFunction()).has_value());
 
   auto pc = remill::LoadNextProgramCounter(llvm_blk, this->intrinsics);
 
@@ -768,6 +768,10 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
         new_version = llvm::Function::Create(
             type, llvm::GlobalValue::ExternalLinkage, name, target_module);
         remill::CloneFunctionInto(old_version, new_version);
+        new_version->setMetadata(
+            kBasicBlockMetadata,
+            this->GetAddrAnnotation(block_addr, module_context));
+        CHECK(anvill::GetBasicBlockAddr(new_version).has_value());
       }
     }
   }

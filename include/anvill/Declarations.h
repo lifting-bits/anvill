@@ -9,6 +9,8 @@
 #pragma once
 
 #include <_types/_uint64_t.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/LLVMContext.h>
 
 #include <cstdint>
 #include <memory>
@@ -202,6 +204,9 @@ class BasicBlockContext {
  public:
   virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
+
+
+  llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
 };
 
 struct FunctionDecl;
@@ -271,6 +276,9 @@ struct FunctionDecl : public CallableDecl {
                                                   const remill::Arch *arch);
 
   SpecBlockContext GetBlockContext(std::uint64_t addr) const;
+
+  void
+  AddBBContexts(std::unordered_map<uint64_t, SpecBlockContext> &contexts) const;
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a

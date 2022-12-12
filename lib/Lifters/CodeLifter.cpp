@@ -163,6 +163,14 @@ void CodeLifter::InitializeStateStructureFromGlobalRegisterVariables(
   });
 }
 
+llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,
+                                            llvm::LLVMContext &context) const {
+  auto pc_val = llvm::ConstantInt::get(
+      remill::RecontextualizeType(address_type, context), addr);
+  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
+  return llvm::MDNode::get(context, pc_md);
+}
+
 // Allocate and initialize the state structure.
 llvm::Value *
 CodeLifter::AllocateAndInitializeStateStructure(llvm::BasicBlock *block,

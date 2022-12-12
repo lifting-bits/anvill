@@ -58,6 +58,7 @@ set(anvill_passes
   SpreadPCMetadata
   TransformRemillJumpIntrinsics
   CombineAdjacentShifts
+  ReplaceStackReferences
 )
 
 set(anvill_arch_HEADERS

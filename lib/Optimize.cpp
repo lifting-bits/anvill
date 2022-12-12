@@ -57,6 +57,7 @@
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/ReplaceStackReferences.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
@@ -102,7 +103,8 @@ class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
 // code, etc.
 // When utilizing crossRegisterProxies cleanup triggers asan
 
-void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
+void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
+                    const BasicBlockContexts &contexts) {
 
   const LifterOptions &options = lifter.Options();
 
@@ -216,6 +218,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   AddRemoveStackPointerCExprs(fpm, options.stack_frame_recovery_options);
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
+  fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   fpm.addPass(llvm::SROAPass());
 
   AddCombineAdjacentShifts(fpm);

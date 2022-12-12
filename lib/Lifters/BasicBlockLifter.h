@@ -7,6 +7,7 @@
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <remill/BC/Lifter.h>
 
@@ -45,8 +46,7 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::Function *lifted_func{nullptr};
 
-  llvm::StructType *
-  StructTypeFromVars(const std::vector<ParameterDecl> &in_scope_locals) const;
+  llvm::StructType *StructTypeFromVars() const;
 
   remill::DecodingContext ApplyContextAssignments(
       const std::unordered_map<std::string, uint64_t> &assignments,

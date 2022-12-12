@@ -171,9 +171,6 @@ class FunctionLifter : public CodeLifter {
   // not doing annotations.
   llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
 
-  // A metadata node that communicates that this value (should be a function represents the basic block at address x)
-  llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
-
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);

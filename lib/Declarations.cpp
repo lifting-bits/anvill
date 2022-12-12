@@ -29,10 +29,12 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <unordered_map>
 #include <vector>
 
 #include "Arch/Arch.h"
 #include "Protobuf.h"
+#include "anvill/Specification.h"
 
 namespace anvill {
 
@@ -51,6 +53,26 @@ VariableDecl::DeclareInModule(const std::string &name,
   return new llvm::GlobalVariable(target_module, var_type, false,
                                   llvm::GlobalValue::ExternalLinkage, nullptr,
                                   name);
+}
+
+void FunctionDecl::AddBBContexts(
+    std::unordered_map<uint64_t, SpecBlockContext> &contexts) const {
+  for (const auto &[addr, _] : this->cfg) {
+    contexts.insert({addr, this->GetBlockContext(addr)});
+  }
+}
+
+
+llvm::StructType *
+BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {
+  auto in_scope_locals = this->GetAvailableVariables();
+  std::vector<llvm::Type *> field_types;
+  std::transform(in_scope_locals.begin(), in_scope_locals.end(),
+                 std::back_inserter(field_types),
+                 [](const ParameterDecl &param) { return param.type; });
+
+  return llvm::StructType::get(llvm_context, field_types,
+                               "sty_for_basic_block_function");
 }
 
 // Declare this function in an LLVM module.

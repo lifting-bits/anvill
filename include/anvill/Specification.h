@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <anvill/Passes/BasicBlockPass.h>
+
 #include <cstdint>
 #include <functional>
 #include <istream>
@@ -85,6 +87,19 @@ struct FunctionDecl;
 struct VariableDecl;
 struct ParameterDecl;
 struct ValueDecl;
+
+
+class Specification;
+class SpecBlockContexts : public BasicBlockContexts {
+  std::unordered_map<uint64_t, SpecBlockContext> contexts;
+
+ public:
+  SpecBlockContexts(const Specification &spec);
+
+  virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
+  GetBasicBlockContextForAddr(uint64_t addr) const override;
+};
+
 
 // Represents the data pulled out of a JSON (sub-)program specification.
 class Specification {
@@ -169,6 +184,10 @@ class Specification {
 
   inline bool operator!=(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();
+  }
+
+  SpecBlockContexts GetBlockContexts() const {
+    return SpecBlockContexts(*this);
   }
 };
 

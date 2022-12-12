@@ -414,6 +414,23 @@ void Specification::ForEachSymbol(
   }
 }
 
+SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
+  spec.ForEachFunction([this](auto decl) {
+    decl->AddBBContexts(this->contexts);
+    return true;
+  });
+}
+
+std::optional<std::reference_wrapper<const BasicBlockContext>>
+SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
+  auto cont = this->contexts.find(addr);
+  if (cont == this->contexts.end()) {
+    return std::nullopt;
+  }
+
+  return std::cref(cont->second);
+}
+
 // Call `cb` on each function in the spec, until `cb` returns `false`.
 void Specification::ForEachFunction(
     std::function<bool(std::shared_ptr<const FunctionDecl>)> cb) const {
