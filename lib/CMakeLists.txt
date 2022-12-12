@@ -40,7 +40,6 @@ set(anvill_passes
   Constraints
   LowerRemillMemoryAccessIntrinsics
   LowerRemillUndefinedIntrinsics
-  RecoverBasicStackFrame
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
   RemoveErrorIntrinsics

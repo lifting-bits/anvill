@@ -91,44 +91,6 @@ GetMemoryEscapeFunc(const remill::IntrinsicTable &intrinsics) {
                                 kMemoryPointerEscapeFunction.data(), module);
 }
 
-// We're calling a remill intrinsic and we want to "mute" the escape of the
-// `State` pointer by replacing it with an `undef` value. This permits
-// optimizations while allowing us to still observe what reaches the `pc`
-// argument of the intrinsic. This is valuable for function return intrinsics,
-// because it lets us verify that the value that we initialize into the return
-// address location actually reaches the `pc` parameter of the
-// `__remill_function_return`.
-static void MuteStateEscape(llvm::CallInst *call) {
-  auto state_ptr_arg = call->getArgOperand(remill::kStatePointerArgNum);
-  auto undef_val = llvm::UndefValue::get(state_ptr_arg->getType());
-  call->setArgOperand(remill::kStatePointerArgNum, undef_val);
-}
-
-// This returns a special anvill built-in used to describe jumps tables
-// inside lifted code; It takes the address type to generate the function
-// parameters of correct type.
-static llvm::Function *GetAnvillSwitchFunc(llvm::Module &module,
-                                           llvm::Type *type) {
-
-  const auto &func_name = kAnvillSwitchCompleteFunc;
-
-  auto func = module.getFunction(func_name);
-  if (func != nullptr) {
-    return func;
-  }
-
-  llvm::Type *func_parameters[] = {type};
-
-  auto func_type = llvm::FunctionType::get(type, func_parameters, true);
-
-  func = llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
-                                func_name, module);
-
-  func->addFnAttr(llvm::Attribute::ReadNone);
-
-  return func;
-}
-
 // Annotate and instruction with the `id` annotation if that instruction
 // is unannotated.
 static void AnnotateInstruction(llvm::Instruction *inst, unsigned id,

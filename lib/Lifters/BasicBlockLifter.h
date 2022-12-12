@@ -68,7 +68,8 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::CallInst *AddCallFromBasicBlockFunctionToLifted(
       llvm::BasicBlock *source_block, llvm::Function *dest_func,
-      const remill::IntrinsicTable &intrinsics);
+      const remill::IntrinsicTable &intrinsics,
+      llvm::Value *next_pc_hint = nullptr);
 
   std::pair<uint64_t, llvm::Value *>
   LoadFunctionReturnAddress(const remill::Instruction &inst,

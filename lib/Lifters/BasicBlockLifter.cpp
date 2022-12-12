@@ -50,7 +50,7 @@ remill::DecodingContext BasicBlockLifter::ApplyContextAssignments(
 
 llvm::CallInst *BasicBlockLifter::AddCallFromBasicBlockFunctionToLifted(
     llvm::BasicBlock *source_block, llvm::Function *dest_func,
-    const remill::IntrinsicTable &intrinsics) {
+    const remill::IntrinsicTable &intrinsics, llvm::Value *pc_hint) {
   auto func = source_block->getParent();
   llvm::IRBuilder<> ir(source_block);
   std::array<llvm::Value *, remill::kNumBlockArgs> args;
@@ -58,7 +58,14 @@ llvm::CallInst *BasicBlockLifter::AddCallFromBasicBlockFunctionToLifted(
       NthArgument(func, remill::kMemoryPointerArgNum);
   args[remill::kStatePointerArgNum] =
       NthArgument(func, remill::kStatePointerArgNum);
-  args[remill::kPCArgNum] = NthArgument(func, remill::kPCArgNum);
+
+  if (pc_hint) {
+    args[remill::kPCArgNum] = pc_hint;
+  } else {
+    args[remill::kPCArgNum] =
+        remill::LoadNextProgramCounter(source_block, this->intrinsics);
+  }
+
   return ir.CreateCall(dest_func, args);
 }
 
@@ -161,8 +168,16 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
   llvm::IRBuilder<> builder(block);
   if (std::holds_alternative<anvill::Call>(override)) {
     auto cc = std::get<anvill::Call>(override);
-    this->AddCallFromBasicBlockFunctionToLifted(
-        block, this->intrinsics.function_call, this->intrinsics);
+
+    if (cc.target_address.has_value()) {
+      this->AddCallFromBasicBlockFunctionToLifted(
+          block, this->intrinsics.function_call, this->intrinsics,
+          this->options.program_counter_init_procedure(builder, this->pc_reg,
+                                                       *cc.target_address));
+    } else {
+      this->AddCallFromBasicBlockFunctionToLifted(
+          block, this->intrinsics.function_call, this->intrinsics);
+    }
     if (!cc.stop) {
       auto [_, raddr] = this->LoadFunctionReturnAddress(insn, block);
       auto npc = remill::LoadNextProgramCounterRef(block);

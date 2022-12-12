@@ -71,12 +71,17 @@ class StackModel {
   std::map<std::int64_t, BasicBlockVar> frame;
 
  public:
+  static uint64_t GetParamDeclSize(const ParameterDecl &decl) {
+    CHECK(decl.type->getPrimitiveSizeInBits() != 0);
+    return decl.type->getPrimitiveSizeInBits() / 8;
+  }
+
   StackModel(const BasicBlockContext &cont, const remill::Arch *arch) {
 
     size_t index = 0;
     for (const auto &v : cont.GetAvailableVariables()) {
       if (v.mem_reg && v.mem_reg->name == arch->StackPointerRegisterName()) {
-        this->InsertFrameVar(v.mem_offset, index, v);
+        this->InsertFrameVar(index, v);
       }
       index += 1;
     }
@@ -97,11 +102,13 @@ class StackModel {
       return std::nullopt;
     }
 
-    return {(prec--)->second};
+
+    auto prev_decl = (--prec)->second;
+    CHECK(prev_decl.decl.mem_offset <= off);
+    return {prev_decl};
   }
 
   std::optional<StackVariable> GetOverlappingParam(std::int64_t off) {
-
     auto vlte = GetParamLte(off);
 
     if (!vlte.has_value()) {
@@ -109,8 +116,8 @@ class StackModel {
     }
 
     auto offset_into_var = off - vlte->decl.mem_offset;
-    if (offset_into_var <= static_cast<std::int64_t>(
-                               vlte->decl.type->getPrimitiveSizeInBits() / 8)) {
+    if (offset_into_var < static_cast<std::int64_t>(
+                              vlte->decl.type->getPrimitiveSizeInBits() / 8)) {
       return {{offset_into_var, *vlte}};
     }
 
@@ -119,18 +126,30 @@ class StackModel {
 
 
   bool VarOverlaps(std::int64_t off) {
+
+
     return GetOverlappingParam(off).has_value();
   }
 
 
-  void InsertFrameVar(std::int64_t off, size_t index, ParameterDecl var) {
+  void InsertFrameVar(size_t index, ParameterDecl var) {
     CHECK(var.type->getPrimitiveSizeInBits() != 0);
+    if (VarOverlaps(var.mem_offset) ||
+        VarOverlaps(var.mem_offset + GetParamDeclSize(var) - 1)) {
 
-    if (VarOverlaps(off)) {
-      LOG(FATAL) << "Inserting variable that overlaps with current frame";
+      auto oparam = GetOverlappingParam(var.mem_offset);
+      if (!VarOverlaps(var.mem_offset)) {
+        oparam =
+            GetOverlappingParam(var.mem_offset + GetParamDeclSize(var) - 1);
+      }
+
+      LOG(FATAL) << "Inserting variable that overlaps with current frame "
+                 << var.mem_offset << " with size: " << GetParamDeclSize(var)
+                 << " Overlaps with " << oparam->decl.decl.mem_offset
+                 << " with size " << GetParamDeclSize(oparam->decl.decl);
     }
 
-    this->frame.insert({off, {index, var}});
+    this->frame.insert({var.mem_offset, {index, var}});
   }
 };
 
