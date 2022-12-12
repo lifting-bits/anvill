@@ -42,17 +42,17 @@ struct ConvertPointerArithmeticToGEP::Impl {
   std::optional<TypeSpec> GetTypeInfo(llvm::Value *val);
 
   llvm::Type *TypeSpecToType(llvm::LLVMContext &context, BaseType t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context,
-                             std::shared_ptr<PointerType> t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context,
-                             std::shared_ptr<ArrayType> t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context,
-                             std::shared_ptr<VectorType> t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context,
-                             std::shared_ptr<StructType> t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context,
-                             std::shared_ptr<FunctionType> t);
-  llvm::Type *TypeSpecToType(llvm::LLVMContext &context, UnknownType t);
+  llvm::PointerType *TypeSpecToType(llvm::LLVMContext &context,
+                                    std::shared_ptr<PointerType> t);
+  llvm::ArrayType *TypeSpecToType(llvm::LLVMContext &context,
+                                  std::shared_ptr<ArrayType> t);
+  llvm::FixedVectorType *TypeSpecToType(llvm::LLVMContext &context,
+                                        std::shared_ptr<VectorType> t);
+  llvm::StructType *TypeSpecToType(llvm::LLVMContext &context,
+                                   std::shared_ptr<StructType> t);
+  llvm::FunctionType *TypeSpecToType(llvm::LLVMContext &context,
+                                     std::shared_ptr<FunctionType> t);
+  llvm::IntegerType *TypeSpecToType(llvm::LLVMContext &context, UnknownType t);
   llvm::Type *TypeSpecToType(llvm::LLVMContext &context, TypeSpec type);
 
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, BaseType t);
@@ -71,6 +71,7 @@ struct ConvertPointerArithmeticToGEP::Impl {
 
   bool ConvertLoadInt(llvm::Function &f);
   bool FoldPtrAdd(llvm::Function &f);
+  bool FoldScaledIndex(llvm::Function &f);
 
   Impl(TypeMap &types, StructMap &structs, MDMap &md)
       : types(types),
@@ -119,22 +120,22 @@ ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(llvm::LLVMContext &context,
   }
 }
 
-llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
+llvm::PointerType *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
     llvm::LLVMContext &context, std::shared_ptr<PointerType> t) {
   return llvm::PointerType::get(context, 0);
 }
 
-llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
+llvm::ArrayType *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
     llvm::LLVMContext &context, std::shared_ptr<ArrayType> t) {
   return llvm::ArrayType::get(TypeSpecToType(context, t->base), t->size);
 }
 
-llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
+llvm::FixedVectorType *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
     llvm::LLVMContext &context, std::shared_ptr<VectorType> t) {
   return llvm::FixedVectorType::get(TypeSpecToType(context, t->base), t->size);
 }
 
-llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
+llvm::StructType *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
     llvm::LLVMContext &context, std::shared_ptr<StructType> t) {
   auto &type = structs[t.get()];
   if (type) {
@@ -149,7 +150,7 @@ llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
   return type;
 }
 
-llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
+llvm::FunctionType *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
     llvm::LLVMContext &context, std::shared_ptr<FunctionType> t) {
   std::vector<llvm::Type *> args;
   for (auto arg : t->arguments) {
@@ -159,7 +160,7 @@ llvm::Type *ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(
                                  t->is_variadic);
 }
 
-llvm::Type *
+llvm::IntegerType *
 ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(llvm::LLVMContext &context,
                                                     UnknownType t) {
   return llvm::Type::getIntNTy(context, t.size * 8);
@@ -169,7 +170,10 @@ llvm::Type *
 ConvertPointerArithmeticToGEP::Impl::TypeSpecToType(llvm::LLVMContext &context,
                                                     TypeSpec type) {
   return std::visit(
-      [this, &context](auto &&t) { return TypeSpecToType(context, t); }, type);
+      [this, &context](auto &&t) {
+        return static_cast<llvm::Type *>(TypeSpecToType(context, t));
+      },
+      type);
 }
 
 TypeSpec ConvertPointerArithmeticToGEP::Impl::MDToTypeSpec(llvm::MDNode *md) {
@@ -494,11 +498,78 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
   return false;
 }
 
+// Convert `(add (ptrtoint P), (shl I, S))` to `(ptrtoint (gep P, I))`
+bool ConvertPointerArithmeticToGEP::Impl::FoldScaledIndex(llvm::Function &f) {
+  using namespace llvm::PatternMatch;
+  llvm::Value *ptr;
+  llvm::Value *base;
+  llvm::ConstantInt *shift_const;
+  auto &context = f.getContext();
+  auto &dl = f.getParent()->getDataLayout();
+  auto patL = m_Add(m_PtrToInt(m_Value(ptr)),
+                    m_Shl(m_Value(base), m_ConstantInt(shift_const)));
+  auto patR = m_Add(m_Shl(m_Value(base), m_ConstantInt(shift_const)),
+                    m_PtrToInt(m_Value(ptr)));
+  auto ptrint_ty = llvm::Type::getIntNTy(context, dl.getPointerSizeInBits());
+  for (auto &insn : llvm::instructions(f)) {
+    if (!match(&insn, patL) && !match(&insn, patR)) {
+      continue;
+    }
+
+    auto maybe_type_info = GetTypeInfo(ptr);
+    if (!maybe_type_info.has_value()) {
+      continue;
+    }
+
+    auto scale = 1ull << shift_const->getZExtValue();
+    auto type_info = *maybe_type_info;
+
+    auto next_insn = insn.getNextNonDebugInstruction();
+
+    if (std::holds_alternative<std::shared_ptr<ArrayType>>(type_info)) {
+      auto array_spec = std::get<std::shared_ptr<ArrayType>>(type_info);
+      auto array_type = TypeSpecToType(context, array_spec);
+      auto elem_size =
+          dl.getTypeSizeInBits(array_type->getArrayElementType()) / 8;
+      if (scale != elem_size) {
+        continue;
+      }
+
+      auto gep = llvm::GetElementPtrInst::Create(
+          array_type, ptr, {llvm::ConstantInt::get(ptrint_ty, 0), base}, "",
+          next_insn);
+      gep->setMetadata("anvill.type", TypeSpecToMD(context, array_spec->base));
+      auto ptrtoint = new llvm::PtrToIntInst(gep, ptrint_ty, "", next_insn);
+      insn.replaceAllUsesWith(ptrtoint);
+      return true;
+    }
+
+    if (std::holds_alternative<std::shared_ptr<VectorType>>(type_info)) {
+      auto vector_spec = std::get<std::shared_ptr<VectorType>>(type_info);
+      auto vector_type = TypeSpecToType(context, vector_spec);
+      auto elem_size = dl.getTypeSizeInBits(vector_type->getElementType()) / 8;
+      if (scale != elem_size) {
+        continue;
+      }
+
+      auto gep = llvm::GetElementPtrInst::Create(
+          vector_type, ptr, {llvm::ConstantInt::get(ptrint_ty, 0), base}, "",
+          next_insn);
+      gep->setMetadata("anvill.type", TypeSpecToMD(context, vector_spec->base));
+      auto ptrtoint = new llvm::PtrToIntInst(gep, ptrint_ty, "", next_insn);
+      insn.replaceAllUsesWith(ptrtoint);
+      return true;
+    }
+  }
+  return false;
+}
+
 llvm::PreservedAnalyses
 ConvertPointerArithmeticToGEP::run(llvm::Function &function,
                                    llvm::FunctionAnalysisManager &fam) {
   bool changed = impl->ConvertLoadInt(function);
   changed |= impl->FoldPtrAdd(function);
+  changed |= impl->FoldScaledIndex(function);
   return changed ? llvm::PreservedAnalyses::none()
                  : llvm::PreservedAnalyses::all();
 }
