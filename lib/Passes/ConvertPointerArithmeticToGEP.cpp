@@ -69,8 +69,8 @@ struct ConvertPointerArithmeticToGEP::Impl {
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, UnknownType t);
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, TypeSpec type);
 
-  void ConvertLoadInt(llvm::Function &f);
-  void FoldPtrAdd(llvm::Function &f);
+  bool ConvertLoadInt(llvm::Function &f);
+  bool FoldPtrAdd(llvm::Function &f);
 
   Impl(TypeMap &types, StructMap &structs, MDMap &md)
       : types(types),
@@ -328,7 +328,7 @@ llvm::StringRef ConvertPointerArithmeticToGEP::name() {
 }
 
 // Finds `(load i64, P)` and converts it to `(ptrtoint (load ptr, P))`
-void ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
+bool ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
   using namespace llvm::PatternMatch;
   llvm::Value *ptr;
   auto &context = f.getContext();
@@ -363,7 +363,7 @@ void ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
       auto ptrtoint = new llvm::PtrToIntInst(new_load, load_ty, "", &insn);
       insn.replaceAllUsesWith(ptrtoint);
 
-      continue;
+      return true;
     }
 
     if (auto ptr_insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
@@ -384,13 +384,15 @@ void ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
       auto ptrtoint = new llvm::PtrToIntInst(new_load, load_ty, "", &insn);
       insn.replaceAllUsesWith(ptrtoint);
 
-      continue;
+      return true;
     }
   }
+
+  return false;
 }
 
 // Finds `(inttoptr (add (ptrtoint P), A))` and tries to convert to GEP
-void ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
+bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
   using namespace llvm::PatternMatch;
   llvm::Value *ptr;
   llvm::ConstantInt *offset_const;
@@ -483,14 +485,19 @@ void ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
                                         insn.getNextNonDebugInstruction());
     gep->setMetadata("anvill.type", TypeSpecToMD(context, cur_spec));
     insn.replaceAllUsesWith(gep);
+
+    return true;
   }
+
+  return false;
 }
 
 llvm::PreservedAnalyses
 ConvertPointerArithmeticToGEP::run(llvm::Function &function,
                                    llvm::FunctionAnalysisManager &fam) {
-  impl->ConvertLoadInt(function);
-  impl->FoldPtrAdd(function);
-  return llvm::PreservedAnalyses::none();
+  bool changed = impl->ConvertLoadInt(function);
+  changed |= impl->FoldPtrAdd(function);
+  return changed ? llvm::PreservedAnalyses::none()
+                 : llvm::PreservedAnalyses::all();
 }
 }  // namespace anvill
