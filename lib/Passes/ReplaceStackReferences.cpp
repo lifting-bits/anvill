@@ -109,7 +109,8 @@ class StackModel {
     }
 
     auto offset_into_var = off - vlte->decl.mem_offset;
-    if (offset_into_var <= (vlte->decl.type->getPrimitiveSizeInBits() / 8)) {
+    if (offset_into_var <= static_cast<std::int64_t>(
+                               vlte->decl.type->getPrimitiveSizeInBits() / 8)) {
       return {{offset_into_var, *vlte}};
     }
 
