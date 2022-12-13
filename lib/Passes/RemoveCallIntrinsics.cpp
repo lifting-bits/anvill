@@ -17,7 +17,6 @@ llvm::PreservedAnalyses
 RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
                                      llvm::FunctionAnalysisManager &am,
                                      llvm::PreservedAnalyses prev) {
-
   CHECK(remillFunctionCall->getNumOperands() == 4);
   auto target_func = remillFunctionCall->getArgOperand(1);
   auto state_ptr = remillFunctionCall->getArgOperand(0);
@@ -27,22 +26,24 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       this->xref_resolver,
       remillFunctionCall->getFunction()->getParent()->getDataLayout());
   auto ra = xref_folder.TryResolveReferenceWithClearedCache(target_func);
-
+  remillFunctionCall->dump();
   if (ra.references_entity ||  // Related to an existing lifted entity.
       ra.references_global_value ||  // Related to a global var/func.
       ra.references_program_counter) {  // Related to `__anvill_pc`.
 
     // TODO(Ian): ignoring callsite decls for now
     auto fdecl = spec.FunctionAt(ra.u.address);
-    if (fdecl) {
+    auto entity = this->xref_resolver.EntityAtAddress(ra.u.address);
+    if (fdecl && entity) {
       llvm::IRBuilder<> ir(remillFunctionCall->getParent());
       ir.SetInsertPoint(remillFunctionCall);
 
       const remill::IntrinsicTable table(
           remillFunctionCall->getFunction()->getParent());
-      auto new_mem = fdecl->CallFromLiftedBlock(
-          target_func, lifter.Options().TypeDictionary(), table, ir, state_ptr,
-          mem_ptr);
+
+      auto new_mem =
+          fdecl->CallFromLiftedBlock(entity, lifter.Options().TypeDictionary(),
+                                     table, ir, state_ptr, mem_ptr);
 
       remillFunctionCall->replaceAllUsesWith(new_mem);
       remillFunctionCall->eraseFromParent();
@@ -60,6 +61,7 @@ llvm::PreservedAnalyses RemoveCallIntrinsics::INIT_RES =
 
 bool RemoveCallIntrinsics::isTargetInstrinsic(const llvm::CallInst *callinsn) {
   return callinsn->getCalledFunction() != nullptr &&
-         callinsn->getName().startswith("__remill_function_call");
+         callinsn->getCalledFunction()->getName().startswith(
+             "__remill_function_call");
 }
 }  // namespace anvill

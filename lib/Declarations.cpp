@@ -223,10 +223,10 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     }
   }
 
-
-  ir.CreateStore(ret_addr, remill::FindVarInFunction(
-                               ir.GetInsertBlock(), remill::kNextPCVariableName)
-                               .first);
+  // TODO(Ian): ... well ok so we already did stuff assuming the PC was one way since we lifted below it.
+  //ir.CreateStore(ret_addr, remill::FindVarInFunction(
+  //                           ir.GetInsertBlock(), remill::kNextPCVariableName)
+  //                         .first);
   ir.CreateStore(sp_val_on_exit, ptr_to_sp);
 
   if (is_noreturn) {

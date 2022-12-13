@@ -23,6 +23,7 @@
 #include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
@@ -242,6 +243,24 @@ void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
   }
 }
 
+void CloneIntrinsicsFromModule(llvm::Module &from, llvm::Module &into) {
+  //CHECK(&from.getContext() == &into.getContext());
+  auto func = from.getFunction("__remill_intrinsics");
+  if (!func) {
+    LOG(FATAL) << "No intrinsics bundle in module";
+  }
+
+  if (into.getFunction("__remill_intrinsics")) {
+    return;
+  }
+
+  auto nfunc = llvm::Function::Create(
+      llvm::cast<llvm::FunctionType>(remill::RecontextualizeType(
+          func->getFunctionType(), into.getContext())),
+      llvm::GlobalValue::ExternalLinkage, func->getName(), into);
+
+  remill::CloneFunctionInto(func, nfunc);
+}
 
 void StoreNativeValueToRegister(llvm::Value *native_val,
                                 const remill::Register *reg,

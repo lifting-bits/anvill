@@ -127,7 +127,12 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
                                std::unique_ptr<llvm::Module> semantics_module)
     : CodeLifter(options_, semantics_module.get(), this->type_specifier),
       semantics_module(std::move(semantics_module)),
-      type_specifier(options_.TypeDictionary(), options_.arch) {}
+      type_specifier(options_.TypeDictionary(), options_.arch) {
+
+
+  anvill::CloneIntrinsicsFromModule(*this->semantics_module,
+                                    *this->options.module);
+}
 
 
 llvm::BranchInst *

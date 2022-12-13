@@ -94,6 +94,8 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              llvm::Value *mem_ptr);
 
 
+void CloneIntrinsicsFromModule(llvm::Module &from, llvm::Module &into);
+
 void StoreNativeValueToRegister(llvm::Value *native_val,
                                 const remill::Register *reg,
                                 const TypeDictionary &types,

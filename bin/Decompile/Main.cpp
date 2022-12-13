@@ -10,6 +10,7 @@
 #include <anvill/Optimize.h>
 #include <anvill/Providers.h>
 #include <anvill/Specification.h>
+#include <anvill/Utils.h>
 #include <anvill/Version.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>

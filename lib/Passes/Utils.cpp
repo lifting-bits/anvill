@@ -46,7 +46,8 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(
+          ir.getContext(), dest_ptr_ty->getAddressSpace());
       val_to_convert =
           llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
       ptr_ty = new_ptr_ty;
@@ -89,7 +90,8 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(
+          ir.getContext(), dest_ptr_ty->getAddressSpace());
       auto dest = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
       CopyMetadataTo(val_to_convert, dest);
       val_to_convert = dest;
@@ -100,8 +102,8 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
       return val_to_convert;
 
     } else {
-      auto dest = remill::BuildPointerToOffset(
-          ir, val_to_convert, 0, dest_ptr_ty);
+      auto dest =
+          remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
       CopyMetadataTo(val_to_convert, dest);
       return dest;
     }
@@ -179,6 +181,7 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
   }
   return true;
 }
+
 
 llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
   return modified ? llvm::PreservedAnalyses::none()
