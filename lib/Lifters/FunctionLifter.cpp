@@ -100,14 +100,6 @@ static void AnnotateInstruction(llvm::Instruction *inst, unsigned id,
   }
 }
 
-static void AnnotateInstruction(llvm::Value *val, unsigned id,
-                                llvm::MDNode *annot) {
-  if (auto inst = llvm::dyn_cast<llvm::Instruction>(val)) {
-    if (!inst->getMetadata(id)) {
-      inst->setMetadata(id, annot);
-    }
-  }
-}
 
 // Annotate and instruction with the `id` annotation if that instruction
 // is unannotated.

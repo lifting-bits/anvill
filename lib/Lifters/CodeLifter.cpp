@@ -298,4 +298,5 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
 
   ClearVariableNames(inf);
 }
+
 }  // namespace anvill

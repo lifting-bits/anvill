@@ -145,28 +145,26 @@ const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
 // memory pointer.
 llvm::Value *CallableDecl::CallFromLiftedBlock(
     llvm::Value *target, const anvill::TypeDictionary &types,
-    const remill::IntrinsicTable &intrinsics, llvm::BasicBlock *block,
+    const remill::IntrinsicTable &intrinsics, llvm::IRBuilder<> &ir,
     llvm::Value *state_ptr, llvm::Value *mem_ptr) const {
-  auto module = block->getModule();
+  auto module = ir.GetInsertBlock()->getModule();
   auto &context = module->getContext();
   CHECK_EQ(&context, &(target->getContext()));
   CHECK_EQ(&context, &(state_ptr->getContext()));
   CHECK_EQ(&context, &(mem_ptr->getContext()));
   CHECK_EQ(&context, &(types.u.named.void_->getContext()));
 
-  llvm::IRBuilder<> ir(block);
-
   // Go and get a pointer to the stack pointer register, so that we can
   // later store our computed return value stack pointer to it.
   auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  const auto ptr_to_sp = sp_reg->AddressOf(state_ptr, block);
-  ir.SetInsertPoint(block);
+  const auto ptr_to_sp = sp_reg->AddressOf(state_ptr, ir.GetInsertBlock());
+
 
   // Go and compute the value of the stack pointer on exit from
   // the function, which will be based off of the register state
   // on entry to the function.
-  auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, block);
-  ir.SetInsertPoint(block);
+  auto new_sp_base =
+      return_stack_pointer->AddressOf(state_ptr, ir.GetInsertBlock());
 
   const auto sp_val_on_exit = ir.CreateAdd(
       ir.CreateLoad(return_stack_pointer->type, new_sp_base),
@@ -177,14 +175,14 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, block,
+  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, ir,
                                   state_ptr, mem_ptr);
   CHECK(ret_addr && !llvm::isa_and_nonnull<llvm::UndefValue>(ret_addr));
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val = LoadLiftedValue(param_decl, types, intrinsics, block,
-                                     state_ptr, mem_ptr);
+    const auto val =
+        LoadLiftedValue(param_decl, types, intrinsics, ir, state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }
@@ -208,8 +206,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   if (returns.size() == 1) {
     auto call_ret = ret_val;
 
-    mem_ptr = StoreNativeValue(call_ret, returns.front(), types, intrinsics,
-                               block, state_ptr, mem_ptr);
+    mem_ptr = StoreNativeValue(call_ret, returns.front(), types, intrinsics, ir,
+                               state_ptr, mem_ptr);
 
     // There are possibly multiple return values (or zero). Unpack the
     // return value (it will be a struct type) into its components and
@@ -219,18 +217,16 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     for (const auto &ret_decl : returns) {
       unsigned indexes[] = {index};
       auto elem_val = ir.CreateExtractValue(ret_val, indexes);
-      mem_ptr = StoreNativeValue(elem_val, ret_decl, types, intrinsics, block,
+      mem_ptr = StoreNativeValue(elem_val, ret_decl, types, intrinsics, ir,
                                  state_ptr, mem_ptr);
       index += 1;
     }
   }
 
-  // Store the return address, and computed return stack pointer.
-  ir.SetInsertPoint(block);
 
-  ir.CreateStore(
-      ret_addr,
-      remill::FindVarInFunction(block, remill::kNextPCVariableName).first);
+  ir.CreateStore(ret_addr, remill::FindVarInFunction(
+                               ir.GetInsertBlock(), remill::kNextPCVariableName)
+                               .first);
   ir.CreateStore(sp_val_on_exit, ptr_to_sp);
 
   if (is_noreturn) {

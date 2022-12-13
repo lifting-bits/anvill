@@ -58,6 +58,7 @@ set(anvill_passes
   TransformRemillJumpIntrinsics
   CombineAdjacentShifts
   ReplaceStackReferences
+  RemoveCallIntrinsics
 )
 
 set(anvill_arch_HEADERS

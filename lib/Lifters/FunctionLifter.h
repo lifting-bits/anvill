@@ -214,11 +214,6 @@ class FunctionLifter : public CodeLifter {
                            std::optional<remill::Instruction> &delayed_inst,
                            llvm::BasicBlock *block);
 
-  // Call `pc` in `block`, treating it as a callable declaration `decl`.
-  // Returns the new value of the memory pointer (after it is stored to
-  // `MEMORY`).
-  llvm::Value *CallCallableDecl(llvm::BasicBlock *block, llvm::Value *pc,
-                                CallableDecl decl);
 
   // Try to resolve `target_pc` to a lifted function, and introduce
   // a function call to that address in `block`. Failing this, add a call

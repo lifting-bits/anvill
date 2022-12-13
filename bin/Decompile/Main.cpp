@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
   }
 
 
-  anvill::OptimizeModule(lifter, module, spec.GetBlockContexts());
+  anvill::OptimizeModule(lifter, module, spec.GetBlockContexts(), spec);
 
   int ret = EXIT_SUCCESS;
 

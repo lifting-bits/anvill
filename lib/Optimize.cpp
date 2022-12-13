@@ -57,6 +57,7 @@
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
 #include <anvill/Providers.h>
 #include <anvill/Transforms.h>
@@ -68,6 +69,8 @@
 
 #include <unordered_set>
 #include <vector>
+
+#include "anvill/Specification.h"
 
 namespace anvill {
 
@@ -104,7 +107,8 @@ class OurVerifierPass : public llvm::PassInfoMixin<OurVerifierPass> {
 // When utilizing crossRegisterProxies cleanup triggers asan
 
 void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
-                    const BasicBlockContexts &contexts) {
+                    const BasicBlockContexts &contexts,
+                    const anvill::Specification &spec) {
 
   const LifterOptions &options = lifter.Options();
 
@@ -229,6 +233,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // but it comes up often enough for lifted code.
 
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
+  fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
+  fpm.addPass(llvm::SROAPass());
   AddBranchRecovery(fpm);
 
   pb.crossRegisterProxies(lam, fam, cam, mam);

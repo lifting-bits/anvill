@@ -9,6 +9,7 @@
 #pragma once
 
 #include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
 #include <remill/Arch/Arch.h>
 
 #include <cstdint>
@@ -87,12 +88,32 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
 
+llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
+                             const remill::IntrinsicTable &intrinsics,
+                             llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
+                             llvm::Value *mem_ptr);
+
+
+void StoreNativeValueToRegister(llvm::Value *native_val,
+                                const remill::Register *reg,
+                                const TypeDictionary &types,
+                                const remill::IntrinsicTable &intrinsics,
+                                llvm::IRBuilder<> &ir, llvm::Value *state_ptr);
+
 void StoreNativeValueToRegister(llvm::Value *native_val,
                                 const remill::Register *reg,
                                 const TypeDictionary &types,
                                 const remill::IntrinsicTable &intrinsics,
                                 llvm::BasicBlock *in_block,
                                 llvm::Value *state_ptr);
+
+
+llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const TypeDictionary &types,
+                              const remill::IntrinsicTable &intrinsics,
+                              llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
+                              llvm::Value *mem_ptr);
+
 
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated

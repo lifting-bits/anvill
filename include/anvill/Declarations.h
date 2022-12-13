@@ -10,6 +10,7 @@
 
 #include <_types/_uint64_t.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 
 #include <cstdint>
@@ -179,11 +180,11 @@ struct CallableDecl {
   // Interpret `target` as being the function to call, and call it from within
   // a basic block in a lifted bitcode function. Returns the new value of the
   // memory pointer.
-  llvm::Value *
-  CallFromLiftedBlock(llvm::Value *target, const anvill::TypeDictionary &types,
-                      const remill::IntrinsicTable &intrinsics,
-                      llvm::BasicBlock *block, llvm::Value *state_ptr,
-                      llvm::Value *mem_ptr) const;
+  llvm::Value *CallFromLiftedBlock(llvm::Value *target,
+                                   const anvill::TypeDictionary &types,
+                                   const remill::IntrinsicTable &intrinsics,
+                                   llvm::IRBuilder<> &, llvm::Value *state_ptr,
+                                   llvm::Value *mem_ptr) const;
 
   // Try to create a callable decl from a protobuf default callable decl
   // specification. Returns a string error if something went wrong.
