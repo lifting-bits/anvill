@@ -179,17 +179,15 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // fpm.addPass(llvm::SinkingPass());
 
   // NewGVN has bugs with `____strtold_l_internal` from chal5, amd64.
-  //  fpm.addPass(llvm::NewGVNPass());
+  fpm.addPass(llvm::NewGVNPass());
 
   fpm.addPass(llvm::SCCPPass());
-  // NOTE(alex): This pass is extremely slow with LLVM 14.
-  // fpm.addPass(llvm::DSEPass());
+  fpm.addPass(llvm::DSEPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::EarlyCSEPass(true));
   fpm.addPass(llvm::BDCEPass());
   fpm.addPass(llvm::SimplifyCFGPass());
-  // NOTE(alex): This pass is extremely slow with LLVM 14.
-  // fpm.addPass(llvm::SinkingPass());
+  fpm.addPass(llvm::SinkingPass());
   fpm.addPass(llvm::SimplifyCFGPass());
   fpm.addPass(llvm::InstCombinePass());
   fpm.addPass(anvill::ReplaceRemillFunctionReturnsWithAnvillFunctionReturns(
@@ -256,6 +254,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(CodeQualityStatCollector());
   AddConvertXorsToCmps(second_fpm);
   second_fpm.addPass(llvm::DCEPass());
+  second_fpm.addPass(llvm::DSEPass());
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
@@ -269,7 +268,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
           &module);
     }
   }
-
 
   // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();
