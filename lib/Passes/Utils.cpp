@@ -8,7 +8,9 @@
 
 #include "Utils.h"
 
+#include <anvill/ABI.h>
 #include <glog/logging.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
@@ -229,6 +231,18 @@ llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
   }
 
   return func;
+}
+
+llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *mod) {
+  auto tgt_type =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(mod->getContext()), true);
+  if (auto res = mod->getFunction(anvill::kAnvillBasicBlockReturn)) {
+    return res;
+  }
+
+
+  return llvm::Function::Create(tgt_type, llvm::GlobalValue::ExternalLinkage,
+                                anvill::kAnvillBasicBlockReturn, mod);
 }
 
 }  // namespace anvill

@@ -50,6 +50,7 @@
 #include <anvill/Passes/CodeQualityStatCollector.h>
 #include <anvill/Passes/BranchAnalysis.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/ReplaceRemillFunctionReturnsWithAnvillFunctionReturns.h>
 // clang-format on
 
 #include <anvill/ABI.h>
@@ -191,7 +192,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // fpm.addPass(llvm::SinkingPass());
   fpm.addPass(llvm::SimplifyCFGPass());
   fpm.addPass(llvm::InstCombinePass());
-
+  fpm.addPass(anvill::ReplaceRemillFunctionReturnsWithAnvillFunctionReturns(
+      contexts, lifter));
   AddSinkSelectionsIntoBranchTargets(fpm);
   AddRemoveUnusedFPClassificationCalls(fpm);
   AddRemoveDelaySlotIntrinsics(fpm);

@@ -76,4 +76,6 @@ llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
 // address. This is not available on all architectures / OSes.
 llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module);
 
+llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *module);
+
 }  // namespace anvill

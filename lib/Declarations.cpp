@@ -11,6 +11,7 @@
 #include <anvill/Utils.h>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
@@ -114,6 +115,10 @@ FunctionDecl::DeclareInModule(std::string_view name,
   }
 
   return func;
+}
+
+const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
+  return this->decl.returns;
 }
 
 std::vector<ParameterDecl> SpecBlockContext::GetAvailableVariables() const {

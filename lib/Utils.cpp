@@ -272,7 +272,7 @@ void StoreNativeValueToRegister(llvm::Value *native_val,
   auto &context = module->getContext();
 
   auto reg_type = remill::RecontextualizeType(reg->type, context);
-  auto ptr_to_reg = reg->AddressOf(state_ptr, ir.GetInsertBlock());
+  auto ptr_to_reg = reg->AddressOf(state_ptr, ir);
 
   llvm::StoreInst *store = nullptr;
 
@@ -326,7 +326,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
   } else if (decl.mem_reg) {
     auto mem_reg_type =
         remill::RecontextualizeType(decl.mem_reg->type, context);
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir.GetInsertBlock());
+    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir);
 
     llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(native_val, addr);
@@ -390,13 +390,10 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
   // Load it out of a register.
   if (decl.reg) {
     auto reg_type = remill::RecontextualizeType(decl.reg->type, context);
-    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, ir.GetInsertBlock());
+    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, ir);
     auto reg = ir.CreateLoad(reg_type, ptr_to_reg);
     CopyMetadataTo(mem_ptr, reg);
-    auto ipoint = ir.GetInsertPoint();
-    auto iblock = ir.GetInsertBlock();
     auto adapted_val = types.ConvertValueToType(ir, reg, decl_type);
-    ir.SetInsertPoint(iblock, ipoint);
 
     if (adapted_val) {
       return adapted_val;
@@ -413,7 +410,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
   } else if (decl.mem_reg) {
     auto mem_reg_type =
         remill::RecontextualizeType(decl.mem_reg->type, context);
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir.GetInsertBlock());
+    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir);
     llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(mem_ptr, addr);
     if (0ll < decl.mem_offset) {

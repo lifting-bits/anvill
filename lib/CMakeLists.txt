@@ -59,6 +59,7 @@ set(anvill_passes
   CombineAdjacentShifts
   ReplaceStackReferences
   RemoveCallIntrinsics
+  ReplaceRemillFunctionReturnsWithAnvillFunctionReturns
 )
 
 set(anvill_arch_HEADERS
