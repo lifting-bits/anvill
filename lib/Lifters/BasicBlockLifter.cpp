@@ -358,6 +358,19 @@ void BasicBlockLifter::InitializeLiveUncoveredRegs(llvm::Value *state_argument,
   }
 }
 
+void BasicBlockLifter::SaveLiveUncoveredRegs(llvm::Value *state_argument,
+                                             llvm::IRBuilder<> &ir) {
+  auto need_to_init = this->block_context.LiveRegistersNotInVariablesAtExit();
+
+  for (auto init_reg : need_to_init) {
+    auto reg_src_ptr = init_reg->AddressOf(this->state_ptr, ir);
+    auto reg_dest_ptr = init_reg->AddressOf(state_argument, ir);
+    auto reg_type =
+        remill::RecontextualizeType(init_reg->type, this->llvm_context);
+    ir.CreateStore(ir.CreateLoad(reg_type, reg_src_ptr), reg_dest_ptr);
+  }
+}
+
 llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
@@ -444,11 +457,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Can resolve these stack references later .
 
 
+  auto sp_value =
+      options.stack_pointer_init_procedure(ir, sp_reg, this->block_def.addr);
   auto sp_ptr = sp_reg->AddressOf(this->state_ptr, ir);
+  auto arg_sp_ptr = sp_reg->AddressOf(state, ir);
   // Initialize the stack pointer.
-  ir.CreateStore(
-      options.stack_pointer_init_procedure(ir, sp_reg, this->block_def.addr),
-      sp_ptr);
+  ir.CreateStore(sp_value, sp_ptr);
+  ir.CreateStore(arg_sp_ptr, sp_ptr);
 
   auto stack_offsets = this->block_context.GetStackOffsets();
 
@@ -482,7 +497,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->PackLocals(ir, this->state_ptr, in_vars,
                    this->block_context.GetAvailableVariables());
 
+  this->SaveLiveUncoveredRegs(state, ir);
+
   ir.CreateRet(ret_mem);
+
   BasicBlockFunction bbf{func, pc_arg, in_vars, mem_arg, next_pc_out};
 
   return bbf;

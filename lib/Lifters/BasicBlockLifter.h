@@ -86,6 +86,8 @@ class BasicBlockLifter : public CodeLifter {
   void InitializeLiveUncoveredRegs(llvm::Value *state_argument,
                                    llvm::IRBuilder<> &);
 
+  void SaveLiveUncoveredRegs(llvm::Value *state_argument, llvm::IRBuilder<> &);
+
  public:
   BasicBlockLifter(const BasicBlockContext &block_context,
                    const CodeBlock &block_def, const LifterOptions &options_,
