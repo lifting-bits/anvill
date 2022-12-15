@@ -176,6 +176,9 @@ message OffsetDomain {
 
 message BlockContext {
   repeated OffsetDomain symvals = 1;
+
+  repeated Register live_at_entries = 2;
+  repeated Register live_at_exits = 3;
 }
 
 

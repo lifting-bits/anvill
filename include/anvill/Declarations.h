@@ -202,12 +202,23 @@ struct LocalVariableDecl {
 };
 
 class BasicBlockContext {
+ private:
+  std::vector<const remill::Register *> RegistersNotInVariables(
+      const std::vector<const remill::Register *> &all) const;
+
  public:
   virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
+  virtual const std::vector<const remill::Register *> &
+  LiveRegistersAtEntry() const = 0;
+  virtual const std::vector<const remill::Register *> &
+  LiveRegistersAtExit() const = 0;
+
+  std::vector<const remill::Register *> LiveRegistersNotInVariablesAtEntry();
+  std::vector<const remill::Register *> LiveRegistersNotInVariablesAtExit();
 
   llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
 };
@@ -217,15 +228,22 @@ class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
   SpecStackOffsets offsets;
+  std::vector<const remill::Register *> live_regs_at_entry;
+  std::vector<const remill::Register *> live_regs_at_exit;
 
  public:
-  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets)
-      : decl(decl),
-        offsets(std::move(offsets)) {}
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets);
+
   virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 
-   virtual const std::vector<ValueDecl> &ReturnValue() const override;
+  virtual const std::vector<const remill::Register *> &
+  LiveRegistersAtEntry() const override;
+  // should be a subset of live registers at entry
+  virtual const std::vector<const remill::Register *> &
+  LiveRegistersAtExit() const override;
+
+  virtual const std::vector<ValueDecl> &ReturnValue() const override;
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -263,6 +281,12 @@ struct FunctionDecl : public CallableDecl {
   std::unordered_map<std::string, LocalVariableDecl> locals;
 
   std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
+
+  std::unordered_map<std::uint64_t, std::vector<const remill::Register *>>
+      live_regs_at_entry;
+
+  std::unordered_map<std::uint64_t, std::vector<const remill::Register *>>
+      live_regs_at_exit;
 
   std::uint64_t stack_depth;
 

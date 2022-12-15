@@ -17,10 +17,14 @@
 #include <remill/BC/Util.h>
 #include <remill/OS/OS.h>
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
 #include <variant>
+#include <vector>
 
 #include "anvill/Declarations.h"
 #include "specification.pb.h"
@@ -539,6 +543,21 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 }
 
 
+namespace {
+void AddRegistersToBB(
+    std::unordered_map<uint64_t, std::vector<const remill::Register *>> &map,
+    uint64_t bb_addr, const remill::Arch *arch,
+    const ::google::protobuf::RepeatedPtrField<::specification::Register>
+        &regs) {
+  auto &v = map.insert({bb_addr, std::vector<const remill::Register *>()})
+                .first->second;
+  std::transform(regs.begin(), regs.end(), std::back_inserter(v),
+                 [arch](specification::Register reg) {
+                   return arch->RegisterByName(reg.register_name());
+                 });
+}
+}  // namespace
+
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
   for (auto blk : obj.blocks()) {
@@ -582,6 +601,12 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
     SpecStackOffsets off = {affine_equalities};
     decl.stack_offsets.insert({blk_addr, off});
+
+    AddRegistersToBB(decl.live_regs_at_entry, blk_addr, this->arch,
+                     ctx.live_at_entries());
+
+    AddRegistersToBB(decl.live_regs_at_exit, blk_addr, this->arch,
+                     ctx.live_at_exits());
   }
 }
 

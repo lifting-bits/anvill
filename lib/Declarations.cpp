@@ -30,7 +30,9 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <iterator>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Arch/Arch.h"
@@ -120,6 +122,49 @@ FunctionDecl::DeclareInModule(std::string_view name,
 const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
+
+
+std::vector<const remill::Register *>
+BasicBlockContext::RegistersNotInVariables(
+    const std::vector<const remill::Register *> &all) const {
+
+  std::unordered_set<const remill::Register *> covered_registers;
+  for (auto cov_var : this->GetAvailableVariables()) {
+    if (cov_var.reg) {
+      covered_registers.insert(cov_var.reg);
+    }
+  }
+  std::vector<const remill::Register *> res;
+  std::copy_if(all.begin(), all.end(), std::back_inserter(res),
+               [&covered_registers](const remill::Register *reg) {
+                 return covered_registers.find(reg) == covered_registers.end();
+               });
+  return res;
+}
+
+const std::vector<const remill::Register *> &
+SpecBlockContext::LiveRegistersAtEntry() const {
+  return this->live_regs_at_entry;
+}
+
+SpecBlockContext::SpecBlockContext(const FunctionDecl &decl,
+                                   SpecStackOffsets offsets)
+    : decl(decl),
+      offsets(std::move(offsets)) {
+  this->decl.arch->ForEachRegister([this](const remill::Register *reg) {
+    this->live_regs_at_entry.push_back(reg);
+  });
+
+  this->decl.arch->ForEachRegister([this](const remill::Register *reg) {
+    this->live_regs_at_exit.push_back(reg);
+  });
+}
+
+const std::vector<const remill::Register *> &
+SpecBlockContext::LiveRegistersAtExit() const {
+  return this->live_regs_at_exit;
+}
+
 
 std::vector<ParameterDecl> SpecBlockContext::GetAvailableVariables() const {
   std::vector<ParameterDecl> decls;

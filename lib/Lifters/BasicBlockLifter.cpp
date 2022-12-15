@@ -360,8 +360,15 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   // pointer to varstruct
   params[remill::kStatePointerArgNum] = llvm::PointerType::get(context, 0);
+
   //next_pc_out
   params.push_back(llvm::PointerType::get(context, 0));
+
+
+  // state structure
+  params.push_back(llvm::PointerType::get(context, 0));
+
+
   llvm::FunctionType *func_type =
       llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
 
@@ -378,11 +385,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto in_vars = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
   auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
+  auto state = remill::NthArgument(func, remill::kNumBlockArgs + 1);
 
   memory->setName("memory");
   pc->setName("program_counter");
   next_pc_out->setName("next_pc_out");
   in_vars->setName("in_vars");
+  state->setName("state");
 
 
   auto liftedty = this->options.arch->LiftedFunctionType();
