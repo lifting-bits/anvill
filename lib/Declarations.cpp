@@ -142,23 +142,30 @@ BasicBlockContext::RegistersNotInVariables(
   return res;
 }
 
+
+std::vector<const remill::Register *>
+BasicBlockContext::LiveRegistersNotInVariablesAtEntry() const {
+  return this->RegistersNotInVariables(this->LiveRegistersAtEntry());
+}
+std::vector<const remill::Register *>
+BasicBlockContext::LiveRegistersNotInVariablesAtExit() const {
+  return this->RegistersNotInVariables(this->LiveRegistersAtExit());
+}
+
+
 const std::vector<const remill::Register *> &
 SpecBlockContext::LiveRegistersAtEntry() const {
   return this->live_regs_at_entry;
 }
 
-SpecBlockContext::SpecBlockContext(const FunctionDecl &decl,
-                                   SpecStackOffsets offsets)
+SpecBlockContext::SpecBlockContext(
+    const FunctionDecl &decl, SpecStackOffsets offsets,
+    std::vector<const remill::Register *> live_regs_at_entry,
+    std::vector<const remill::Register *> live_regs_at_exit)
     : decl(decl),
-      offsets(std::move(offsets)) {
-  this->decl.arch->ForEachRegister([this](const remill::Register *reg) {
-    this->live_regs_at_entry.push_back(reg);
-  });
-
-  this->decl.arch->ForEachRegister([this](const remill::Register *reg) {
-    this->live_regs_at_exit.push_back(reg);
-  });
-}
+      offsets(std::move(offsets)),
+      live_regs_at_entry(std::move(live_regs_at_entry)),
+      live_regs_at_exit(std::move(live_regs_at_exit)) {}
 
 const std::vector<const remill::Register *> &
 SpecBlockContext::LiveRegistersAtExit() const {
@@ -376,14 +383,24 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
   }
 }
 
-SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
-  auto offs = this->stack_offsets.find(addr);
-  if (offs != this->stack_offsets.end()) {
-
-    return SpecBlockContext(*this, offs->second);
-  } else {
-    return SpecBlockContext(*this, SpecStackOffsets());
+namespace {
+template <class V>
+V GetWithDef(uint64_t addr, const std::unordered_map<uint64_t, V> &map, V def) {
+  if (map.find(addr) == map.end()) {
+    return def;
   }
+
+  return map.find(addr)->second;
+}
+}  // namespace
+
+SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
+  return SpecBlockContext(
+      *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
+      GetWithDef(addr, this->live_regs_at_entry,
+                 std::vector<const remill::Register *>()),
+      GetWithDef(addr, this->live_regs_at_exit,
+                 std::vector<const remill::Register *>()));
 }
 
 

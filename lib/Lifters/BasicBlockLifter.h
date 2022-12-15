@@ -83,6 +83,9 @@ class BasicBlockLifter : public CodeLifter {
   llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
 
 
+  void InitializeLiveUncoveredRegs(llvm::Value *state_argument,
+                                   llvm::IRBuilder<> &);
+
  public:
   BasicBlockLifter(const BasicBlockContext &block_context,
                    const CodeBlock &block_def, const LifterOptions &options_,

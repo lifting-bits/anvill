@@ -551,10 +551,15 @@ void AddRegistersToBB(
         &regs) {
   auto &v = map.insert({bb_addr, std::vector<const remill::Register *>()})
                 .first->second;
-  std::transform(regs.begin(), regs.end(), std::back_inserter(v),
-                 [arch](specification::Register reg) {
-                   return arch->RegisterByName(reg.register_name());
-                 });
+
+  for (auto reg : regs) {
+    auto fill_reg = arch->RegisterByName(reg.register_name());
+    if (fill_reg) {
+      v.push_back(fill_reg);
+    } else {
+      LOG(ERROR) << "No reg for: " << reg.register_name();
+    }
+  }
 }
 }  // namespace
 

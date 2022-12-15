@@ -217,8 +217,10 @@ class BasicBlockContext {
   virtual const std::vector<const remill::Register *> &
   LiveRegistersAtExit() const = 0;
 
-  std::vector<const remill::Register *> LiveRegistersNotInVariablesAtEntry();
-  std::vector<const remill::Register *> LiveRegistersNotInVariablesAtExit();
+  std::vector<const remill::Register *>
+  LiveRegistersNotInVariablesAtEntry() const;
+  std::vector<const remill::Register *>
+  LiveRegistersNotInVariablesAtExit() const;
 
   llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
 };
@@ -232,7 +234,9 @@ class SpecBlockContext : public BasicBlockContext {
   std::vector<const remill::Register *> live_regs_at_exit;
 
  public:
-  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets);
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
+                   std::vector<const remill::Register *> live_regs_at_entry,
+                   std::vector<const remill::Register *> live_regs_at_exit);
 
   virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
   virtual const SpecStackOffsets &GetStackOffsets() const override;

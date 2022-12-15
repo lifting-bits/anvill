@@ -5,6 +5,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
@@ -344,6 +345,19 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 }
 
 
+void BasicBlockLifter::InitializeLiveUncoveredRegs(llvm::Value *state_argument,
+                                                   llvm::IRBuilder<> &ir) {
+  auto need_to_init = this->block_context.LiveRegistersNotInVariablesAtEntry();
+
+  for (auto init_reg : need_to_init) {
+    auto reg_src_ptr = init_reg->AddressOf(state_argument, ir);
+    auto reg_dest_ptr = init_reg->AddressOf(this->state_ptr, ir);
+    auto reg_type =
+        remill::RecontextualizeType(init_reg->type, this->llvm_context);
+    ir.CreateStore(ir.CreateLoad(reg_type, reg_src_ptr), reg_dest_ptr);
+  }
+}
+
 llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
@@ -423,6 +437,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
+
+
+  this->InitializeLiveUncoveredRegs(state, ir);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
 
@@ -525,7 +542,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
     const CallableBasicBlockFunction &cbfunc) const {
 
 
-  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 2);
 
 
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
@@ -539,6 +556,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[remill::kNumBlockArgs] =
       remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
 
+  args[remill::kNumBlockArgs + 1] = parent_state;
 
   this->PackLocals(builder, parent_state, out_param_locals,
                    cbfunc.GetInScopeVaraibles());
