@@ -32,6 +32,7 @@ protobuf_generate_cpp(
 set(anvill_passes
   ConvertAddressesToEntityUses
   ConvertMasksToCasts
+  ConvertPointerArithmeticToGEP
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis

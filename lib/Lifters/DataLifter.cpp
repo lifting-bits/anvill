@@ -195,9 +195,12 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
   auto is_constant = first_byte_perms == BytePermission::kReadable ||
                      first_byte_perms == BytePermission::kReadableExecutable;
 
-  return new llvm::GlobalVariable(*options.module, type, is_constant,
-                                  llvm::GlobalValue::ExternalLinkage, value,
-                                  var_name);
+  auto md = type_specifier.EncodeToMetadata(decl.spec_type);
+  auto gvar = new llvm::GlobalVariable(*options.module, type, is_constant,
+                                       llvm::GlobalValue::ExternalLinkage,
+                                       value, var_name);
+  gvar->setMetadata("anvill.type", md);
+  return gvar;
 }
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is

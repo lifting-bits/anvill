@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <llvm/IR/Metadata.h>
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -245,6 +247,8 @@ class TypeTranslator {
   std::string
   EncodeToString(llvm::Type *type,
                  EncodingFormat alphanum = EncodingFormat::kDefault) const;
+
+  llvm::MDNode *EncodeToMetadata(TypeSpec spec) const;
 
   Result<llvm::Type *, TypeSpecificationError>
   DecodeFromSpec(TypeSpec spec) const;

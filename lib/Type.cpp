@@ -7,6 +7,8 @@
  */
 
 #include <anvill/Type.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Metadata.h>
 
 #define ANVILL_USE_WRAPPED_TYPES 0
 
@@ -41,6 +43,7 @@ class TypeSpecifierImpl {
   const TypeDictionary type_dict;
   std::unordered_map<llvm::StructType *, size_t> type_to_id;
   std::vector<llvm::StructType *> id_to_type;
+  std::unordered_map<void *, llvm::MDNode *> type_to_md;
 
   inline TypeSpecifierImpl(const TypeDictionary &type_dict_,
                            const llvm::DataLayout &dl_)
@@ -52,6 +55,14 @@ class TypeSpecifierImpl {
   // TypeSpecification.cpp
   void EncodeType(llvm::Type &type, std::stringstream &ss,
                   EncodingFormat format);
+
+  llvm::MDNode *TypeToMetadata(BaseType type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<PointerType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<VectorType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<ArrayType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<StructType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<FunctionType> type);
+  llvm::MDNode *TypeToMetadata(UnknownType type);
 };
 
 // Translates an llvm::Type to a type that conforms to the spec in
@@ -294,6 +305,104 @@ void TypeSpecifierImpl::EncodeType(
   }
 }
 
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(BaseType type) {
+  auto str = llvm::MDString::get(context, "BaseType");
+  auto value = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                      static_cast<unsigned>(type));
+  return llvm::MDNode::get(context,
+                           {str, llvm::ConstantAsMetadata::get(value)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<PointerType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "PointerType");
+  auto pointee =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->pointee);
+  return llvm::MDNode::get(context, {str, pointee});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<VectorType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "VectorType");
+  auto base =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->base);
+  auto size = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                     static_cast<unsigned>(type->size));
+  return llvm::MDNode::get(context,
+                           {str, base, llvm::ConstantAsMetadata::get(size)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<ArrayType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "ArrayType");
+  auto base =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->base);
+  auto size = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                     static_cast<unsigned>(type->size));
+  return llvm::MDNode::get(context,
+                           {str, base, llvm::ConstantAsMetadata::get(size)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<StructType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "StructType");
+  std::vector<llvm::Metadata *> md;
+  md.push_back(str);
+  for (auto &member : type->members) {
+    md.push_back(
+        std::visit([this](auto &&t) { return TypeToMetadata(t); }, member));
+  }
+  return llvm::MDNode::get(context, md);
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<FunctionType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "FunctionType");
+  std::vector<llvm::Metadata *> md;
+  md.push_back(str);
+  md.push_back(llvm::ConstantAsMetadata::get(
+      llvm::ConstantInt::getBool(context, type->is_variadic)));
+  md.push_back(std::visit([this](auto &&t) { return TypeToMetadata(t); },
+                          type->return_type));
+  for (auto &arg : type->arguments) {
+    md.push_back(
+        std::visit([this](auto &&t) { return TypeToMetadata(t); }, arg));
+  }
+  return llvm::MDNode::get(context, md);
+}
+
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(UnknownType type) {
+  auto str = llvm::MDString::get(context, "UnknownType");
+  auto size =
+      llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context), type.size);
+  return llvm::MDNode::get(context, {str, llvm::ConstantAsMetadata::get(size)});
+}
+
 namespace {
 
 #if ANVILL_USE_WRAPPED_TYPES
@@ -471,6 +580,10 @@ std::string TypeTranslator::EncodeToString(
         *remill::RecontextualizeType(type, impl->context), ss, format);
   }
   return ss.str();
+}
+
+llvm::MDNode *TypeTranslator::EncodeToMetadata(TypeSpec spec) const {
+  return std::visit([this](auto &&t) { return impl->TypeToMetadata(t); }, spec);
 }
 
 // Parse an encoded type string into its represented type.

@@ -241,6 +241,14 @@ llvm::Function *FunctionLifter::GetOrDeclareFunction(const FunctionDecl &decl) {
   if (decl.is_noreturn) {
     native_func->addFnAttr(llvm::Attribute::NoReturn);
   }
+
+  std::vector<llvm::Metadata *> args;
+  for (auto &arg : decl.params) {
+    args.push_back(type_specifier.EncodeToMetadata(arg.spec_type));
+  }
+  native_func->setMetadata("anvill.args",
+                           llvm::MDNode::get(llvm_context, args));
+
   return native_func;
 }
 
@@ -782,6 +790,13 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
   if (auto func_annotation = GetPCAnnotation(decl.address)) {
     new_version->setMetadata(pc_annotation_id, func_annotation);
   }
+
+  std::vector<llvm::Metadata *> args;
+  for (auto &arg : decl.params) {
+    args.push_back(type_specifier.EncodeToMetadata(arg.spec_type));
+  }
+  new_version->setMetadata("anvill.args",
+                           llvm::MDNode::get(llvm_context, args));
 
   // Update the context to keep its internal concepts of what LLVM objects
   // correspond with which native binary addresses.
