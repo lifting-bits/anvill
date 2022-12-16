@@ -542,6 +542,10 @@ void BasicBlockLifter::UnpackLocals(
     auto ptr = bldr.CreateGEP(this->var_struct_ty, returned_value,
                               {llvm::ConstantInt::get(i32, 0),
                                llvm::ConstantInt::get(i32, field_offset)});
+    if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
+      insn->setMetadata("anvill.type",
+                        this->type_specifier.EncodeToMetadata(decl.spec_type));
+    }
 
     auto loaded_var_val = bldr.CreateLoad(decl.type, ptr, decl.name);
     field_offset += 1;

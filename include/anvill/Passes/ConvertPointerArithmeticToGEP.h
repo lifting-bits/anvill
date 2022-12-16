@@ -17,10 +17,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "BasicBlockPass.h"
+
 namespace anvill {
 
 class ConvertPointerArithmeticToGEP final
-    : public llvm::PassInfoMixin<ConvertPointerArithmeticToGEP> {
+    : public BasicBlockPass<ConvertPointerArithmeticToGEP> {
  private:
   struct Impl;
   std::unique_ptr<Impl> impl;
@@ -30,14 +32,15 @@ class ConvertPointerArithmeticToGEP final
   using TypeMap = std::unordered_map<llvm::MDNode *, TypeSpec>;
   using MDMap = std::unordered_map<void *, llvm::MDNode *>;
 
-  // Function pass entry point
-  llvm::PreservedAnalyses run(llvm::Function &function,
-                              llvm::FunctionAnalysisManager &fam);
+  llvm::PreservedAnalyses
+  runOnBasicBlockFunction(llvm::Function &F, llvm::FunctionAnalysisManager &AM,
+                          const anvill::BasicBlockContext &);
 
   // Returns the pass name
   static llvm::StringRef name(void);
 
-  ConvertPointerArithmeticToGEP(TypeMap &types, StructMap &structs, MDMap &md);
+  ConvertPointerArithmeticToGEP(const BasicBlockContexts &contexts,
+                                TypeMap &types, StructMap &structs, MDMap &md);
   ConvertPointerArithmeticToGEP(const ConvertPointerArithmeticToGEP &);
   ~ConvertPointerArithmeticToGEP();
 };

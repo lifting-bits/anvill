@@ -243,7 +243,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::SROAPass());
   AddBranchRecovery(fpm);
 
-  fpm.addPass(ConvertPointerArithmeticToGEP(types, structs, md));
+  fpm.addPass(ConvertPointerArithmeticToGEP(contexts, types, structs, md));
 
   pb.crossRegisterProxies(lam, fam, cam, mam);
 

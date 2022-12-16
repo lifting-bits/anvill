@@ -34,6 +34,7 @@
 
 namespace anvill {
 struct ConvertPointerArithmeticToGEP::Impl {
+  const BasicBlockContexts &contexts;
   TypeMap &types;
   StructMap &structs;
   MDMap &md;
@@ -73,8 +74,10 @@ struct ConvertPointerArithmeticToGEP::Impl {
   bool FoldPtrAdd(llvm::Function &f);
   bool FoldScaledIndex(llvm::Function &f);
 
-  Impl(TypeMap &types, StructMap &structs, MDMap &md)
-      : types(types),
+  Impl(const BasicBlockContexts &contexts, TypeMap &types, StructMap &structs,
+       MDMap &md)
+      : contexts(contexts),
+        types(types),
         structs(structs),
         md(md) {}
 };
@@ -228,14 +231,7 @@ TypeSpec ConvertPointerArithmeticToGEP::Impl::MDToTypeSpec(llvm::MDNode *md) {
 std::optional<TypeSpec>
 ConvertPointerArithmeticToGEP::Impl::GetTypeInfo(llvm::Value *val) {
   llvm::MDNode *md = nullptr;
-  if (auto arg = llvm::dyn_cast<llvm::Argument>(val)) {
-    auto args_md = arg->getParent()->getMetadata("anvill.args");
-    if (!args_md) {
-      return {};
-    }
-
-    md = llvm::cast<llvm::MDNode>(args_md->getOperand(arg->getArgNo()).get());
-  } else if (auto gvar = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
+  if (auto gvar = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     md = gvar->getMetadata("anvill.type");
   } else if (auto ptr_insn = llvm::dyn_cast<llvm::Instruction>(val)) {
     md = ptr_insn->getMetadata("anvill.type");
@@ -314,15 +310,17 @@ ConvertPointerArithmeticToGEP::Impl::TypeSpecToMD(llvm::LLVMContext &context,
       [this, &context](auto &&t) { return TypeSpecToMD(context, t); }, type);
 }
 
-ConvertPointerArithmeticToGEP::ConvertPointerArithmeticToGEP(TypeMap &types,
-                                                             StructMap &structs,
-                                                             MDMap &md)
-    : impl(std::make_unique<Impl>(types, structs, md)) {}
+ConvertPointerArithmeticToGEP::ConvertPointerArithmeticToGEP(
+    const BasicBlockContexts &contexts, TypeMap &types, StructMap &structs,
+    MDMap &md)
+    : BasicBlockPass(contexts),
+      impl(std::make_unique<Impl>(contexts, types, structs, md)) {}
 
 ConvertPointerArithmeticToGEP::ConvertPointerArithmeticToGEP(
     const ConvertPointerArithmeticToGEP &pass)
-    : impl(std::make_unique<Impl>(pass.impl->types, pass.impl->structs,
-                                  pass.impl->md)) {}
+    : BasicBlockPass(pass.impl->contexts),
+      impl(std::make_unique<Impl>(pass.impl->contexts, pass.impl->types,
+                                  pass.impl->structs, pass.impl->md)) {}
 
 
 ConvertPointerArithmeticToGEP::~ConvertPointerArithmeticToGEP() = default;
@@ -564,9 +562,9 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldScaledIndex(llvm::Function &f) {
   return false;
 }
 
-llvm::PreservedAnalyses
-ConvertPointerArithmeticToGEP::run(llvm::Function &function,
-                                   llvm::FunctionAnalysisManager &fam) {
+llvm::PreservedAnalyses ConvertPointerArithmeticToGEP::runOnBasicBlockFunction(
+    llvm::Function &function, llvm::FunctionAnalysisManager &fam,
+    const anvill::BasicBlockContext &) {
   bool changed = impl->ConvertLoadInt(function);
   changed |= impl->FoldPtrAdd(function);
   changed |= impl->FoldScaledIndex(function);
