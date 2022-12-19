@@ -55,6 +55,7 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -377,9 +378,13 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 
 CallableBasicBlockFunction
 FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
+  std::unique_ptr<SpecBlockContext> context =
+      std::make_unique<SpecBlockContext>(
+          this->curr_decl->GetBlockContext(blk.addr));
+
   return BasicBlockLifter::LiftBasicBlock(
-      this->curr_decl->GetBlockContext(blk.addr), blk, this->options,
-      this->semantics_module.get(), this->type_specifier);
+      std::move(context), blk, this->options, this->semantics_module.get(),
+      this->type_specifier);
 }
 
 

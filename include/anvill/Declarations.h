@@ -206,6 +206,7 @@ class BasicBlockContext {
       const std::vector<const remill::Register *> &all) const;
 
  public:
+  virtual ~BasicBlockContext() = default;
   virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 

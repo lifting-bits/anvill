@@ -15,6 +15,7 @@
 #include <remill/BC/Util.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -34,9 +35,9 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
   anvill::EntityLifter lifter(options);
 
-  return CallableBasicBlockFunction(bbfunc.func,
-                                    this->block_context.GetAvailableVariables(),
-                                    block_def, std::move(*this));
+  auto avails = this->block_context->GetAvailableVariables();
+  return CallableBasicBlockFunction(bbfunc.func, std::move(avails), block_def,
+                                    std::move(*this));
 }
 
 
@@ -348,7 +349,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
 void BasicBlockLifter::InitializeLiveUncoveredRegs(llvm::Value *state_argument,
                                                    llvm::IRBuilder<> &ir) {
-  auto need_to_init = this->block_context.LiveRegistersNotInVariablesAtEntry();
+  auto need_to_init = this->block_context->LiveRegistersNotInVariablesAtEntry();
 
   for (auto init_reg : need_to_init) {
     auto reg_src_ptr = init_reg->AddressOf(state_argument, ir);
@@ -361,7 +362,7 @@ void BasicBlockLifter::InitializeLiveUncoveredRegs(llvm::Value *state_argument,
 
 void BasicBlockLifter::SaveLiveUncoveredRegs(llvm::Value *state_argument,
                                              llvm::IRBuilder<> &ir) {
-  auto need_to_init = this->block_context.LiveRegistersNotInVariablesAtExit();
+  auto need_to_init = this->block_context->LiveRegistersNotInVariablesAtExit();
 
   for (auto init_reg : need_to_init) {
     auto reg_src_ptr = init_reg->AddressOf(this->state_ptr, ir);
@@ -393,8 +394,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   params.push_back(llvm::PointerType::get(context, 0));
 
 
-  for (auto vtype : this->var_struct_ty->elements()) {
-    params.push_back(vtype);
+  for (size_t i = 0; i < this->var_struct_ty->getNumElements(); i++) {
+    // pointer to each param
+    params.push_back(llvm::PointerType::get(context, 0));
   }
 
 
@@ -411,8 +413,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
                     GetBasicBlockAnnotation(this->block_def.addr));
 
 
-  auto start_ind = lifted_func_type->getNumParams();
-  for (auto v : this->block_context.GetAvailableVariables()) {
+  auto start_ind = lifted_func_type->getNumParams() + 1;
+  for (auto v : this->block_context->GetAvailableVariables()) {
     if (!v.name.empty()) {
       auto arg = remill::NthArgument(func, start_ind);
       arg->setName(v.name);
@@ -421,15 +423,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   }
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
-  auto in_vars = remill::NthArgument(func, remill::kStatePointerArgNum);
+  auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
   auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
-  auto state = remill::NthArgument(func, remill::kNumBlockArgs + 1);
 
   memory->setName("memory");
   pc->setName("program_counter");
   next_pc_out->setName("next_pc_out");
-  in_vars->setName("in_vars");
   state->setName("state");
 
 
@@ -477,7 +477,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   ir.CreateStore(sp_value, sp_ptr);
   ir.CreateStore(arg_sp_ptr, sp_ptr);
 
-  auto stack_offsets = this->block_context.GetStackOffsets();
+  auto stack_offsets = this->block_context->GetStackOffsets();
 
   for (auto &reg_off : stack_offsets.affine_equalities) {
     if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
@@ -495,7 +495,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   };
 
   this->UnpackLocals(ir, ptr_provider, this->state_ptr,
-                     this->block_context.GetAvailableVariables());
+                     this->block_context->GetAvailableVariables());
 
 
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
@@ -512,20 +512,20 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   this->PackLocals(ir, this->state_ptr, ptr_provider,
-                   this->block_context.GetAvailableVariables());
+                   this->block_context->GetAvailableVariables());
 
   this->SaveLiveUncoveredRegs(state, ir);
 
   ir.CreateRet(ret_mem);
 
-  BasicBlockFunction bbf{func, pc_arg, in_vars, mem_arg, next_pc_out};
+  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out};
 
   return bbf;
 }
 
 
 llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
-  return this->block_context.StructTypeFromVars(this->llvm_context);
+  return this->block_context->StructTypeFromVars(this->llvm_context);
 }
 
 // Packs in scope variables into a struct
@@ -574,11 +574,11 @@ void BasicBlockLifter::CallBasicBlockFunction(
     const CallableBasicBlockFunction &cbfunc) const {
 
 
-  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 2);
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
 
 
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
-  args[remill::kStatePointerArgNum] = out_param_locals;
+  args[remill::kStatePointerArgNum] = parent_state;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
       builder, pc_reg, cbfunc.GetBlock().addr);
@@ -588,16 +588,23 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[remill::kNumBlockArgs] =
       remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
 
-  args[remill::kNumBlockArgs + 1] = parent_state;
-
 
   PointerProvider ptr_provider =
-      [this, out_param_locals](size_t index) -> llvm::Value * {
-    return this->ProvidePointerFromStruct(out_param_locals, index);
+      [&builder, this, out_param_locals](size_t index) -> llvm::Value * {
+    return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };
 
   this->PackLocals(builder, parent_state, ptr_provider,
                    cbfunc.GetInScopeVaraibles());
+
+
+  for (size_t ind = 0;
+       ind < this->block_context->GetAvailableVariables().size(); ind++) {
+    auto ptr = ptr_provider(ind);
+    CHECK(ptr != nullptr);
+    ptr->dump();
+    args.push_back(ptr);
+  }
 
   auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
 
@@ -616,22 +623,21 @@ void CallableBasicBlockFunction::CallBasicBlockFunction(
 }
 
 CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlock(
-    const BasicBlockContext &block_context, const CodeBlock &block_def,
-    const LifterOptions &options_, llvm::Module *semantics_module,
-    const TypeTranslator &type_specifier) {
+    std::unique_ptr<BasicBlockContext> block_context,
+    const CodeBlock &block_def, const LifterOptions &options_,
+    llvm::Module *semantics_module, const TypeTranslator &type_specifier) {
 
-  return BasicBlockLifter(block_context, block_def, options_, semantics_module,
-                          type_specifier)
+  return BasicBlockLifter(std::move(block_context), block_def, options_,
+                          semantics_module, type_specifier)
       .LiftBasicBlockFunction();
 }
 
-BasicBlockLifter::BasicBlockLifter(const BasicBlockContext &block_context,
-                                   const CodeBlock &block_def,
-                                   const LifterOptions &options_,
-                                   llvm::Module *semantics_module,
-                                   const TypeTranslator &type_specifier)
+BasicBlockLifter::BasicBlockLifter(
+    std::unique_ptr<BasicBlockContext> block_context,
+    const CodeBlock &block_def, const LifterOptions &options_,
+    llvm::Module *semantics_module, const TypeTranslator &type_specifier)
     : CodeLifter(options_, semantics_module, type_specifier),
-      block_context(block_context),
+      block_context(std::move(block_context)),
       block_def(block_def) {
   this->var_struct_ty = this->StructTypeFromVars();
 }
@@ -658,12 +664,25 @@ CallableBasicBlockFunction::GetInScopeVaraibles() const {
   return this->in_scope_locals;
 }
 
-llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::Value *target_sty,
-                                                        size_t index) const {}
+llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
+                                                        llvm::Value *target_sty,
+                                                        size_t index) const {
+  auto i32 = llvm::IntegerType::get(llvm_context, 32);
+  auto ptr = ir.CreateGEP(
+      this->var_struct_ty, target_sty,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
+  return ptr;
+}
 
 llvm::Value *
-BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *,
-                                                 size_t index) const {}
+BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
+                                                 size_t index) const {
+  CHECK(this->options.arch->LiftedFunctionType()->getNumParams() + 1 +
+            this->block_context->GetAvailableVariables().size() ==
+        func->arg_size());
+  return func->getArg(
+      index + this->options.arch->LiftedFunctionType()->getNumParams() + 1);
+}
 
 
 }  // namespace anvill

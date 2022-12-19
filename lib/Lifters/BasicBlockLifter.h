@@ -11,6 +11,7 @@
 #include <llvm/IR/Value.h>
 #include <remill/BC/Lifter.h>
 
+#include <memory>
 #include <vector>
 
 #include "CodeLifter.h"
@@ -22,7 +23,6 @@ namespace anvill {
 struct BasicBlockFunction {
   llvm::Function *func;
   llvm::Argument *pc_arg;
-  llvm::Argument *variable_ptr;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
 };
@@ -36,13 +36,14 @@ class CallableBasicBlockFunction;
  */
 class BasicBlockLifter : public CodeLifter {
  private:
-  llvm::Value *ProvidePointerFromStruct(llvm::Value *, size_t index) const;
+  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir, llvm::Value *,
+                                        size_t index) const;
 
   llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *,
                                               size_t index) const;
 
 
-  const BasicBlockContext &block_context;
+  std::unique_ptr<BasicBlockContext> block_context;
   const CodeBlock &block_def;
 
   llvm::StructType *var_struct_ty{nullptr};
@@ -95,12 +96,12 @@ class BasicBlockLifter : public CodeLifter {
   void SaveLiveUncoveredRegs(llvm::Value *state_argument, llvm::IRBuilder<> &);
 
  public:
-  BasicBlockLifter(const BasicBlockContext &block_context,
+  BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,
                    const CodeBlock &block_def, const LifterOptions &options_,
                    llvm::Module *semantics_module,
                    const TypeTranslator &type_specifier);
   static CallableBasicBlockFunction
-  LiftBasicBlock(const BasicBlockContext &block_context,
+  LiftBasicBlock(std::unique_ptr<BasicBlockContext> block_context,
                  const CodeBlock &block_def, const LifterOptions &options_,
                  llvm::Module *semantics_module,
                  const TypeTranslator &type_specifier);
