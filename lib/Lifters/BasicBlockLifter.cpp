@@ -6,6 +6,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
@@ -385,15 +386,16 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   std::vector<llvm::Type *> params = std::vector(
       lifted_func_type->param_begin(), lifted_func_type->param_end());
 
-  // pointer to varstruct
+  // pointer to state pointer
   params[remill::kStatePointerArgNum] = llvm::PointerType::get(context, 0);
 
   //next_pc_out
   params.push_back(llvm::PointerType::get(context, 0));
 
 
-  // state structure
-  params.push_back(llvm::PointerType::get(context, 0));
+  for (auto vtype : this->var_struct_ty->elements()) {
+    params.push_back(vtype);
+  }
 
 
   llvm::FunctionType *func_type =
@@ -407,6 +409,16 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   func->setMetadata(anvill::kBasicBlockMetadata,
                     GetBasicBlockAnnotation(this->block_def.addr));
+
+
+  auto start_ind = lifted_func_type->getNumParams();
+  for (auto v : this->block_context.GetAvailableVariables()) {
+    if (!v.name.empty()) {
+      auto arg = remill::NthArgument(func, start_ind);
+      arg->setName(v.name);
+    }
+    start_ind += 1;
+  }
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto in_vars = remill::NthArgument(func, remill::kStatePointerArgNum);
@@ -477,7 +489,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     }
   }
 
-  this->UnpackLocals(ir, in_vars, this->state_ptr,
+
+  PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
+    return this->ProvidePointerFromFunctionArgs(func, index);
+  };
+
+  this->UnpackLocals(ir, ptr_provider, this->state_ptr,
                      this->block_context.GetAvailableVariables());
 
 
@@ -494,7 +511,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
 
-  this->PackLocals(ir, this->state_ptr, in_vars,
+  this->PackLocals(ir, this->state_ptr, ptr_provider,
                    this->block_context.GetAvailableVariables());
 
   this->SaveLiveUncoveredRegs(state, ir);
@@ -514,14 +531,11 @@ llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
 // Packs in scope variables into a struct
 void BasicBlockLifter::PackLocals(
     llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
-    llvm::Value *into_vars, const std::vector<ParameterDecl> &decls) const {
+    PointerProvider into_vars, const std::vector<ParameterDecl> &decls) const {
 
-  auto i32 = llvm::IntegerType::get(llvm_context, 32);
   uint64_t field_offset = 0;
   for (auto decl : decls) {
-    auto ptr = bldr.CreateGEP(this->var_struct_ty, into_vars,
-                              {llvm::ConstantInt::get(i32, 0),
-                               llvm::ConstantInt::get(i32, field_offset)});
+    auto ptr = into_vars(field_offset);
     field_offset += 1;
 
     auto state_loaded_value =
@@ -533,20 +547,16 @@ void BasicBlockLifter::PackLocals(
 }
 
 void BasicBlockLifter::UnpackLocals(
-    llvm::IRBuilder<> &bldr, llvm::Value *returned_value,
+    llvm::IRBuilder<> &bldr, PointerProvider returned_value,
     llvm::Value *into_state_ptr,
     const std::vector<ParameterDecl> &decls) const {
   uint64_t field_offset = 0;
-  auto i32 = llvm::IntegerType::get(llvm_context, 32);
   for (auto decl : decls) {
-    auto ptr = bldr.CreateGEP(this->var_struct_ty, returned_value,
-                              {llvm::ConstantInt::get(i32, 0),
-                               llvm::ConstantInt::get(i32, field_offset)});
+    auto ptr = returned_value(field_offset);
     if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
       insn->setMetadata("anvill.type",
                         this->type_specifier.EncodeToMetadata(decl.spec_type));
     }
-
     auto loaded_var_val = bldr.CreateLoad(decl.type, ptr, decl.name);
     field_offset += 1;
     auto new_mem_ptr = StoreNativeValue(
@@ -580,7 +590,13 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   args[remill::kNumBlockArgs + 1] = parent_state;
 
-  this->PackLocals(builder, parent_state, out_param_locals,
+
+  PointerProvider ptr_provider =
+      [this, out_param_locals](size_t index) -> llvm::Value * {
+    return this->ProvidePointerFromStruct(out_param_locals, index);
+  };
+
+  this->PackLocals(builder, parent_state, ptr_provider,
                    cbfunc.GetInScopeVaraibles());
 
   auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
@@ -589,7 +605,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  this->UnpackLocals(builder, out_param_locals, parent_state,
+  this->UnpackLocals(builder, ptr_provider, parent_state,
                      cbfunc.GetInScopeVaraibles());
 }
 
@@ -641,5 +657,13 @@ const std::vector<ParameterDecl> &
 CallableBasicBlockFunction::GetInScopeVaraibles() const {
   return this->in_scope_locals;
 }
+
+llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::Value *target_sty,
+                                                        size_t index) const {}
+
+llvm::Value *
+BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *,
+                                                 size_t index) const {}
+
 
 }  // namespace anvill
