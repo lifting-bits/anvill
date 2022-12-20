@@ -505,9 +505,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   func->addFnAttr(llvm::Attribute::NoInline);
   //func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
-  // TODO(Ian): memory pointer isnt quite right
+  auto mem_res = remill::LoadMemoryPointer(ir, this->intrinsics);
+
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc, mem_arg, next_pc_out};
+      this->state_ptr, pc, mem_res, next_pc_out};
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
 
