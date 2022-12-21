@@ -73,12 +73,8 @@ class StackModel {
 
  public:
   uint64_t GetParamDeclSize(const ParameterDecl &decl) {
-    if (llvm::isa_and_nonnull<llvm::PointerType>(decl.type)) {
-      return this->arch->address_size / 8;
-    }
-
-    CHECK(decl.type->getPrimitiveSizeInBits() != 0);
-    return decl.type->getPrimitiveSizeInBits() / 8;
+    CHECK(arch->DataLayout().getTypeSizeInBits(decl.type) != 0);
+    return arch->DataLayout().getTypeSizeInBits(decl.type) / 8;
   }
 
   StackModel(const BasicBlockContext &cont, const remill::Arch *arch) {
