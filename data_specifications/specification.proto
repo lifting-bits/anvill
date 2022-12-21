@@ -14,6 +14,7 @@ enum Arch {
   ARCH_AARCH32 = 8;
   ARCH_SPARC32 = 9;
   ARCH_SPARC64 = 10;
+  ARCH_PPC = 11;
 }
 
 enum OS {
