@@ -160,7 +160,11 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
 
   // If we want to change the type of a load, then we can change the type of
   // the loaded pointer.
+  // TODO(Ian): I think this might be buggy through recursion:
+  // we set the IP to something above the load so we now arent inserting where we expect to...
   if (auto li = llvm::dyn_cast<llvm::LoadInst>(src)) {
+    auto blk = ir.GetInsertBlock();
+    auto preip = ir.GetInsertPoint();
     ir.SetInsertPoint(li);
     auto loaded_ptr = AdaptToType(
         ir, li->getPointerOperand(),
@@ -171,6 +175,8 @@ llvm::Value *AdaptToType(llvm::IRBuilderBase &ir, llvm::Value *src,
     new_li->setAtomic(li->getOrdering(), li->getSyncScopeID());
     new_li->setAlignment(li->getAlign());
     CopyMetadataTo(li, new_li);
+    ir.SetInsertPoint(blk, preip);
+
     return new_li;
   }
 
@@ -280,6 +286,7 @@ void StoreNativeValueToRegister(llvm::Value *native_val,
 
   if (adapted_val) {
     store = ir.CreateStore(adapted_val, ptr_to_reg);
+
 
   } else {
     auto ptr = ir.CreateBitCast(ptr_to_reg,

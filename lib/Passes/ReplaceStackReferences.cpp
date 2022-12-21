@@ -189,7 +189,6 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
         &F, v.index, this->lifter.Options(), cont);
     use->set(g);
   }
-  F.dump();
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
   return to_replace_vars.empty() ? llvm::PreservedAnalyses::all()

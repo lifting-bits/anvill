@@ -470,11 +470,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
 
-
   this->InitializeLiveUncoveredRegs(state, ir);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
-
 
   auto sp_value =
       options.stack_pointer_init_procedure(ir, sp_reg, this->block_def.addr);
@@ -482,19 +480,16 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
 
-
   auto stack_offsets = this->block_context->GetStackOffsets();
-
   for (auto &reg_off : stack_offsets.affine_equalities) {
     if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
       auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
           ir, this->sp_reg, this->block_def.addr, reg_off.offset);
       StoreNativeValueToRegister(new_value, reg_off.target_register,
-                                 type_provider.Dictionary(), intrinsics, &blk,
+                                 type_provider.Dictionary(), intrinsics, ir,
                                  this->state_ptr);
     }
   }
-
 
   PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
     return this->ProvidePointerFromFunctionArgs(func, index);
@@ -503,10 +498,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->UnpackLocals(ir, ptr_provider, this->state_ptr,
                      this->block_context->GetAvailableVariables());
 
-
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
-
 
   func->addFnAttr(llvm::Attribute::NoInline);
   //func->setLinkage(llvm::GlobalValue::InternalLinkage);
@@ -518,17 +511,17 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
                  pc_ptr);
 
-
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
       this->state_ptr, pc, mem_res, next_pc_out};
-  auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
+  auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
   this->PackLocals(ir, this->state_ptr, ptr_provider,
                    this->block_context->GetAvailableVariables());
 
   this->SaveLiveUncoveredRegs(state, ir);
 
+  CHECK(ir.GetInsertPoint() == func->getEntryBlock().end());
   ir.CreateRet(ret_mem);
 
   BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out};
@@ -551,10 +544,10 @@ void BasicBlockLifter::PackLocals(
     auto ptr = into_vars(field_offset);
     field_offset += 1;
 
-    auto state_loaded_value =
-        LoadLiftedValue(decl, this->type_provider.Dictionary(),
-                        this->intrinsics, bldr.GetInsertBlock(), from_state_ptr,
-                        remill::LoadMemoryPointer(bldr, this->intrinsics));
+    auto state_loaded_value = LoadLiftedValue(
+        decl, this->type_provider.Dictionary(), this->intrinsics, bldr,
+        from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+
     bldr.CreateStore(state_loaded_value, ptr);
   }
 }
@@ -563,8 +556,10 @@ void BasicBlockLifter::UnpackLocals(
     llvm::IRBuilder<> &bldr, PointerProvider returned_value,
     llvm::Value *into_state_ptr,
     const std::vector<ParameterDecl> &decls) const {
+  auto blk = bldr.GetInsertBlock();
   uint64_t field_offset = 0;
   for (auto decl : decls) {
+    ;
     auto ptr = returned_value(field_offset);
     if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
       insn->setMetadata("anvill.type",
@@ -572,13 +567,16 @@ void BasicBlockLifter::UnpackLocals(
     }
     auto loaded_var_val = bldr.CreateLoad(decl.type, ptr, decl.name);
     field_offset += 1;
-    auto new_mem_ptr = StoreNativeValue(
-        loaded_var_val, decl, this->type_provider.Dictionary(),
-        this->intrinsics, bldr.GetInsertBlock(), into_state_ptr,
-        remill::LoadMemoryPointer(bldr, this->intrinsics));
+    auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
+    auto new_mem_ptr =
+        StoreNativeValue(loaded_var_val, decl, this->type_provider.Dictionary(),
+                         this->intrinsics, bldr, into_state_ptr, mem_ptr);
+    bldr.SetInsertPoint(bldr.GetInsertBlock());
+
     bldr.CreateStore(new_mem_ptr,
                      remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
   }
+  CHECK(bldr.GetInsertPoint() == blk->end());
 }
 
 
@@ -615,7 +613,6 @@ void BasicBlockLifter::CallBasicBlockFunction(
        ind < this->block_context->GetAvailableVariables().size(); ind++) {
     auto ptr = ptr_provider(ind);
     CHECK(ptr != nullptr);
-    ptr->dump();
     args.push_back(ptr);
   }
 
