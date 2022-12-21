@@ -482,11 +482,6 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
 
-  // Initialize the program counter
-  auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
-  ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
-                 pc_ptr);
-
 
   auto stack_offsets = this->block_context->GetStackOffsets();
 
@@ -517,6 +512,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   //func->setLinkage(llvm::GlobalValue::InternalLinkage);
 
   auto mem_res = remill::LoadMemoryPointer(ir, this->intrinsics);
+
+  // Initialize the program counter
+  auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
+  ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
+                 pc_ptr);
+
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
       this->state_ptr, pc, mem_res, next_pc_out};
