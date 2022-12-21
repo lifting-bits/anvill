@@ -799,4 +799,15 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
   return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
 
+llvm::Value *
+ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
+                               const anvill::LifterOptions &options,
+                               const anvill::BasicBlockContext &context) {
+  CHECK(options.arch->LiftedFunctionType()->getNumParams() + 1 +
+            context.GetAvailableVariables().size() ==
+        func->arg_size());
+  return func->getArg(index +
+                      options.arch->LiftedFunctionType()->getNumParams() + 1);
+}
+
 }  // namespace anvill

@@ -16,6 +16,9 @@
 #include <memory>
 #include <string>
 
+#include "anvill/Declarations.h"
+#include "anvill/Lifters.h"
+
 namespace llvm {
 class BasicBlock;
 class Instruction;
@@ -128,4 +131,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
 std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 
+llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
+                                            const anvill::LifterOptions &,
+                                            const BasicBlockContext &);
 }  // namespace anvill

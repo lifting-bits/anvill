@@ -32,10 +32,17 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
+
+  //bbfunc.func->dump();
+  //lifted_func->dump();
+  //LOG(FATAL) << "fdumps";
+
+
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
   anvill::EntityLifter lifter(options);
 
   auto avails = this->block_context->GetAvailableVariables();
+
   return CallableBasicBlockFunction(bbfunc.func, std::move(avails), block_def,
                                     std::move(*this));
 }
@@ -472,10 +479,14 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto sp_value =
       options.stack_pointer_init_procedure(ir, sp_reg, this->block_def.addr);
   auto sp_ptr = sp_reg->AddressOf(this->state_ptr, ir);
-  auto arg_sp_ptr = sp_reg->AddressOf(state, ir);
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
-  ir.CreateStore(arg_sp_ptr, sp_ptr);
+
+  // Initialize the program counter
+  auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
+  ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
+                 pc_ptr);
+
 
   auto stack_offsets = this->block_context->GetStackOffsets();
 
@@ -678,11 +689,8 @@ llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
 llvm::Value *
 BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
                                                  size_t index) const {
-  CHECK(this->options.arch->LiftedFunctionType()->getNumParams() + 1 +
-            this->block_context->GetAvailableVariables().size() ==
-        func->arg_size());
-  return func->getArg(
-      index + this->options.arch->LiftedFunctionType()->getNumParams() + 1);
+  return anvill::ProvidePointerFromFunctionArgs(func, index, this->options,
+                                                *this->block_context);
 }
 
 

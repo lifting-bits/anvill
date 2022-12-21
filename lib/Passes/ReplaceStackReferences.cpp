@@ -160,8 +160,6 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   CrossReferenceFolder folder(resolver, this->lifter.DataLayout());
   StackModel smodel(cont, this->lifter.Options().arch);
 
-  auto vstate = F.getArg(remill::kStatePointerArgNum);
-
   std::vector<std::pair<llvm::Use *, BasicBlockVar>> to_replace_vars;
 
   for (auto use : EnumerateStackPointerUsages(F)) {
@@ -187,10 +185,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       ir.SetInsertPoint(insn);
     }
 
-    auto i32 = llvm::IntegerType::get(F.getContext(), 32);
-    auto g = ir.CreateGEP(
-        cont.StructTypeFromVars(F.getContext()), vstate,
-        {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, v.index)});
+    auto g = anvill::ProvidePointerFromFunctionArgs(
+        &F, v.index, this->lifter.Options(), cont);
     use->set(g);
   }
   F.dump();
