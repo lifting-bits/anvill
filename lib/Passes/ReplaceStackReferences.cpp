@@ -69,15 +69,20 @@ struct StackVariable {
 class StackModel {
  private:
   std::map<std::int64_t, BasicBlockVar> frame;
+  const remill::Arch *arch;
 
  public:
-  static uint64_t GetParamDeclSize(const ParameterDecl &decl) {
+  uint64_t GetParamDeclSize(const ParameterDecl &decl) {
+    if (llvm::isa_and_nonnull<llvm::PointerType>(decl.type)) {
+      return this->arch->address_size / 8;
+    }
+
     CHECK(decl.type->getPrimitiveSizeInBits() != 0);
     return decl.type->getPrimitiveSizeInBits() / 8;
   }
 
   StackModel(const BasicBlockContext &cont, const remill::Arch *arch) {
-
+    this->arch = arch;
     size_t index = 0;
     for (const auto &v : cont.GetAvailableVariables()) {
       if (v.mem_reg && v.mem_reg->name == arch->StackPointerRegisterName()) {
@@ -133,7 +138,6 @@ class StackModel {
 
 
   void InsertFrameVar(size_t index, ParameterDecl var) {
-    CHECK(var.type->getPrimitiveSizeInBits() != 0);
     if (VarOverlaps(var.mem_offset) ||
         VarOverlaps(var.mem_offset + GetParamDeclSize(var) - 1)) {
 
