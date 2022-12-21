@@ -269,12 +269,12 @@ GetArch(llvm::LLVMContext &context,
 
   switch (spec.arch()) {
     default: return {"Invalid/unrecognized architecture"};
-    case ::specification::ARCH_X86: arch_name = remill::kArchX86; break;
+    case ::specification::ARCH_X86: arch_name = remill::kArchX86_AVX; break;
     case ::specification::ARCH_X86_AVX: arch_name = remill::kArchX86_AVX; break;
     case ::specification::ARCH_X86_AVX512:
       arch_name = remill::kArchX86_AVX512;
       break;
-    case ::specification::ARCH_AMD64: arch_name = remill::kArchAMD64; break;
+    case ::specification::ARCH_AMD64: arch_name = remill::kArchAMD64_AVX; break;
     case ::specification::ARCH_AMD64_AVX:
       arch_name = remill::kArchAMD64_AVX;
       break;
