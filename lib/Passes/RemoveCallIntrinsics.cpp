@@ -3,7 +3,9 @@
 #include <glog/logging.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/raw_ostream.h>
 
 namespace anvill {
 llvm::StringRef RemoveCallIntrinsics::name(void) {
@@ -26,7 +28,9 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       this->xref_resolver,
       remillFunctionCall->getFunction()->getParent()->getDataLayout());
   auto ra = xref_folder.TryResolveReferenceWithClearedCache(target_func);
-  remillFunctionCall->dump();
+  auto f = remillFunctionCall->getFunction();
+  CHECK(!llvm::verifyFunction(*f, &llvm::errs()));
+
   if (ra.references_entity ||  // Related to an existing lifted entity.
       ra.references_global_value ||  // Related to a global var/func.
       ra.references_program_counter) {  // Related to `__anvill_pc`.
@@ -50,6 +54,8 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       prev.intersect(llvm::PreservedAnalyses::none());
     }
   }
+
+  CHECK(!llvm::verifyFunction(*f, &llvm::errs()));
 
   return prev;
 }

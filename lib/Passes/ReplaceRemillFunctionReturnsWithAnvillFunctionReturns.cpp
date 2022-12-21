@@ -65,7 +65,6 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
     pres_analyses = llvm::PreservedAnalyses::none();
   }
 
-  F.dump();
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
   return pres_analyses;

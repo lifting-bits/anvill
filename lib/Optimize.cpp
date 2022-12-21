@@ -113,6 +113,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
                     const BasicBlockContexts &contexts,
                     const anvill::Specification &spec) {
 
+
+  CHECK(!llvm::verifyModule(module, &llvm::errs()));
   const LifterOptions &options = lifter.Options();
 
   EntityCrossReferenceResolver xr(lifter);
@@ -181,37 +183,58 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   llvm::FunctionPassManager fpm;
 
   fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::VerifierPass());
   // NOTE(alex): This pass is extremely slow with LLVM 14.
   // fpm.addPass(llvm::SinkingPass());
 
   // NewGVN has bugs with `____strtold_l_internal` from chal5, amd64.
   fpm.addPass(llvm::NewGVNPass());
+  fpm.addPass(llvm::VerifierPass());
 
   fpm.addPass(llvm::SCCPPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::DSEPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::EarlyCSEPass(true));
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::BDCEPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SimplifyCFGPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SinkingPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SimplifyCFGPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::InstCombinePass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(anvill::ReplaceRemillFunctionReturnsWithAnvillFunctionReturns(
       contexts, lifter));
+  fpm.addPass(llvm::VerifierPass());
   AddSinkSelectionsIntoBranchTargets(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveUnusedFPClassificationCalls(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveDelaySlotIntrinsics(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveErrorIntrinsics(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddLowerRemillMemoryAccessIntrinsics(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveCompilerBarriers(fpm);
 
+  fpm.addPass(llvm::VerifierPass());
   // TODO(pag): This pass has an issue on the `SMIME_write_ASN1` function
   //            of the ARM64 variant of Challenge 5.
   // AddHoistUsersOfSelectsAndPhis(fpm);
 
   fpm.addPass(llvm::InstCombinePass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
+  fpm.addPass(llvm::VerifierPass());
 
   // Sometimes we observe patterns where PC- and SP-related offsets are
   // accidentally truncated, and thus displacement-based analyses make them
@@ -220,18 +243,25 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // negative numbers. Thus, we want to fixup such cases prior to any kind of
   // stack analysis.
   AddConvertMasksToCasts(fpm);
-
+  fpm.addPass(llvm::VerifierPass());
   AddSinkSelectionsIntoBranchTargets(fpm);
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveTrivialPhisAndSelects(fpm);
+  fpm.addPass(llvm::VerifierPass());
 
   fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::VerifierPass());
   AddRemoveStackPointerCExprs(fpm, options.stack_frame_recovery_options);
+  fpm.addPass(llvm::VerifierPass());
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
+  fpm.addPass(llvm::VerifierPass());
 
   AddCombineAdjacentShifts(fpm);
+  fpm.addPass(llvm::VerifierPass());
 
   // Sometimes we have a values in the form of (expr ^ 1) used as branch
   // conditions or other targets. Try to fix these to be CMPs, since it
@@ -239,12 +269,16 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // but it comes up often enough for lifted code.
 
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
+  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
+  fpm.addPass(llvm::VerifierPass());
   AddBranchRecovery(fpm);
+  fpm.addPass(llvm::VerifierPass());
 
   fpm.addPass(ConvertPointerArithmeticToGEP(contexts, types, structs, md));
-
+  fpm.addPass(llvm::VerifierPass());
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
@@ -253,16 +287,25 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   llvm::FunctionPassManager second_fpm;
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
+  second_fpm.addPass(llvm::VerifierPass());
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
+  second_fpm.addPass(llvm::VerifierPass());
   AddRemoveFailedBranchHints(second_fpm);
+  second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::NewGVNPass());
+  second_fpm.addPass(llvm::VerifierPass());
   AddSpreadPCMetadata(second_fpm, options);
+  second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(CodeQualityStatCollector());
+  second_fpm.addPass(llvm::VerifierPass());
   AddConvertXorsToCmps(second_fpm);
+  second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::DCEPass());
+  second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::DSEPass());
+  second_fpm.addPass(llvm::VerifierPass());
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));

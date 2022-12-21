@@ -214,14 +214,13 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // Go and get a pointer to the stack pointer register, so that we can
   // later store our computed return value stack pointer to it.
   auto sp_reg = arch->RegisterByName(arch->StackPointerRegisterName());
-  const auto ptr_to_sp = sp_reg->AddressOf(state_ptr, ir.GetInsertBlock());
+  const auto ptr_to_sp = sp_reg->AddressOf(state_ptr, ir);
 
 
   // Go and compute the value of the stack pointer on exit from
   // the function, which will be based off of the register state
   // on entry to the function.
-  auto new_sp_base =
-      return_stack_pointer->AddressOf(state_ptr, ir.GetInsertBlock());
+  auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, ir);
 
   const auto sp_val_on_exit = ir.CreateAdd(
       ir.CreateLoad(return_stack_pointer->type, new_sp_base),
