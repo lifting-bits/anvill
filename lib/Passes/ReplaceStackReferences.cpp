@@ -173,7 +173,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
 
     auto referenced_variable = smodel.GetOverlappingParam(stack_offset);
     //TODO(Ian) handle nonzero offset
-    if (referenced_variable->offset == 0 &&
+    if (referenced_variable.has_value() && referenced_variable->offset == 0 &&
         llvm::isa<llvm::PointerType>(use->get()->getType())) {
       to_replace_vars.push_back({use, referenced_variable->decl});
     }
