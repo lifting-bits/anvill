@@ -1,15 +1,14 @@
 #!/bin/bash
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 SRC_DIR=$( cd "$( dirname "${DIR}" )" && pwd )
-
-ANVILL_PYTHON="python3 -m anvill"
+GHIDRA_INSTALL_DIR="~/ghidra_10.1.5_PUBLIC/"
 ANVILL_DECOMPILE="anvill-decompile-spec"
 function Help
 {
   echo "Run Anvill on AnghaBech-1K"
   echo ""
   echo "Options:"
-  echo "  --python-cmd <cmd>        The anvill Python command to invoke. Default ${ANVILL_PYTHON}"
+  echo "  --ghidra-install-dir <dir>        The ghidra install dir. Default ${GHIDRA_INSTALL_DIR}"
   echo "  --decompile-cmd <cmd>     The anvill decompile command to invoke. Default ${ANVILL_DECOMPILE}"
   echo "  -h --help                 Print help."
 }
@@ -60,11 +59,11 @@ while [[ $# -gt 0 ]] ; do
             exit 0
         ;;
 
-        # Anvill python cmd
-        --python-cmd)
-            ANVILL_PYTHON=${2}
+        --ghidra-install-dir)
+            GHIDRA_INSTALL_DIR=${2}
             shift # past argument
         ;;
+
 
         # How large of a run to get
         --decompile-cmd)
@@ -89,11 +88,6 @@ then
     exit 1
 fi
 
-if ! ${ANVILL_PYTHON} --help &>/dev/null;
-then   
-    echo "[!] Could not execute anvill python cmd: ${ANVILL_PYTHON}"
-    exit 1
-fi
 
 if ! ${ANVILL_DECOMPILE} --version &>/dev/null;
 then   
@@ -118,7 +112,7 @@ for arch in $(ls -1 binaries/)
 do
     echo "[+] Testing architecture ${arch}"
     ${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts/anvill.py \
-        --anvill-python "${ANVILL_PYTHON}" \
+        --ghidra-install-dir "${GHIDRA_INSTALL_DIR}" \
         --anvill-decompile "${ANVILL_DECOMPILE}" \
         --input-dir "$(pwd)/binaries/${arch}" \
         --output-dir "$(pwd)/results/${arch}" \
