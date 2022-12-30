@@ -273,7 +273,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::IRBuilder<> ir(block);
 
   // Initialize the program counter.
-  auto pc = options.program_counter_init_procedure(ir, pc_reg, func_address);
+  auto pc =
+      options.program_counter_init_procedure(ir, address_type, func_address);
   ir.CreateStore(pc, pc_ptr);
 
   // Initialize the stack pointer.

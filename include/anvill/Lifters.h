@@ -168,7 +168,7 @@ class LifterOptions {
   //    (add (ptrtoint __anvill_pc), <addr>)
   //
   static llvm::Value *SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
-                                                 const remill::Register *pc_reg,
+                                                 llvm::Type *address_type,
                                                  uint64_t func_address);
 
   // Initialize the return address with a constant expression of the form:
@@ -248,8 +248,7 @@ class LifterOptions {
   //      (add (ptrtoint __anvill_pc) <address>)
   //
   // Otherwise, a concrete integer is used, i.e. `<address>`.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
-                              uint64_t)>
+  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::Type *, uint64_t)>
       program_counter_init_procedure;
 
   // Procedure for producing an initial value of the stack pointer on entry
