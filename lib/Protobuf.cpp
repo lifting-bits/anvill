@@ -588,7 +588,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         LOG(FATAL) << "No stack ptr";
       }
 
-      auto stackptr_type_spec = SizeToType(stackptr->size / 8);
+      auto stackptr_type_spec = SizeToType(stackptr->size * 8);
 
       auto target_vdecl =
           DecodeValue(symval.target_value().values()[0], stackptr_type_spec,
