@@ -30,6 +30,7 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
 #include <iterator>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +39,36 @@
 #include "Arch/Arch.h"
 #include "Protobuf.h"
 #include "anvill/Specification.h"
+
+
+namespace {
+// A value decl without a type, we assume a parameter occupying a location occupies the entire location
+// or that offsets are disjoin, this isnt completely correct if we start doing better stack liveness TODO(Ian)
+// We would need to check offset+size overlaps
+struct LocBase {
+  const remill::Register *reg_loc{nullptr};
+  const remill::Register *mem_base{nullptr};
+  std::int64_t offset{0};
+
+  bool operator==(const LocBase &lbase) const {
+    return reg_loc == lbase.reg_loc && mem_base == lbase.mem_base &&
+           lbase.offset == offset;
+  }
+};
+}  // namespace
+
+
+namespace std {
+template <>
+struct std::hash<LocBase> {
+  std::size_t operator()(const LocBase &c) const {
+    std::size_t result = 0;
+
+
+    return result;
+  }
+};
+}  // namespace std
 
 namespace anvill {
 
@@ -65,6 +96,74 @@ void FunctionDecl::AddBBContexts(
   }
 }
 
+
+// need to be careful here about overlapping values
+std::vector<BasicBlockVariable>
+BasicBlockContext::LiveParamsAtEntryAndExit() const {
+  auto live_exits = this->LiveParamsAtExit();
+  auto live_entries = this->LiveParamsAtEntry();
+
+
+  auto convert_to_locbas = [](const ParameterDecl &param) -> LocBase {
+    return {param.reg, param.mem_reg, param.mem_offset};
+  };
+
+  auto add_to_set = [convert_to_locbas](
+                        const std::vector<ParameterDecl> &params,
+                        std::unordered_set<LocBase> &locs_to_add) {
+    std::transform(params.begin(), params.end(),
+                   std::inserter(locs_to_add, locs_to_add.end()),
+                   convert_to_locbas);
+  };
+
+  std::unordered_set<LocBase> covered_live_ent;
+  add_to_set(live_entries, covered_live_ent);
+  std::unordered_set<LocBase> covered_live_exit;
+  add_to_set(live_exits, covered_live_exit);
+
+  std::vector<BasicBlockVariable> res;
+  std::unordered_set<LocBase> covered;
+  auto add_all_from_vector = [&res, &covered, &covered_live_ent,
+                              &covered_live_exit, convert_to_locbas](
+                                 std::vector<ParameterDecl> params) {
+    for (auto p : params) {
+      auto lbase = convert_to_locbas(p);
+      auto live_at_ent = covered_live_ent.find(lbase) != covered_live_ent.end();
+      auto live_at_exit =
+          covered_live_exit.find(lbase) != covered_live_exit.end();
+      CHECK(covered.find(lbase) == covered.end() ||
+            (live_at_ent && live_at_exit));
+      if (covered.find(lbase) == covered.end()) {
+        covered.insert(lbase);
+        auto ind = res.size();
+        res.push_back({p, ind, live_at_ent, live_at_exit});
+      }
+    }
+  };
+
+  add_all_from_vector(live_entries);
+  add_all_from_vector(live_entries);
+  return res;
+}
+
+
+std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtEntry() const {
+  auto alllive = this->LiveParamsAtEntryAndExit();
+  std::vector<BasicBlockVariable> res;
+  std::copy_if(
+      alllive.begin(), alllive.end(), std::back_inserter(alllive),
+      [](const BasicBlockVariable &bbvar) { return bbvar.live_at_entry; });
+  return res;
+}
+
+std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
+  auto alllive = this->LiveParamsAtEntryAndExit();
+  std::vector<BasicBlockVariable> res;
+  std::copy_if(
+      alllive.begin(), alllive.end(), std::back_inserter(alllive),
+      [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
+  return res;
+}
 
 llvm::StructType *
 BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {

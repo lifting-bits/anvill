@@ -89,14 +89,6 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
 
-  // Loads live values from either an affine relation to a HighSymbol or
-  // low level state if not avaialble
-  void InitializeLiveValues(llvm::Value *state_argument, llvm::IRBuilder<> &);
-
-  // Any live values beyond this block need to be either saved to the low level state
-  // or to a HighSymbol
-  void SaveLiveValues(llvm::Value *state_argument, llvm::IRBuilder<> &);
-
  public:
   BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,
                    const CodeBlock &block_def, const LifterOptions &options_,

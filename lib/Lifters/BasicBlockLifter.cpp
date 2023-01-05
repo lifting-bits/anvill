@@ -441,7 +441,6 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
 
-  this->InitializeLiveValues(state, ir);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
 
