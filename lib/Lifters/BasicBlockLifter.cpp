@@ -41,10 +41,7 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
   anvill::EntityLifter lifter(options);
 
-  auto avails = this->block_context->GetAvailableVariables();
-
-  return CallableBasicBlockFunction(bbfunc.func, std::move(avails), block_def,
-                                    std::move(*this));
+  return CallableBasicBlockFunction(bbfunc.func, block_def, std::move(*this));
 }
 
 
@@ -354,32 +351,6 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 }
 
 
-void BasicBlockLifter::InitializeLiveUncoveredRegs(llvm::Value *state_argument,
-                                                   llvm::IRBuilder<> &ir) {
-  auto need_to_init = this->block_context->LiveRegistersNotInVariablesAtEntry();
-
-  for (auto init_reg : need_to_init) {
-    auto reg_src_ptr = init_reg->AddressOf(state_argument, ir);
-    auto reg_dest_ptr = init_reg->AddressOf(this->state_ptr, ir);
-    auto reg_type =
-        remill::RecontextualizeType(init_reg->type, this->llvm_context);
-    ir.CreateStore(ir.CreateLoad(reg_type, reg_src_ptr), reg_dest_ptr);
-  }
-}
-
-void BasicBlockLifter::SaveLiveUncoveredRegs(llvm::Value *state_argument,
-                                             llvm::IRBuilder<> &ir) {
-  auto need_to_init = this->block_context->LiveRegistersNotInVariablesAtExit();
-
-  for (auto init_reg : need_to_init) {
-    auto reg_src_ptr = init_reg->AddressOf(this->state_ptr, ir);
-    auto reg_dest_ptr = init_reg->AddressOf(state_argument, ir);
-    auto reg_type =
-        remill::RecontextualizeType(init_reg->type, this->llvm_context);
-    ir.CreateStore(ir.CreateLoad(reg_type, reg_src_ptr), reg_dest_ptr);
-  }
-}
-
 llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
@@ -421,10 +392,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   auto start_ind = lifted_func_type->getNumParams() + 1;
-  for (auto v : this->block_context->GetAvailableVariables()) {
-    if (!v.name.empty()) {
+  for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
+    if (!v.param.name.empty()) {
       auto arg = remill::NthArgument(func, start_ind);
-      arg->setName(v.name);
+      arg->setName(v.param.name);
     }
     start_ind += 1;
   }
@@ -470,7 +441,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
 
-  this->InitializeLiveUncoveredRegs(state, ir);
+  this->InitializeLiveValues(state, ir);
   // Put registers that are referencing the stack in terms of their displacement so that we
   // Can resolve these stack references later .
 
@@ -482,21 +453,20 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   auto stack_offsets = this->block_context->GetStackOffsets();
   for (auto &reg_off : stack_offsets.affine_equalities) {
-    if (reg_off.base_register && reg_off.base_register == this->sp_reg) {
-      auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
-          ir, this->sp_reg, this->block_def.addr, reg_off.offset);
-      StoreNativeValueToRegister(new_value, reg_off.target_register,
-                                 type_provider.Dictionary(), intrinsics, ir,
-                                 this->state_ptr);
-    }
+    auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
+        ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
+    auto nmem = StoreNativeValue(
+        new_value, reg_off.target_value, type_provider.Dictionary(), intrinsics,
+        ir, this->state_ptr, remill::LoadMemoryPointer(ir, intrinsics));
+    ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   }
 
   PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
     return this->ProvidePointerFromFunctionArgs(func, index);
   };
 
-  this->UnpackLocals(ir, ptr_provider, this->state_ptr,
-                     this->block_context->GetAvailableVariables());
+  this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
+                         this->block_context->LiveBBParamsAtEntry());
 
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
@@ -516,10 +486,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
-  this->PackLocals(ir, this->state_ptr, ptr_provider,
-                   this->block_context->GetAvailableVariables());
+  this->PackLiveValues(ir, this->state_ptr, ptr_provider,
+                       this->block_context->LiveBBParamsAtExit());
 
-  this->SaveLiveUncoveredRegs(state, ir);
 
   CHECK(ir.GetInsertPoint() == func->getEntryBlock().end());
   ir.CreateRet(ret_mem);
@@ -535,42 +504,41 @@ llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
 }
 
 // Packs in scope variables into a struct
-void BasicBlockLifter::PackLocals(
+void BasicBlockLifter::PackLiveValues(
     llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
-    PointerProvider into_vars, const std::vector<ParameterDecl> &decls) const {
+    PointerProvider into_vars,
+    const std::vector<BasicBlockVariable> &decls) const {
 
-  uint64_t field_offset = 0;
   for (auto decl : decls) {
-    auto ptr = into_vars(field_offset);
-    field_offset += 1;
+    auto ptr = into_vars(decl.index);
 
     auto state_loaded_value = LoadLiftedValue(
-        decl, this->type_provider.Dictionary(), this->intrinsics, bldr,
+        decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
         from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
 
     bldr.CreateStore(state_loaded_value, ptr);
   }
 }
 
-void BasicBlockLifter::UnpackLocals(
+void BasicBlockLifter::UnpackLiveValues(
     llvm::IRBuilder<> &bldr, PointerProvider returned_value,
     llvm::Value *into_state_ptr,
-    const std::vector<ParameterDecl> &decls) const {
+    const std::vector<BasicBlockVariable> &decls) const {
   auto blk = bldr.GetInsertBlock();
-  uint64_t field_offset = 0;
+
   for (auto decl : decls) {
-    ;
-    auto ptr = returned_value(field_offset);
+    auto ptr = returned_value(decl.index);
     if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
-      insn->setMetadata("anvill.type",
-                        this->type_specifier.EncodeToMetadata(decl.spec_type));
+      insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
+                                           decl.param.spec_type));
     }
-    auto loaded_var_val = bldr.CreateLoad(decl.type, ptr, decl.name);
-    field_offset += 1;
+    auto loaded_var_val =
+        bldr.CreateLoad(decl.param.type, ptr, decl.param.name);
+
     auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
-    auto new_mem_ptr =
-        StoreNativeValue(loaded_var_val, decl, this->type_provider.Dictionary(),
-                         this->intrinsics, bldr, into_state_ptr, mem_ptr);
+    auto new_mem_ptr = StoreNativeValue(
+        loaded_var_val, decl.param, this->type_provider.Dictionary(),
+        this->intrinsics, bldr, into_state_ptr, mem_ptr);
     bldr.SetInsertPoint(bldr.GetInsertBlock());
 
     bldr.CreateStore(new_mem_ptr,
@@ -605,12 +573,12 @@ void BasicBlockLifter::CallBasicBlockFunction(
     return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };
 
-  this->PackLocals(builder, parent_state, ptr_provider,
-                   cbfunc.GetInScopeVaraibles());
+  this->PackLiveValues(builder, parent_state, ptr_provider,
+                       this->block_context->LiveBBParamsAtEntry());
 
 
   for (size_t ind = 0;
-       ind < this->block_context->GetAvailableVariables().size(); ind++) {
+       ind < this->block_context->LiveParamsAtEntryAndExit().size(); ind++) {
     auto ptr = ptr_provider(ind);
     CHECK(ptr != nullptr);
     args.push_back(ptr);
@@ -622,8 +590,8 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   builder.CreateStore(new_mem_ptr, mem_ptr_ref);
 
-  this->UnpackLocals(builder, ptr_provider, parent_state,
-                     cbfunc.GetInScopeVaraibles());
+  this->UnpackLiveValues(builder, ptr_provider, parent_state,
+                         this->block_context->LiveBBParamsAtExit());
 }
 
 
@@ -653,10 +621,8 @@ BasicBlockLifter::BasicBlockLifter(
 }
 
 CallableBasicBlockFunction::CallableBasicBlockFunction(
-    llvm::Function *func, std::vector<ParameterDecl> in_scope_locals,
-    CodeBlock block, BasicBlockLifter bb_lifter)
+    llvm::Function *func, CodeBlock block, BasicBlockLifter bb_lifter)
     : func(func),
-      in_scope_locals(in_scope_locals),
       block(block),
       bb_lifter(std::move(bb_lifter)) {}
 
@@ -667,11 +633,6 @@ const CodeBlock &CallableBasicBlockFunction::GetBlock() const {
 
 llvm::Function *CallableBasicBlockFunction::GetFunction() const {
   return this->func;
-}
-
-const std::vector<ParameterDecl> &
-CallableBasicBlockFunction::GetInScopeVaraibles() const {
-  return this->in_scope_locals;
 }
 
 llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,

@@ -68,11 +68,13 @@ void FunctionDecl::AddBBContexts(
 
 llvm::StructType *
 BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {
-  auto in_scope_locals = this->GetAvailableVariables();
+  std::vector<BasicBlockVariable> in_scope_locals =
+      this->LiveParamsAtEntryAndExit();
   std::vector<llvm::Type *> field_types;
-  std::transform(in_scope_locals.begin(), in_scope_locals.end(),
-                 std::back_inserter(field_types),
-                 [](const ParameterDecl &param) { return param.type; });
+  std::transform(
+      in_scope_locals.begin(), in_scope_locals.end(),
+      std::back_inserter(field_types),
+      [](const BasicBlockVariable &param) { return param.param.type; });
 
   return llvm::StructType::get(llvm_context, field_types,
                                "sty_for_basic_block_function");
@@ -124,73 +126,21 @@ const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
 }
 
 
-std::vector<const remill::Register *>
-BasicBlockContext::RegistersNotInVariables(
-    const std::vector<const remill::Register *> &all) const {
-
-  std::unordered_set<const remill::Register *> covered_registers;
-  for (auto cov_var : this->GetAvailableVariables()) {
-    if (cov_var.reg) {
-      covered_registers.insert(cov_var.reg);
-    }
-  }
-  std::vector<const remill::Register *> res;
-  std::copy_if(all.begin(), all.end(), std::back_inserter(res),
-               [&covered_registers](const remill::Register *reg) {
-                 return covered_registers.find(reg) == covered_registers.end();
-               });
-  return res;
-}
-
-
-std::vector<const remill::Register *>
-BasicBlockContext::LiveRegistersNotInVariablesAtEntry() const {
-  return this->RegistersNotInVariables(this->LiveRegistersAtEntry());
-}
-std::vector<const remill::Register *>
-BasicBlockContext::LiveRegistersNotInVariablesAtExit() const {
-  return this->RegistersNotInVariables(this->LiveRegistersAtExit());
-}
-
-
-const std::vector<const remill::Register *> &
-SpecBlockContext::LiveRegistersAtEntry() const {
-  return this->live_regs_at_entry;
-}
-
 SpecBlockContext::SpecBlockContext(
     const FunctionDecl &decl, SpecStackOffsets offsets,
-    std::vector<const remill::Register *> live_regs_at_entry,
-    std::vector<const remill::Register *> live_regs_at_exit)
+    std::vector<ParameterDecl> live_params_at_entry,
+    std::vector<ParameterDecl> live_params_at_exit)
     : decl(decl),
       offsets(std::move(offsets)),
-      live_regs_at_entry(std::move(live_regs_at_entry)),
-      live_regs_at_exit(std::move(live_regs_at_exit)) {}
+      live_params_at_entry(std::move(live_params_at_entry)),
+      live_params_at_exit(std::move(live_params_at_exit)) {}
 
-const std::vector<const remill::Register *> &
-SpecBlockContext::LiveRegistersAtExit() const {
-  return this->live_regs_at_exit;
+const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtExit() const {
+  return this->live_params_at_exit;
 }
 
-
-std::vector<ParameterDecl> SpecBlockContext::GetAvailableVariables() const {
-  std::vector<ParameterDecl> decls;
-  for (auto p : this->decl.params) {
-    decls.push_back(p);
-  }
-
-  for (auto [nm, l] : this->decl.locals) {
-    if (l.values.size() == 1) {
-
-      ParameterDecl d = {
-          {l.values[0].reg, l.values[0].mem_reg, l.values[0].mem_offset,
-           l.values[0].spec_type, l.values[0].type},
-          nm};
-      decls.push_back(std::move(d));
-    }
-  }
-
-  return decls;
+const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtEntry() const {
+  return this->live_params_at_entry;
 }
 
 const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
@@ -396,10 +346,8 @@ V GetWithDef(uint64_t addr, const std::unordered_map<uint64_t, V> &map, V def) {
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
       *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
-      GetWithDef(addr, this->live_regs_at_entry,
-                 std::vector<const remill::Register *>()),
-      GetWithDef(addr, this->live_regs_at_exit,
-                 std::vector<const remill::Register *>()));
+      GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
+      GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
 
 

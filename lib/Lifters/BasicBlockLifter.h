@@ -89,11 +89,13 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::MDNode *GetBasicBlockAnnotation(uint64_t addr) const;
 
+  // Loads live values from either an affine relation to a HighSymbol or
+  // low level state if not avaialble
+  void InitializeLiveValues(llvm::Value *state_argument, llvm::IRBuilder<> &);
 
-  void InitializeLiveUncoveredRegs(llvm::Value *state_argument,
-                                   llvm::IRBuilder<> &);
-
-  void SaveLiveUncoveredRegs(llvm::Value *state_argument, llvm::IRBuilder<> &);
+  // Any live values beyond this block need to be either saved to the low level state
+  // or to a HighSymbol
+  void SaveLiveValues(llvm::Value *state_argument, llvm::IRBuilder<> &);
 
  public:
   BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,
@@ -112,13 +114,13 @@ class BasicBlockLifter : public CodeLifter {
 
   using PointerProvider = std::function<llvm::Value *(size_t index)>;
   // Packs in scope variables into a struct
-  void PackLocals(llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
-                  PointerProvider into_vars,
-                  const std::vector<ParameterDecl> &decls) const;
+  void PackLiveValues(llvm::IRBuilder<> &bldr, llvm::Value *from_state_ptr,
+                      PointerProvider into_vars,
+                      const std::vector<BasicBlockVariable> &decls) const;
 
-  void UnpackLocals(llvm::IRBuilder<> &, PointerProvider returned_value,
-                    llvm::Value *into_state_ptr,
-                    const std::vector<ParameterDecl> &) const;
+  void UnpackLiveValues(llvm::IRBuilder<> &, PointerProvider returned_value,
+                        llvm::Value *into_state_ptr,
+                        const std::vector<BasicBlockVariable> &) const;
 
 
   // Calls a basic block function and unpacks the result into the state
@@ -133,17 +135,14 @@ class CallableBasicBlockFunction {
 
  private:
   llvm::Function *func;
-  std::vector<ParameterDecl> in_scope_locals;
   CodeBlock block;
   BasicBlockLifter bb_lifter;
 
 
  public:
-  CallableBasicBlockFunction(llvm::Function *func,
-                             std::vector<ParameterDecl> in_scope_locals,
-                             CodeBlock block, BasicBlockLifter bb_lifter);
+  CallableBasicBlockFunction(llvm::Function *func, CodeBlock block,
+                             BasicBlockLifter bb_lifter);
 
-  const std::vector<ParameterDecl> &GetInScopeVaraibles() const;
   llvm::Function *GetFunction() const;
 
   llvm::StructType *GetRetType() const;
