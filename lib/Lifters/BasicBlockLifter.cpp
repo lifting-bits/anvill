@@ -464,6 +464,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     return this->ProvidePointerFromFunctionArgs(func, index);
   };
 
+
+  LOG(INFO) << "Live values at entry to function "
+            << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 

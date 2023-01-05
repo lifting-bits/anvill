@@ -151,7 +151,7 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtEntry() const {
   auto alllive = this->LiveParamsAtEntryAndExit();
   std::vector<BasicBlockVariable> res;
   std::copy_if(
-      alllive.begin(), alllive.end(), std::back_inserter(alllive),
+      alllive.begin(), alllive.end(), std::back_inserter(res),
       [](const BasicBlockVariable &bbvar) { return bbvar.live_at_entry; });
   return res;
 }
@@ -160,7 +160,7 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
   auto alllive = this->LiveParamsAtEntryAndExit();
   std::vector<BasicBlockVariable> res;
   std::copy_if(
-      alllive.begin(), alllive.end(), std::back_inserter(alllive),
+      alllive.begin(), alllive.end(), std::back_inserter(res),
       [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
   return res;
 }
