@@ -512,13 +512,16 @@ void BasicBlockLifter::PackLiveValues(
     const std::vector<BasicBlockVariable> &decls) const {
 
   for (auto decl : decls) {
-    auto ptr = into_vars(decl.index);
 
-    auto state_loaded_value = LoadLiftedValue(
-        decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
-        from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+    if (!decl.param.mem_reg) {
+      auto ptr = into_vars(decl.index);
 
-    bldr.CreateStore(state_loaded_value, ptr);
+      auto state_loaded_value = LoadLiftedValue(
+          decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
+          from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+
+      bldr.CreateStore(state_loaded_value, ptr);
+    }
   }
 }
 
@@ -529,22 +532,25 @@ void BasicBlockLifter::UnpackLiveValues(
   auto blk = bldr.GetInsertBlock();
 
   for (auto decl : decls) {
-    auto ptr = returned_value(decl.index);
-    if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
-      insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
-                                           decl.param.spec_type));
+    // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
+    if (!decl.param.mem_reg) {
+      auto ptr = returned_value(decl.index);
+      if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
+        insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
+                                             decl.param.spec_type));
+      }
+      auto loaded_var_val =
+          bldr.CreateLoad(decl.param.type, ptr, decl.param.name);
+
+      auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
+      auto new_mem_ptr = StoreNativeValue(
+          loaded_var_val, decl.param, this->type_provider.Dictionary(),
+          this->intrinsics, bldr, into_state_ptr, mem_ptr);
+      bldr.SetInsertPoint(bldr.GetInsertBlock());
+
+      bldr.CreateStore(new_mem_ptr,
+                       remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
     }
-    auto loaded_var_val =
-        bldr.CreateLoad(decl.param.type, ptr, decl.param.name);
-
-    auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
-    auto new_mem_ptr = StoreNativeValue(
-        loaded_var_val, decl.param, this->type_provider.Dictionary(),
-        this->intrinsics, bldr, into_state_ptr, mem_ptr);
-    bldr.SetInsertPoint(bldr.GetInsertBlock());
-
-    bldr.CreateStore(new_mem_ptr,
-                     remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
   }
   CHECK(bldr.GetInsertPoint() == blk->end());
 }
