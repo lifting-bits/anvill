@@ -77,6 +77,12 @@ class ProtobufTranslator {
   void ParseCFGIntoFunction(const ::specification::Function &obj,
                             FunctionDecl &decl) const;
 
+  void AddLiveValuesToBB(
+      std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
+      uint64_t bb_addr,
+      const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
+          &values) const;
+
 
  public:
   explicit ProtobufTranslator(

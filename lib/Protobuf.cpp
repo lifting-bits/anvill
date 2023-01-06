@@ -542,26 +542,21 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   return decl;
 }
 
+void ProtobufTranslator::AddLiveValuesToBB(
+    std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
+    uint64_t bb_addr,
+    const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
+        &values) const {
+  auto &v = map.insert({bb_addr, std::vector<ParameterDecl>()}).first->second;
 
-namespace {
-void AddRegistersToBB(
-    std::unordered_map<uint64_t, std::vector<const remill::Register *>> &map,
-    uint64_t bb_addr, const remill::Arch *arch,
-    const ::google::protobuf::RepeatedPtrField<::specification::Register>
-        &regs) {
-  auto &v = map.insert({bb_addr, std::vector<const remill::Register *>()})
-                .first->second;
-
-  for (auto reg : regs) {
-    auto fill_reg = arch->RegisterByName(reg.register_name());
-    if (fill_reg) {
-      v.push_back(fill_reg);
-    } else {
-      LOG(ERROR) << "No reg for: " << reg.register_name();
-    }
+  for (auto var : values) {
+    LOG_IF(FATAL, var.repr_var().values_size() != 1)
+        << "Symbols must be represented by a single valuedecl.";
+    auto param = DecodeParameter(var);
+    LOG_IF(FATAL, !param.Succeeded()) << "Unable to decode live parameter";
+    v.push_back(param.TakeValue());
   }
 }
-}  // namespace
 
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
@@ -583,23 +578,31 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     auto blk = decl.cfg[blk_addr];
     for (auto &symval : ctx.symvals()) {
       OffsetDomain reg_off;
-      reg_off.offset = symval.offset();
-      reg_off.target_register = arch->RegisterByName(symval.target_reg());
-      if (!reg_off.target_register) {
-        LOG(ERROR) << "Missing base register for affine relation: "
-                   << symval.target_reg();
-        continue;
+
+      if (!symval.has_target_value()) {
+        LOG(FATAL) << "All equalities must have a target";
       }
-      if (symval.has_base()) {
-        reg_off.base_register = arch->RegisterByName(symval.base());
-        if (!reg_off.base_register) {
-          LOG(ERROR) << "Missing base register for affine relation: "
-                     << symval.base();
-          continue;
-        }
-      } else {
-        reg_off.base_register = std::nullopt;
+
+      auto stackptr = arch->RegisterByName(arch->StackPointerRegisterName());
+      if (!stackptr) {
+        LOG(FATAL) << "No stack ptr";
       }
+
+      auto stackptr_type_spec = SizeToType(stackptr->size * 8);
+
+      auto target_vdecl =
+          DecodeValue(symval.target_value().values()[0], stackptr_type_spec,
+                      "Unable to get value decl for stack offset relation");
+      LOG_IF(FATAL, !target_vdecl.Succeeded()) << "Failed to lift value";
+      if (!symval.has_curr_val()) {
+        LOG(FATAL) << "Mapping should have current value";
+      }
+
+      LOG_IF(FATAL, !symval.curr_val().has_stack_disp())
+          << "Only stack displacements supported for affine relations";
+
+      reg_off.stack_offset = symval.curr_val().stack_disp();
+      reg_off.target_value = target_vdecl.TakeValue();
 
       affine_equalities.push_back(reg_off);
     }
@@ -607,11 +610,11 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     SpecStackOffsets off = {affine_equalities};
     decl.stack_offsets.insert({blk_addr, off});
 
-    AddRegistersToBB(decl.live_regs_at_entry, blk_addr, this->arch,
-                     ctx.live_at_entries());
+    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
+                            ctx.live_at_entries());
 
-    AddRegistersToBB(decl.live_regs_at_exit, blk_addr, this->arch,
-                     ctx.live_at_exits());
+    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_addr,
+                            ctx.live_at_exits());
   }
 }
 

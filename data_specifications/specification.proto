@@ -100,14 +100,6 @@ message Memory {
   int64 offset = 2;
 }
 
-message Value {
-  oneof inner_value {
-    Register reg = 1;
-    Memory mem = 2;
-  }
-}
-
-
 message Variable {
   repeated Value values = 1;
   TypeSpec type = 2;
@@ -159,6 +151,15 @@ message Callable {
 }
 
 
+
+message ValueDomain  {
+  oneof inner {
+    HighSymbol symb = 1;
+    int64 stack_disp = 2; 
+    int64 constant = 3;
+  }
+}
+
 // These arent quite affine relations we just store 
 // relationships of Reg=Reg'+Offset where Reg' is the register value at entry 
 // to the function. 
@@ -167,19 +168,95 @@ message Callable {
 // what we want at the end to determine stack relationships. 
 // This very closely matches ghidra's SymbolicPropogator: 
 // https://ghidra.re/ghidra_docs/api/ghidra/program/util/SymbolicPropogator.Value.html#getRelativeRegister()
-message OffsetDomain {
-  string target_reg = 1;
-  // An empty base indicates a constant.
-  optional string base = 2;
-  int64 offset = 3;
+message ValueMapping {
+  Variable target_value = 1;
+  ValueDomain curr_val = 2;
 }
+
+enum HighLoc {
+  HIGH_LOC_UNSPECIFIED = 0;
+  HIGH_LOC_PARAM = 1;
+  HIGH_LOC_LOCAL = 2;
+}
+
+
+
+message SymbolMapping {
+  HighSymbol high_loc = 1;
+  Variable low_loc = 2;
+}
+
+message HighSymbol {
+  string name = 1;
+  HighLoc location = 2;
+}
+
+message Value {
+  oneof inner_value {
+    Register reg = 1;
+    Memory mem = 2;
+  }
+}
+
+/*
+  block1:
+    u1 = param_1 + 3
+    STORE u1, [sp-4]
+    r1 = param_1
+  block2:
+    u1 = LOAD [sp-4]
+    r2 = r1 + u1
+    (live r2)
+*/
+
+/*
+  Current lift:
+ block1(param_1, reg_state):
+  store param_1 + 3,  localSub4
+  store param_1, r1(reg_state)
+
+block2(reg_state):
+  %1 = load localSub4
+  %2 = load r1(reg_state) 
+  %3 = iadd %1, %2
+  store  %3, r2(reg_state)
+
+  This is a world where high variables are exactly bound to locations
+*/
+
+/*
+  With affine equalities
+  So r1 and the var are still live so need to copy their state
+ block1(param_1, reg_state):
+  store param_1 + 3,  localSub4
+  store param_1, r1(reg_state)
+
+
+  // here tho we have the affine equalities r1 = param1 local_sub=param_1+3
+  // So we could do
+block2(param_1, reg_state):
+  %1 = param_1+3
+  %2 = iadd param_1, %1
+  store  %2, r2(reg_state)
+
+
+But then what hppens if the user patches block1 
+to 
+ block1(param_1, reg_state):
+  store param_1 + 2,  localSub4
+  store r2, r1(reg_state) .... we cant really support multiple block patches at once 
+  */
 
 message BlockContext {
-  repeated OffsetDomain symvals = 1;
-
-  repeated Register live_at_entries = 2;
-  repeated Register live_at_exits = 3;
+  // Affine equalities between values
+  // and high symbols at entry to
+  // the block
+  repeated ValueMapping symvals = 1;
+  
+  repeated Parameter live_at_entries = 2;
+  repeated Parameter live_at_exits = 3;
 }
+
 
 
 message CodeBlock {

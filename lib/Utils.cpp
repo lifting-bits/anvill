@@ -811,7 +811,7 @@ ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                const anvill::LifterOptions &options,
                                const anvill::BasicBlockContext &context) {
   CHECK(options.arch->LiftedFunctionType()->getNumParams() + 1 +
-            context.GetAvailableVariables().size() ==
+            context.LiveParamsAtEntryAndExit().size() ==
         func->arg_size());
   return func->getArg(index +
                       options.arch->LiftedFunctionType()->getNumParams() + 1);

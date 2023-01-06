@@ -43,6 +43,8 @@ DEFINE_bool(add_breakpoints, false,
             "lifted bitcode.");
 
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
+DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
+
 
 DEFINE_string(
     default_callable_spec, "",
@@ -242,8 +244,10 @@ int main(int argc, char *argv[]) {
     llvm::EnableStatistics();
   }
 
+  if (!FLAGS_disable_opt) {
+    anvill::OptimizeModule(lifter, module, spec.GetBlockContexts(), spec);
+  }
 
-  anvill::OptimizeModule(lifter, module, spec.GetBlockContexts(), spec);
 
   int ret = EXIT_SUCCESS;
 

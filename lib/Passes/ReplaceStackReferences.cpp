@@ -80,9 +80,12 @@ class StackModel {
   StackModel(const BasicBlockContext &cont, const remill::Arch *arch) {
     this->arch = arch;
     size_t index = 0;
-    for (const auto &v : cont.GetAvailableVariables()) {
-      if (v.mem_reg && v.mem_reg->name == arch->StackPointerRegisterName()) {
-        this->InsertFrameVar(index, v);
+    // this feels weird maybe it should be all stack variables but then if the variable isnt live...
+    // we will have discovered something that should have been live.
+    for (const auto &v : cont.LiveParamsAtEntryAndExit()) {
+      if (v.param.mem_reg &&
+          v.param.mem_reg->name == arch->StackPointerRegisterName()) {
+        this->InsertFrameVar(index, v.param);
       }
       index += 1;
     }

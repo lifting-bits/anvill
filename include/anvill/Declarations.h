@@ -56,16 +56,6 @@ struct CodeBlock {
 };
 
 
-struct OffsetDomain {
-  const remill::Register *target_register;
-  std::optional<const remill::Register *> base_register;
-  std::int64_t offset;
-};
-struct SpecStackOffsets {
-  std::vector<OffsetDomain> affine_equalities;
-};
-
-
 class TypeDictionary;
 
 // A value, such as a parameter or a return value. Values are resident
@@ -121,6 +111,15 @@ struct VariableDecl {
   llvm::GlobalVariable *DeclareInModule(const std::string &name,
                                         llvm::Module &) const;
 };
+
+struct OffsetDomain {
+  ValueDecl target_value;
+  std::int64_t stack_offset;
+};
+struct SpecStackOffsets {
+  std::vector<OffsetDomain> affine_equalities;
+};
+
 
 // A declaration for a callable entity.
 struct CallableDecl {
@@ -200,29 +199,38 @@ struct LocalVariableDecl {
   std::vector<ValueDecl> values;
 };
 
-class BasicBlockContext {
- private:
-  std::vector<const remill::Register *> RegistersNotInVariables(
-      const std::vector<const remill::Register *> &all) const;
 
+// Basic block contexts impose an ordering on live values s.t. shared Parameters between
+// live exits and entries
+struct BasicBlockVariable {
+  ParameterDecl param;
+  size_t index;
+  bool live_at_entry;
+  bool live_at_exit;
+};
+
+class BasicBlockContext {
  public:
   virtual ~BasicBlockContext() = default;
-  virtual std::vector<ParameterDecl> GetAvailableVariables() const = 0;
+
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
-  virtual const std::vector<const remill::Register *> &
-  LiveRegistersAtEntry() const = 0;
-  virtual const std::vector<const remill::Register *> &
-  LiveRegistersAtExit() const = 0;
+  // Deduplicates locations and ensures there are no overlapping decls
+  // A valid parameter list is a set of non overlapping a-locs with distinct names.
+  std::vector<BasicBlockVariable> LiveParamsAtEntryAndExit() const;
 
-  std::vector<const remill::Register *>
-  LiveRegistersNotInVariablesAtEntry() const;
-  std::vector<const remill::Register *>
-  LiveRegistersNotInVariablesAtExit() const;
+
+  std::vector<BasicBlockVariable> LiveBBParamsAtEntry() const;
+  std::vector<BasicBlockVariable> LiveBBParamsAtExit() const;
+
 
   llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
+
+ protected:
+  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const = 0;
+  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const = 0;
 };
 
 struct FunctionDecl;
@@ -230,24 +238,22 @@ class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
   SpecStackOffsets offsets;
-  std::vector<const remill::Register *> live_regs_at_entry;
-  std::vector<const remill::Register *> live_regs_at_exit;
+  std::vector<ParameterDecl> live_params_at_entry;
+  std::vector<ParameterDecl> live_params_at_exit;
 
  public:
   SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
-                   std::vector<const remill::Register *> live_regs_at_entry,
-                   std::vector<const remill::Register *> live_regs_at_exit);
+                   std::vector<ParameterDecl> live_params_at_entry,
+                   std::vector<ParameterDecl> live_params_at_exit);
 
-  virtual std::vector<ParameterDecl> GetAvailableVariables() const override;
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 
-  virtual const std::vector<const remill::Register *> &
-  LiveRegistersAtEntry() const override;
-  // should be a subset of live registers at entry
-  virtual const std::vector<const remill::Register *> &
-  LiveRegistersAtExit() const override;
-
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
+
+
+ protected:
+  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const override;
+  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const override;
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -286,10 +292,10 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
 
-  std::unordered_map<std::uint64_t, std::vector<const remill::Register *>>
+  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_entry;
 
-  std::unordered_map<std::uint64_t, std::vector<const remill::Register *>>
+  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_exit;
 
   std::uint64_t stack_depth;
