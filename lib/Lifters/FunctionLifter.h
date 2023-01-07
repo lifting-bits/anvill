@@ -265,14 +265,16 @@ class FunctionLifter : public CodeLifter {
   LoadFunctionReturnAddress(const remill::Instruction &inst,
                             llvm::BasicBlock *block, llvm::Value *state_ptr);
 
-  void VisitBlock(CodeBlock entry_context, llvm::Value *lifted_function_state);
+  void VisitBlock(CodeBlock entry_context, llvm::Value *lifted_function_state,
+                  llvm::Value *abstract_stack);
 
   LiftedFunction CreateLiftedFunction(const std::string &name);
 
   remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
 
 
-  void VisitBlocks(llvm::Value *lifted_function_state);
+  void VisitBlocks(llvm::Value *lifted_function_state,
+                   llvm::Value *abstract_stack);
 
   // Try to decode an instruction at address `addr` into `*inst_out`. Returns
   // a context map if sueccessful and std::nullopt otherwise. `is_delayed` tells the decoder

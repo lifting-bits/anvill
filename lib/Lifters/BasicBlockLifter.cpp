@@ -2,6 +2,7 @@
 
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
+#include <glog/logging.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -408,7 +410,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   memory->setName("memory");
   pc->setName("program_counter");
   next_pc_out->setName("next_pc_out");
-  state->setName("state");
+  state->setName("stack");
 
 
   auto liftedty = this->options.arch->LiftedFunctionType();
@@ -556,16 +558,35 @@ void BasicBlockLifter::UnpackLiveValues(
 }
 
 
+size_t
+BasicBlockLifter::StackOffsetFromStackPointer(std::int64_t stack_off) const {
+  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
+  // unless we have parameters)
+  // TODO(Ian): this wont do the correct thing for stack parameters
+
+  // welp lets crash if we are going to do the wrong thing
+  CHECK((options.stack_frame_recovery_options.stack_grows_down &&
+         stack_off <= 0) ||
+        (!options.stack_frame_recovery_options.stack_grows_down &&
+         stack_off >= 0));
+  return std::abs(stack_off);
+}
+
+
+llvm::Type *BasicBlockLifter::GetFrameType() const {
+  return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(llvm_context),
+                              this->decl.stack_depth);
+}
+
+
 void BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
-    const CallableBasicBlockFunction &cbfunc) const {
+    const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {
 
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
-
-
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
-  args[remill::kStatePointerArgNum] = parent_state;
+  args[0] = parent_stack;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
       builder, pc_reg, cbfunc.GetBlock().addr);
@@ -575,9 +596,19 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[remill::kNumBlockArgs] =
       remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
 
+  auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 
-  PointerProvider ptr_provider =
-      [&builder, this, out_param_locals](size_t index) -> llvm::Value * {
+  auto i32 = llvm::IntegerType::get(llvm_context, 32);
+  PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
+                                  parent_stack,
+                                  i32](size_t index) -> llvm::Value * {
+    auto repr_var = bbvars[index];
+    if (repr_var.param.mem_reg) {
+      auto off = this->StackOffsetFromStackPointer(repr_var.param.mem_offset);
+      return builder.CreateGEP(
+          this->GetFrameType(), parent_stack,
+          {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, off)});
+    }
     return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };
 
@@ -604,27 +635,30 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
 
 void CallableBasicBlockFunction::CallBasicBlockFunction(
-    llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state) const {
-  this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this);
+    llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state,
+    llvm::Value *abstract_stack) const {
+  this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this,
+                                         abstract_stack);
 }
 
 CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlock(
-    std::unique_ptr<BasicBlockContext> block_context,
+    std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
     const CodeBlock &block_def, const LifterOptions &options_,
     llvm::Module *semantics_module, const TypeTranslator &type_specifier) {
 
-  return BasicBlockLifter(std::move(block_context), block_def, options_,
+  return BasicBlockLifter(std::move(block_context), decl, block_def, options_,
                           semantics_module, type_specifier)
       .LiftBasicBlockFunction();
 }
 
 BasicBlockLifter::BasicBlockLifter(
-    std::unique_ptr<BasicBlockContext> block_context,
+    std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
     const CodeBlock &block_def, const LifterOptions &options_,
     llvm::Module *semantics_module, const TypeTranslator &type_specifier)
     : CodeLifter(options_, semantics_module, type_specifier),
       block_context(std::move(block_context)),
-      block_def(block_def) {
+      block_def(block_def),
+      decl(decl) {
   this->var_struct_ty = this->StructTypeFromVars();
 }
 

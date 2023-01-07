@@ -383,13 +383,14 @@ FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
           this->curr_decl->GetBlockContext(blk.addr));
 
   return BasicBlockLifter::LiftBasicBlock(
-      std::move(context), blk, this->options, this->semantics_module.get(),
-      this->type_specifier);
+      std::move(context), *this->curr_decl, blk, this->options,
+      this->semantics_module.get(), this->type_specifier);
 }
 
 
 void FunctionLifter::VisitBlock(CodeBlock blk,
-                                llvm::Value *lifted_function_state) {
+                                llvm::Value *lifted_function_state,
+                                llvm::Value *abstract_stack) {
   auto llvm_blk = this->GetOrCreateBlock(blk.addr);
   llvm::IRBuilder<> builder(llvm_blk);
 
@@ -398,7 +399,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 
   CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
 
-  bbfunc.CallBasicBlockFunction(builder, lifted_function_state);
+  bbfunc.CallBasicBlockFunction(builder, lifted_function_state, abstract_stack);
   CHECK(anvill::GetBasicBlockAddr(bbfunc.GetFunction()).has_value());
 
   auto pc = remill::LoadNextProgramCounter(llvm_blk, this->intrinsics);
@@ -412,14 +413,15 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
   }
 }
 
-void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state) {
+void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
+                                 llvm::Value *abstract_stack) {
   DLOG(INFO) << "Num blocks for func " << std::hex << this->curr_decl->address
              << ": " << this->curr_decl->cfg.size();
 
 
   for (const auto &[addr, blk] : this->curr_decl->cfg) {
     DLOG(INFO) << "Visiting: " << std::hex << addr;
-    this->VisitBlock(blk, lifted_function_state);
+    this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
 
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
@@ -529,6 +531,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   ir.CreateStore(pc, next_pc_reg_ref);
   ir.CreateStore(pc, pc_reg_ref);
 
+  auto abstract_stack = ir.CreateAlloca(
+      llvm::ArrayType::get(llvm::Type::getInt8Ty(this->llvm_context),
+                           decl.stack_depth),
+      nullptr, "abstract_stack");
   // Add a branch between the first block of the lifted function, which sets
   // up some local variables, and the block that will contain the lifted
   // instruction.
@@ -544,7 +550,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
-  VisitBlocks(lifted_func_st.state_ptr);
+  VisitBlocks(lifted_func_st.state_ptr, abstract_stack);
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
