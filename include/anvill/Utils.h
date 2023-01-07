@@ -134,4 +134,5 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                             const anvill::LifterOptions &,
                                             const BasicBlockContext &);
+llvm::Value *GetBasicBlockStackPtr(llvm::Function *func);
 }  // namespace anvill

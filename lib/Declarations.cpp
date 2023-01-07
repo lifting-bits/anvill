@@ -224,6 +224,10 @@ const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
 
+size_t SpecBlockContext::GetStackSize() const {
+  return decl.stack_depth;
+}
+
 
 SpecBlockContext::SpecBlockContext(
     const FunctionDecl &decl, SpecStackOffsets offsets,
@@ -449,5 +453,42 @@ SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
 
+size_t
+AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
+  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
+  // unless we have parameters)
+  // TODO(Ian): this wont do the correct thing for stack parameters
+
+  // welp lets crash if we are going to do the wrong thing
+  CHECK((this->stack_grows_down && stack_off <= 0) ||
+        (!this->stack_grows_down && stack_off >= 0));
+  return std::abs(stack_off);
+}
+
+llvm::Type *AbstractStack::StackType() const {
+  return this->stack_type;
+}
+
+llvm::Value *
+AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
+                                              std::int64_t stack_off) const {
+  auto off = this->StackOffsetFromStackPointer(stack_off);
+  auto i32 = llvm::IntegerType::getInt32Ty(this->stack_ptr->getContext());
+  return ir.CreateGEP(
+      this->StackType(), this->stack_ptr,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, off)});
+}
+llvm::Type *AbstractStack::StackTypeFromSize(llvm::LLVMContext &context,
+                                             size_t size) {
+  return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(context), size);
+}
+
+
+AbstractStack::AbstractStack(size_t stack_size, llvm::Value *stack_ptr,
+                             bool stack_grows_down)
+    : stack_grows_down(stack_grows_down),
+      stack_type(AbstractStack::StackTypeFromSize(stack_ptr->getContext(),
+                                                  stack_size)),
+      stack_ptr(stack_ptr) {}
 
 }  // namespace anvill

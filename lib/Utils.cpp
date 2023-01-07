@@ -28,6 +28,7 @@
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <cstdlib>
 #include <optional>
 #include <sstream>
 
@@ -806,6 +807,10 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
   return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
 
+llvm::Value *GetBasicBlockStackPtr(llvm::Function *func) {
+  return func->getArg(0);
+}
+
 llvm::Value *
 ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                const anvill::LifterOptions &options,
@@ -816,5 +821,6 @@ ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
   return func->getArg(index +
                       options.arch->LiftedFunctionType()->getNumParams() + 1);
 }
+
 
 }  // namespace anvill

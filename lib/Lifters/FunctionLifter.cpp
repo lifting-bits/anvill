@@ -531,10 +531,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   ir.CreateStore(pc, next_pc_reg_ref);
   ir.CreateStore(pc, pc_reg_ref);
 
+
   auto abstract_stack = ir.CreateAlloca(
-      llvm::ArrayType::get(llvm::Type::getInt8Ty(this->llvm_context),
-                           decl.stack_depth),
-      nullptr, "abstract_stack");
+      AbstractStack::StackTypeFromSize(llvm_context, decl.stack_depth), nullptr,
+      "abstract_stack");
   // Add a branch between the first block of the lifted function, which sets
   // up some local variables, and the block that will contain the lifted
   // instruction.

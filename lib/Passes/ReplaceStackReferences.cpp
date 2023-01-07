@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "anvill/Declarations.h"
@@ -163,7 +164,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   CrossReferenceFolder folder(resolver, this->lifter.DataLayout());
   StackModel smodel(cont, this->lifter.Options().arch);
 
-  std::vector<std::pair<llvm::Use *, BasicBlockVar>> to_replace_vars;
+  std::vector<std::pair<llvm::Use *, std::variant<BasicBlockVar, std::int64_t>>>
+      to_replace_vars;
 
   for (auto use : EnumerateStackPointerUsages(F)) {
     const auto reference = folder.TryResolveReferenceWithCaching(use->get());
@@ -179,8 +181,16 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     if (referenced_variable.has_value() && referenced_variable->offset == 0 &&
         llvm::isa<llvm::PointerType>(use->get()->getType())) {
       to_replace_vars.push_back({use, referenced_variable->decl});
+    } else {
+      // otherwise we are going to escape the abstract stack
+      to_replace_vars.push_back({use, stack_offset});
     }
   }
+
+
+  AbstractStack stk(
+      cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F),
+      lifter.Options().stack_frame_recovery_options.stack_grows_down);
 
   for (auto [use, v] : to_replace_vars) {
     llvm::IRBuilder<> ir(&F.getEntryBlock(), F.getEntryBlock().begin());
@@ -188,9 +198,14 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       ir.SetInsertPoint(insn);
     }
 
-    auto g = anvill::ProvidePointerFromFunctionArgs(
-        &F, v.index, this->lifter.Options(), cont);
-    use->set(g);
+    if (std::holds_alternative<BasicBlockVar>(v)) {
+      auto g = anvill::ProvidePointerFromFunctionArgs(
+          &F, std::get<BasicBlockVar>(v).index, this->lifter.Options(), cont);
+      use->set(g);
+    } else {
+      auto offset = std::get<int64_t>(v);
+      use->set(stk.PointerToStackMemberFromOffset(ir, offset));
+    }
   }
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 

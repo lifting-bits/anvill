@@ -70,8 +70,6 @@ class BasicBlockLifter : public CodeLifter {
   BasicBlockFunction CreateBasicBlockFunction();
 
 
-  llvm::Type *GetFrameType() const;
-
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,
                                                llvm::BasicBlock *&block);
 

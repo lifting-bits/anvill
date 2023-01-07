@@ -215,6 +215,8 @@ class BasicBlockContext {
 
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 
+  virtual size_t GetStackSize() const = 0;
+
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
   // Deduplicates locations and ensures there are no overlapping decls
@@ -233,6 +235,26 @@ class BasicBlockContext {
   virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const = 0;
 };
 
+class AbstractStack {
+ private:
+  bool stack_grows_down;
+  llvm::Type *stack_type;
+  llvm::Value *stack_ptr;
+
+ public:
+  AbstractStack(size_t stack_size, llvm::Value *stack_ptr,
+                bool stack_grows_down);
+
+  size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
+
+  static llvm::Type *StackTypeFromSize(llvm::LLVMContext &context, size_t size);
+
+  llvm::Type *StackType() const;
+
+  llvm::Value *PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
+                                              std::int64_t stack_off) const;
+};
+
 struct FunctionDecl;
 class SpecBlockContext : public BasicBlockContext {
  private:
@@ -249,6 +271,8 @@ class SpecBlockContext : public BasicBlockContext {
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
+
+  virtual size_t GetStackSize() const override;
 
 
  protected:

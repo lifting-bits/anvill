@@ -573,12 +573,6 @@ BasicBlockLifter::StackOffsetFromStackPointer(std::int64_t stack_off) const {
 }
 
 
-llvm::Type *BasicBlockLifter::GetFrameType() const {
-  return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(llvm_context),
-                              this->decl.stack_depth);
-}
-
-
 void BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {
@@ -598,16 +592,15 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 
-  auto i32 = llvm::IntegerType::get(llvm_context, 32);
+  AbstractStack stack(
+      decl.stack_depth, parent_stack,
+      this->options.stack_frame_recovery_options.stack_grows_down);
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
-                                  parent_stack,
-                                  i32](size_t index) -> llvm::Value * {
+                                  &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
     if (repr_var.param.mem_reg) {
-      auto off = this->StackOffsetFromStackPointer(repr_var.param.mem_offset);
-      return builder.CreateGEP(
-          this->GetFrameType(), parent_stack,
-          {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, off)});
+      return stack.PointerToStackMemberFromOffset(builder,
+                                                  repr_var.param.mem_offset);
     }
     return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };
