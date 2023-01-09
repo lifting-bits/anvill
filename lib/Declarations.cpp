@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -462,33 +463,60 @@ AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   // welp lets crash if we are going to do the wrong thing
   CHECK((this->stack_grows_down && stack_off <= 0) ||
         (!this->stack_grows_down && stack_off >= 0));
-  return std::abs(stack_off);
+
+  if (this->stack_grows_down) {
+    LOG(INFO) << this->total_size;
+    return this->total_size + stack_off;
+  } else {
+    return stack_off;
+  }
 }
 
-llvm::Type *AbstractStack::StackType() const {
-  return this->stack_type;
-}
-
-llvm::Value *
+std::optional<llvm::Value *>
 AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
                                               std::int64_t stack_off) const {
   auto off = this->StackOffsetFromStackPointer(stack_off);
-  auto i32 = llvm::IntegerType::getInt32Ty(this->stack_ptr->getContext());
-  return ir.CreateGEP(
-      this->StackType(), this->stack_ptr,
-      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, off)});
+  auto i32 = llvm::IntegerType::getInt32Ty(this->context);
+  LOG(INFO) << "Looking for offset" << off;
+  auto curr_off = 0;
+  auto curr_ind = 0;
+  for (auto [sz, ptr] : this->components) {
+    if (off < curr_off + sz) {
+      LOG(INFO) << "Found for " << remill::LLVMThingToString(ptr);
+      LOG(INFO) << curr_off << " " << sz;
+      return ir.CreateGEP(this->stack_types[curr_ind], ptr,
+                          {llvm::ConstantInt::get(i32, 0),
+                           llvm::ConstantInt::get(i32, off - curr_off)});
+    }
+    curr_off += sz;
+    curr_ind++;
+  }
+
+  return std::nullopt;
 }
+
 llvm::Type *AbstractStack::StackTypeFromSize(llvm::LLVMContext &context,
                                              size_t size) {
   return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(context), size);
 }
 
 
-AbstractStack::AbstractStack(size_t stack_size, llvm::Value *stack_ptr,
+AbstractStack::AbstractStack(llvm::LLVMContext &context,
+                             std::vector<StackComponent> components,
                              bool stack_grows_down)
-    : stack_grows_down(stack_grows_down),
-      stack_type(AbstractStack::StackTypeFromSize(stack_ptr->getContext(),
-                                                  stack_size)),
-      stack_ptr(stack_ptr) {}
+    : context(context),
+      stack_grows_down(stack_grows_down),
+      components(std::move(components)),
+      total_size(0) {
+
+  if (stack_grows_down) {
+    std::reverse(this->components.begin(), this->components.end());
+  }
+
+  for (const auto &[k, v] : this->components) {
+    this->stack_types.push_back(this->StackTypeFromSize(context, k));
+    total_size += k;
+  }
+}
 
 }  // namespace anvill

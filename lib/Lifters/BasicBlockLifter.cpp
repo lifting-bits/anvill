@@ -593,14 +593,20 @@ void BasicBlockLifter::CallBasicBlockFunction(
   auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 
   AbstractStack stack(
-      decl.stack_depth, parent_stack,
+      builder.getContext(), {{decl.stack_depth, parent_stack}},
       this->options.stack_frame_recovery_options.stack_grows_down);
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
     if (repr_var.param.mem_reg) {
-      return stack.PointerToStackMemberFromOffset(builder,
-                                                  repr_var.param.mem_offset);
+      auto stack_ptr = stack.PointerToStackMemberFromOffset(
+          builder, repr_var.param.mem_offset);
+      if (stack_ptr) {
+        return *stack_ptr;
+      } else {
+        LOG(FATAL)
+            << "Unable to create a ptr to the stack, the stack is too small to represent the param.";
+      }
     }
     return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };

@@ -255,7 +255,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
-  fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+  fpm.addPass(llvm::SROAPass());
+  // fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::VerifierPass());
@@ -268,12 +269,14 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   // makes code easier to read and analyze. This is a fairly narrow optimization
   // but it comes up often enough for lifted code.
 
-  AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
+
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::VerifierPass());
+  AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
+
   AddBranchRecovery(fpm);
   fpm.addPass(llvm::VerifierPass());
 
@@ -297,6 +300,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(llvm::NewGVNPass());
   second_fpm.addPass(llvm::VerifierPass());
   AddSpreadPCMetadata(second_fpm, options);
+
+  second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());

@@ -235,24 +235,35 @@ class BasicBlockContext {
   virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const = 0;
 };
 
+
+/// An abstract stack is made up of components with a bytesize, these components allow us to split the stack at offsets
+/// in particular this is helpful for splitting out stack space beyond the locals for things like return addresses
+struct StackComponent {
+  size_t size;
+  llvm::Value *stackptr;
+};
+
 class AbstractStack {
  private:
+  llvm::LLVMContext &context;
   bool stack_grows_down;
-  llvm::Type *stack_type;
-  llvm::Value *stack_ptr;
+  std::vector<llvm::Type *> stack_types;
+  std::vector<StackComponent> components;
+  size_t total_size;
 
  public:
-  AbstractStack(size_t stack_size, llvm::Value *stack_ptr,
-                bool stack_grows_down);
+  AbstractStack(llvm::LLVMContext &context,
+                std::vector<StackComponent> components, bool stack_grows_down);
 
   size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
   static llvm::Type *StackTypeFromSize(llvm::LLVMContext &context, size_t size);
 
-  llvm::Type *StackType() const;
+  //llvm::Type *StackType() const;
 
-  llvm::Value *PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
-                                              std::int64_t stack_off) const;
+  std::optional<llvm::Value *>
+  PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
+                                 std::int64_t stack_off) const;
 };
 
 struct FunctionDecl;

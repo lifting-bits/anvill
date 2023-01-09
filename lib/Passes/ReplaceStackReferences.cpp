@@ -2,11 +2,16 @@
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
 #include <glog/logging.h>
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/IntervalMap.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/Type.h>
+#include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/raw_ostream.h>
@@ -22,6 +27,29 @@
 #include "anvill/Declarations.h"
 namespace anvill {
 
+namespace {
+std::optional<llvm::Value *>
+GetPtrToOffsetInto(llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
+                   llvm::Type *deref_type, llvm::Value *ptr,
+                   size_t offset_into_type) {
+  if (offset_into_type == 0) {
+    return ptr;
+  }
+
+
+  llvm::APInt ap_off(64, offset_into_type, false);
+  auto elem_type = deref_type;
+  auto index = dl.getGEPIndexForOffset(elem_type, ap_off);
+
+  if (!index) {
+    return std::nullopt;
+  }
+  auto i32 = llvm::IntegerType::getInt32Ty(deref_type->getContext());
+  return ir.CreateGEP(
+      deref_type, ptr,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, *index)});
+}
+}  // namespace
 
 llvm::StringRef ReplaceStackReferences::name(void) {
   return "Replace stack references";
@@ -78,7 +106,8 @@ class StackModel {
     return arch->DataLayout().getTypeSizeInBits(decl.type) / 8;
   }
 
-  StackModel(const BasicBlockContext &cont, const remill::Arch *arch) {
+  StackModel(const BasicBlockContext &cont, const remill::Arch *arch,
+             const AbstractStack &abs_stack) {
     this->arch = arch;
     size_t index = 0;
     // this feels weird maybe it should be all stack variables but then if the variable isnt live...
@@ -114,6 +143,7 @@ class StackModel {
   }
 
   std::optional<StackVariable> GetOverlappingParam(std::int64_t off) {
+
     auto vlte = GetParamLte(off);
 
     if (!vlte.has_value()) {
@@ -121,11 +151,12 @@ class StackModel {
     }
 
     auto offset_into_var = off - vlte->decl.mem_offset;
-    if (offset_into_var < static_cast<std::int64_t>(
-                              vlte->decl.type->getPrimitiveSizeInBits() / 8)) {
+    if (offset_into_var <
+        static_cast<std::int64_t>(GetParamDeclSize(vlte->decl))) {
       return {{offset_into_var, *vlte}};
     }
-
+    LOG(INFO) << "Looking for off  " << off << " but not fitting "
+              << offset_into_var << " got off " << vlte->decl.mem_offset;
     return std::nullopt;
   }
 
@@ -162,9 +193,24 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     const BasicBlockContext &cont) {
   NullCrossReferenceResolver resolver;
   CrossReferenceFolder folder(resolver, this->lifter.DataLayout());
-  StackModel smodel(cont, this->lifter.Options().arch);
 
-  std::vector<std::pair<llvm::Use *, std::variant<BasicBlockVar, std::int64_t>>>
+
+  size_t overrunsz = 100;
+  llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
+  auto overrunptr = ent_insert.CreateAlloca(
+      AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
+
+  AbstractStack stk(
+      F.getContext(),
+      {{cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F)},
+       {overrunsz, overrunptr}},
+      lifter.Options().stack_frame_recovery_options.stack_grows_down);
+
+  StackModel smodel(cont, this->lifter.Options().arch, stk);
+
+
+  // TODO(Ian): do a fixed size here
+  std::vector<std::pair<llvm::Use *, std::variant<llvm::Value *, std::int64_t>>>
       to_replace_vars;
 
   for (auto use : EnumerateStackPointerUsages(F)) {
@@ -177,34 +223,45 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     int64_t stack_offset = reference.Displacement(this->lifter.DataLayout());
 
     auto referenced_variable = smodel.GetOverlappingParam(stack_offset);
+
     //TODO(Ian) handle nonzero offset
-    if (referenced_variable.has_value() && referenced_variable->offset == 0 &&
+    if (referenced_variable.has_value() &&
         llvm::isa<llvm::PointerType>(use->get()->getType())) {
-      to_replace_vars.push_back({use, referenced_variable->decl});
-    } else {
-      // otherwise we are going to escape the abstract stack
-      to_replace_vars.push_back({use, stack_offset});
+
+      auto g = anvill::ProvidePointerFromFunctionArgs(
+          &F, referenced_variable->decl.index, this->lifter.Options(), cont);
+      auto ptr = GetPtrToOffsetInto(ent_insert, this->lifter.DataLayout(),
+                                    referenced_variable->decl.decl.type, g,
+                                    referenced_variable->offset);
+      if (ptr) {
+        to_replace_vars.push_back({use, *ptr});
+        continue;
+      }
     }
+    // otherwise we are going to escape the abstract stack
+    to_replace_vars.push_back({use, stack_offset});
   }
 
-
-  AbstractStack stk(
-      cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F),
-      lifter.Options().stack_frame_recovery_options.stack_grows_down);
+  if (to_replace_vars.empty()) {
+    return llvm::PreservedAnalyses::all();
+  }
 
   for (auto [use, v] : to_replace_vars) {
-    llvm::IRBuilder<> ir(&F.getEntryBlock(), F.getEntryBlock().begin());
-    if (auto *insn = llvm::dyn_cast<llvm::Instruction>(use->get())) {
-      ir.SetInsertPoint(insn);
-    }
+    use->get()->dump();
 
-    if (std::holds_alternative<BasicBlockVar>(v)) {
-      auto g = anvill::ProvidePointerFromFunctionArgs(
-          &F, std::get<BasicBlockVar>(v).index, this->lifter.Options(), cont);
-      use->set(g);
+    if (std::holds_alternative<llvm::Value *>(v)) {
+
+      use->set(std::get<llvm::Value *>(v));
     } else {
       auto offset = std::get<int64_t>(v);
-      use->set(stk.PointerToStackMemberFromOffset(ir, offset));
+      auto ptr = stk.PointerToStackMemberFromOffset(ent_insert, offset);
+      if (ptr) {
+        use->set(*ptr);
+      } else {
+        LOG(ERROR) << "No pointer for offset " << offset
+                   << " was supposed to use "
+                   << stk.StackOffsetFromStackPointer(offset);
+      }
     }
   }
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
