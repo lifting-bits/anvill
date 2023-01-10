@@ -292,7 +292,6 @@ bool BasicBlockLifter::DecodeInstructionInto(const uint64_t addr,
     return options.arch->DecodeDelayedInstruction(
         addr, inst_out->bytes, *inst_out, std::move(context));
   } else {
-    DLOG(INFO) << "Ops emplace: " << inst_out->operands.size();
     return options.arch->DecodeInstruction(addr, inst_out->bytes, *inst_out,
                                            std::move(context));
   }
@@ -315,11 +314,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
   auto init_context = this->CreateDecodingContext(this->block_def);
 
-
+  LOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
+            << " with size " << this->block_def.size;
   bool ended_on_terminal = false;
   while (reached_addr < this->block_def.addr + this->block_def.size &&
          !ended_on_terminal) {
     auto addr = reached_addr;
+    LOG(INFO) << "Decoding at addr " << std::hex << addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
       LOG(FATAL) << "Failed to decode insn in block " << std::hex << addr;
@@ -338,6 +339,8 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);
+    LOG_IF(INFO, ended_on_terminal)
+        << "On terminal at addr: " << std::hex << addr;
   }
 
   if (!ended_on_terminal) {
