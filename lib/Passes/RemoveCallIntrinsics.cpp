@@ -6,6 +6,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/raw_ostream.h>
+#include <remill/BC/Util.h>
 
 namespace anvill {
 llvm::StringRef RemoveCallIntrinsics::name(void) {
@@ -44,7 +45,9 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
 
       const remill::IntrinsicTable table(
           remillFunctionCall->getFunction()->getParent());
-
+      LOG(INFO) << "Replacing call from: "
+                << remill::LLVMThingToString(remillFunctionCall)
+                << " with call to " << std::hex << ra.u.address;
       auto new_mem =
           fdecl->CallFromLiftedBlock(entity, lifter.Options().TypeDictionary(),
                                      table, ir, state_ptr, mem_ptr);

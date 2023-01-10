@@ -275,7 +275,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // the function, which will be based off of the register state
   // on entry to the function.
   auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, ir);
-
+  LOG(INFO) << "Modifying ret stack pointer by: "
+            << return_stack_pointer_offset;
   const auto sp_val_on_exit = ir.CreateAdd(
       ir.CreateLoad(return_stack_pointer->type, new_sp_base),
       llvm::ConstantInt::get(return_stack_pointer->type,

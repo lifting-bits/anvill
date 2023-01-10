@@ -194,7 +194,6 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   NullCrossReferenceResolver resolver;
   CrossReferenceFolder folder(resolver, this->lifter.DataLayout());
 
-
   size_t overrunsz = 100;
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
