@@ -488,6 +488,7 @@ static bool IsStackPointerRegName(llvm::Module *module,
     case llvm::Triple::ArchType::sparcel:
     case llvm::Triple::ArchType::sparcv9:
       return reg_name == "o6" || reg_name == "sp";
+    case llvm::Triple::ArchType::ppc: return reg_name == "r1";
     default: return false;
   }
 }
@@ -505,7 +506,8 @@ static bool IsProgramCounterRegName(llvm::Module *module,
       return reg_name == "pc" || reg_name == "wpc";
     case llvm::Triple::ArchType::aarch64_32:
     case llvm::Triple::ArchType::arm:
-    case llvm::Triple::ArchType::armeb: return reg_name == "pc";
+    case llvm::Triple::ArchType::armeb:
+    case llvm::Triple::ArchType::ppc: return reg_name == "pc";
     case llvm::Triple::ArchType::sparc:
     case llvm::Triple::ArchType::sparcel:
     case llvm::Triple::ArchType::sparcv9:
