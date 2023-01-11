@@ -13,6 +13,7 @@
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -807,11 +808,11 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
   return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
 
-llvm::Value *GetBasicBlockStackPtr(llvm::Function *func) {
+llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
   return func->getArg(0);
 }
 
-llvm::Value *
+llvm::Argument *
 ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                const anvill::LifterOptions &options,
                                const anvill::BasicBlockContext &context) {

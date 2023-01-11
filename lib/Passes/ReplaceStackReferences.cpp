@@ -4,6 +4,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/IntervalMap.h>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "anvill/Declarations.h"
+#include "anvill/Utils.h"
 namespace anvill {
 
 namespace {
@@ -212,6 +214,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   std::vector<std::pair<llvm::Use *, std::variant<llvm::Value *, std::int64_t>>>
       to_replace_vars;
 
+  auto collision = false;
   for (auto use : EnumerateStackPointerUsages(F)) {
     const auto reference = folder.TryResolveReferenceWithCaching(use->get());
     if (!reference.is_valid || !reference.references_stack_pointer) {
@@ -236,6 +239,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
         to_replace_vars.push_back({use, *ptr});
         continue;
       }
+      collision = true;
     }
     // otherwise we are going to escape the abstract stack
     to_replace_vars.push_back({use, stack_offset});
@@ -264,6 +268,23 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     }
   }
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
+
+
+  if (EnumerateStackPointerUsages(F).empty() && !collision) {
+    auto noalias =
+        llvm::Attribute::get(F.getContext(), llvm::Attribute::NoAlias);
+
+    // Note(Ian): the theory here is if all stack references are resolved, then any
+    // pointer use of the stack only derives from unresolved offsets
+    // TODO(Ian): this isnt sound if the resolved stack pointer then has further manipulation causing it to land inside a variable
+    anvill::GetBasicBlockStackPtr(&F)->addAttr(noalias);
+
+    for (auto lives : cont.LiveParamsAtEntryAndExit()) {
+      ProvidePointerFromFunctionArgs(&F, lives.index, this->lifter.Options(),
+                                     cont)
+          ->addAttr(noalias);
+    }
+  }
 
   return to_replace_vars.empty() ? llvm::PreservedAnalyses::all()
                                  : llvm::PreservedAnalyses::none();

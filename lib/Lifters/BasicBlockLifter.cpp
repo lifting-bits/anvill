@@ -3,6 +3,7 @@
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -398,10 +399,19 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   auto start_ind = lifted_func_type->getNumParams() + 1;
   for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
+    auto arg = remill::NthArgument(func, start_ind);
     if (!v.param.name.empty()) {
-      auto arg = remill::NthArgument(func, start_ind);
       arg->setName(v.param.name);
     }
+
+    if (v.param.reg) {
+      // Registers should not have aliases
+      arg->addAttr(llvm::Attribute::get(llvm_context,
+                                        llvm::Attribute::AttrKind::NoAlias));
+    }
+    // TODO(Ian): If we can eliminate the stack then we also are able to declare more no aliases here, not sure the
+    // best way to handle this
+
     start_ind += 1;
   }
 

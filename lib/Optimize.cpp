@@ -291,6 +291,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
+  second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
@@ -299,9 +300,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::NewGVNPass());
   second_fpm.addPass(llvm::VerifierPass());
+  second_fpm.addPass(llvm::InstCombinePass());
   AddSpreadPCMetadata(second_fpm, options);
 
-  second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());
