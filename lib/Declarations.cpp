@@ -143,7 +143,7 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
   };
 
   add_all_from_vector(live_entries);
-  add_all_from_vector(live_entries);
+  add_all_from_vector(live_exits);
   return res;
 }
 
