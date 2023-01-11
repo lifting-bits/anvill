@@ -409,7 +409,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 
   for (uint64_t succ : blk.outgoing_edges) {
     sw->addCase(llvm::ConstantInt::get(
-                    llvm::cast<llvm::IntegerType>(this->pc_reg_type), succ),
+                    llvm::cast<llvm::IntegerType>(this->address_type), succ),
                 this->GetOrCreateBlock(succ));
   }
 }
