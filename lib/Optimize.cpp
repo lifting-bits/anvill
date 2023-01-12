@@ -287,6 +287,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
   mpm.run(module, mam);
 
+  llvm::ModulePassManager second_mpm;
   llvm::FunctionPassManager second_fpm;
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
@@ -315,8 +316,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(llvm::VerifierPass());
 
 
-  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
-  mpm.run(module, mam);
+  second_mpm.addPass(
+      llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
+  second_mpm.run(module, mam);
 
   // Get rid of all final uses of `__anvill_pc`.
   if (lifter.Options().should_remove_anvill_pc) {
