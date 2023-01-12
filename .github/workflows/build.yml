@@ -144,11 +144,11 @@ jobs:
         shell: bash
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: "Install Just"
         shell: bash
         run: |
           cargo install just
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-java@v2
         with:
