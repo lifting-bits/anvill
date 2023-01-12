@@ -148,6 +148,7 @@ jobs:
         shell: bash
         run: |
           cargo install just
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-java@v2
         with:
