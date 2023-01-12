@@ -169,6 +169,10 @@ class StackModel {
   std::optional<BasicBlockVar> GetParamLte(std::int64_t off) {
     auto prec = this->frame.lower_bound(off);
     if (prec == this->frame.end()) {
+      if (this->frame.begin() != this->frame.end() &&
+          this->frame.begin()->first <= off) {
+        return this->frame.begin()->second;
+      }
       return std::nullopt;
     }
 
@@ -193,6 +197,9 @@ class StackModel {
     if (!vlte.has_value()) {
       return std::nullopt;
     }
+
+    LOG(INFO) << "value found lte offset: " << vlte->decl.mem_offset << " "
+              << off;
 
     auto offset_into_var = off - vlte->decl.mem_offset;
     if (offset_into_var <
@@ -289,6 +296,10 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       }
       collision = true;
     }
+
+    LOG(INFO) << "Escaping stack access " << stack_offset << " "
+              << remill::LLVMThingToString(use->get());
+
     // otherwise we are going to escape the abstract stack
     to_replace_vars.push_back({use, stack_offset});
   }
