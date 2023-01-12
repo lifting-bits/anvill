@@ -256,7 +256,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROAPass());
-  // fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+  //fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::VerifierPass());
@@ -287,10 +287,12 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
   mpm.run(module, mam);
 
+  llvm::ModulePassManager second_mpm;
   llvm::FunctionPassManager second_fpm;
 
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
+  second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
@@ -299,9 +301,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::NewGVNPass());
   second_fpm.addPass(llvm::VerifierPass());
+  second_fpm.addPass(llvm::InstCombinePass());
   AddSpreadPCMetadata(second_fpm, options);
 
-  second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());
@@ -313,8 +316,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   second_fpm.addPass(llvm::VerifierPass());
 
 
-  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
-  mpm.run(module, mam);
+  second_mpm.addPass(
+      llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
+  second_mpm.run(module, mam);
 
   // Get rid of all final uses of `__anvill_pc`.
   if (lifter.Options().should_remove_anvill_pc) {

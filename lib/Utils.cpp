@@ -13,6 +13,10 @@
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/DenseSet.h>
+#include <llvm/ADT/SmallSet.h>
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -23,6 +27,7 @@
 #include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
+#include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/IntrinsicTable.h>
@@ -31,6 +36,7 @@
 #include <cstdlib>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 
 namespace anvill {
 
@@ -565,12 +571,26 @@ class StackPointerResolverImpl {
  public:
   bool ResolveFromValue(llvm::Value *val);
   bool ResolveFromConstantExpr(llvm::ConstantExpr *ce);
+  bool IsStackPointerBase(llvm::Value *canidate);
 
-  inline explicit StackPointerResolverImpl(llvm::Module *m) : module(m) {}
+  inline explicit StackPointerResolverImpl(
+      llvm::Module *m, llvm::ArrayRef<llvm::Value *> additional_base_stack_ptrs)
+      : module(m) {
+    this->stack_related_args.insert(additional_base_stack_ptrs.begin(),
+                                    additional_base_stack_ptrs.end());
+  }
 
   llvm::Module *const module;
   std::unordered_map<llvm::Value *, bool> cache;
+
+  llvm::SmallSet<llvm::Value *, 10> stack_related_args;
 };
+
+bool StackPointerResolverImpl::IsStackPointerBase(llvm::Value *canidate) {
+  return IsStackPointer(module, canidate) ||
+         (this->stack_related_args.find(canidate) !=
+          this->stack_related_args.end());
+}
 
 bool StackPointerResolverImpl::ResolveFromValue(llvm::Value *val) {
 
@@ -603,7 +623,7 @@ bool StackPointerResolverImpl::ResolveFromValue(llvm::Value *val) {
         val3 && val3 != val) {
       result = ResolveFromValue(val3);
     } else {
-      result = IsStackPointer(module, val);
+      result = this->IsStackPointerBase(val);
     }
   }
 
@@ -650,8 +670,10 @@ bool StackPointerResolverImpl::ResolveFromConstantExpr(llvm::ConstantExpr *ce) {
 }
 
 StackPointerResolver::~StackPointerResolver(void) {}
-StackPointerResolver::StackPointerResolver(llvm::Module *module)
-    : impl(new StackPointerResolverImpl(module)) {}
+StackPointerResolver::StackPointerResolver(
+    llvm::Module *module,
+    llvm::ArrayRef<llvm::Value *> additional_base_stack_ptrs)
+    : impl(new StackPointerResolverImpl(module, additional_base_stack_ptrs)) {}
 
 // Returns `true` if it looks like `val` is derived from a symbolic stack
 // pointer representation.
@@ -660,7 +682,7 @@ bool StackPointerResolver::IsRelatedToStackPointer(llvm::Value *val) const {
 }
 
 bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
-  StackPointerResolverImpl impl(module);
+  StackPointerResolverImpl impl(module, {});
   return impl.ResolveFromValue(val);
 }
 
@@ -809,11 +831,11 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
   return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
 
-llvm::Value *GetBasicBlockStackPtr(llvm::Function *func) {
+llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
   return func->getArg(0);
 }
 
-llvm::Value *
+llvm::Argument *
 ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                const anvill::LifterOptions &options,
                                const anvill::BasicBlockContext &context) {

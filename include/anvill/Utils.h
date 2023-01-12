@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <remill/Arch/Arch.h>
@@ -69,10 +70,12 @@ class StackPointerResolver {
 
  public:
   ~StackPointerResolver(void);
-  explicit StackPointerResolver(llvm::Module *module);
+  explicit StackPointerResolver(
+      llvm::Module *module,
+      llvm::ArrayRef<llvm::Value *> additional_base_stack_ptrst);
 
   // Returns `true` if it looks like `val` is derived from a symbolic stack
-  // pointer representation.
+  // pointer representation, a basic block variable that is stack derived, or the abstract stack itself.
   bool IsRelatedToStackPointer(llvm::Value *) const;
 };
 
@@ -131,8 +134,9 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
 std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 
-llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
-                                            const anvill::LifterOptions &,
-                                            const BasicBlockContext &);
-llvm::Value *GetBasicBlockStackPtr(llvm::Function *func);
+llvm::Argument *ProvidePointerFromFunctionArgs(llvm::Function *func,
+                                               size_t index,
+                                               const anvill::LifterOptions &,
+                                               const BasicBlockContext &);
+llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
 }  // namespace anvill

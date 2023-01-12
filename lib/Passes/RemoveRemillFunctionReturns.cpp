@@ -6,9 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/RemoveRemillFunctionReturns.h>
-
 #include <anvill/CrossReferenceFolder.h>
+#include <anvill/Passes/RemoveRemillFunctionReturns.h>
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
@@ -27,6 +26,7 @@
 
 #include <utility>
 #include <vector>
+
 #include "Utils.h"
 
 namespace anvill {
@@ -54,12 +54,12 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
       ret_addr->eraseFromParent();
       ret_addr = next_ret_addr;
 
-    // Call to `llvm.returnaddress`.
+      // Call to `llvm.returnaddress`.
     } else if (IsReturnAddress(module, ret_addr)) {
       ret_addr->eraseFromParent();
       break;
 
-    // Who knows?!
+      // Who knows?!
     } else {
       LOG(ERROR)
           << "Encountered unexpected instruction when removing return address: "
@@ -83,8 +83,8 @@ static void OverwriteReturnAddress(
   for (auto &[call, ret_addr] : fixups) {
     // Store the return address.
     llvm::IRBuilder<> ir(call);
-    auto *bit_cast = ir.CreateBitCast(addr_of_ret_addr,
-                                      llvm::PointerType::get(ir.getContext(), 0));
+    auto *bit_cast = ir.CreateBitCast(
+        addr_of_ret_addr, llvm::PointerType::get(ir.getContext(), 0));
     CopyMetadataTo(call, bit_cast);
     auto *store = ir.CreateStore(ret_addr, bit_cast);
     CopyMetadataTo(call, store);
@@ -110,7 +110,7 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
                                  llvm::FunctionAnalysisManager &AM) {
   const auto module = func.getParent();
   CrossReferenceFolder xref_folder(xref_resolver, module->getDataLayout());
-  StackPointerResolver sp_resolver(module);
+  StackPointerResolver sp_resolver(module, {});
 
   std::vector<llvm::CallBase *> matches_pattern;
   std::vector<std::pair<llvm::CallBase *, llvm::Value *>> fixups;
@@ -121,7 +121,8 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
           func && func->getName() == "__remill_function_return") {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
-        switch (QueryReturnAddress(xref_folder, sp_resolver, module, ret_addr)) {
+        switch (
+            QueryReturnAddress(xref_folder, sp_resolver, module, ret_addr)) {
           case kFoundReturnAddress: matches_pattern.push_back(call); break;
 
           // Do nothing if it's a symbolic stack pointer load; we're probably
@@ -158,11 +159,9 @@ RemoveRemillFunctionReturns::run(llvm::Function &func,
 }
 
 // Returns `true` if `val` is a return address.
-ReturnAddressResult
-RemoveRemillFunctionReturns::QueryReturnAddress(
+ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
     const CrossReferenceFolder &xref_folder,
-    const StackPointerResolver &sp_resolver,
-    llvm::Module *module,
+    const StackPointerResolver &sp_resolver, llvm::Module *module,
     llvm::Value *val) const {
 
   if (IsReturnAddress(module, val)) {
@@ -200,12 +199,12 @@ RemoveRemillFunctionReturns::QueryReturnAddress(
   } else if (IsRelatedToStackPointer(module, val)) {
     return kFoundSymbolicStackPointerLoad;
 
-  // Sometimes optimizations result in really crazy looking constant expressions
-  // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
-  // this situation by initializing a "magic" address associated with
-  // `__anvill_ra`, and then if we find this magic value on something that
-  // references `__anvill_ra`, then we conclude that all those manipulations
-  // in the constant expression are actually not important.
+    // Sometimes optimizations result in really crazy looking constant expressions
+    // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
+    // this situation by initializing a "magic" address associated with
+    // `__anvill_ra`, and then if we find this magic value on something that
+    // references `__anvill_ra`, then we conclude that all those manipulations
+    // in the constant expression are actually not important.
   } else if (auto xr = xref_folder.TryResolveReferenceWithClearedCache(val);
              xr.is_valid && xr.references_return_address &&
              xr.u.address == xref_folder.MagicReturnAddressValue()) {

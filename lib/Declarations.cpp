@@ -277,6 +277,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, ir);
   LOG(INFO) << "Modifying ret stack pointer by: "
             << return_stack_pointer_offset;
+
+  // TODO(Ian): this could go in the wrong direction if stack option is set to go up
   const auto sp_val_on_exit = ir.CreateAdd(
       ir.CreateLoad(return_stack_pointer->type, new_sp_base),
       llvm::ConstantInt::get(return_stack_pointer->type,
@@ -471,6 +473,28 @@ AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   } else {
     return stack_off;
   }
+}
+
+std::int64_t AbstractStack::StackPointerFromStackOffset(size_t offset) const {
+  if (stack_grows_down) {
+    return static_cast<std::int64_t>(offset) - this->total_size;
+  } else {
+    return offset;
+  }
+}
+
+
+std::optional<std::int64_t>
+AbstractStack::StackPointerFromStackCompreference(llvm::Value *tgt) const {
+  size_t curr_off = 0;
+  for (auto comp : this->components) {
+    if (comp.stackptr == tgt) {
+      return this->StackPointerFromStackOffset(curr_off);
+    }
+    curr_off += comp.size;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<llvm::Value *>

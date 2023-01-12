@@ -8,6 +8,8 @@
 #include <llvm/Support/raw_ostream.h>
 #include <remill/BC/Util.h>
 
+#include "anvill/Utils.h"
+
 namespace anvill {
 llvm::StringRef RemoveCallIntrinsics::name(void) {
   return "Remove call intrinsics.";
@@ -20,6 +22,11 @@ llvm::PreservedAnalyses
 RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
                                      llvm::FunctionAnalysisManager &am,
                                      llvm::PreservedAnalyses prev) {
+  // remillFunctionCall->getFunction()->dump();
+  // if (remillFunctionCall->getFunction()->getName().endswith(
+  //         "basic_block_func4201200")) {
+  //   LOG(FATAL) << "done";
+  // }
   CHECK(remillFunctionCall->getNumOperands() == 4);
   auto target_func = remillFunctionCall->getArgOperand(1);
   auto state_ptr = remillFunctionCall->getArgOperand(0);
@@ -42,6 +49,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
     if (fdecl && entity) {
       llvm::IRBuilder<> ir(remillFunctionCall->getParent());
       ir.SetInsertPoint(remillFunctionCall);
+
 
       const remill::IntrinsicTable table(
           remillFunctionCall->getFunction()->getParent());
