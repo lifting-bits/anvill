@@ -141,10 +141,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
       - name: Install stable rust
-        shell: bash
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uses: dtolnay/rust-toolchain@stable
+
       - name: "Install Just"
         shell: bash
         run: |
