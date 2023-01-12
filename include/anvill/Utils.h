@@ -70,10 +70,12 @@ class StackPointerResolver {
 
  public:
   ~StackPointerResolver(void);
-  explicit StackPointerResolver(llvm::Module *module);
+  explicit StackPointerResolver(
+      llvm::Module *module,
+      llvm::ArrayRef<llvm::Value *> additional_base_stack_ptrst);
 
   // Returns `true` if it looks like `val` is derived from a symbolic stack
-  // pointer representation.
+  // pointer representation, a basic block variable that is stack derived, or the abstract stack itself.
   bool IsRelatedToStackPointer(llvm::Value *) const;
 };
 

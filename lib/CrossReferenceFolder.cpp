@@ -25,6 +25,8 @@
 #include <llvm/Support/Casting.h>
 #include <remill/BC/Util.h>
 
+#include <functional>
+#include <optional>
 #include <unordered_map>
 
 namespace anvill {
@@ -56,10 +58,13 @@ using ResolvedCrossReferenceCache =
 
 class CrossReferenceFolderImpl {
  public:
-  CrossReferenceFolderImpl(const CrossReferenceResolver &xref_resolver_,
-                           const llvm::DataLayout &dl_)
+  CrossReferenceFolderImpl(
+      const CrossReferenceResolver &xref_resolver_, const llvm::DataLayout &dl_,
+      std::function<std::optional<ResolvedCrossReference>(llvm::Value *)>
+          value_cb)
       : xref_resolver(xref_resolver_),
-        dl(dl_) {}
+        dl(dl_),
+        callback_resolve_value(std::move(value_cb)) {}
 
   ResolvedCrossReference ResolveInstruction(llvm::Instruction *inst_val);
   ResolvedCrossReference ResolveConstant(llvm::Constant *const_val);
@@ -171,6 +176,10 @@ class CrossReferenceFolderImpl {
 
   // Discovered entities.
   std::vector<llvm::Value *> entities;
+
+  // Callback
+  std::function<std::optional<ResolvedCrossReference>(llvm::Value *)>
+      callback_resolve_value;
 };
 
 
@@ -640,9 +649,13 @@ CrossReferenceFolderImpl::ResolveCall(llvm::CallInst *call) {
 // Try to resolve `val` as a cross-reference.
 ResolvedCrossReference
 CrossReferenceFolderImpl::ResolveValue(llvm::Value *val) {
+  auto cb_res = this->callback_resolve_value(val);
+  if (cb_res) {
+    return *cb_res;
+  }
+
   if (auto const_val = llvm::dyn_cast<llvm::Constant>(val)) {
     return ResolveConstant(const_val);
-
   } else if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
     return ResolveInstruction(inst_val);
   } else {
@@ -669,7 +682,9 @@ CrossReferenceFolder::~CrossReferenceFolder(void) {}
 // lifter that can resolve global references on our behalf.
 CrossReferenceFolder::CrossReferenceFolder(
     const CrossReferenceResolver &resolver, const llvm::DataLayout &dl)
-    : impl(std::make_shared<CrossReferenceFolderImpl>(resolver, dl)) {}
+    : impl(std::make_shared<CrossReferenceFolderImpl>(
+          resolver, dl,
+          [this](llvm::Value *v) { return this->ResolveValueCallback(v); })) {}
 
 // Return a reference to the data layout used by the cross-reference folder.
 const llvm::DataLayout &CrossReferenceFolder::DataLayout(void) const {
@@ -719,6 +734,11 @@ ResolvedCrossReference::Displacement(const llvm::DataLayout &dl) const {
   }
 
   return displacement;
+}
+
+std::optional<ResolvedCrossReference>
+CrossReferenceFolder::ResolveValueCallback(llvm::Value *) const {
+  return std::nullopt;
 }
 
 }  // namespace anvill

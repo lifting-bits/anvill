@@ -257,6 +257,13 @@ class AbstractStack {
 
   size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
+
+  std::int64_t StackPointerFromStackOffset(size_t offset) const;
+
+
+  std::optional<std::int64_t>
+  StackPointerFromStackCompreference(llvm::Value *) const;
+
   static llvm::Type *StackTypeFromSize(llvm::LLVMContext &context, size_t size);
 
   //llvm::Type *StackType() const;

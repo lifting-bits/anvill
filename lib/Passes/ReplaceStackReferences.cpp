@@ -3,6 +3,7 @@
 #include <anvill/Passes/ReplaceStackReferences.h>
 #include <glog/logging.h>
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/IntervalMap.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constants.h>
@@ -18,6 +19,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
+#include <remill/BC/Util.h>
 
 #include <cstdint>
 #include <map>
@@ -30,6 +32,43 @@
 namespace anvill {
 
 namespace {
+
+class StackCrossReferenceResolver : public CrossReferenceFolder {
+ private:
+  const llvm::DataLayout &dl;
+  const AbstractStack &abs_stack;
+
+  ResolvedCrossReference StackPtrToXref(std::int64_t off) const {
+    ResolvedCrossReference rxref;
+    rxref.is_valid = true;
+    rxref.references_stack_pointer = true;
+    rxref.size = dl.getPointerSizeInBits(0);
+    rxref.u.displacement = off;
+    return rxref;
+  }
+
+ public:
+  StackCrossReferenceResolver(const CrossReferenceResolver &resolver,
+                              const llvm::DataLayout &dl,
+                              const AbstractStack &abs_stack)
+      : CrossReferenceFolder(resolver, dl),
+        dl(dl),
+        abs_stack(abs_stack) {}
+
+ protected:
+  virtual std::optional<ResolvedCrossReference>
+  ResolveValueCallback(llvm::Value *v) const override {
+    LOG(INFO) << "Looking at: " << remill::LLVMThingToString(v);
+    auto stack_ref = abs_stack.StackPointerFromStackCompreference(v);
+    if (stack_ref) {
+      return this->StackPtrToXref(*stack_ref);
+    }
+
+    return std::nullopt;
+  }
+};
+
+
 std::optional<llvm::Value *>
 GetPtrToOffsetInto(llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
                    llvm::Type *deref_type, llvm::Value *ptr,
@@ -49,7 +88,10 @@ GetPtrToOffsetInto(llvm::IRBuilder<> &ir, const llvm::DataLayout &dl,
   auto i32 = llvm::IntegerType::getInt32Ty(deref_type->getContext());
   return ir.CreateGEP(
       deref_type, ptr,
-      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, *index)});
+      {llvm::ConstantInt::get(i32, 0),
+       llvm::ConstantInt::get(llvm::IntegerType::get(deref_type->getContext(),
+                                                     index->getBitWidth()),
+                              *index)});
 }
 }  // namespace
 
@@ -65,9 +107,10 @@ using StackPointerRegisterUsages = std::vector<llvm::Use *>;
 // Enumerates all the store and load instructions that reference
 // the stack
 static StackPointerRegisterUsages
-EnumerateStackPointerUsages(llvm::Function &function) {
+EnumerateStackPointerUsages(llvm::Function &function,
+                            llvm::ArrayRef<llvm::Value *> additional_sps) {
   StackPointerRegisterUsages output;
-  StackPointerResolver sp_resolver(function.getParent());
+  StackPointerResolver sp_resolver(function.getParent(), additional_sps);
 
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
@@ -83,7 +126,6 @@ EnumerateStackPointerUsages(llvm::Function &function) {
 
   return output;
 }
-
 
 struct BasicBlockVar {
   size_t index;
@@ -193,8 +235,8 @@ class StackModel {
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
     const BasicBlockContext &cont) {
-  NullCrossReferenceResolver resolver;
-  CrossReferenceFolder folder(resolver, this->lifter.DataLayout());
+  F.dump();
+
 
   size_t overrunsz = 100;
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
@@ -207,15 +249,21 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
        {overrunsz, overrunptr}},
       lifter.Options().stack_frame_recovery_options.stack_grows_down);
 
+
   StackModel smodel(cont, this->lifter.Options().arch, stk);
 
+
+  NullCrossReferenceResolver resolver;
+  StackCrossReferenceResolver folder(resolver, this->lifter.DataLayout(), stk);
 
   // TODO(Ian): do a fixed size here
   std::vector<std::pair<llvm::Use *, std::variant<llvm::Value *, std::int64_t>>>
       to_replace_vars;
 
   auto collision = false;
-  for (auto use : EnumerateStackPointerUsages(F)) {
+  // TODO(Ian): also handle resolving from references where the base is inside a bb var
+  for (auto use :
+       EnumerateStackPointerUsages(F, {anvill::GetBasicBlockStackPtr(&F)})) {
     const auto reference = folder.TryResolveReferenceWithCaching(use->get());
     if (!reference.is_valid || !reference.references_stack_pointer) {
       continue;
@@ -270,7 +318,9 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
 
-  if (EnumerateStackPointerUsages(F).empty() && !collision) {
+  // This isnt a sound check at all we could still derive a pointer to a variable from another variable. Essentially need to check that all
+  // derivations are in bounds...
+  if (EnumerateStackPointerUsages(F, {}).empty() && !collision) {
     auto noalias =
         llvm::Attribute::get(F.getContext(), llvm::Attribute::NoAlias);
 
