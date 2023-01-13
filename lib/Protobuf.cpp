@@ -599,6 +599,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
       if (!target_vdecl.Succeeded()) {
         LOG(FATAL) << "Failed to lift value " << target_vdecl.TakeError();
+        continue;
       }
 
       if (!symval.has_curr_val()) {
