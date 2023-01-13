@@ -111,7 +111,7 @@ SpecificationImpl::ParseSpecification(
     if (!maybe_var.Succeeded()) {
       auto err = maybe_var.Error();
       dec_err.push_back(err);
-      return dec_err;
+      continue;
     }
     auto var_obj = maybe_var.Value();
     auto var_address = var_obj.address;

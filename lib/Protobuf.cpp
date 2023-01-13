@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -445,6 +446,7 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     if (type_map.count(obj.alias())) {
       return type_map.at(obj.alias());
     } else {
+      LOG(ERROR) << "Unknown alias id " << obj.alias();
       return {BaseType::Void};
     }
   }
@@ -696,6 +698,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
 
     // The alias may not be present in the map in case of opaque pointers
     if (!map.count(alias)) {
+      LOG(ERROR) << "No alias definition for " << obj.alias();
       return {BaseType::Void};
     }
 
