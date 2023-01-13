@@ -598,7 +598,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
                       "Unable to get value decl for stack offset relation");
 
       if (!target_vdecl.Succeeded()) {
-        LOG(FATAL) << "Failed to lift value " << target_vdecl.TakeError();
+        LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
         continue;
       }
 
