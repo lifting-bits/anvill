@@ -11,6 +11,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
@@ -169,6 +170,10 @@ class StackModel {
   std::optional<BasicBlockVar> GetParamLte(std::int64_t off) {
     auto prec = this->frame.lower_bound(off);
     if (prec == this->frame.end()) {
+      if (this->frame.begin() != this->frame.end() &&
+          this->frame.begin()->first <= off) {
+        return this->frame.begin()->second;
+      }
       return std::nullopt;
     }
 
@@ -193,6 +198,9 @@ class StackModel {
     if (!vlte.has_value()) {
       return std::nullopt;
     }
+
+    LOG(INFO) << "value found lte offset: " << vlte->decl.mem_offset << " "
+              << off;
 
     auto offset_into_var = off - vlte->decl.mem_offset;
     if (offset_into_var <
@@ -289,6 +297,10 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       }
       collision = true;
     }
+
+    LOG(INFO) << "Escaping stack access " << stack_offset << " "
+              << remill::LLVMThingToString(use->get());
+
     // otherwise we are going to escape the abstract stack
     to_replace_vars.push_back({use, stack_offset});
   }
@@ -298,16 +310,26 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   }
 
   for (auto [use, v] : to_replace_vars) {
-    use->get()->dump();
-
+    auto use_of_variable = use;
+    auto replace_use = [use_of_variable](llvm::Value *with_ptr) {
+      if (llvm::isa<llvm::PointerType>(use_of_variable->get()->getType())) {
+        use_of_variable->set(with_ptr);
+      } else if (llvm::isa<llvm::IntegerType>(
+                     use_of_variable->get()->getType())) {
+        if (auto insn =
+                llvm::dyn_cast<llvm::Instruction>(use_of_variable->getUser())) {
+          llvm::CastInst::Create(llvm::Instruction::CastOps::PtrToInt, with_ptr,
+                                 use_of_variable->get()->getType(), "", insn);
+        }
+      }
+    };
     if (std::holds_alternative<llvm::Value *>(v)) {
-
-      use->set(std::get<llvm::Value *>(v));
+      replace_use(std::get<llvm::Value *>(v));
     } else {
       auto offset = std::get<int64_t>(v);
       auto ptr = stk.PointerToStackMemberFromOffset(ent_insert, offset);
       if (ptr) {
-        use->set(*ptr);
+        replace_use(*ptr);
       } else {
         LOG(ERROR) << "No pointer for offset " << offset
                    << " was supposed to use "
