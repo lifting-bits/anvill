@@ -553,8 +553,11 @@ void ProtobufTranslator::AddLiveValuesToBB(
     LOG_IF(FATAL, var.repr_var().values_size() != 1)
         << "Symbols must be represented by a single valuedecl.";
     auto param = DecodeParameter(var);
-    LOG_IF(FATAL, !param.Succeeded()) << "Unable to decode live parameter";
-    v.push_back(param.TakeValue());
+    if (!param.Succeeded()) {
+      LOG(ERROR) << "Unable to decode live parameter " << param.TakeError();
+    } else {
+      v.push_back(param.TakeValue());
+    }
   }
 }
 
@@ -593,7 +596,11 @@ void ProtobufTranslator::ParseCFGIntoFunction(
       auto target_vdecl =
           DecodeValue(symval.target_value().values()[0], stackptr_type_spec,
                       "Unable to get value decl for stack offset relation");
-      LOG_IF(FATAL, !target_vdecl.Succeeded()) << "Failed to lift value";
+
+      if (!target_vdecl.Succeeded()) {
+        LOG(FATAL) << "Failed to lift value " << target_vdecl.TakeError();
+      }
+
       if (!symval.has_curr_val()) {
         LOG(FATAL) << "Mapping should have current value";
       }
