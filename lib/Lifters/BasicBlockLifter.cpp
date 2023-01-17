@@ -607,7 +607,8 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   AbstractStack stack(
       builder.getContext(), {{decl.stack_depth, parent_stack}},
-      this->options.stack_frame_recovery_options.stack_grows_down);
+      this->options.stack_frame_recovery_options.stack_grows_down,
+      decl.GetPointerDisplacement());
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];

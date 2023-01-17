@@ -255,7 +255,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       F.getContext(),
       {{cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F)},
        {overrunsz, overrunptr}},
-      lifter.Options().stack_frame_recovery_options.stack_grows_down);
+      lifter.Options().stack_frame_recovery_options.stack_grows_down,
+      cont.GetPointerDisplacement());
 
 
   StackModel smodel(cont, this->lifter.Options().arch, stk);

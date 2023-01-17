@@ -12,6 +12,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -217,6 +218,8 @@ class BasicBlockContext {
 
   virtual size_t GetStackSize() const = 0;
 
+  virtual size_t GetPointerDisplacement() const = 0;
+
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
   // Deduplicates locations and ensures there are no overlapping decls
@@ -250,10 +253,19 @@ class AbstractStack {
   std::vector<llvm::Type *> stack_types;
   std::vector<StackComponent> components;
   size_t total_size;
+  size_t pointer_displacement;
 
  public:
+  // The displacement required to make all offset accesses positive
+  size_t GetPointerDisplacement() const {
+    return pointer_displacement;
+  };
+
+
+  // The pointer displacement is the size above the zero point of the stack, typically return pointer offset + parameter size
   AbstractStack(llvm::LLVMContext &context,
-                std::vector<StackComponent> components, bool stack_grows_down);
+                std::vector<StackComponent> components, bool stack_grows_down,
+                size_t pointer_displacement);
 
   size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
@@ -291,6 +303,8 @@ class SpecBlockContext : public BasicBlockContext {
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
 
   virtual size_t GetStackSize() const override;
+
+  virtual size_t GetPointerDisplacement() const override;
 
 
  protected:
@@ -342,6 +356,10 @@ struct FunctionDecl : public CallableDecl {
 
   std::uint64_t stack_depth;
 
+  std::int64_t ret_ptr_offset;
+
+  std::size_t parameter_size;
+
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 
@@ -351,6 +369,8 @@ struct FunctionDecl : public CallableDecl {
          const std::unique_ptr<const remill::Arch> &arch) {
     return Create(func, arch.get());
   }
+
+  size_t GetPointerDisplacement() const;
 
   // Create a function declaration from an LLVM function.
   static Result<FunctionDecl, std::string> Create(llvm::Function &func,

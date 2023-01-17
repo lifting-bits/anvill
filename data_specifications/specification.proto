@@ -282,6 +282,12 @@ message StackEffects {
 
 message StackFrame {
   uint64 frame_size = 1;
+  // Stack frame pointer depths are relative to the return address offset
+  int64 return_address_offset = 2;
+  // parameter size allows 
+  //  us to compute the 
+  // stack depth of the lowest address when the stack grows down
+  uint64 parameter_size = 3;
 }
 
 message Function {
