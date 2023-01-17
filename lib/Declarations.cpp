@@ -468,8 +468,14 @@ SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
 size_t
 AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   if (this->stack_grows_down) {
+    auto displaced_offset =
+        stack_off - static_cast<std::int64_t>(this->pointer_displacement);
     LOG(INFO) << this->total_size;
-    return this->total_size + (stack_off - this->pointer_displacement);
+    LOG(INFO) << "disp: " << this->pointer_displacement;
+    LOG(INFO) << "Displaced offset: " << displaced_offset;
+    CHECK(static_cast<std::int64_t>(this->total_size) >
+          llabs(displaced_offset));
+    return this->total_size + displaced_offset;
   } else {
     return this->pointer_displacement + stack_off;
   }

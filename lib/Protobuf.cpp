@@ -512,8 +512,12 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
+  auto frame = function.frame();
 
-  decl.stack_depth = function.frame().frame_size();
+  decl.stack_depth = frame.frame_size();
+  decl.maximum_depth = decl.stack_depth + 100;
+  decl.ret_ptr_offset = frame.return_address_offset();
+  decl.parameter_size = frame.parameter_size();
 
   this->ParseCFGIntoFunction(function, decl);
 

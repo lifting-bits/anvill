@@ -606,12 +606,13 @@ void BasicBlockLifter::CallBasicBlockFunction(
   auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 
   AbstractStack stack(
-      builder.getContext(), {{decl.stack_depth, parent_stack}},
+      builder.getContext(), {{decl.maximum_depth, parent_stack}},
       this->options.stack_frame_recovery_options.stack_grows_down,
       decl.GetPointerDisplacement());
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
+    LOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
     if (repr_var.param.mem_reg) {
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
           builder, repr_var.param.mem_offset);

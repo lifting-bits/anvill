@@ -356,9 +356,11 @@ struct FunctionDecl : public CallableDecl {
 
   std::uint64_t stack_depth;
 
-  std::int64_t ret_ptr_offset;
+  std::uint64_t maximum_depth;
 
-  std::size_t parameter_size;
+  std::int64_t ret_ptr_offset{0};
+
+  std::size_t parameter_size{0};
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
