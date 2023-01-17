@@ -429,7 +429,8 @@ SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
     return std::nullopt;
   }
 
-  return std::cref(cont->second);
+  return std::optional<std::reference_wrapper<const BasicBlockContext>>{
+      std::cref(cont->second)};
 }
 
 // Call `cb` on each function in the spec, until `cb` returns `false`.
