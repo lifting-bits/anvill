@@ -442,7 +442,11 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     }
   }
   if (obj.has_alias()) {
-    return type_map.at(obj.alias());
+    if (type_map.count(obj.alias())) {
+      return type_map.at(obj.alias());
+    } else {
+      return {BaseType::Void};
+    }
   }
 
   return {"Unknown/invalid data type" + obj.DebugString()};
@@ -689,6 +693,12 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return type_map[alias];
     }
     auto &type = type_map[alias];
+
+    // The alias may not be present in the map in case of opaque pointers
+    if (!map.count(alias)) {
+      return {BaseType::Void};
+    }
+
     auto res = DecodeType(map.at(alias), map);
     if (!res.Succeeded()) {
       return res.TakeError();
