@@ -243,9 +243,6 @@ class StackModel {
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
     const BasicBlockContext &cont) {
-  F.dump();
-
-
   size_t overrunsz = 100;
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
@@ -284,8 +281,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     auto referenced_variable = smodel.GetOverlappingParam(stack_offset);
 
     //TODO(Ian) handle nonzero offset
-    if (referenced_variable.has_value() &&
-        llvm::isa<llvm::PointerType>(use->get()->getType())) {
+    if (referenced_variable.has_value()) {
 
       auto g = anvill::ProvidePointerFromFunctionArgs(
           &F, referenced_variable->decl.index, this->lifter.Options(), cont);
@@ -296,6 +292,10 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
         to_replace_vars.push_back({use, *ptr});
         continue;
       }
+      LOG(ERROR) << "Couldnt create a pointer for offset "
+                 << referenced_variable->offset << " into a "
+                 << remill::LLVMThingToString(
+                        referenced_variable->decl.decl.type);
       collision = true;
     }
 
@@ -319,8 +319,9 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
                      use_of_variable->get()->getType())) {
         if (auto insn =
                 llvm::dyn_cast<llvm::Instruction>(use_of_variable->getUser())) {
-          llvm::CastInst::Create(llvm::Instruction::CastOps::PtrToInt, with_ptr,
-                                 use_of_variable->get()->getType(), "", insn);
+          use_of_variable->set(llvm::CastInst::Create(
+              llvm::Instruction::CastOps::PtrToInt, with_ptr,
+              use_of_variable->get()->getType(), "", insn));
         }
       }
     };
