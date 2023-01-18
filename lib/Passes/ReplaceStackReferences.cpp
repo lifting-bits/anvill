@@ -243,10 +243,11 @@ class StackModel {
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
     const BasicBlockContext &cont) {
-  size_t overrunsz = 100;
+  size_t overrunsz = cont.GetMaxStackSize() - cont.GetStackSize();
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
       AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
+
 
   AbstractStack stk(
       F.getContext(),

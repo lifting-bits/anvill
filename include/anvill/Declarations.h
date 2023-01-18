@@ -218,6 +218,8 @@ class BasicBlockContext {
 
   virtual size_t GetStackSize() const = 0;
 
+  virtual size_t GetMaxStackSize() const = 0;
+
   virtual size_t GetPointerDisplacement() const = 0;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
@@ -303,6 +305,8 @@ class SpecBlockContext : public BasicBlockContext {
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
 
   virtual size_t GetStackSize() const override;
+
+  virtual size_t GetMaxStackSize() const override;
 
   virtual size_t GetPointerDisplacement() const override;
 

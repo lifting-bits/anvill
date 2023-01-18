@@ -229,6 +229,10 @@ size_t SpecBlockContext::GetStackSize() const {
   return decl.stack_depth;
 }
 
+size_t SpecBlockContext::GetMaxStackSize() const {
+  return decl.maximum_depth;
+}
+
 
 SpecBlockContext::SpecBlockContext(
     const FunctionDecl &decl, SpecStackOffsets offsets,

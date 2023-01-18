@@ -515,9 +515,10 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   auto frame = function.frame();
 
   decl.stack_depth = frame.frame_size();
-  decl.maximum_depth = decl.stack_depth + 100;
   decl.ret_ptr_offset = frame.return_address_offset();
   decl.parameter_size = frame.parameter_size();
+
+  decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
   this->ParseCFGIntoFunction(function, decl);
 
