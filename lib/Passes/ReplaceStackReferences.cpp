@@ -12,6 +12,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
@@ -30,6 +31,7 @@
 
 #include "anvill/Declarations.h"
 #include "anvill/Utils.h"
+
 namespace anvill {
 
 namespace {
@@ -243,7 +245,6 @@ class StackModel {
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
     const BasicBlockContext &cont) {
-  F.dump();
   size_t overrunsz = cont.GetMaxStackSize() - cont.GetStackSize();
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
@@ -314,17 +315,20 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
 
   for (auto [use, v] : to_replace_vars) {
     auto use_of_variable = use;
-    auto replace_use = [use_of_variable](llvm::Value *with_ptr) {
+    auto replace_use = [use_of_variable, overrunptr](llvm::Value *with_ptr) {
       if (llvm::isa<llvm::PointerType>(use_of_variable->get()->getType())) {
         use_of_variable->set(with_ptr);
       } else if (llvm::isa<llvm::IntegerType>(
                      use_of_variable->get()->getType())) {
-        if (auto insn =
-                llvm::dyn_cast<llvm::Instruction>(use_of_variable->getUser())) {
-          use_of_variable->set(llvm::CastInst::Create(
-              llvm::Instruction::CastOps::PtrToInt, with_ptr,
-              use_of_variable->get()->getType(), "", insn));
+
+        llvm::IRBuilder<> ir(overrunptr);
+
+        if (auto ptr = llvm::dyn_cast<llvm::Instruction>(with_ptr)) {
+          ir.SetInsertPoint(ptr->getNextNode());
         }
+
+        use_of_variable->set(
+            ir.CreatePointerCast(with_ptr, use_of_variable->get()->getType()));
       }
     };
     if (std::holds_alternative<llvm::Value *>(v)) {
@@ -341,6 +345,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       }
     }
   }
+
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
 
