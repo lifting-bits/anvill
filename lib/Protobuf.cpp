@@ -553,7 +553,8 @@ void ProtobufTranslator::AddLiveValuesToBB(
     LOG_IF(FATAL, var.repr_var().values_size() != 1)
         << "Symbols must be represented by a single valuedecl.";
     auto param = DecodeParameter(var);
-    LOG_IF(FATAL, !param.Succeeded()) << "Unable to decode live parameter";
+    LOG_IF(FATAL, !param.Succeeded())
+        << "Unable to decode live parameter: " << param.Error();
     v.push_back(param.TakeValue());
   }
 }
