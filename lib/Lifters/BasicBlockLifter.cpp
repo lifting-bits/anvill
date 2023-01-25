@@ -195,12 +195,12 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
-      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics, true);
+      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     remill::AddTerminatingTailCall(block, intrinsics.function_return,
-                                   intrinsics, true);
+                                   intrinsics);
     return false;
   }
 
