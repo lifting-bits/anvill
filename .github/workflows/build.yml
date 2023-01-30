@@ -141,9 +141,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
       - name: Install stable rust
-        shell: bash
-        run: |
-          apt-get install -y cargo
+        uses: dtolnay/rust-toolchain@stable
 
       - name: "Install Just"
         shell: bash

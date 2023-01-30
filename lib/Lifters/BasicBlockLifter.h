@@ -127,7 +127,6 @@ class BasicBlockLifter : public CodeLifter {
   void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
                               const CallableBasicBlockFunction &,
                               llvm::Value *parent_stack) const;
-  size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };

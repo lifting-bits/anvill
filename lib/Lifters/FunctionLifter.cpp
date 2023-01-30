@@ -534,8 +534,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
 
   auto abstract_stack = ir.CreateAlloca(
-      AbstractStack::StackTypeFromSize(llvm_context, decl.stack_depth), nullptr,
-      "abstract_stack");
+      AbstractStack::StackTypeFromSize(llvm_context, decl.maximum_depth),
+      nullptr, "abstract_stack");
   // Add a branch between the first block of the lifted function, which sets
   // up some local variables, and the block that will contain the lifted
   // instruction.

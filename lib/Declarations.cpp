@@ -229,6 +229,10 @@ size_t SpecBlockContext::GetStackSize() const {
   return decl.stack_depth;
 }
 
+size_t SpecBlockContext::GetMaxStackSize() const {
+  return decl.maximum_depth;
+}
+
 
 SpecBlockContext::SpecBlockContext(
     const FunctionDecl &decl, SpecStackOffsets offsets,
@@ -238,6 +242,10 @@ SpecBlockContext::SpecBlockContext(
       offsets(std::move(offsets)),
       live_params_at_entry(std::move(live_params_at_entry)),
       live_params_at_exit(std::move(live_params_at_exit)) {}
+
+size_t SpecBlockContext::GetPointerDisplacement() const {
+  return this->decl.GetPointerDisplacement();
+}
 
 const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtExit() const {
   return this->live_params_at_exit;
@@ -450,6 +458,10 @@ V GetWithDef(uint64_t addr, const std::unordered_map<uint64_t, V> &map, V def) {
 }
 }  // namespace
 
+size_t FunctionDecl::GetPointerDisplacement() const {
+  return this->parameter_size + this->return_stack_pointer_offset;
+}
+
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
       *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
@@ -457,29 +469,30 @@ SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
 
-size_t
+std::optional<size_t>
 AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
-  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
-  // unless we have parameters)
-  // TODO(Ian): this wont do the correct thing for stack parameters
-
-  // welp lets crash if we are going to do the wrong thing
-  CHECK((this->stack_grows_down && stack_off <= 0) ||
-        (!this->stack_grows_down && stack_off >= 0));
-
   if (this->stack_grows_down) {
+    auto displaced_offset =
+        stack_off - static_cast<std::int64_t>(this->pointer_displacement);
     LOG(INFO) << this->total_size;
-    return this->total_size + stack_off;
+    LOG(INFO) << "disp: " << this->pointer_displacement;
+    LOG(INFO) << "Displaced offset: " << displaced_offset;
+    if (!(static_cast<std::int64_t>(this->total_size) >=
+          llabs(displaced_offset))) {
+      return std::nullopt;
+    }
+    return this->total_size + displaced_offset;
   } else {
-    return stack_off;
+    return this->pointer_displacement + stack_off;
   }
 }
 
 std::int64_t AbstractStack::StackPointerFromStackOffset(size_t offset) const {
   if (stack_grows_down) {
-    return static_cast<std::int64_t>(offset) - this->total_size;
+    return (static_cast<std::int64_t>(offset) - this->total_size) +
+           this->pointer_displacement;
   } else {
-    return offset;
+    return offset - this->pointer_displacement;
   }
 }
 
@@ -501,8 +514,12 @@ std::optional<llvm::Value *>
 AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
                                               std::int64_t stack_off) const {
   auto off = this->StackOffsetFromStackPointer(stack_off);
+  if (!off) {
+    return std::nullopt;
+  }
+
   auto i32 = llvm::IntegerType::getInt32Ty(this->context);
-  LOG(INFO) << "Looking for offset" << off;
+  LOG(INFO) << "Looking for offset" << *off;
   auto curr_off = 0;
   auto curr_ind = 0;
   for (auto [sz, ptr] : this->components) {
@@ -511,7 +528,7 @@ AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
       LOG(INFO) << curr_off << " " << sz;
       return ir.CreateGEP(this->stack_types[curr_ind], ptr,
                           {llvm::ConstantInt::get(i32, 0),
-                           llvm::ConstantInt::get(i32, off - curr_off)});
+                           llvm::ConstantInt::get(i32, *off - curr_off)});
     }
     curr_off += sz;
     curr_ind++;
@@ -528,11 +545,12 @@ llvm::Type *AbstractStack::StackTypeFromSize(llvm::LLVMContext &context,
 
 AbstractStack::AbstractStack(llvm::LLVMContext &context,
                              std::vector<StackComponent> components,
-                             bool stack_grows_down)
+                             bool stack_grows_down, size_t pointer_displacement)
     : context(context),
       stack_grows_down(stack_grows_down),
       components(std::move(components)),
-      total_size(0) {
+      total_size(0),
+      pointer_displacement(pointer_displacement) {
 
   if (stack_grows_down) {
     std::reverse(this->components.begin(), this->components.end());

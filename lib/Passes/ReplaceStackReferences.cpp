@@ -12,6 +12,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
@@ -30,6 +31,7 @@
 
 #include "anvill/Declarations.h"
 #include "anvill/Utils.h"
+
 namespace anvill {
 
 namespace {
@@ -243,19 +245,19 @@ class StackModel {
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
     const BasicBlockContext &cont) {
-  F.dump();
-
-
-  size_t overrunsz = 100;
+  size_t overrunsz = cont.GetMaxStackSize() - cont.GetStackSize();
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
       AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
 
+  LOG(INFO) << "Replacing stack vars in bb: " << std::hex
+            << *anvill::GetBasicBlockAddr(&F);
   AbstractStack stk(
       F.getContext(),
       {{cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F)},
        {overrunsz, overrunptr}},
-      lifter.Options().stack_frame_recovery_options.stack_grows_down);
+      lifter.Options().stack_frame_recovery_options.stack_grows_down,
+      cont.GetPointerDisplacement());
 
 
   StackModel smodel(cont, this->lifter.Options().arch, stk);
@@ -283,8 +285,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     auto referenced_variable = smodel.GetOverlappingParam(stack_offset);
 
     //TODO(Ian) handle nonzero offset
-    if (referenced_variable.has_value() &&
-        llvm::isa<llvm::PointerType>(use->get()->getType())) {
+    if (referenced_variable.has_value()) {
 
       auto g = anvill::ProvidePointerFromFunctionArgs(
           &F, referenced_variable->decl.index, this->lifter.Options(), cont);
@@ -295,6 +296,10 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
         to_replace_vars.push_back({use, *ptr});
         continue;
       }
+      LOG(ERROR) << "Couldnt create a pointer for offset "
+                 << referenced_variable->offset << " into a "
+                 << remill::LLVMThingToString(
+                        referenced_variable->decl.decl.type);
       collision = true;
     }
 
@@ -311,16 +316,20 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
 
   for (auto [use, v] : to_replace_vars) {
     auto use_of_variable = use;
-    auto replace_use = [use_of_variable](llvm::Value *with_ptr) {
+    auto replace_use = [use_of_variable, overrunptr](llvm::Value *with_ptr) {
       if (llvm::isa<llvm::PointerType>(use_of_variable->get()->getType())) {
         use_of_variable->set(with_ptr);
       } else if (llvm::isa<llvm::IntegerType>(
                      use_of_variable->get()->getType())) {
-        if (auto insn =
-                llvm::dyn_cast<llvm::Instruction>(use_of_variable->getUser())) {
-          llvm::CastInst::Create(llvm::Instruction::CastOps::PtrToInt, with_ptr,
-                                 use_of_variable->get()->getType(), "", insn);
+
+        llvm::IRBuilder<> ir(overrunptr);
+
+        if (auto ptr = llvm::dyn_cast<llvm::Instruction>(with_ptr)) {
+          ir.SetInsertPoint(ptr->getNextNode());
         }
+
+        use_of_variable->set(
+            ir.CreatePointerCast(with_ptr, use_of_variable->get()->getType()));
       }
     };
     if (std::holds_alternative<llvm::Value *>(v)) {
@@ -331,12 +340,15 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       if (ptr) {
         replace_use(*ptr);
       } else {
-        LOG(ERROR) << "No pointer for offset " << offset
-                   << " was supposed to use "
-                   << stk.StackOffsetFromStackPointer(offset);
+        LOG(ERROR) << "No pointer for offset " << offset;
+        auto off = stk.StackOffsetFromStackPointer(offset);
+        if (off) {
+          LOG(ERROR) << "Was supposed to use offset " << *off;
+        }
       }
     }
   }
+
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
 

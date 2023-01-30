@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -442,7 +443,12 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     }
   }
   if (obj.has_alias()) {
-    return type_map.at(obj.alias());
+    if (type_map.count(obj.alias())) {
+      return type_map.at(obj.alias());
+    } else {
+      LOG(ERROR) << "Unknown alias id " << obj.alias();
+      return {BaseType::Void};
+    }
   }
 
   return {"Unknown/invalid data type" + obj.DebugString()};
@@ -506,8 +512,13 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
+  auto frame = function.frame();
 
-  decl.stack_depth = function.frame().frame_size();
+  decl.stack_depth = frame.frame_size();
+  decl.ret_ptr_offset = frame.return_address_offset();
+  decl.parameter_size = frame.parameter_size();
+
+  decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
   this->ParseCFGIntoFunction(function, decl);
 
@@ -553,9 +564,11 @@ void ProtobufTranslator::AddLiveValuesToBB(
     LOG_IF(FATAL, var.repr_var().values_size() != 1)
         << "Symbols must be represented by a single valuedecl.";
     auto param = DecodeParameter(var);
-    LOG_IF(FATAL, !param.Succeeded())
-        << "Unable to decode live parameter: " << param.Error();
-    v.push_back(param.TakeValue());
+    if (!param.Succeeded()) {
+      LOG(ERROR) << "Unable to decode live parameter " << param.TakeError();
+    } else {
+      v.push_back(param.TakeValue());
+    }
   }
 }
 
@@ -594,7 +607,12 @@ void ProtobufTranslator::ParseCFGIntoFunction(
       auto target_vdecl =
           DecodeValue(symval.target_value().values()[0], stackptr_type_spec,
                       "Unable to get value decl for stack offset relation");
-      LOG_IF(FATAL, !target_vdecl.Succeeded()) << "Failed to lift value";
+
+      if (!target_vdecl.Succeeded()) {
+        LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
+        continue;
+      }
+
       if (!symval.has_curr_val()) {
         LOG(FATAL) << "Mapping should have current value";
       }
@@ -682,6 +700,13 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return type_map[alias];
     }
     auto &type = type_map[alias];
+
+    // The alias may not be present in the map in case of opaque pointers
+    if (!map.count(alias)) {
+      LOG(ERROR) << "No alias definition for " << obj.alias();
+      return {BaseType::Void};
+    }
+
     auto res = DecodeType(map.at(alias), map);
     if (!res.Succeeded()) {
       return res.TakeError();
