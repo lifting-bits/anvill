@@ -195,12 +195,12 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
-      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics, true);
+      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     remill::AddTerminatingTailCall(block, intrinsics.function_return,
-                                   intrinsics, true);
+                                   intrinsics);
     return false;
   }
 
@@ -571,21 +571,6 @@ void BasicBlockLifter::UnpackLiveValues(
 }
 
 
-size_t
-BasicBlockLifter::StackOffsetFromStackPointer(std::int64_t stack_off) const {
-  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
-  // unless we have parameters)
-  // TODO(Ian): this wont do the correct thing for stack parameters
-
-  // welp lets crash if we are going to do the wrong thing
-  CHECK((options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off <= 0) ||
-        (!options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off >= 0));
-  return std::abs(stack_off);
-}
-
-
 void BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {
@@ -606,11 +591,13 @@ void BasicBlockLifter::CallBasicBlockFunction(
   auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 
   AbstractStack stack(
-      builder.getContext(), {{decl.stack_depth, parent_stack}},
-      this->options.stack_frame_recovery_options.stack_grows_down);
+      builder.getContext(), {{decl.maximum_depth, parent_stack}},
+      this->options.stack_frame_recovery_options.stack_grows_down,
+      decl.GetPointerDisplacement());
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
+    LOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
     if (repr_var.param.mem_reg) {
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
           builder, repr_var.param.mem_offset);

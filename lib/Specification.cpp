@@ -111,6 +111,7 @@ SpecificationImpl::ParseSpecification(
     if (!maybe_var.Succeeded()) {
       auto err = maybe_var.Error();
       dec_err.push_back(err);
+      continue;
     }
     auto var_obj = maybe_var.Value();
     auto var_address = var_obj.address;
@@ -428,7 +429,8 @@ SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
     return std::nullopt;
   }
 
-  return std::cref(cont->second);
+  return std::optional<std::reference_wrapper<const BasicBlockContext>>{
+      std::cref(cont->second)};
 }
 
 // Call `cb` on each function in the spec, until `cb` returns `false`.
