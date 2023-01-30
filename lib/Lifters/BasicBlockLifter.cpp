@@ -571,21 +571,6 @@ void BasicBlockLifter::UnpackLiveValues(
 }
 
 
-size_t
-BasicBlockLifter::StackOffsetFromStackPointer(std::int64_t stack_off) const {
-  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
-  // unless we have parameters)
-  // TODO(Ian): this wont do the correct thing for stack parameters
-
-  // welp lets crash if we are going to do the wrong thing
-  CHECK((options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off <= 0) ||
-        (!options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off >= 0));
-  return std::abs(stack_off);
-}
-
-
 void BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {

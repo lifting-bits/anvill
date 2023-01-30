@@ -269,7 +269,8 @@ class AbstractStack {
                 std::vector<StackComponent> components, bool stack_grows_down,
                 size_t pointer_displacement);
 
-  size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
+  std::optional<size_t>
+  StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
 
   std::int64_t StackPointerFromStackOffset(size_t offset) const;
