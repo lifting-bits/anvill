@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Python dependencies
         run: |
@@ -147,12 +147,12 @@ jobs:
         run: |
           cargo install just
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "temurin"
           java-version: "11"
       - name: Clone Ghidra Spec Generation
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
@@ -380,19 +380,19 @@ jobs:
       #            --decompile-cmd "anvill-decompile-json"
 
       - name: Store the DEB package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_deb_package
           path: ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
       - name: Store the RPM package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_rpm_package
           path: ${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
 
       - name: Store the TGZ package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
@@ -440,7 +440,7 @@ jobs:
           echo "WORKSPACE=$(pwd)/${rel_workspace_path}" >> ${GITHUB_OUTPUT}
 
       - name: Update the cache (downloads)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.DOWNLOADS }}
 
@@ -451,7 +451,7 @@ jobs:
             gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}
 
       - name: Update the cache (ccache)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.CCACHE }}
 
@@ -468,7 +468,7 @@ jobs:
                        ninja
 
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
           fetch-depth: 0
@@ -656,7 +656,7 @@ jobs:
           echo "TGZ_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)" >> ${GITHUB_OUTPUT}
 
       - name: Store the TGZ package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
@@ -669,7 +669,7 @@ jobs:
 
     steps:
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: anvill
           fetch-depth: 0
@@ -681,7 +681,7 @@ jobs:
           ./scripts/generate_changelog.sh changelog.md
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
 
       - name: Draft the new release
         id: create_release
@@ -739,7 +739,7 @@ jobs:
         llvm: ["15"]
         ubuntu: ["20.04"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
       - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}
