@@ -90,10 +90,10 @@ class PPC_C : public CallingConvention {
                                 llvm::Function &func) override;
 
  private:
-  llvm::Error BindParameters(llvm::Function &function, bool injected_sret,
+  llvm::Error BindParameters(llvm::Function &function,
                              std::vector<ParameterDecl> &param_decls);
 
-  llvm::Error BindReturnValues(llvm::Function &function, bool &injected_sret,
+  llvm::Error BindReturnValues(llvm::Function &function,
                                std::vector<ValueDecl> &ret_decls);
 
   const std::vector<RegisterConstraint> &parameter_register_constraints;
@@ -113,16 +113,12 @@ PPC_C::PPC_C(const remill::Arch *arch)
 llvm::Error PPC_C::AllocateSignature(FunctionDecl &fdecl,
                                      llvm::Function &func) {
 
-  // Bind return values first to see if we have injected an sret into the
-  // parameter list. Then, bind the parameters. It is important that we bind the
-  // return values before the parameters in case we inject an sret.
-  bool injected_sret = false;
-  auto err = BindReturnValues(func, injected_sret, fdecl.returns);
+  auto err = BindReturnValues(func, fdecl.returns);
   if (remill::IsError(err)) {
     return err;
   }
 
-  err = BindParameters(func, injected_sret, fdecl.params);
+  err = BindParameters(func, fdecl.params);
   if (remill::IsError(err)) {
     return err;
   }
@@ -137,12 +133,11 @@ llvm::Error PPC_C::AllocateSignature(FunctionDecl &fdecl,
 }
 
 llvm::Error
-PPC_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
+PPC_C::BindReturnValues(llvm::Function &function,
                         std::vector<anvill::ValueDecl> &ret_values) {
 
   auto ret_type = function.getReturnType();
   LOG(INFO) << "Binding on return " << remill::LLVMThingToString(ret_type);
-  injected_sret = false;
 
   // If there is an sret parameter then it is a special case.
   if (function.hasStructRetAttr()) {
@@ -263,7 +258,7 @@ PPC_C::BindReturnValues(llvm::Function &function, bool &injected_sret,
 }
 
 llvm::Error
-PPC_C::BindParameters(llvm::Function &function, bool injected_sret,
+PPC_C::BindParameters(llvm::Function &function,
                       std::vector<ParameterDecl> &parameter_declarations) {
 
   const auto param_names = TryRecoverParamNames(function);
