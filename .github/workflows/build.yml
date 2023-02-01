@@ -83,14 +83,14 @@ jobs:
                    ${rel_ccache_path} \
                    ${rel_workspace_path}
 
-          echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
-          echo ::set-output name=REL_SOURCE::${rel_source_path}
-          echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
-          echo ::set-output name=REL_BUILD::${rel_build_path}
-          echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
-          echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
-          echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
-          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
+          echo "SOURCE=$(pwd)/${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_SOURCE=${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "BUILD=$(pwd)/${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_BUILD=${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "INSTALL=$(pwd)/${rel_install_path}" >> ${GITHUB_OUTPUT}
+          echo "DOWNLOADS=$(pwd)/${rel_downloads_path}" >> ${GITHUB_OUTPUT}
+          echo "CCACHE=$(pwd)/${rel_ccache_path}" >> ${GITHUB_OUTPUT}
+          echo "WORKSPACE=$(pwd)/${rel_workspace_path}" >> ${GITHUB_OUTPUT}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v3
@@ -208,13 +208,13 @@ jobs:
 
           echo "${destination_path}/installed/x64-linux-rel/tools/llvm-${{matrix.llvm}}" >> $GITHUB_PATH
 
-          echo ::set-output name=PATH::${destination_path}
+          echo "PATH=${destination_path}" >> ${GITHUB_OUTPUT}
 
       - name: Select the build job count
         shell: bash
         id: build_job_count
         run: |
-          echo ::set-output name=VALUE::$(($(nproc) + 1))
+          echo "VALUE=$(($(nproc) + 1))" >> ${GITHUB_OUTPUT}
 
       - name: Configure remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -255,7 +255,7 @@ jobs:
           cmake --build remill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install remill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
@@ -311,7 +311,7 @@ jobs:
           cmake --build anvill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install anvill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
@@ -353,9 +353,9 @@ jobs:
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=DEB_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.deb)
-          echo ::set-output name=RPM_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)
-          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
+          echo "DEB_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.deb)" >> ${GITHUB_OUTPUT}
+          echo "RPM_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)" >> ${GITHUB_OUTPUT}
+          echo "TGZ_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)" >> ${GITHUB_OUTPUT}
 
       - name: Install the DEB package
         run: |
@@ -432,14 +432,14 @@ jobs:
                    ${rel_ccache_path} \
                    ${rel_workspace_path}
 
-          echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
-          echo ::set-output name=REL_SOURCE::${rel_source_path}
-          echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
-          echo ::set-output name=REL_BUILD::${rel_build_path}
-          echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
-          echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
-          echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
-          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
+          echo "SOURCE=$(pwd)/${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_SOURCE=${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "BUILD=$(pwd)/${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_BUILD=${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "INSTALL=$(pwd)/${rel_install_path}" >> ${GITHUB_OUTPUT}
+          echo "DOWNLOADS=$(pwd)/${rel_downloads_path}" >> ${GITHUB_OUTPUT}
+          echo "CCACHE=$(pwd)/${rel_ccache_path}" >> ${GITHUB_OUTPUT}
+          echo "WORKSPACE=$(pwd)/${rel_workspace_path}" >> ${GITHUB_OUTPUT}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v2
@@ -512,13 +512,13 @@ jobs:
 
           echo "${destination_path}/installed/x64-osx-rel/bin" >> $GITHUB_PATH
 
-          echo ::set-output name=PATH::${destination_path}
+          echo "PATH=${destination_path}" >> ${GITHUB_OUTPUT}
 
       - name: Select the build job count
         shell: bash
         id: build_job_count
         run: |
-          echo ::set-output name=VALUE::$(($(sysctl -n hw.logicalcpu) + 1))
+          echo "VALUE=$(($(sysctl -n hw.logicalcpu) + 1))" >> ${GITHUB_OUTPUT}
 
       - name: Configure remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -559,7 +559,7 @@ jobs:
           cmake --build remill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install remill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
@@ -615,7 +615,7 @@ jobs:
           cmake --build anvill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install anvill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
@@ -655,7 +655,7 @@ jobs:
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
+          echo "TGZ_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)" >> ${GITHUB_OUTPUT}
 
       - name: Store the TGZ package
         uses: actions/upload-artifact@v1
