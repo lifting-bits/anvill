@@ -32,7 +32,7 @@ llvm::APInt ValueLifterImpl::ConsumeBytesAsInt(std::string_view &data,
   llvm::APInt result(num_bytes * 8u, 0u);
   for (auto i = 0u; i < num_bytes; ++i) {
     result <<= 8u;
-    result |= data[i];
+    result |= static_cast<uint8_t>(data[i]);
   }
   data = data.substr(num_bytes);
 

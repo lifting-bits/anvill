@@ -180,7 +180,6 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
                    << std::dec;
         break;
       }
-
       bytes.push_back(byte);
     }
   }
