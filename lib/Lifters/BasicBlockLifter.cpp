@@ -495,11 +495,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   // Initialize the program counter
   auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
-  ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
-                 pc_ptr);
+  auto pc_val = this->options.program_counter_init_procedure(
+      ir, pc_reg, this->block_def.addr);
+  ir.CreateStore(pc_val, pc_ptr)->dump();
+
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc, mem_res, next_pc_out};
+      this->state_ptr, pc_val, mem_res, next_pc_out};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
