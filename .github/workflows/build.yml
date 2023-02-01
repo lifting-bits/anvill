@@ -52,8 +52,6 @@ jobs:
       matrix:
         image:
           - { name: "ubuntu", tag: "20.04" }
-        binja:
-          - { channel: "headless", version: "3.1.3479" }
         llvm: ["15"]
         cxxcommon_version: ["v0.2.22"]
 
@@ -325,7 +323,6 @@ jobs:
           scripts/build-preset.sh debug
       - name: Run the tests
         env:
-          BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
           CTEST_OUTPUT_ON_FAILURE: 1
 
         shell: bash
@@ -740,8 +737,6 @@ jobs:
       matrix:
         llvm: ["15"]
         ubuntu: ["20.04"]
-        binja:
-          - { channel: "headless", version: "3.1.3479" }
     steps:
       - uses: actions/checkout@v2
         with:
