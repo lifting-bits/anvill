@@ -185,9 +185,8 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
   }
 
   if (bytes_accessable) {
-    value = lifter_context.value_lifter.Lift(
-        std::string_view(reinterpret_cast<char *>(bytes.data()), bytes.size()),
-        type, lifter_context, decl.address);
+    value = lifter_context.value_lifter.Lift(bytes, type, lifter_context,
+                                             decl.address);
   }
 
 
