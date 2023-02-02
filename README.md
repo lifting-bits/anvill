@@ -103,10 +103,10 @@ Or you can tell CMake where to find the remill installation prefix by passing `-
 
 ### Docker image
 
-To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 14 on Ubuntu 20.04 on AMD64 do:
+To build via Docker run, specify the architecture, base Ubuntu image and LLVM version. For example, to build Anvill linking against LLVM 15 on Ubuntu 20.04 on AMD64 do:
 
 ```shell
-ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=14; \
+ARCH=amd64; UBUNTU_VERSION=20.04; LLVM=15; \
    docker build . \
    -t anvill-llvm${LLVM}-ubuntu${UBUNTU_VERSION}-${ARCH} \
    -f Dockerfile \
