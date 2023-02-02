@@ -11,6 +11,7 @@
 #include <anvill/Lifters.h>
 #include <anvill/Type.h>
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/TypeSize.h>
 
 namespace llvm {
@@ -36,11 +37,11 @@ class ValueLifterImpl {
   // Consume `num_bytes` of bytes from `data`, interpreting them as an integer,
   // and update `data` in place, bumping out the first `num_bytes` of consumed
   // data.
-  llvm::APInt ConsumeBytesAsInt(std::string_view &data,
+  llvm::APInt ConsumeBytesAsInt(llvm::ArrayRef<uint8_t> &data,
                                 unsigned num_bytes) const;
 
   // Consume `size` bytes of data from `data`, and update `data` in place.
-  inline llvm::APInt ConsumeBytesAsInt(std::string_view &data,
+  inline llvm::APInt ConsumeBytesAsInt(llvm::ArrayRef<uint8_t> &data,
                                        llvm::TypeSize size) const {
     return ConsumeBytesAsInt(
         data, static_cast<unsigned>(static_cast<uint64_t>(size)));
@@ -49,7 +50,7 @@ class ValueLifterImpl {
   // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
   // of type `type_of_data`. This requires access to `ent_lifter` to be able
   // to lift pointer types that will reference declared data/functions.
-  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data,
+  llvm::Constant *Lift(llvm::ArrayRef<uint8_t> data, llvm::Type *type_of_data,
                        EntityLifterImpl &ent_lifter, uint64_t loc_ea) const;
 
   // Lift pointers at `ea`.
@@ -66,10 +67,9 @@ class ValueLifterImpl {
   //
   // Returns an `llvm::GlobalValue *` if the pointer is associated with a
   // known or plausible entity, and an `llvm::Constant *` otherwise.
-  llvm::Constant *GetPointer(
-      uint64_t ea, llvm::Type *value_type,
-      EntityLifterImpl &ent_lifter,
-      uint64_t loc_ea, unsigned address_space=0) const;
+  llvm::Constant *GetPointer(uint64_t ea, llvm::Type *value_type,
+                             EntityLifterImpl &ent_lifter, uint64_t loc_ea,
+                             unsigned address_space = 0) const;
 
  private:
   llvm::Constant *GetFunctionPointer(const FunctionDecl &decl,

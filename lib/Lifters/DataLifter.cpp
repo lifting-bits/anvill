@@ -180,15 +180,13 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
                    << std::dec;
         break;
       }
-
       bytes.push_back(byte);
     }
   }
 
   if (bytes_accessable) {
-    value = lifter_context.value_lifter.Lift(
-        std::string_view(reinterpret_cast<char *>(bytes.data()), bytes.size()),
-        type, lifter_context, decl.address);
+    value = lifter_context.value_lifter.Lift(bytes, type, lifter_context,
+                                             decl.address);
   }
 
 
