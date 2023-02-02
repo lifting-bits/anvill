@@ -425,6 +425,10 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
 
     auto cur_spec = pointee_spec;
     auto cur_type = pointee_type;
+    if (!cur_type->isSized()) {
+      continue;
+    }
+
     {
       auto cur_size = dl.getTypeSizeInBits(cur_type) / 8;
       auto index = offset / cur_size;

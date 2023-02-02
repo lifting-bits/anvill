@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <llvm/ADT/ArrayRef.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -360,7 +362,8 @@ class ValueLifter {
   // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
   // of type `type_of_data`. `loc_ea`, if non-null, is the address at which
   // `data` appears.
-  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data) const;
+  llvm::Constant *Lift(llvm::ArrayRef<uint8_t> data,
+                       llvm::Type *type_of_data) const;
 
   // Interpret `ea` as being a pointer to a value of type `value_type` in the
   // address space `address_space`.

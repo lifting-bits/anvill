@@ -225,6 +225,10 @@ const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
 
+uint64_t SpecBlockContext::GetParentFunctionAddress() const {
+  return this->decl.address;
+}
+
 size_t SpecBlockContext::GetStackSize() const {
   return decl.stack_depth;
 }
