@@ -497,7 +497,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
   auto pc_val = this->options.program_counter_init_procedure(
       ir, pc_reg, this->block_def.addr);
-  ir.CreateStore(pc_val, pc_ptr)->dump();
+  ir.CreateStore(pc_val, pc_ptr);
 
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
