@@ -424,8 +424,6 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
-
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 }
 
 
@@ -544,7 +542,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  ir.CreateBr(this->GetOrCreateBlock(this->func_address));
+  auto entry_insn = this->GetOrCreateBlock(this->func_address);
+  ir.CreateBr(entry_insn);
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
@@ -552,6 +551,14 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitBlocks(lifted_func_st.state_ptr, abstract_stack);
+
+  if (this->curr_decl->cfg.find(func_address) == this->curr_decl->cfg.end()) {
+    llvm::IRBuilder<> insn_ir(entry_insn);
+    insn_ir.CreateBr(invalid_successor_block);
+  }
+
+
+  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
