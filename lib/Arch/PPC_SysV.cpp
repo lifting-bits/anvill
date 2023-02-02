@@ -80,10 +80,10 @@ static llvm::Type *IntegerTypeSplitter(llvm::Type *type) {
 
 }  // namespace
 
-class PPC_C : public CallingConvention {
+class PPC_SysV : public CallingConvention {
  public:
-  explicit PPC_C(const remill::Arch *arch);
-  virtual ~PPC_C() = default;
+  explicit PPC_SysV(const remill::Arch *arch);
+  virtual ~PPC_SysV() = default;
 
   llvm::Error AllocateSignature(FunctionDecl &fdecl,
                                 llvm::Function &func) override;
@@ -100,17 +100,17 @@ class PPC_C : public CallingConvention {
 };
 
 std::unique_ptr<CallingConvention>
-CallingConvention::CreatePPC_C(const remill::Arch *arch) {
-  return std::make_unique<PPC_C>(arch);
+CallingConvention::CreatePPC_SysV(const remill::Arch *arch) {
+  return std::make_unique<PPC_SysV>(arch);
 }
 
-PPC_C::PPC_C(const remill::Arch *arch)
+PPC_SysV::PPC_SysV(const remill::Arch *arch)
     : CallingConvention(llvm::CallingConv::C, arch),
       parameter_register_constraints(kParamRegConstraints),
       return_register_constraints(kReturnRegConstraints) {}
 
-llvm::Error PPC_C::AllocateSignature(FunctionDecl &fdecl,
-                                     llvm::Function &func) {
+llvm::Error PPC_SysV::AllocateSignature(FunctionDecl &fdecl,
+                                        llvm::Function &func) {
 
   auto err = BindReturnValues(func, fdecl.returns);
   if (remill::IsError(err)) {
@@ -132,8 +132,8 @@ llvm::Error PPC_C::AllocateSignature(FunctionDecl &fdecl,
 }
 
 llvm::Error
-PPC_C::BindReturnValues(llvm::Function &function,
-                        std::vector<anvill::ValueDecl> &ret_values) {
+PPC_SysV::BindReturnValues(llvm::Function &function,
+                           std::vector<anvill::ValueDecl> &ret_values) {
 
   auto ret_type = function.getReturnType();
   LOG(INFO) << "Binding on return " << remill::LLVMThingToString(ret_type);
@@ -255,8 +255,8 @@ PPC_C::BindReturnValues(llvm::Function &function,
 }
 
 llvm::Error
-PPC_C::BindParameters(llvm::Function &function,
-                      std::vector<ParameterDecl> &parameter_declarations) {
+PPC_SysV::BindParameters(llvm::Function &function,
+                         std::vector<ParameterDecl> &parameter_declarations) {
 
   const auto param_names = TryRecoverParamNames(function);
   llvm::DataLayout dl(function.getParent());
