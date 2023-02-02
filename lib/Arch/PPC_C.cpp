@@ -25,6 +25,13 @@
 namespace anvill {
 namespace {
 
+// The PowerPC SystemV ABI documentation (which Freescale's EABI is based off) describes the
+// parameter and return registers:
+//     https://math-atlas.sourceforge.net/devel/assembly/elfspec_ppc.pdf
+//
+// Despite having 64-bit GPRs, the e200 series toolchain conforms to Freescale's 32-bit PowerPC EABI
+// meaning that 32-bit values should be stored in the parameter and return registers:
+//     https://www.nxp.com/files-static/32bit/doc/ref_manual/e200z759CRM.pdf
 static const std::vector<RegisterConstraint> kParamRegConstraints = {
     // GPRs
     RegisterConstraint({VariantConstraint("R3", kTypeIntegral, kMaxBit32)}),
@@ -36,19 +43,14 @@ static const std::vector<RegisterConstraint> kParamRegConstraints = {
     RegisterConstraint({VariantConstraint("R9", kTypeIntegral, kMaxBit32)}),
     RegisterConstraint({VariantConstraint("R10", kTypeIntegral, kMaxBit32)}),
     // FPRs
-    RegisterConstraint({VariantConstraint("F1", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F2", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F3", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F4", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F5", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F6", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F7", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F8", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F9", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F10", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F11", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F12", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F13", kTypeFloat, kMaxBit32)}),
+    RegisterConstraint({VariantConstraint("F1", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F2", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F3", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F4", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F5", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F6", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F7", kTypeFloat, kMaxBit64)}),
+    RegisterConstraint({VariantConstraint("F8", kTypeFloat, kMaxBit64)}),
 };
 
 static const std::vector<RegisterConstraint> kReturnRegConstraints = {
@@ -56,10 +58,7 @@ static const std::vector<RegisterConstraint> kReturnRegConstraints = {
     RegisterConstraint({VariantConstraint("R3", kTypeIntegral, kMaxBit32)}),
     RegisterConstraint({VariantConstraint("R4", kTypeIntegral, kMaxBit32)}),
     // FPRs
-    RegisterConstraint({VariantConstraint("F1", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F2", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F3", kTypeFloat, kMaxBit32)}),
-    RegisterConstraint({VariantConstraint("F4", kTypeFloat, kMaxBit32)}),
+    RegisterConstraint({VariantConstraint("F1", kTypeFloat, kMaxBit64)}),
 };
 
 // Used to split things like `i64`s into multiple `i32`s.
@@ -153,8 +152,6 @@ PPC_C::BindReturnValues(llvm::Function &function,
           remill::LLVMThingToString(ret_type).c_str());
     }
 
-    // NOTE(alex): Not sure about this, check later.
-    //
     // Indirect return values are passed by pointer through `R3`.
     value_declaration.reg = arch->RegisterByName("R3");
     return llvm::Error::success();
