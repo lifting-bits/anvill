@@ -418,11 +418,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["macos-12"]
+        os: ["macos-11"]
         llvm: ["15"]
         cxxcommon_version: ["v0.2.22"]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-12
 
     steps:
       - name: Setup the build paths
