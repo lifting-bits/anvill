@@ -80,12 +80,4 @@ const PlatformList &GetSupportedPlatforms(void) {
   return kSupportedPlatforms;
 }
 
-std::unique_ptr<llvm::LLVMContext> CreateContextWithOpaquePointers(void) {
-  auto context = std::make_unique<llvm::LLVMContext>();
-#if LLVM_VERSION_NUMBER < LLVM_VERSION(15, 0)
-  context->enableOpaquePointers();
-#endif
-  return context;
-}
-
 }  // namespace anvill

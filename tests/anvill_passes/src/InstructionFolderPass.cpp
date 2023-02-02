@@ -7,7 +7,6 @@
  */
 
 #include <anvill/Passes/HoistUsersOfSelectsAndPhis.h>
-
 #include <anvill/Transforms.h>
 #include <doctest/doctest.h>
 #include <remill/Arch/Arch.h>
@@ -22,12 +21,12 @@ namespace anvill {
 
 TEST_SUITE("InstructionFolderPass") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    auto context = anvill::CreateContextWithOpaquePointers();
-    auto module = LoadTestData(*context, "InstructionFolderPass.ll");
+    llvm::LLVMContext context;
+    auto module = LoadTestData(context, "InstructionFolderPass.ll");
 
     REQUIRE(module != nullptr);
 
-    auto arch = remill::Arch::Build(context.get(), remill::GetOSName("linux"),
+    auto arch = remill::Arch::Build(&context, remill::GetOSName("linux"),
                                     remill::GetArchName("amd64"));
 
     REQUIRE(arch != nullptr);

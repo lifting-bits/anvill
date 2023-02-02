@@ -17,17 +17,16 @@ namespace anvill {
 
 TEST_SUITE("RecoverEntityUses") {
   TEST_CASE("Regression test for unresolved anvill_pc") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
-    auto module = LoadTestData(*llvm_context, "TestingUnresolvedEntity.ll");
+    llvm::LLVMContext llvm_context;
+    auto module = LoadTestData(llvm_context, "TestingUnresolvedEntity.ll");
 
 
-    auto arch =
-        remill::Arch::Build(llvm_context.get(), remill::GetOSName("linux"),
-                            remill::GetArchName("x86"));
+    auto arch = remill::Arch::Build(&llvm_context, remill::GetOSName("linux"),
+                                    remill::GetArchName("x86"));
     REQUIRE(arch != nullptr);
 
     auto ctrl_flow_provider = anvill::NullControlFlowProvider();
-    TypeDictionary tyDict(*llvm_context);
+    TypeDictionary tyDict(llvm_context);
 
     NullTypeProvider ty_prov(tyDict);
     NullMemoryProvider mem_prov;

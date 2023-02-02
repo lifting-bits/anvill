@@ -6,8 +6,8 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
 #include <anvill/Transforms.h>
 #include <doctest/doctest.h>
 #include <llvm/IR/Verifier.h>
@@ -21,15 +21,13 @@ namespace anvill {
 
 TEST_SUITE("SplitStackFrameAtReturnAddress") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
+    llvm::LLVMContext llvm_context;
     auto module =
-        LoadTestData(*llvm_context, "SplitStackFrameAtReturnAddress.ll");
+        LoadTestData(llvm_context, "SplitStackFrameAtReturnAddress.ll");
 
     REQUIRE(module != nullptr);
     StackFrameRecoveryOptions opt;
-    CHECK(RunFunctionPass(
-        module.get(), SplitStackFrameAtReturnAddress(opt)));
-
+    CHECK(RunFunctionPass(module.get(), SplitStackFrameAtReturnAddress(opt)));
   }
 }
 

@@ -1,5 +1,5 @@
+#include <anvill/Lifters.h>
 #include <anvill/Passes/RemoveStackPointerCExprs.h>
-
 #include <anvill/Transforms.h>
 #include <doctest/doctest.h>
 #include <llvm/ADT/SmallSet.h>
@@ -10,7 +10,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
-#include <anvill/Lifters.h>
+
 #include <iostream>
 
 #include "Utils.h"
@@ -27,8 +27,8 @@ static llvm::Function *FindFunction(llvm::Module *module, std::string name) {
 
 TEST_SUITE("RemoveStackPointerCExprs") {
   TEST_CASE("RegressionRecoverStack.ll") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
-    auto mod = LoadTestData(*llvm_context, "RegressionRecoverStack.ll");
+    llvm::LLVMContext llvm_context;
+    auto mod = LoadTestData(llvm_context, "RegressionRecoverStack.ll");
     auto target_function = FindFunction(mod.get(), "slice");
     CHECK(target_function != nullptr);
     llvm::FunctionPassManager fpm;
