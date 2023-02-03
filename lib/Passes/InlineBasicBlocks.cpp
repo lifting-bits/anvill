@@ -30,23 +30,29 @@ InlineBasicBlocks::run(llvm::Function &function,
   }
 
   bool did_anything = false;
-  for (auto &inst : llvm::instructions(function)) {
-    if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-      auto callee = call->getCalledFunction();
-      auto callee_addr = anvill::GetBasicBlockAddr(callee);
-      if (!callee_addr.has_value()) {
-        continue;
-      }
+  bool inlined_something = false;
+  do {
+    inlined_something = false;
+    for (auto &inst : llvm::instructions(function)) {
+      if (auto call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+        auto callee = call->getCalledFunction();
+        auto callee_addr = anvill::GetBasicBlockAddr(callee);
+        if (!callee_addr.has_value()) {
+          continue;
+        }
 
-      llvm::InlineFunctionInfo ifi;
-      auto res = llvm::InlineFunction(*call, ifi);
-      if (!res.isSuccess()) {
-        LOG(ERROR) << "Could not inline call to block at address "
-                   << *callee_addr;
+        llvm::InlineFunctionInfo ifi;
+        auto res = llvm::InlineFunction(*call, ifi);
+        if (!res.isSuccess()) {
+          LOG(ERROR) << "Could not inline call to block at address "
+                     << *callee_addr;
+        }
+        did_anything = true;
+        inlined_something = true;
+        break;
       }
-      did_anything = true;
     }
-  }
+  } while (inlined_something);
   return did_anything ? llvm::PreservedAnalyses::all()
                       : llvm::PreservedAnalyses::none();
 }

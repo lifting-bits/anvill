@@ -183,7 +183,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   llvm::FunctionPassManager fpm;
 
-  //fpm.addPass(anvill::InlineBasicBlocks());
+  fpm.addPass(anvill::InlineBasicBlocks());
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::VerifierPass());
   // NOTE(alex): This pass is extremely slow with LLVM 14.
@@ -307,6 +307,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
 
   second_fpm.addPass(llvm::VerifierPass());
+  AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
   second_fpm.addPass(CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());
   AddConvertXorsToCmps(second_fpm);

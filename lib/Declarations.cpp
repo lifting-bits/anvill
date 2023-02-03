@@ -225,6 +225,10 @@ const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
 
+uint64_t SpecBlockContext::GetParentFunctionAddress() const {
+  return this->decl.address;
+}
+
 size_t SpecBlockContext::GetStackSize() const {
   return decl.stack_depth;
 }
@@ -469,7 +473,7 @@ SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
 
-size_t
+std::optional<size_t>
 AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   if (this->stack_grows_down) {
     auto displaced_offset =
@@ -477,8 +481,10 @@ AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
     LOG(INFO) << this->total_size;
     LOG(INFO) << "disp: " << this->pointer_displacement;
     LOG(INFO) << "Displaced offset: " << displaced_offset;
-    CHECK(static_cast<std::int64_t>(this->total_size) >=
-          llabs(displaced_offset));
+    if (!(static_cast<std::int64_t>(this->total_size) >=
+          llabs(displaced_offset))) {
+      return std::nullopt;
+    }
     return this->total_size + displaced_offset;
   } else {
     return this->pointer_displacement + stack_off;
@@ -512,8 +518,12 @@ std::optional<llvm::Value *>
 AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
                                               std::int64_t stack_off) const {
   auto off = this->StackOffsetFromStackPointer(stack_off);
+  if (!off) {
+    return std::nullopt;
+  }
+
   auto i32 = llvm::IntegerType::getInt32Ty(this->context);
-  LOG(INFO) << "Looking for offset" << off;
+  LOG(INFO) << "Looking for offset" << *off;
   auto curr_off = 0;
   auto curr_ind = 0;
   for (auto [sz, ptr] : this->components) {
@@ -522,7 +532,7 @@ AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
       LOG(INFO) << curr_off << " " << sz;
       return ir.CreateGEP(this->stack_types[curr_ind], ptr,
                           {llvm::ConstantInt::get(i32, 0),
-                           llvm::ConstantInt::get(i32, off - curr_off)});
+                           llvm::ConstantInt::get(i32, *off - curr_off)});
     }
     curr_off += sz;
     curr_ind++;

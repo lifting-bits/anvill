@@ -495,11 +495,13 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   // Initialize the program counter
   auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
-  ir.CreateStore(this->options.program_counter_init_procedure(ir, pc_reg, 0),
-                 pc_ptr);
+  auto pc_val = this->options.program_counter_init_procedure(
+      ir, pc_reg, this->block_def.addr);
+  ir.CreateStore(pc_val, pc_ptr);
+
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc, mem_res, next_pc_out};
+      this->state_ptr, pc_val, mem_res, next_pc_out};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
@@ -568,21 +570,6 @@ void BasicBlockLifter::UnpackLiveValues(
     }
   }
   CHECK(bldr.GetInsertPoint() == blk->end());
-}
-
-
-size_t
-BasicBlockLifter::StackOffsetFromStackPointer(std::int64_t stack_off) const {
-  // The offset is relative to the stack pointer but on entry to function so offset into the stack (negative if grows down postive otherwise...
-  // unless we have parameters)
-  // TODO(Ian): this wont do the correct thing for stack parameters
-
-  // welp lets crash if we are going to do the wrong thing
-  CHECK((options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off <= 0) ||
-        (!options.stack_frame_recovery_options.stack_grows_down &&
-         stack_off >= 0));
-  return std::abs(stack_off);
 }
 
 

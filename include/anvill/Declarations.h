@@ -222,6 +222,8 @@ class BasicBlockContext {
 
   virtual size_t GetPointerDisplacement() const = 0;
 
+  virtual uint64_t GetParentFunctionAddress() const = 0;
+
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
   // Deduplicates locations and ensures there are no overlapping decls
@@ -269,7 +271,8 @@ class AbstractStack {
                 std::vector<StackComponent> components, bool stack_grows_down,
                 size_t pointer_displacement);
 
-  size_t StackOffsetFromStackPointer(std::int64_t stack_off) const;
+  std::optional<size_t>
+  StackOffsetFromStackPointer(std::int64_t stack_off) const;
 
 
   std::int64_t StackPointerFromStackOffset(size_t offset) const;
@@ -303,6 +306,8 @@ class SpecBlockContext : public BasicBlockContext {
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
+
+  virtual uint64_t GetParentFunctionAddress() const override;
 
   virtual size_t GetStackSize() const override;
 

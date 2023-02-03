@@ -250,7 +250,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   auto overrunptr = ent_insert.CreateAlloca(
       AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
 
-
+  LOG(INFO) << "Replacing stack vars in bb: " << std::hex
+            << *anvill::GetBasicBlockAddr(&F);
   AbstractStack stk(
       F.getContext(),
       {{cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F)},
@@ -339,9 +340,11 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       if (ptr) {
         replace_use(*ptr);
       } else {
-        LOG(ERROR) << "No pointer for offset " << offset
-                   << " was supposed to use "
-                   << stk.StackOffsetFromStackPointer(offset);
+        LOG(ERROR) << "No pointer for offset " << offset;
+        auto off = stk.StackOffsetFromStackPointer(offset);
+        if (off) {
+          LOG(ERROR) << "Was supposed to use offset " << *off;
+        }
       }
     }
   }
