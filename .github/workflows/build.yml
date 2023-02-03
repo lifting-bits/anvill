@@ -380,7 +380,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: AMP Challenge Binaries logs
-          path: test-errs.tar.xz
+          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/amp-challenge-bins/**/std*
 
       #      - name: Run Integration Tests (AnghaBench 1K)
       #        shell: bash
