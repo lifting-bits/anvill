@@ -369,12 +369,16 @@ jobs:
           --decompile-cmd "anvill-decompile-spec"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
+      - name: Tar and Compress logs
+        if: failure()
+        run: |
+          tar -cf test-errs.tar.xz ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/amp-challenge-bins/**/std*
       - name: Upload stderr/stdout logs on error
         if: failure()
         uses: actions/upload-artifact@v3
         with:
           name: AMP Challenge Binaries logs
-          path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/amp-challenge-bins/**/std*
+          path: test-errs.tar.xz
 
       #      - name: Run Integration Tests (AnghaBench 1K)
       #        shell: bash
