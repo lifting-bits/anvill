@@ -58,6 +58,7 @@
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
+#include <anvill/Passes/InlineBasicBlocks.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
@@ -182,6 +183,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   llvm::FunctionPassManager fpm;
 
+  //fpm.addPass(anvill::InlineBasicBlocks());
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::VerifierPass());
   // NOTE(alex): This pass is extremely slow with LLVM 14.

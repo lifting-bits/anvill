@@ -36,6 +36,7 @@ set(anvill_passes
   ConvertSymbolicReturnAddressToConcreteReturnAddress
   ConvertXorsToCmps
   HoistUsersOfSelectsAndPhis
+  InlineBasicBlocks
   JumpTableAnalysis
   BranchAnalysis
   Constraints
