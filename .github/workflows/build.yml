@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install Python dependencies
         run: |
@@ -52,10 +52,8 @@ jobs:
       matrix:
         image:
           - { name: "ubuntu", tag: "20.04" }
-        binja:
-          - { channel: "headless", version: "3.1.3479" }
-        llvm: ["14", "15"]
-        cxxcommon_version: ["v0.2.16"]
+        llvm: ["15"]
+        cxxcommon_version: ["v0.2.22"]
 
     runs-on: ubuntu-20.04
     container:
@@ -83,14 +81,14 @@ jobs:
                    ${rel_ccache_path} \
                    ${rel_workspace_path}
 
-          echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
-          echo ::set-output name=REL_SOURCE::${rel_source_path}
-          echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
-          echo ::set-output name=REL_BUILD::${rel_build_path}
-          echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
-          echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
-          echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
-          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
+          echo "SOURCE=$(pwd)/${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_SOURCE=${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "BUILD=$(pwd)/${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_BUILD=${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "INSTALL=$(pwd)/${rel_install_path}" >> ${GITHUB_OUTPUT}
+          echo "DOWNLOADS=$(pwd)/${rel_downloads_path}" >> ${GITHUB_OUTPUT}
+          echo "CCACHE=$(pwd)/${rel_ccache_path}" >> ${GITHUB_OUTPUT}
+          echo "WORKSPACE=$(pwd)/${rel_workspace_path}" >> ${GITHUB_OUTPUT}
 
       - name: Update the cache (downloads)
         uses: actions/cache@v3
@@ -148,12 +146,12 @@ jobs:
         run: |
           cargo install just
 
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v3
         with:
           distribution: "temurin"
           java-version: "11"
       - name: Clone Ghidra Spec Generation
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
@@ -208,13 +206,13 @@ jobs:
 
           echo "${destination_path}/installed/x64-linux-rel/tools/llvm-${{matrix.llvm}}" >> $GITHUB_PATH
 
-          echo ::set-output name=PATH::${destination_path}
+          echo "PATH=${destination_path}" >> ${GITHUB_OUTPUT}
 
       - name: Select the build job count
         shell: bash
         id: build_job_count
         run: |
-          echo ::set-output name=VALUE::$(($(nproc) + 1))
+          echo "VALUE=$(($(nproc) + 1))" >> ${GITHUB_OUTPUT}
 
       - name: Configure remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -255,7 +253,7 @@ jobs:
           cmake --build remill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install remill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
@@ -311,7 +309,7 @@ jobs:
           cmake --build anvill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install anvill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
@@ -325,7 +323,6 @@ jobs:
           scripts/build-preset.sh debug
       - name: Run the tests
         env:
-          BINJA_DECODE_KEY: ${{ secrets.BINJA_DECODE_KEY }}
           CTEST_OUTPUT_ON_FAILURE: 1
 
         shell: bash
@@ -353,9 +350,9 @@ jobs:
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=DEB_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.deb)
-          echo ::set-output name=RPM_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)
-          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
+          echo "DEB_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.deb)" >> ${GITHUB_OUTPUT}
+          echo "RPM_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.rpm)" >> ${GITHUB_OUTPUT}
+          echo "TGZ_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)" >> ${GITHUB_OUTPUT}
 
       - name: Install the DEB package
         run: |
@@ -371,6 +368,18 @@ jobs:
           --decompile-cmd "anvill-decompile-spec"
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
+      - name: Tar and Compress logs
+        if: failure()
+        run: |
+          shopt -s globstar
+          tar -cf test-errs.tar.xz ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/amp-challenge-bins/**/std*
+        shell: bash
+      - name: Upload stderr/stdout logs on error
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: AMP Challenge Binaries logs
+          path: test-errs.tar.xz
 
       #      - name: Run Integration Tests (AnghaBench 1K)
       #        shell: bash
@@ -382,19 +391,19 @@ jobs:
       #            --decompile-cmd "anvill-decompile-json"
 
       - name: Store the DEB package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_deb_package
           path: ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
       - name: Store the RPM package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_rpm_package
           path: ${{ steps.package_names.outputs.RPM_PACKAGE_PATH }}
 
       - name: Store the TGZ package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.image.name }}-${{ matrix.image.tag }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
@@ -409,10 +418,10 @@ jobs:
       fail-fast: false
       matrix:
         os: ["macos-11"]
-        llvm: ["14", "15"]
-        cxxcommon_version: ["v0.2.16"]
+        llvm: ["15"]
+        cxxcommon_version: ["v0.2.22"]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-12
 
     steps:
       - name: Setup the build paths
@@ -432,17 +441,17 @@ jobs:
                    ${rel_ccache_path} \
                    ${rel_workspace_path}
 
-          echo ::set-output name=SOURCE::$(pwd)/${rel_source_path}
-          echo ::set-output name=REL_SOURCE::${rel_source_path}
-          echo ::set-output name=BUILD::$(pwd)/${rel_build_path}
-          echo ::set-output name=REL_BUILD::${rel_build_path}
-          echo ::set-output name=INSTALL::$(pwd)/${rel_install_path}
-          echo ::set-output name=DOWNLOADS::$(pwd)/${rel_downloads_path}
-          echo ::set-output name=CCACHE::$(pwd)/${rel_ccache_path}
-          echo ::set-output name=WORKSPACE::$(pwd)/${rel_workspace_path}
+          echo "SOURCE=$(pwd)/${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_SOURCE=${rel_source_path}" >> ${GITHUB_OUTPUT}
+          echo "BUILD=$(pwd)/${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "REL_BUILD=${rel_build_path}" >> ${GITHUB_OUTPUT}
+          echo "INSTALL=$(pwd)/${rel_install_path}" >> ${GITHUB_OUTPUT}
+          echo "DOWNLOADS=$(pwd)/${rel_downloads_path}" >> ${GITHUB_OUTPUT}
+          echo "CCACHE=$(pwd)/${rel_ccache_path}" >> ${GITHUB_OUTPUT}
+          echo "WORKSPACE=$(pwd)/${rel_workspace_path}" >> ${GITHUB_OUTPUT}
 
       - name: Update the cache (downloads)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.DOWNLOADS }}
 
@@ -453,7 +462,7 @@ jobs:
             gitmodules_${{ matrix.os }}_${{ matrix.llvm }}_${{ matrix.cxxcommon_version }}
 
       - name: Update the cache (ccache)
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.build_paths.outputs.CCACHE }}
 
@@ -470,7 +479,7 @@ jobs:
                        ninja
 
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
           fetch-depth: 0
@@ -512,13 +521,13 @@ jobs:
 
           echo "${destination_path}/installed/x64-osx-rel/bin" >> $GITHUB_PATH
 
-          echo ::set-output name=PATH::${destination_path}
+          echo "PATH=${destination_path}" >> ${GITHUB_OUTPUT}
 
       - name: Select the build job count
         shell: bash
         id: build_job_count
         run: |
-          echo ::set-output name=VALUE::$(($(sysctl -n hw.logicalcpu) + 1))
+          echo "VALUE=$(($(sysctl -n hw.logicalcpu) + 1))" >> ${GITHUB_OUTPUT}
 
       - name: Configure remill
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
@@ -559,7 +568,7 @@ jobs:
           cmake --build remill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install remill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill/remill
@@ -615,7 +624,7 @@ jobs:
           cmake --build anvill_build \
                 --target install
 
-          echo ::set-output name=PATH::${DESTDIR}
+          echo "PATH=${DESTDIR}" >> ${GITHUB_OUTPUT}
 
       - name: Build, configure and install anvill (Presets)
         working-directory: ${{ steps.build_paths.outputs.SOURCE }}/anvill
@@ -655,13 +664,25 @@ jobs:
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.BUILD }}
         run: |
-          echo ::set-output name=TGZ_PACKAGE_PATH::${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)
+          echo "TGZ_PACKAGE_PATH=${{ steps.build_paths.outputs.REL_BUILD }}/$(ls *.tar.gz)" >> ${GITHUB_OUTPUT}
 
       - name: Store the TGZ package
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
+
+  passes_ci:
+    needs: build_linux
+    runs-on: ubuntu-20.04
+    if: always()
+    steps:
+      - name: Successful linux build
+        if: ${{ contains(needs.*.result, 'success') }}
+        run: exit 0
+      - name: Failing linux build
+        if: ${{ !(contains(needs.*.result, 'success')) }}
+        run: exit 1
 
   release_packages:
     # Do not run the release procedure if any of the builds has failed
@@ -671,7 +692,7 @@ jobs:
 
     steps:
       - name: Clone the anvill repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: anvill
           fetch-depth: 0
@@ -683,7 +704,7 @@ jobs:
           ./scripts/generate_changelog.sh changelog.md
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
 
       - name: Draft the new release
         id: create_release
@@ -738,12 +759,10 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["14", "15"]
+        llvm: ["15"]
         ubuntu: ["20.04"]
-        binja:
-          - { channel: "headless", version: "3.1.3479" }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           submodules: true
       - name: Build LLVM ${{ matrix.llvm }} on ${{ matrix.ubuntu }}

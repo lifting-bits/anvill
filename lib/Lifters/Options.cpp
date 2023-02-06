@@ -78,15 +78,14 @@ LifterOptions::SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
 // Initialize the program counter with a constant expression of the form:
 //
 //    (ptrtoint __anvill_pc)
-llvm::Value *
-LifterOptions::SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
-                                          const remill::Register *pc_reg,
-                                          uint64_t func_address) {
+llvm::Value *LifterOptions::SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
+                                                       llvm::Type *address_type,
+                                                       uint64_t func_address) {
 
   auto &context = ir.getContext();
   auto block = ir.GetInsertBlock();
   auto module = block->getModule();
-  auto type = remill::RecontextualizeType(pc_reg->type, context);
+  auto type = remill::RecontextualizeType(address_type, context);
 
   auto base_pc = module->getGlobalVariable(kSymbolicPCName);
   if (!base_pc) {

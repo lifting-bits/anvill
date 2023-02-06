@@ -290,6 +290,7 @@ GetArch(llvm::LLVMContext &context,
       break;
     case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32; break;
     case ::specification::ARCH_SPARC64: arch_name = remill::kArchSparc64; break;
+    case ::specification::ARCH_PPC: arch_name = remill::kArchPPC; break;
   }
 
   switch (spec.operating_system()) {

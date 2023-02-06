@@ -73,6 +73,7 @@ set(anvill_arch_SOURCES
   "Arch/AArch64_C.cpp"
   "Arch/AllocationState.cpp"
   "Arch/Arch.cpp"
+  "Arch/PPC_SysV.cpp"
   "Arch/SPARC32_C.cpp"
   "Arch/SPARC64_C.cpp"
   "Arch/X86_64_SysV.cpp"

@@ -150,6 +150,15 @@ class StackFrameRecoveryOptions {
   bool stack_pointer_is_negative{false};
 };
 
+using ProgramCounterInitProcedure =
+    std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::Type *, uint64_t)>;
+
+using StackPointerInitProcedure = std::function<llvm::Value *(
+    llvm::IRBuilderBase &, const remill::Register *, uint64_t)>;
+
+using ReturnAddressInitProcedure = std::function<llvm::Value *(
+    llvm::IRBuilderBase &, llvm::IntegerType *, uint64_t)>;
+
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
@@ -170,7 +179,7 @@ class LifterOptions {
   //    (add (ptrtoint __anvill_pc), <addr>)
   //
   static llvm::Value *SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
-                                                 const remill::Register *pc_reg,
+                                                 llvm::Type *address_type,
                                                  uint64_t func_address);
 
   // Initialize the return address with a constant expression of the form:
@@ -250,23 +259,17 @@ class LifterOptions {
   //      (add (ptrtoint __anvill_pc) <address>)
   //
   // Otherwise, a concrete integer is used, i.e. `<address>`.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
-                              uint64_t)>
-      program_counter_init_procedure;
+  ProgramCounterInitProcedure program_counter_init_procedure;
 
   // Procedure for producing an initial value of the stack pointer on entry
   // to a function. An `IRBuilderBase` is provided for building values within
   // the entry block of the function at the given address.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
-                              uint64_t)>
-      stack_pointer_init_procedure;
+  StackPointerInitProcedure stack_pointer_init_procedure;
 
   // Procedure for producing an initial value of the return address on entry
   // to a function. An `IRBuilderBase` is provided for building values within
   // the entry block of the function at the given address.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *,
-                              uint64_t)>
-      return_address_init_procedure;
+  ReturnAddressInitProcedure return_address_init_procedure;
 
   StackFrameRecoveryOptions stack_frame_recovery_options;
 

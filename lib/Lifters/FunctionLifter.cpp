@@ -273,7 +273,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   llvm::IRBuilder<> ir(block);
 
   // Initialize the program counter.
-  auto pc = options.program_counter_init_procedure(ir, pc_reg, func_address);
+  auto pc =
+      options.program_counter_init_procedure(ir, address_type, func_address);
   ir.CreateStore(pc, pc_ptr);
 
   // Initialize the stack pointer.
@@ -408,7 +409,7 @@ void FunctionLifter::VisitBlock(CodeBlock blk,
 
   for (uint64_t succ : blk.outgoing_edges) {
     sw->addCase(llvm::ConstantInt::get(
-                    llvm::cast<llvm::IntegerType>(this->pc_reg_type), succ),
+                    llvm::cast<llvm::IntegerType>(this->address_type), succ),
                 this->GetOrCreateBlock(succ));
   }
 }

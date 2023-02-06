@@ -182,8 +182,8 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
     if (cc.target_address.has_value()) {
       this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics,
-          this->options.program_counter_init_procedure(builder, this->pc_reg,
-                                                       *cc.target_address));
+          this->options.program_counter_init_procedure(
+              builder, this->address_type, *cc.target_address));
     } else {
       this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics);
@@ -496,9 +496,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the program counter
   auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
   auto pc_val = this->options.program_counter_init_procedure(
-      ir, pc_reg, this->block_def.addr);
+      ir, this->address_type, this->block_def.addr);
   ir.CreateStore(pc_val, pc_ptr);
-
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
       this->state_ptr, pc_val, mem_res, next_pc_out};
@@ -583,7 +582,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[0] = parent_stack;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
-      builder, pc_reg, cbfunc.GetBlock().addr);
+      builder, this->address_type, cbfunc.GetBlock().addr);
   args[remill::kMemoryPointerArgNum] =
       remill::LoadMemoryPointer(builder, this->intrinsics);
 
