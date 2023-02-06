@@ -11,5 +11,29 @@
         "challenge-3_x86_program_go",
         "challenge-3_armv7_program_go.elf",
         "challenge-3_armv7_program_go_patched.elf"
-    ]
+    ],
+    "language_id_overrides": {
+        "ppc-adc_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-edma_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-etimer_freq_measurement_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-etimer_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-fccu_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-flexcan_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-hello_world.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-hello_world_mpc5777c.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-hello_world_pll.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-linflexd_lin_master_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-linflexd_lin_slave_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-linflexd_uart_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-lp_stop_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-sgen_flexpwm_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-siul_registerprotection_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-spi_dma_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-spi_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-tsens_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc-xbic_dma_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
+        "ppc_vle_booke_example.elf": "PowerPC:BE:64:VLE-32addr",
+        "challenge-10-ppc-vle-program_c.elf": "PowerPC:BE:64:VLE-32addr",
+        "challenge-10-ppc-program_c.elf": "PowerPC:BE:64:VLE-32addr"
+    }
 }
