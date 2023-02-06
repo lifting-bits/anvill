@@ -672,6 +672,18 @@ jobs:
           name: ${{ matrix.os }}_llvm${{ matrix.llvm }}_tgz_package
           path: ${{ steps.package_names.outputs.TGZ_PACKAGE_PATH }}
 
+  passes_ci:
+    needs: build_linux
+    runs-on: ubuntu-20.04
+    if: always()
+    steps:
+      - name: Successful linux build
+        if: ${{ contains(needs.*.result, 'success') }}
+        run: exit 0
+      - name: Failing linux build
+        if: ${{ !(contains(needs.*.result, 'success')) }}
+        run: exit 1
+
   release_packages:
     # Do not run the release procedure if any of the builds has failed
     needs: [build_linux, build_macos]
