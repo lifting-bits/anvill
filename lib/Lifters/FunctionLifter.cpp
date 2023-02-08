@@ -424,6 +424,15 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
+
+  // NOTE(Ian): some blocks may be empty ie. if the CFG communicates a possible transition to some undecodeable
+  // bytes so here we check for block transfers that got added that we havent initialized and add an error
+  // if we end up transferring there.
+  for (auto &blks : this->lifted_func->getBasicBlockList()) {
+    if (!blks.getTerminator()) {
+      llvm::BranchInst::Create(this->invalid_successor_block, &blks);
+    }
+  }
 }
 
 
@@ -551,12 +560,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitBlocks(lifted_func_st.state_ptr, abstract_stack);
-
-  if (this->curr_decl->cfg.find(func_address) == this->curr_decl->cfg.end()) {
-    llvm::IRBuilder<> insn_ir(entry_insn);
-    insn_ir.CreateBr(invalid_successor_block);
-  }
-
 
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 
