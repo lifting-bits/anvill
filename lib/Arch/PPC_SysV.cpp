@@ -136,7 +136,7 @@ PPC_SysV::BindReturnValues(llvm::Function &function,
                            std::vector<anvill::ValueDecl> &ret_values) {
 
   auto ret_type = function.getReturnType();
-  LOG(INFO) << "Binding on return " << remill::LLVMThingToString(ret_type);
+  DLOG(INFO) << "Binding on return " << remill::LLVMThingToString(ret_type);
 
   // If there is an sret parameter then it is a special case.
   if (function.hasStructRetAttr()) {

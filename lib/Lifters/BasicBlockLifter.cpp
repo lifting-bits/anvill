@@ -157,8 +157,8 @@ BasicBlockLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
   //                     function? Try this on Compiler Explorer!
   if (!enc.u.op && !enc.u.op2) {
-    LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
-              << std::hex << pc << " at " << inst.pc << std::dec;
+    DLOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
+               << std::hex << pc << " at " << inst.pc << std::dec;
 
     llvm::IRBuilder<> ir(block);
     return {pc + 4u,
@@ -314,13 +314,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
   auto init_context = this->CreateDecodingContext(this->block_def);
 
-  LOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
-            << " with size " << this->block_def.size;
+  DLOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
+             << " with size " << this->block_def.size;
   bool ended_on_terminal = false;
   while (reached_addr < this->block_def.addr + this->block_def.size &&
          !ended_on_terminal) {
     auto addr = reached_addr;
-    LOG(INFO) << "Decoding at addr " << std::hex << addr;
+    DLOG(INFO) << "Decoding at addr " << std::hex << addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
       remill::AddTerminatingTailCall(bb, this->intrinsics.error,
@@ -342,7 +342,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);
-    LOG_IF(INFO, ended_on_terminal)
+    DLOG_IF(INFO, ended_on_terminal)
         << "On terminal at addr: " << std::hex << addr;
   }
 
@@ -482,8 +482,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   };
 
 
-  LOG(INFO) << "Live values at entry to function "
-            << this->block_context->LiveBBParamsAtEntry().size();
+  DLOG(INFO) << "Live values at entry to function "
+             << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
@@ -600,7 +600,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
   PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
-    LOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
+    DLOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
     if (repr_var.param.mem_reg) {
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
           builder, repr_var.param.mem_offset);

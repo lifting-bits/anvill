@@ -287,8 +287,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // the function, which will be based off of the register state
   // on entry to the function.
   auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, ir);
-  LOG(INFO) << "Modifying ret stack pointer by: "
-            << return_stack_pointer_offset;
+  DLOG(INFO) << "Modifying ret stack pointer by: "
+             << return_stack_pointer_offset;
 
   // TODO(Ian): this could go in the wrong direction if stack option is set to go up
   const auto sp_val_on_exit = ir.CreateAdd(
@@ -478,9 +478,9 @@ AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   if (this->stack_grows_down) {
     auto displaced_offset =
         stack_off - static_cast<std::int64_t>(this->pointer_displacement);
-    LOG(INFO) << this->total_size;
-    LOG(INFO) << "disp: " << this->pointer_displacement;
-    LOG(INFO) << "Displaced offset: " << displaced_offset;
+    DLOG(INFO) << this->total_size;
+    DLOG(INFO) << "disp: " << this->pointer_displacement;
+    DLOG(INFO) << "Displaced offset: " << displaced_offset;
     if (!(static_cast<std::int64_t>(this->total_size) >=
           llabs(displaced_offset))) {
       return std::nullopt;
@@ -523,13 +523,13 @@ AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
   }
 
   auto i32 = llvm::IntegerType::getInt32Ty(this->context);
-  LOG(INFO) << "Looking for offset" << *off;
+  DLOG(INFO) << "Looking for offset" << *off;
   auto curr_off = 0;
   auto curr_ind = 0;
   for (auto [sz, ptr] : this->components) {
     if (off < curr_off + sz) {
-      LOG(INFO) << "Found for " << remill::LLVMThingToString(ptr);
-      LOG(INFO) << curr_off << " " << sz;
+      DLOG(INFO) << "Found for " << remill::LLVMThingToString(ptr);
+      DLOG(INFO) << curr_off << " " << sz;
       return ir.CreateGEP(this->stack_types[curr_ind], ptr,
                           {llvm::ConstantInt::get(i32, 0),
                            llvm::ConstantInt::get(i32, *off - curr_off)});

@@ -53,9 +53,9 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
 
       const remill::IntrinsicTable table(
           remillFunctionCall->getFunction()->getParent());
-      LOG(INFO) << "Replacing call from: "
-                << remill::LLVMThingToString(remillFunctionCall)
-                << " with call to " << std::hex << ra.u.address;
+      DLOG(INFO) << "Replacing call from: "
+                 << remill::LLVMThingToString(remillFunctionCall)
+                 << " with call to " << std::hex << ra.u.address;
       auto new_mem =
           fdecl->CallFromLiftedBlock(entity, lifter.Options().TypeDictionary(),
                                      table, ir, state_ptr, mem_ptr);
