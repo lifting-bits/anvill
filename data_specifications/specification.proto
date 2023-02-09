@@ -293,6 +293,8 @@ message StackFrame {
 
   // the maximum depth the stack reaches beyond the return_addr
   uint64 max_frame_depth = 4;
+
+  int64 parameter_offset = 5;
 }
 
 message Function {
