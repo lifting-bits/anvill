@@ -390,15 +390,6 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
     DLOG(INFO) << "Visiting: " << std::hex << addr;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
-
-  // NOTE(Ian): some blocks may be empty ie. if the CFG communicates a possible transition to some undecodeable
-  // bytes so here we check for block transfers that got added that we havent initialized and add an error
-  // if we end up transferring there.
-  for (auto &blks : this->lifted_func->getBasicBlockList()) {
-    if (!blks.getTerminator()) {
-      llvm::BranchInst::Create(this->invalid_successor_block, &blks);
-    }
-  }
 }
 
 
@@ -470,13 +461,6 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   auto lifted_func_st =
       this->CreateLiftedFunction(native_func->getName().str() + ".lifted");
   lifted_func = lifted_func_st.func;
-
-
-  invalid_successor_block =
-      llvm::BasicBlock::Create(lifted_func_st.func->getContext(),
-                               "invalid_successor", lifted_func_st.func);
-  remill::AddTerminatingTailCall(invalid_successor_block, intrinsics.error,
-                                 intrinsics);
 
 
   const auto pc = lifted_func_st.pc_arg;

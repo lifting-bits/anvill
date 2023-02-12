@@ -28,6 +28,7 @@ struct BasicBlockFunction {
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
+  llvm::Argument *stack;
 };
 
 class CallableBasicBlockFunction;
@@ -64,6 +65,8 @@ class BasicBlockLifter : public CodeLifter {
 
   FunctionLifter &flifter;
 
+  llvm::BasicBlock *invalid_successor_block{nullptr};
+
   llvm::StructType *StructTypeFromVars() const;
 
   remill::DecodingContext ApplyContextAssignments(
@@ -75,6 +78,9 @@ class BasicBlockLifter : public CodeLifter {
   void LiftInstructionsIntoLiftedFunction();
 
   BasicBlockFunction CreateBasicBlockFunction();
+
+  void TerminateBasicBlockFunction(llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+                                   const BasicBlockFunction &bbfunc);
 
 
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,

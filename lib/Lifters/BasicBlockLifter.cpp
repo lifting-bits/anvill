@@ -4,6 +4,7 @@
 #include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -382,8 +383,9 @@ llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   }
 
 
-  llvm::FunctionType *func_type =
-      llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
+  auto ret_type = this->block_context->ReturnValue();
+  llvm::FunctionType *func_type = llvm::FunctionType::get(
+      this->flifter.curr_decl->type->getReturnType(), params, false);
 
 
   llvm::StringRef name(name_.data(), name_.size());
@@ -512,11 +514,40 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   CHECK(ir.GetInsertPoint() == func->getEntryBlock().end());
-  ir.CreateRet(ret_mem);
 
-  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out};
+
+  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out, state};
+
+  TerminateBasicBlockFunction(ir, ret_mem, bbf);
 
   return bbf;
+}
+
+// Setup the returns for this function we tail call all successors
+void BasicBlockLifter::TerminateBasicBlockFunction(
+    llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+    const BasicBlockFunction &bbfunc) {
+  this->invalid_successor_block = llvm::BasicBlock::Create(
+      this->bb_func->getContext(), "invalid_successor", this->bb_func);
+  remill::AddTerminatingTailCall(invalid_successor_block, intrinsics.error,
+                                 intrinsics);
+
+  auto mem_ptr = ir.CreateLoad(mem_ptr_type, bbfunc.next_pc_out_param);
+  auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out_param);
+  auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
+
+  for (auto e : this->block_def.outgoing_edges) {
+    auto succ_const = llvm::ConstantInt::get(
+        llvm::cast<llvm::IntegerType>(this->address_type), e);
+
+    auto calling_bb =
+        llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
+    llvm::IRBuilder<> calling_bb_builder(calling_bb);
+    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
+    child_lifter.CallBasicBlockFunction(calling_bb_builder, this->state_ptr,
+                                        bbfunc.stack);
+    sw->addCase(succ_const, calling_bb);
+  }
 }
 
 
@@ -575,6 +606,8 @@ void BasicBlockLifter::UnpackLiveValues(
 }
 
 
+// TODO(Ian): dependent on calling context we need fetch the memory and next program counter
+// ref either from the args or from the parent func state
 void BasicBlockLifter::CallBasicBlockFunction(llvm::IRBuilder<> &builder,
                                               llvm::Value *parent_state,
                                               llvm::Value *parent_stack) const {

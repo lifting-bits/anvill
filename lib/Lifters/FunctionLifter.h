@@ -64,6 +64,8 @@ struct LiftedFunction {
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter : public CodeLifter {
+  friend class BasicBlockLifter;
+
  public:
   ~FunctionLifter(void);
 
@@ -165,9 +167,6 @@ class FunctionLifter : public CodeLifter {
 
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
-
-
-  llvm::BasicBlock *invalid_successor_block{nullptr};
 
 
   // maps a bbaddr to the lifter for that block
