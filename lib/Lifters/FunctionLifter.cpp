@@ -507,8 +507,19 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   auto npc = remill::LoadNextProgramCounterRef(ir.GetInsertBlock());
   auto memptr = remill::LoadMemoryPointer(ir, this->intrinsics);
 
-  entry_lifter.CallBasicBlockFunction(ir, lifted_func_st.state_ptr,
-                                      abstract_stack, memptr, npc);
+  auto call_inst = entry_lifter.CallBasicBlockFunction(
+      ir, lifted_func_st.state_ptr, abstract_stack, memptr, npc);
+
+  if (!call_inst->getType()->isVoidTy() && curr_decl->returns.size() >= 1) {
+    // TODO(Ian): this memptr is not right
+    // The bad effect that could happen here I guess is that the return read might not be tied to
+    // this store.
+    memptr = StoreNativeValue(call_inst, curr_decl->returns[0],
+                              type_specifier.Dictionary(), intrinsics, ir,
+                              lifted_func_st.state_ptr, memptr);
+  }
+
+  ir.CreateRet(memptr);
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));

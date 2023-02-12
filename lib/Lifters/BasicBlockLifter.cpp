@@ -35,6 +35,7 @@ namespace anvill {
 void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
+
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
@@ -548,9 +549,14 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
         llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
     auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
-    child_lifter.CallBasicBlockFunction(calling_bb_builder, this->state_ptr,
-                                        bbfunc.stack, next_mem,
-                                        bbfunc.next_pc_out_param);
+    auto retval = child_lifter.CallBasicBlockFunction(
+        calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem,
+        bbfunc.next_pc_out_param);
+    if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
+      calling_bb_builder.CreateRetVoid();
+    } else {
+      calling_bb_builder.CreateRet(retval);
+    }
     sw->addCase(succ_const, calling_bb);
   }
 }
@@ -613,7 +619,7 @@ void BasicBlockLifter::UnpackLiveValues(
 
 // TODO(Ian): dependent on calling context we need fetch the memory and next program counter
 // ref either from the args or from the parent func state
-void BasicBlockLifter::CallBasicBlockFunction(
+llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     llvm::Value *parent_stack, llvm::Value *memory_pointer,
     llvm::Value *program_pointer_ref) const {
@@ -666,7 +672,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
   auto retval = builder.CreateCall(bb_func, args);
   retval->setTailCall(true);
 
-  builder.CreateRet(retval);
+  return retval;
 }
 
 

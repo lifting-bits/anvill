@@ -7,6 +7,7 @@
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <remill/Arch/Arch.h>
@@ -139,10 +140,10 @@ class BasicBlockLifter : public CodeLifter {
 
 
   // Calls a basic block function and unpacks the result into the state
-  void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              llvm::Value *parent_stack,
-                              llvm::Value *memory_pointer,
-                              llvm::Value *program_pointer_ref) const;
+  llvm::CallInst *
+  CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
+                         llvm::Value *parent_stack, llvm::Value *memory_pointer,
+                         llvm::Value *program_pointer_ref) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
