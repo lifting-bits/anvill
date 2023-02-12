@@ -659,14 +659,10 @@ void BasicBlockLifter::CallBasicBlockFunction(llvm::IRBuilder<> &builder,
     args.push_back(ptr);
   }
 
-  auto new_mem_ptr = builder.CreateCall(bb_func, args);
+  auto retval = builder.CreateCall(bb_func, args);
+  retval->setTailCall(true);
 
-  auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
-
-  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
-
-  this->UnpackLiveValues(builder, ptr_provider, parent_state,
-                         this->block_context->LiveBBParamsAtExit());
+  builder.CreateRet(retval);
 }
 
 
