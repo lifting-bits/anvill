@@ -24,26 +24,19 @@
 #include <vector>
 
 #include "Lifters/CodeLifter.h"
+#include "Lifters/FunctionLifter.h"
 #include "anvill/Declarations.h"
 #include "anvill/Optimize.h"
 
 namespace anvill {
 
-CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
+void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
-
-  //bbfunc.func->dump();
-  //lifted_func->dump();
-  //LOG(FATAL) << "fdumps";
-
-
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
-
-  return CallableBasicBlockFunction(bbfunc.func, block_def, std::move(*this));
 }
 
 
@@ -363,9 +356,12 @@ llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
 
-BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
-  std::string name_ = "basic_block_func" + std::to_string(this->block_def.addr);
-  auto &context = this->semantics_module->getContext();
+
+llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
+  std::string name_ = "basic_block_func" + std::to_string(block_def.addr);
+  auto &context = semantics_module->getContext();
+
+  auto var_struct_ty = this->var_struct_ty;
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
           this->options.arch->LiftedFunctionType(), context));
@@ -380,7 +376,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   params.push_back(llvm::PointerType::get(context, 0));
 
 
-  for (size_t i = 0; i < this->var_struct_ty->getNumElements(); i++) {
+  for (size_t i = 0; i < var_struct_ty->getNumElements(); i++) {
     // pointer to each param
     params.push_back(llvm::PointerType::get(context, 0));
   }
@@ -391,14 +387,19 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   llvm::StringRef name(name_.data(), name_.size());
-  auto func =
-      llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
-                             name, this->semantics_module);
+  return llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
+                                0u, name, semantics_module);
+}
 
+BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
+  auto func = this->bb_func;
   func->setMetadata(anvill::kBasicBlockMetadata,
-                    GetBasicBlockAnnotation(this->block_def.addr));
+                    GetBasicBlockAnnotation(block_def.addr));
 
-
+  auto &context = this->semantics_module->getContext();
+  llvm::FunctionType *lifted_func_type =
+      llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
+          this->options.arch->LiftedFunctionType(), context));
   auto start_ind = lifted_func_type->getNumParams() + 1;
   for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
     auto arg = remill::NthArgument(func, start_ind);
@@ -445,7 +446,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   this->lifted_func = llvm::Function::Create(
       new_func_type, llvm::GlobalValue::ExternalLinkage, 0u,
-      std::string(name) + "lowlift", this->semantics_module);
+      std::string(func->getName()) + "lowlift", this->semantics_module);
 
   options.arch->InitializeEmptyLiftedFunction(this->lifted_func);
 
@@ -574,9 +575,9 @@ void BasicBlockLifter::UnpackLiveValues(
 }
 
 
-void BasicBlockLifter::CallBasicBlockFunction(
-    llvm::IRBuilder<> &builder, llvm::Value *parent_state,
-    const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {
+void BasicBlockLifter::CallBasicBlockFunction(llvm::IRBuilder<> &builder,
+                                              llvm::Value *parent_state,
+                                              llvm::Value *parent_stack) const {
 
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
@@ -584,7 +585,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[0] = parent_stack;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
-      builder, this->address_type, cbfunc.GetBlock().addr);
+      builder, this->address_type, block_def.addr);
   args[remill::kMemoryPointerArgNum] =
       remill::LoadMemoryPointer(builder, this->intrinsics);
 
@@ -625,7 +626,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
     args.push_back(ptr);
   }
 
-  auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
+  auto new_mem_ptr = builder.CreateCall(bb_func, args);
 
   auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
 
@@ -636,48 +637,20 @@ void BasicBlockLifter::CallBasicBlockFunction(
 }
 
 
-void CallableBasicBlockFunction::CallBasicBlockFunction(
-    llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state,
-    llvm::Value *abstract_stack) const {
-  this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this,
-                                         abstract_stack);
-}
-
-CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlock(
-    std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
-    const CodeBlock &block_def, const LifterOptions &options_,
-    llvm::Module *semantics_module, const TypeTranslator &type_specifier) {
-
-  return BasicBlockLifter(std::move(block_context), decl, block_def, options_,
-                          semantics_module, type_specifier)
-      .LiftBasicBlockFunction();
-}
-
 BasicBlockLifter::BasicBlockLifter(
     std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
     const CodeBlock &block_def, const LifterOptions &options_,
-    llvm::Module *semantics_module, const TypeTranslator &type_specifier)
+    llvm::Module *semantics_module, const TypeTranslator &type_specifier,
+    FunctionLifter &func_lifter)
     : CodeLifter(options_, semantics_module, type_specifier),
       block_context(std::move(block_context)),
       block_def(block_def),
-      decl(decl) {
+      decl(decl),
+      flifter(func_lifter) {
   this->var_struct_ty = this->StructTypeFromVars();
+  this->bb_func = this->DeclareBasicBlockFunction();
 }
 
-CallableBasicBlockFunction::CallableBasicBlockFunction(
-    llvm::Function *func, CodeBlock block, BasicBlockLifter bb_lifter)
-    : func(func),
-      block(block),
-      bb_lifter(std::move(bb_lifter)) {}
-
-
-const CodeBlock &CallableBasicBlockFunction::GetBlock() const {
-  return this->block;
-}
-
-llvm::Function *CallableBasicBlockFunction::GetFunction() const {
-  return this->func;
-}
 
 llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
                                                         llvm::Value *target_sty,

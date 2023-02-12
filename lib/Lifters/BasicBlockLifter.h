@@ -9,6 +9,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
+#include <remill/Arch/Arch.h>
 #include <remill/BC/Lifter.h>
 
 #include <cstdint>
@@ -38,6 +39,8 @@ class CallableBasicBlockFunction;
  */
 class BasicBlockLifter : public CodeLifter {
  private:
+  llvm::Function *DeclareBasicBlockFunction();
+
   llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir, llvm::Value *,
                                         size_t index) const;
 
@@ -55,7 +58,11 @@ class BasicBlockLifter : public CodeLifter {
 
   llvm::Function *lifted_func{nullptr};
 
+  llvm::Function *bb_func{nullptr};
+
   const FunctionDecl &decl;
+
+  FunctionLifter &flifter;
 
   llvm::StructType *StructTypeFromVars() const;
 
@@ -99,15 +106,17 @@ class BasicBlockLifter : public CodeLifter {
                    const FunctionDecl &decl, const CodeBlock &block_def,
                    const LifterOptions &options_,
                    llvm::Module *semantics_module,
-                   const TypeTranslator &type_specifier);
-  static CallableBasicBlockFunction
-  LiftBasicBlock(std::unique_ptr<BasicBlockContext> block_context,
-                 const FunctionDecl &decl, const CodeBlock &block_def,
-                 const LifterOptions &options_, llvm::Module *semantics_module,
-                 const TypeTranslator &type_specifier);
+                   const TypeTranslator &type_specifier,
+                   FunctionLifter &func_lifter);
 
 
-  CallableBasicBlockFunction LiftBasicBlockFunction() &&;
+  void LiftBasicBlock(std::unique_ptr<BasicBlockContext> block_context,
+                      const FunctionDecl &decl, const CodeBlock &block_def,
+                      const LifterOptions &options_,
+                      llvm::Module *semantics_module,
+                      const TypeTranslator &type_specifier);
+
+  void LiftBasicBlockFunction();
 
 
   using PointerProvider = std::function<llvm::Value *(size_t index)>;
@@ -125,33 +134,9 @@ class BasicBlockLifter : public CodeLifter {
 
   // Calls a basic block function and unpacks the result into the state
   void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              const CallableBasicBlockFunction &,
                               llvm::Value *parent_stack) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
-};
-
-class CallableBasicBlockFunction {
-
- private:
-  llvm::Function *func;
-  CodeBlock block;
-  BasicBlockLifter bb_lifter;
-
-
- public:
-  CallableBasicBlockFunction(llvm::Function *func, CodeBlock block,
-                             BasicBlockLifter bb_lifter);
-
-  llvm::Function *GetFunction() const;
-
-  llvm::StructType *GetRetType() const;
-
-  const CodeBlock &GetBlock() const;
-
-  // Calls a basic block function and unpacks the result into the state
-  void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              llvm::Value *stack_ptr) const;
 };
 
 

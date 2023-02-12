@@ -167,6 +167,13 @@ class FunctionLifter : public CodeLifter {
 
   llvm::BasicBlock *invalid_successor_block{nullptr};
 
+
+  // maps a bbaddr to the lifter for that block
+  std::unordered_map<uint64_t, BasicBlockLifter> bb_lifters;
+
+
+  BasicBlockLifter &GetOrCreateBBLifter(uint64_t addr);
+
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
   llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
