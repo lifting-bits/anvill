@@ -357,7 +357,7 @@ BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
       std::make_unique<SpecBlockContext>(
           this->curr_decl->GetBlockContext(addr));
 
-  auto blk = this->curr_decl->cfg.at(addr);
+  auto &blk = this->curr_decl->cfg.at(addr);
 
   auto inserted = this->bb_lifters.emplace(
       addr, BasicBlockLifter(std::move(context), *this->curr_decl, blk,
@@ -504,8 +504,11 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->func_address);
 
 
+  auto npc = remill::LoadNextProgramCounterRef(ir.GetInsertBlock());
+  auto memptr = remill::LoadMemoryPointer(ir, this->intrinsics);
+
   entry_lifter.CallBasicBlockFunction(ir, lifted_func_st.state_ptr,
-                                      abstract_stack);
+                                      abstract_stack, memptr, npc);
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));

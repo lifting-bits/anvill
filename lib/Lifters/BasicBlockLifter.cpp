@@ -9,6 +9,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -456,7 +457,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::BasicBlock::Create(context, "", func);
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
-  ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
+  auto mem_var = ir.CreateAlloca(memory->getType(), nullptr, "MEMORY");
+  ir.CreateStore(memory, mem_var);
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
@@ -508,6 +510,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       this->state_ptr, pc_val, mem_res, next_pc_out};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
+  ir.CreateStore(ret_mem, mem_var);
 
   this->PackLiveValues(ir, this->state_ptr, ptr_provider,
                        this->block_context->LiveBBParamsAtExit());
@@ -529,10 +532,11 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     const BasicBlockFunction &bbfunc) {
   this->invalid_successor_block = llvm::BasicBlock::Create(
       this->bb_func->getContext(), "invalid_successor", this->bb_func);
-  remill::AddTerminatingTailCall(invalid_successor_block, intrinsics.error,
-                                 intrinsics);
 
-  auto mem_ptr = ir.CreateLoad(mem_ptr_type, bbfunc.next_pc_out_param);
+  // TODO(Ian): maybe want to call remill_error here
+  new llvm::UnreachableInst(next_mem->getContext(),
+                            this->invalid_successor_block);
+
   auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out_param);
   auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
 
@@ -545,7 +549,8 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
     auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
     child_lifter.CallBasicBlockFunction(calling_bb_builder, this->state_ptr,
-                                        bbfunc.stack);
+                                        bbfunc.stack, next_mem,
+                                        bbfunc.next_pc_out_param);
     sw->addCase(succ_const, calling_bb);
   }
 }
@@ -608,9 +613,10 @@ void BasicBlockLifter::UnpackLiveValues(
 
 // TODO(Ian): dependent on calling context we need fetch the memory and next program counter
 // ref either from the args or from the parent func state
-void BasicBlockLifter::CallBasicBlockFunction(llvm::IRBuilder<> &builder,
-                                              llvm::Value *parent_state,
-                                              llvm::Value *parent_stack) const {
+void BasicBlockLifter::CallBasicBlockFunction(
+    llvm::IRBuilder<> &builder, llvm::Value *parent_state,
+    llvm::Value *parent_stack, llvm::Value *memory_pointer,
+    llvm::Value *program_pointer_ref) const {
 
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
@@ -619,11 +625,9 @@ void BasicBlockLifter::CallBasicBlockFunction(llvm::IRBuilder<> &builder,
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
       builder, this->address_type, block_def.addr);
-  args[remill::kMemoryPointerArgNum] =
-      remill::LoadMemoryPointer(builder, this->intrinsics);
+  args[remill::kMemoryPointerArgNum] = memory_pointer;
 
-  args[remill::kNumBlockArgs] =
-      remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
+  args[remill::kNumBlockArgs] = program_pointer_ref;
 
   auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
 

@@ -140,7 +140,9 @@ class BasicBlockLifter : public CodeLifter {
 
   // Calls a basic block function and unpacks the result into the state
   void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              llvm::Value *parent_stack) const;
+                              llvm::Value *parent_stack,
+                              llvm::Value *memory_pointer,
+                              llvm::Value *program_pointer_ref) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
