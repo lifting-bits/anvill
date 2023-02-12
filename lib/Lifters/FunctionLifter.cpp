@@ -136,37 +136,6 @@ FunctionLifter::FunctionLifter(const LifterOptions &options_,
 }
 
 
-llvm::BranchInst *
-FunctionLifter::BranchToInst(uint64_t from_addr, uint64_t to_addr,
-                             const remill::DecodingContext &mapper,
-                             llvm::BasicBlock *from_block) {
-  auto br = llvm::BranchInst::Create(GetOrCreateBlock(to_addr), from_block);
-  AnnotateInstruction(br, pc_annotation_id, pc_annotation);
-  return br;
-}
-
-
-llvm::BasicBlock *FunctionLifter::GetOrCreateBlock(uint64_t baddr) {
-  auto &block = this->addr_to_block[baddr];
-  if (block) {
-    return block;
-  }
-
-  std::stringstream ss;
-  ss << "inst_" << std::hex << baddr;
-  block = llvm::BasicBlock::Create(llvm_context, ss.str(), lifted_func);
-
-  return block;
-}
-
-llvm::BasicBlock *
-FunctionLifter::GetOrCreateTargetBlock(const remill::Instruction &from_inst,
-                                       uint64_t to_addr,
-                                       const remill::DecodingContext &mapper) {
-  return GetOrCreateBlock(to_addr);
-}
-
-
 void FunctionLifter::InsertError(llvm::BasicBlock *block) {
   llvm::IRBuilder<> ir{block};
   auto tail = remill::AddTerminatingTailCall(
@@ -377,41 +346,38 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
-CallableBasicBlockFunction
-FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) const {
+
+BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
+  auto lifter = this->bb_lifters.find(addr);
+  if (lifter != this->bb_lifters.end()) {
+    return lifter->second;
+  }
+
   std::unique_ptr<SpecBlockContext> context =
       std::make_unique<SpecBlockContext>(
-          this->curr_decl->GetBlockContext(blk.addr));
+          this->curr_decl->GetBlockContext(addr));
 
-  return BasicBlockLifter::LiftBasicBlock(
-      std::move(context), *this->curr_decl, blk, this->options,
-      this->semantics_module.get(), this->type_specifier);
+  auto blk = this->curr_decl->cfg.at(addr);
+
+  auto inserted = this->bb_lifters.emplace(
+      addr, BasicBlockLifter(std::move(context), *this->curr_decl, blk,
+                             this->options, this->semantics_module.get(),
+                             this->type_specifier, *this));
+  return inserted.first->second;
+}
+
+const BasicBlockLifter &
+FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) {
+  auto &lifter = this->GetOrCreateBasicBlockLifter(blk.addr);
+  lifter.LiftBasicBlockFunction();
+  return lifter;
 }
 
 
 void FunctionLifter::VisitBlock(CodeBlock blk,
                                 llvm::Value *lifted_function_state,
                                 llvm::Value *abstract_stack) {
-  auto llvm_blk = this->GetOrCreateBlock(blk.addr);
-  llvm::IRBuilder<> builder(llvm_blk);
-
-
-  auto bbfunc = this->LiftBasicBlockFunction(blk);
-
-  CHECK(!llvm::verifyFunction(*bbfunc.GetFunction(), &llvm::errs()));
-
-  bbfunc.CallBasicBlockFunction(builder, lifted_function_state, abstract_stack);
-  CHECK(anvill::GetBasicBlockAddr(bbfunc.GetFunction()).has_value());
-
-  auto pc = remill::LoadNextProgramCounter(llvm_blk, this->intrinsics);
-
-  auto sw = builder.CreateSwitch(pc, this->invalid_successor_block);
-
-  for (uint64_t succ : blk.outgoing_edges) {
-    sw->addCase(llvm::ConstantInt::get(
-                    llvm::cast<llvm::IntegerType>(this->address_type), succ),
-                this->GetOrCreateBlock(succ));
-  }
+  this->LiftBasicBlockFunction(blk);
 }
 
 void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
@@ -551,8 +517,11 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  auto entry_insn = this->GetOrCreateBlock(this->func_address);
-  ir.CreateBr(entry_insn);
+  auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->func_address);
+
+
+  entry_lifter.CallBasicBlockFunction(ir, lifted_func_st.state_ptr,
+                                      abstract_stack);
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));

@@ -90,7 +90,9 @@ class FunctionLifter : public CodeLifter {
                                        EntityLifterImpl &lifter_context) const;
 
 
-  CallableBasicBlockFunction LiftBasicBlockFunction(const CodeBlock &) const;
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t addr);
+
+  const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
 
   llvm::Function *GetBasicBlockFunction(uint64_t address) const;
 
@@ -172,8 +174,6 @@ class FunctionLifter : public CodeLifter {
   std::unordered_map<uint64_t, BasicBlockLifter> bb_lifters;
 
 
-  BasicBlockLifter &GetOrCreateBBLifter(uint64_t addr);
-
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
   llvm::MDNode *GetPCAnnotation(uint64_t pc) const;
@@ -181,23 +181,6 @@ class FunctionLifter : public CodeLifter {
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
-
-
-  llvm::BranchInst *BranchToInst(uint64_t from_addr, uint64_t to_addr,
-                                 const remill::DecodingContext &mapper,
-                                 llvm::BasicBlock *from_block);
-
-  // Helper to get the basic block to contain the instruction at `addr`. This
-  // function drives a work list, where the first time we ask for the
-  // instruction at `addr`, we enqueue a bit of work to decode and lift that
-  // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
-
-  // Attempts to lookup any redirection of the given address, and then
-  // calls GetOrCreateBlock
-  llvm::BasicBlock *
-  GetOrCreateTargetBlock(const remill::Instruction &from_inst, uint64_t to_addr,
-                         const remill::DecodingContext &mapper);
 
   void InsertError(llvm::BasicBlock *block);
 
