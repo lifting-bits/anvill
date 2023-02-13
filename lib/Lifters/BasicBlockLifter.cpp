@@ -42,7 +42,6 @@ CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
 
 
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
-  anvill::EntityLifter lifter(options);
 
   return CallableBasicBlockFunction(bbfunc.func, block_def, std::move(*this));
 }
