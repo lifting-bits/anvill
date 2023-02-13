@@ -252,11 +252,11 @@ message BlockContext {
   // Affine equalities between values
   // and high symbols at entry to
   // the block
-  repeated ValueMapping symvals_entry = 1;
-  repeated ValueMapping symvals_exit = 2;
+  repeated ValueMapping symvals_entries = 1;
+  repeated ValueMapping symvals_exits = 2;
   
-  repeated HighSymbol live_at_entries = 2;
-  repeated HighSymbol live_at_exits = 3;
+  repeated HighSymbol live_at_entries = 3;
+  repeated HighSymbol live_at_exits = 4;
 }
 
 
