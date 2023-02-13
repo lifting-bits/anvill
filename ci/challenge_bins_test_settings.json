@@ -9,8 +9,8 @@
         "challenge-3_amd64_program_go",
         "challenge-3_x86_program_go_patched",
         "challenge-3_x86_program_go",
-        "challenge-3_armv7_program_go.elf",
-        "challenge-3_armv7_program_go_patched.elf"
+        "challenge-10-ppc-program_c.elf",
+        "challenge-10-ppc-vle-program_c.elf"
     ],
     "language_id_overrides": {
         "ppc-adc_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",

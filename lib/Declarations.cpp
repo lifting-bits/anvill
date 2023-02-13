@@ -463,7 +463,7 @@ V GetWithDef(uint64_t addr, const std::unordered_map<uint64_t, V> &map, V def) {
 }  // namespace
 
 size_t FunctionDecl::GetPointerDisplacement() const {
-  return this->parameter_size + this->return_stack_pointer_offset;
+  return this->parameter_size + this->parameter_offset;
 }
 
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {

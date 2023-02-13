@@ -425,7 +425,14 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
 
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  // NOTE(Ian): some blocks may be empty ie. if the CFG communicates a possible transition to some undecodeable
+  // bytes so here we check for block transfers that got added that we havent initialized and add an error
+  // if we end up transferring there.
+  for (auto &blks : this->lifted_func->getBasicBlockList()) {
+    if (!blks.getTerminator()) {
+      llvm::BranchInst::Create(this->invalid_successor_block, &blks);
+    }
+  }
 }
 
 
@@ -544,7 +551,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  ir.CreateBr(this->GetOrCreateBlock(this->func_address));
+  auto entry_insn = this->GetOrCreateBlock(this->func_address);
+  ir.CreateBr(entry_insn);
 
   AnnotateInstructions(entry_block, pc_annotation_id,
                        GetPCAnnotation(func_address));
@@ -552,6 +560,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   DLOG(INFO) << "Visiting insns";
   // Go lift all instructions!
   VisitBlocks(lifted_func_st.state_ptr, abstract_stack);
+
+  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.

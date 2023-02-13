@@ -323,7 +323,10 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
     LOG(INFO) << "Decoding at addr " << std::hex << addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
-      LOG(FATAL) << "Failed to decode insn in block " << std::hex << addr;
+      remill::AddTerminatingTailCall(bb, this->intrinsics.error,
+                                     this->intrinsics);
+      LOG(ERROR) << "Failed to decode insn in block " << std::hex << addr;
+      return;
     }
 
     reached_addr += inst.bytes.size();

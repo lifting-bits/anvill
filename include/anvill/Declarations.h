@@ -369,6 +369,8 @@ struct FunctionDecl : public CallableDecl {
 
   std::int64_t ret_ptr_offset{0};
 
+  std::int64_t parameter_offset{0};
+
   std::size_t parameter_size{0};
 
   // Declare this function in an LLVM module.

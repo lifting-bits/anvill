@@ -7,32 +7,32 @@
  */
 
 #include <anvill/Passes/SinkSelectionsIntoBranchTargets.h>
-#include <llvm/IR/Dominators.h>
 #include <anvill/Transforms.h>
 #include <doctest/doctest.h>
+#include <llvm/IR/Dominators.h>
 #include <llvm/IR/Verifier.h>
-#include "Utils.h"
+
 #include <ostream>
+
+#include "Utils.h"
 
 namespace anvill {
 
 TEST_SUITE("SinkSelectionsIntoBranchTargets") {
   TEST_CASE("Run the whole pass on a well-formed function") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
+    llvm::LLVMContext llvm_context;
     auto module =
-        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
-    CHECK(RunFunctionPass(
-        module.get(), SinkSelectionsIntoBranchTargets()));
-
+    CHECK(RunFunctionPass(module.get(), SinkSelectionsIntoBranchTargets()));
   }
 
   TEST_CASE("SimpleCase") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
+    llvm::LLVMContext llvm_context;
     auto module =
-        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -44,16 +44,17 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
 
     auto dt_res = dt.run(*function, fam);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
+    auto analysis =
+        SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 2U);
     CHECK(analysis.disposable_instruction_list.size() == 1U);
   }
 
   TEST_CASE("MultipleSelects") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
+    llvm::LLVMContext llvm_context;
     auto module =
-        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -65,16 +66,17 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
 
     auto dt_res = dt.run(*function, fam);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
+    auto analysis =
+        SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 6U);
     CHECK(analysis.disposable_instruction_list.size() == 3U);
   }
 
   TEST_CASE("MultipleSelectUsages") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
+    llvm::LLVMContext llvm_context;
     auto module =
-        LoadTestData(*llvm_context, "SinkSelectionsIntoBranchTargets.ll");
+        LoadTestData(llvm_context, "SinkSelectionsIntoBranchTargets.ll");
 
     REQUIRE(module.get() != nullptr);
 
@@ -86,7 +88,8 @@ TEST_SUITE("SinkSelectionsIntoBranchTargets") {
 
     auto dt_res = dt.run(*function, fam);
 
-    auto analysis = SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
+    auto analysis =
+        SinkSelectionsIntoBranchTargets::AnalyzeFunction(dt_res, *function);
 
     CHECK(analysis.replacement_list.size() == 6U);
     CHECK(analysis.disposable_instruction_list.size() == 1U);

@@ -517,8 +517,15 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.stack_depth = frame.frame_size();
   decl.ret_ptr_offset = frame.return_address_offset();
   decl.parameter_size = frame.parameter_size();
+  decl.parameter_offset = frame.parameter_offset();
 
   decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
+
+  if (decl.maximum_depth < decl.stack_depth) {
+    LOG(ERROR)
+        << "Analyzed max depth is smaller than the initial depth overriding";
+    decl.maximum_depth = decl.stack_depth;
+  }
 
   this->ParseCFGIntoFunction(function, decl);
 

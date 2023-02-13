@@ -55,7 +55,8 @@ jobs:
         llvm: ["15"]
         cxxcommon_version: ["v0.2.22"]
 
-    runs-on: ubuntu-20.04
+    runs-on:
+      labels: gha-ubuntu-32
     container:
       image: docker.pkg.github.com/lifting-bits/cxx-common/vcpkg-builder-${{ matrix.image.name }}:${{ matrix.image.tag }}
 
@@ -149,7 +150,7 @@ jobs:
       - uses: actions/setup-java@v3
         with:
           distribution: "temurin"
-          java-version: "11"
+          java-version: "17"
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v3
         with:

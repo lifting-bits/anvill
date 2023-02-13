@@ -109,7 +109,7 @@ do
 done
 
 FAILED="no"
-for dir in challenge-binaries
+for dir in binaries
 do
     echo "[+] Testing ${dir}"
     ${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts/anvill.py \

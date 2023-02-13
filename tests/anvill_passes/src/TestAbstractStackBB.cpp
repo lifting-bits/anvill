@@ -25,7 +25,7 @@ namespace anvill {
 
 
 /*
-Register pass plan: 
+Register pass plan:
 1. iterate through all available paramater decls declaring them in the signature.
 2. Call StoreNativeValue to store the parameter representing each parameter into the physcal location in the state
 3. Apply SROA to the new clone
@@ -42,8 +42,8 @@ Stack pass plan:
 
 TEST_SUITE("Basic Block tests") {
   TEST_CASE("Convert parameters") {
-    auto llvm_context = anvill::CreateContextWithOpaquePointers();
-    auto module = LoadTestData(*llvm_context, "MainBasicBlocks.ll");
+    llvm::LLVMContext llvm_context;
+    auto module = LoadTestData(llvm_context, "MainBasicBlocks.ll");
     auto bb_func = module->getFunction("basic_block_func4199701");
     bb_func->dump();
   }
