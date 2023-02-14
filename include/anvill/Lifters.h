@@ -174,6 +174,10 @@ class LifterOptions {
                                                const remill::Register *sp_reg,
                                                uint64_t func_address);
 
+
+  static llvm::Value *GlobalRegisterConstantInit(
+  llvm::IRBuilderBase &ir, const remill::Register *reg, uint64_t val);
+
   // Initialize the program counter with a constant expression of the form:
   //
   //    (add (ptrtoint __anvill_pc), <addr>)

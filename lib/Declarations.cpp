@@ -240,10 +240,12 @@ size_t SpecBlockContext::GetMaxStackSize() const {
 
 SpecBlockContext::SpecBlockContext(
     const FunctionDecl &decl, SpecStackOffsets offsets,
+    std::vector<ConstantDomain> constants,
     std::vector<ParameterDecl> live_params_at_entry,
     std::vector<ParameterDecl> live_params_at_exit)
     : decl(decl),
       offsets(std::move(offsets)),
+      constants(std::move(constants)),
       live_params_at_entry(std::move(live_params_at_entry)),
       live_params_at_exit(std::move(live_params_at_exit)) {}
 
@@ -261,6 +263,10 @@ const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtEntry() const {
 
 const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
   return this->offsets;
+}
+
+const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
+  return this->constants;
 }
 
 // Interpret `target` as being the function to call, and call it from within
@@ -469,6 +475,7 @@ size_t FunctionDecl::GetPointerDisplacement() const {
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
       *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
+      GetWithDef(addr, this->constant_values, std::vector<ConstantDomain>()),
       GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }

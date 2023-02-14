@@ -477,6 +477,14 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   }
 
+  for (auto &reg_const : this->block_context->GetConstants()) {
+    auto new_value = LifterOptions::GlobalRegisterConstantInit(ir, reg_const.target_value.reg, reg_const.value);
+    //auto new_value = this->options.program_counter_init_procedure(ir, this->address_type, reg_const.value);
+    LOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " " << std::hex << reg_const.value;
+    new_value->dump();
+    ir.CreateStore(new_value, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
+  }
+
   PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
     return this->ProvidePointerFromFunctionArgs(func, index);
   };
