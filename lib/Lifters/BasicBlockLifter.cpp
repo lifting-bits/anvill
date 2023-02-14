@@ -655,6 +655,10 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
             << "Unable to create a ptr to the stack, the stack is too small to represent the param.";
       }
     }
+
+    // ok so this should be provide pointer from args in a way
+    // stack probably shouldnt be passed at all, if we dont have a loc
+    // then it's not live
     return this->ProvidePointerFromStruct(builder, out_param_locals, index);
   };
 
