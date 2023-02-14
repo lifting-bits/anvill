@@ -30,6 +30,7 @@
 #include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
@@ -837,13 +838,10 @@ llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
 
 llvm::Argument *
 ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
-                               const anvill::LifterOptions &options,
                                const anvill::BasicBlockContext &context) {
-  CHECK(options.arch->LiftedFunctionType()->getNumParams() + 1 +
-            context.LiveParamsAtEntryAndExit().size() ==
+  CHECK(remill::kNumBlockArgs + 1 + context.LiveParamsAtEntryAndExit().size() ==
         func->arg_size());
-  return func->getArg(index +
-                      options.arch->LiftedFunctionType()->getNumParams() + 1);
+  return func->getArg(index + remill::kNumBlockArgs + 1);
 }
 
 
