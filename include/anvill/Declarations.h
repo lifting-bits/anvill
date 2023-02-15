@@ -376,7 +376,8 @@ struct FunctionDecl : public CallableDecl {
   std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_exit;
 
-  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>> constant_values;
+  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+      constant_values;
 
   std::uint64_t stack_depth;
 
