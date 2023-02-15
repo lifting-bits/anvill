@@ -11,7 +11,6 @@
 #include <anvill/Providers.h>
 #include <anvill/Type.h>
 #include <glog/logging.h>
-#include <llvm/ADT/APInt.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Intrinsics.h>
@@ -37,28 +36,6 @@ const llvm::DataLayout &LifterOptions::DataLayout(void) const {
 // interpretable types.
 const ::anvill::TypeDictionary &LifterOptions::TypeDictionary(void) const {
   return type_provider.Dictionary();
-}
-
-llvm::Value *LifterOptions::GlobalRegisterConstantInit(
-  llvm::IRBuilderBase &ir, const remill::Register *reg, uint64_t val
-) {
-  auto &context = ir.getContext();
-  auto block = ir.GetInsertBlock();
-  auto module = block->getModule();
-  auto ptr_type = llvm::PointerType::get(context, 0);
-  const auto addrSize = module->getDataLayout().getIndexSizeInBits(0);
-
-  auto const_addr = llvm::ConstantInt::get(llvm::Type::getIntNTy(context, addrSize), val);
-  auto intToPtr = llvm::ConstantExpr::getIntToPtr(const_addr, ptr_type);
-
-  auto global_reg = module->getGlobalVariable(reg->name);
-  if (!global_reg) {
-    global_reg = new llvm::GlobalVariable(
-        *module, ptr_type, true, llvm::GlobalValue::ExternalLinkage,
-        intToPtr, reg->name);
-  }
-
-  return global_reg;
 }
 
 llvm::Value *LifterOptions::SymbolicStackPointerInitWithOffset(

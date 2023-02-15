@@ -477,23 +477,24 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   }
 
-  for (auto &reg_const : this->block_context->GetConstants()) {
-    auto new_value = LifterOptions::GlobalRegisterConstantInit(ir, reg_const.target_value.reg, reg_const.value);
-    //auto new_value = this->options.program_counter_init_procedure(ir, this->address_type, reg_const.value);
-    LOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " " << std::hex << reg_const.value;
-    new_value->dump();
-    ir.CreateStore(new_value, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
-  }
-
   PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
     return this->ProvidePointerFromFunctionArgs(func, index);
   };
-
 
   LOG(INFO) << "Live values at entry to function "
             << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
+
+  for (auto &reg_const : this->block_context->GetConstants()) {
+    auto new_value = this->options.program_counter_init_procedure(ir, reg_const.target_value.reg->type, reg_const.value);
+    DLOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " " << std::hex << reg_const.value;
+    new_value->dump();
+    auto nmem = StoreNativeValue(
+        new_value, reg_const.target_value, type_provider.Dictionary(), intrinsics,
+        ir, this->state_ptr, remill::LoadMemoryPointer(ir, intrinsics));
+    ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
+  }
 
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
