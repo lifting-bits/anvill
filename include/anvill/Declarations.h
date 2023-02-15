@@ -123,8 +123,6 @@ struct ConstantDomain {
   std::uint64_t value;
 };
 
-typedef std::variant<OffsetDomain, ConstantDomain> ValueDomain;
-
 struct SpecStackOffsets {
   std::vector<OffsetDomain> affine_equalities;
 };
