@@ -647,8 +647,8 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     }
 
     SpecStackOffsets off = {stack_offsets};
-    decl.stack_offsets.insert({blk_addr, off});
-    decl.constant_values.insert({blk_addr, constant_values});
+    decl.stack_offsets.emplace(blk_addr, std::move(off));
+    decl.constant_values.emplace(blk_addr, std::move(constant_values));
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());
