@@ -54,6 +54,8 @@ DEFINE_string(
     lift_list, "",
     "a list of function addresses to lift. By default anvill lifts all functions available in the spec");
 
+DEFINE_bool(inline_basic_blocks, false, "Lift basic block functions");
+
 static void SetVersion(void) {
   std::stringstream ss;
   auto vs = anvill::version::GetVersionString();
@@ -174,6 +176,8 @@ int main(int argc, char *argv[]) {
   // points.
   options.stack_frame_recovery_options.stack_offset_metadata_name =
       "stack_offset";
+
+  options.inline_basic_blocks = FLAGS_inline_basic_blocks;
 
   anvill::EntityLifter lifter(options);
 
