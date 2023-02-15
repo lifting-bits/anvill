@@ -287,6 +287,9 @@ class LifterOptions {
 
   bool should_remove_anvill_pc : 1;
 
+  // Inline calls to basic block functions
+  bool inline_basic_blocks : 1;
+
  private:
   LifterOptions(void) = delete;
 

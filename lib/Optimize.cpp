@@ -46,6 +46,7 @@
 #include <llvm/Transforms/IPO/GlobalOpt.h>
 
 #include <anvill/Providers.h>
+#include <anvill/Passes/InlineBasicBlocks.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Passes/CodeQualityStatCollector.h>
 #include <anvill/Passes/BranchAnalysis.h>
@@ -182,6 +183,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   llvm::FunctionPassManager fpm;
 
+  if (options.inline_basic_blocks) {
+    fpm.addPass(anvill::InlineBasicBlocks());
+  }
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::VerifierPass());
   // NOTE(alex): This pass is extremely slow with LLVM 14.
