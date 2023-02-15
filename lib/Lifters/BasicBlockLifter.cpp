@@ -491,7 +491,6 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
         ir, reg_const.target_value.reg->type, reg_const.value);
     DLOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " "
                << std::hex << reg_const.value;
-    new_value->dump();
     auto nmem = StoreNativeValue(new_value, reg_const.target_value,
                                  type_provider.Dictionary(), intrinsics, ir,
                                  this->state_ptr,
