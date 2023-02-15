@@ -44,6 +44,7 @@ DEFINE_bool(add_breakpoints, false,
 
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
+DEFINE_bool(inline_basic_blocks, false, "Inline basic block function calls");
 
 
 DEFINE_string(
@@ -174,6 +175,8 @@ int main(int argc, char *argv[]) {
   // points.
   options.stack_frame_recovery_options.stack_offset_metadata_name =
       "stack_offset";
+
+  options.inline_basic_blocks = FLAGS_inline_basic_blocks;
 
   anvill::EntityLifter lifter(options);
 

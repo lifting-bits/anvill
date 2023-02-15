@@ -183,7 +183,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   llvm::FunctionPassManager fpm;
 
-  fpm.addPass(anvill::InlineBasicBlocks());
+  if (options.inline_basic_blocks) {
+    fpm.addPass(anvill::InlineBasicBlocks());
+  }
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::VerifierPass());
   // NOTE(alex): This pass is extremely slow with LLVM 14.
