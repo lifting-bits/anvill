@@ -703,7 +703,7 @@ llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
 llvm::Value *
 BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
                                                  size_t index) const {
-  return anvill::ProvidePointerFromFunctionArgs(func, index, this->options,
+  return anvill::ProvidePointerFromFunctionArgs(func, index,
                                                 *this->block_context);
 }
 
