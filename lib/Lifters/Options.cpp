@@ -38,7 +38,6 @@ const ::anvill::TypeDictionary &LifterOptions::TypeDictionary(void) const {
   return type_provider.Dictionary();
 }
 
-
 llvm::Value *LifterOptions::SymbolicStackPointerInitWithOffset(
     llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
     uint64_t func_address, std::int64_t offset) {
