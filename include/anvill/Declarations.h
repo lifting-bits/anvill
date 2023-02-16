@@ -92,6 +92,19 @@ struct ParameterDecl : public ValueDecl {
   std::string name;
 };
 
+
+enum HighSymbolLoc { PARAMETER, LOCAL };
+
+
+struct HighSymbolDecl {
+  std::string name;
+
+  TypeSpec spec_type;
+
+  // Type of this value.
+  llvm::Type *type{nullptr};
+};
+
 // A typed location in memory, that isn't actually code. This roughly
 // corresponds with the concept of a global variable, though it doesn't
 // actually need to represent data with any kind of "global" visibility.
@@ -203,12 +216,12 @@ struct LocalVariableDecl {
 
 // Basic block contexts impose an ordering on live values s.t. shared Parameters between
 // live exits and entries
-struct BasicBlockVariable {
+/*struct BasicBlockVariable {
   ParameterDecl param;
   size_t index;
   bool live_at_entry;
   bool live_at_exit;
-};
+};*/
 
 class BasicBlockContext {
  public:
@@ -226,20 +239,14 @@ class BasicBlockContext {
 
   virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
 
-  // Deduplicates locations and ensures there are no overlapping decls
-  // A valid parameter list is a set of non overlapping a-locs with distinct names.
-  std::vector<BasicBlockVariable> LiveParamsAtEntryAndExit() const;
+  virtual std::vector<HighSymbolDecl> LiveHighSymbolsAtEntry() const = 0;
 
+  virtual std::vector<std::pair<std::string, ValueDecl>>
+  HighSymValsAtEntry() const = 0;
 
-  std::vector<BasicBlockVariable> LiveBBParamsAtEntry() const;
-  std::vector<BasicBlockVariable> LiveBBParamsAtExit() const;
-
+  size_t GetHParamIndex(const std::string &);
 
   llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
-
- protected:
-  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const = 0;
-  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const = 0;
 };
 
 
@@ -295,13 +302,11 @@ class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
   SpecStackOffsets offsets;
-  std::vector<ParameterDecl> live_params_at_entry;
-  std::vector<ParameterDecl> live_params_at_exit;
+  std::vector<HighSymbolDecl> live_high_symbols_at_entry;
 
  public:
   SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
-                   std::vector<ParameterDecl> live_params_at_entry,
-                   std::vector<ParameterDecl> live_params_at_exit);
+                   std::vector<HighSymbolDecl> live_high_symbols_at_entry);
 
   virtual const SpecStackOffsets &GetStackOffsets() const override;
 
@@ -316,9 +321,7 @@ class SpecBlockContext : public BasicBlockContext {
   virtual size_t GetPointerDisplacement() const override;
 
 
- protected:
-  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const override;
-  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const override;
+  virtual std::vector<HighSymbolDecl> LiveHighSymbolsAtEntry() const override;
 };
 
 // A function decl, as represented at a "near ABI" level. To be specific,
@@ -357,11 +360,11 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
 
-  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
-      live_regs_at_entry;
+  std::unordered_map<std::uint64_t, std::vector<HighSymbolDecl>>
+      live_high_variables_at_entry;
 
-  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
-      live_regs_at_exit;
+  //std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
+  //   live_high_variables_at_exit;
 
   std::uint64_t stack_depth;
 

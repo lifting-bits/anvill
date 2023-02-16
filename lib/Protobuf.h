@@ -78,9 +78,9 @@ class ProtobufTranslator {
                             FunctionDecl &decl) const;
 
   void AddLiveValuesToBB(
-      std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
+      std::unordered_map<uint64_t, std::vector<HighSymbolDecl>> &map,
       uint64_t bb_addr,
-      const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
+      const ::google::protobuf::RepeatedPtrField<::specification::HighSymbol>
           &values) const;
 
 

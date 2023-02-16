@@ -561,20 +561,26 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 }
 
 void ProtobufTranslator::AddLiveValuesToBB(
-    std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
+    std::unordered_map<uint64_t, std::vector<HighSymbolDecl>> &map,
     uint64_t bb_addr,
-    const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
+    const ::google::protobuf::RepeatedPtrField<::specification::HighSymbol>
         &values) const {
-  auto &v = map.insert({bb_addr, std::vector<ParameterDecl>()}).first->second;
+  auto &v = map.insert({bb_addr, std::vector<HighSymbolDecl>()}).first->second;
 
   for (auto var : values) {
-    LOG_IF(FATAL, var.repr_var().values_size() != 1)
-        << "Symbols must be represented by a single valuedecl.";
-    auto param = DecodeParameter(var);
-    if (!param.Succeeded()) {
-      LOG(ERROR) << "Unable to decode live parameter " << param.TakeError();
+    auto mabe_ty = DecodeType(var.type());
+    if (mabe_ty.Succeeded()) {
+      auto ty = mabe_ty.TakeValue();
+      auto llvm_type = type_translator.DecodeFromSpec(ty);
+      if (llvm_type.Succeeded()) {
+        v.emplace_back(var.name(), ty, llvm_type.TakeValue());
+      } else {
+        LOG(ERROR) << "Error decoding type for param: " << var.name() << " in "
+                   << bb_addr << llvm_type.TakeError().message;
+      }
     } else {
-      v.push_back(param.TakeValue());
+      LOG(ERROR) << "Error decoding type for param: " << var.name() << " in "
+                 << bb_addr << mabe_ty.TakeError();
     }
   }
 }
@@ -597,7 +603,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
   for (auto &[blk_addr, ctx] : obj.block_context()) {
     std::vector<OffsetDomain> affine_equalities;
     auto blk = decl.cfg[blk_addr];
-    for (auto &symval : ctx.symvals()) {
+    for (auto &symval : ctx.symvals_entries()) {
       OffsetDomain reg_off;
 
       if (!symval.has_target_value()) {
@@ -636,11 +642,8 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     SpecStackOffsets off = {affine_equalities};
     decl.stack_offsets.insert({blk_addr, off});
 
-    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
+    this->AddLiveValuesToBB(decl.live_high_variables_at_entry, blk_addr,
                             ctx.live_at_entries());
-
-    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_addr,
-                            ctx.live_at_exits());
   }
 }
 

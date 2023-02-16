@@ -405,17 +405,15 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
           this->options.arch->LiftedFunctionType(), context));
   auto start_ind = lifted_func_type->getNumParams() + 1;
-  for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
+  for (auto v : this->block_context->LiveHighSymbolsAtEntry()) {
     auto arg = remill::NthArgument(func, start_ind);
-    if (!v.param.name.empty()) {
-      arg->setName(v.param.name);
+    if (!v.name.empty()) {
+      arg->setName(v.name);
     }
 
-    if (v.param.reg) {
-      // Registers should not have aliases
-      arg->addAttr(llvm::Attribute::get(llvm_context,
-                                        llvm::Attribute::AttrKind::NoAlias));
-    }
+    // Registers should not have aliases
+    arg->addAttr(
+        llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
     // TODO(Ian): If we can eliminate the stack then we also are able to declare more no aliases here, not sure the
     // best way to handle this
 
@@ -491,7 +489,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   LOG(INFO) << "Live values at entry to function "
             << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
-                         this->block_context->LiveBBParamsAtEntry());
+                         this->block_context->());
 
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);

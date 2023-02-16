@@ -189,7 +189,11 @@ message SymbolMapping {
 
 message HighSymbol {
   string name = 1;
+  // Do we actually need this???
+  // Maybe we can bind up in the parent knowing that it's a param?
+  // Idk
   HighLoc location = 2;
+  TypeSpec type = 3;
 }
 
 message Value {
@@ -252,11 +256,9 @@ message BlockContext {
   // Affine equalities between values
   // and high symbols at entry to
   // the block
-  repeated ValueMapping symvals_entries = 1;
-  repeated ValueMapping symvals_exits = 2;
-  
-  repeated HighSymbol live_at_entries = 3;
-  repeated HighSymbol live_at_exits = 4;
+  repeated ValueMapping live_symvals_entries = 1;
+  repeated ValueMapping live_symvals_exits = 2;
+ 
 }
 
 
