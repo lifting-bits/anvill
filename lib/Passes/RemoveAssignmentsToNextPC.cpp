@@ -100,7 +100,10 @@ llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
   } else if (pats::match(stored, pats::m_Select(pats::m_Value(condition),
                                                 pats::m_Constant(first),
                                                 pats::m_Constant(second)))) {
+
   } else {
+    // not supported yet
+    return llvm::PreservedAnalyses::all();
   }
 
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
