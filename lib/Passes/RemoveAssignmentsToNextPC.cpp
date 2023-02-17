@@ -11,6 +11,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/raw_ostream.h>
+#include <remill/BC/Util.h>
 
 #include <optional>
 
@@ -60,9 +61,7 @@ llvm::Function *GetOrCreateGotoInstrinsic(llvm::Module *mod,
     return fun;
   }
   auto tgt_type = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(mod->getContext()), {addr_ty}, true);
-
-
+      llvm::Type::getVoidTy(mod->getContext()), {addr_ty}, false);
   return llvm::Function::Create(tgt_type, llvm::GlobalValue::ExternalLinkage,
                                 anvill::kAnvillGoto, mod);
 }
@@ -72,7 +71,8 @@ llvm::Function *GetOrCreateGotoInstrinsic(llvm::Module *mod,
 namespace pats = llvm::PatternMatch;
 llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const anvill::BasicBlockContext &) {
+    const anvill::BasicBlockContext &cont) {
+
   auto next_pc_assign = UniqueAssignmentToNextPc(&F);
   auto maybe_unique_ret = UniqueReturn(&F);
   if (!next_pc_assign || !maybe_unique_ret) {
@@ -86,23 +86,25 @@ llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
   // now we have threes cases we can handle: constant in which case terminate with a goto, select on constant, create a terminating if goto,
   // non constant (now we could try to recover a jump table here, but instead just switch on the stored pc value)
   // TODO(Ian): we may be able to use the jump table analysis here to recover more idiomatic switching.. we are essentially re-doing anvill complete switch here
-  llvm::ConstantInt *first{nullptr};
-  llvm::ConstantInt *second{nullptr};
+  llvm::Constant *first{nullptr};
+  llvm::Constant *second{nullptr};
   llvm::Value *condition{nullptr};
 
   auto goto_instrinsic = GetOrCreateGotoInstrinsic(
       F.getParent(), this->lifter.Options().arch->AddressType());
-  if (pats::match(stored, pats::m_ConstantInt(first))) {
+  if (pats::match(stored, pats::m_Constant(first))) {
+    // TODO(Ian): should probably check pc taint
     llvm::IRBuilder<> ir(unique_ret);
     ir.CreateCall(goto_instrinsic, {first});
     (*next_pc_assign)->eraseFromParent();
   } else if (pats::match(stored, pats::m_Select(pats::m_Value(condition),
-                                                pats::m_ConstantInt(first),
-                                                pats::m_ConstantInt(second)))) {
+                                                pats::m_Constant(first),
+                                                pats::m_Constant(second)))) {
   } else {
   }
 
   CHECK(!llvm::verifyFunction(F, &llvm::errs()));
+
   return llvm::PreservedAnalyses::none();
 }
 
