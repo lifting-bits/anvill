@@ -1,4 +1,5 @@
 #include <anvill/Passes/RemoveAssignmentsToNextPC.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -66,7 +67,21 @@ llvm::Function *GetOrCreateGotoInstrinsic(llvm::Module *mod,
                                 anvill::kAnvillGoto, mod);
 }
 
+
+llvm::BasicBlock *CreateTargetBlock(llvm::Value *mem_val, llvm::Constant *c,
+                                    llvm::Function *func,
+                                    llvm::Function *intrinsic) {
+  auto bb = llvm::BasicBlock::Create(func->getContext(), "", func);
+
+  llvm::IRBuilder<> ir(bb);
+  ir.CreateCall(intrinsic, {c});
+  ir.CreateRet(mem_val);
+
+  return bb;
+}
+
 }  // namespace
+
 
 namespace pats = llvm::PatternMatch;
 llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
@@ -100,7 +115,13 @@ llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
   } else if (pats::match(stored, pats::m_Select(pats::m_Value(condition),
                                                 pats::m_Constant(first),
                                                 pats::m_Constant(second)))) {
-
+    auto mem = unique_ret->getReturnValue();
+    llvm::IRBuilder<> ir(unique_ret->getParent());
+    unique_ret->eraseFromParent();
+    auto f = CreateTargetBlock(mem, first, &F, goto_instrinsic);
+    auto s = CreateTargetBlock(mem, second, &F, goto_instrinsic);
+    ir.CreateCondBr(condition, f, s);
+    (*next_pc_assign)->eraseFromParent();
   } else {
     // not supported yet
     return llvm::PreservedAnalyses::all();
