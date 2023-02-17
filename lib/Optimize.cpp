@@ -293,8 +293,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
-  // TODO(Ian): this shouldnt be enabled by default, clients should be able to run this afterwards only if they want it since it breaks inlining.
-  second_fpm.addPass(anvill::RemoveAssignmentsToNextPC(contexts, lifter));
+  if (options.should_remove_assignments_to_next_pc) {
+    second_fpm.addPass(anvill::RemoveAssignmentsToNextPC(contexts, lifter));
+  }
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);

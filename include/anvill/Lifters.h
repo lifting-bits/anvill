@@ -218,7 +218,8 @@ class LifterOptions {
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
         stack_pointer_is_signed(false),
-        should_remove_anvill_pc(true) {
+        should_remove_anvill_pc(true),
+        should_remove_assignments_to_next_pc(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -289,6 +290,8 @@ class LifterOptions {
   bool stack_pointer_is_signed : 1;
 
   bool should_remove_anvill_pc : 1;
+
+  bool should_remove_assignments_to_next_pc : 1;
 
  private:
   LifterOptions(void) = delete;
