@@ -61,6 +61,7 @@ set(anvill_passes
   ReplaceStackReferences
   RemoveCallIntrinsics
   ReplaceRemillFunctionReturnsWithAnvillFunctionReturns
+  RemoveAssignmentsToNextPC
 )
 
 set(anvill_arch_HEADERS
