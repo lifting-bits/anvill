@@ -154,7 +154,7 @@ message Callable {
 
 
 message Constant {
-  int64 value = 1;
+  uint64 value = 1;
   bool is_tainted_by_pc = 2;
 }
 
