@@ -481,11 +481,22 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     return this->ProvidePointerFromFunctionArgs(func, index);
   };
 
-
   DLOG(INFO) << "Live values at entry to function "
              << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
+
+  for (auto &reg_const : this->block_context->GetConstants()) {
+    auto new_value = this->options.program_counter_init_procedure(
+        ir, reg_const.target_value.reg->type, reg_const.value);
+    DLOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " "
+               << std::hex << reg_const.value;
+    auto nmem = StoreNativeValue(new_value, reg_const.target_value,
+                                 type_provider.Dictionary(), intrinsics, ir,
+                                 this->state_ptr,
+                                 remill::LoadMemoryPointer(ir, intrinsics));
+    ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
+  }
 
   auto pc_arg = remill::NthArgument(func, remill::kPCArgNum);
   auto mem_arg = remill::NthArgument(func, remill::kMemoryPointerArgNum);
@@ -692,7 +703,7 @@ llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
 llvm::Value *
 BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
                                                  size_t index) const {
-  return anvill::ProvidePointerFromFunctionArgs(func, index, this->options,
+  return anvill::ProvidePointerFromFunctionArgs(func, index,
                                                 *this->block_context);
 }
 

@@ -44,7 +44,7 @@ DEFINE_bool(add_breakpoints, false,
 
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
-
+DEFINE_bool(llvm_debug, false, "Enable LLVM debug flag");
 
 DEFINE_string(
     default_callable_spec, "",
@@ -239,6 +239,10 @@ int main(int argc, char *argv[]) {
 
   if (!FLAGS_stats_out.empty()) {
     llvm::EnableStatistics();
+  }
+
+  if (FLAGS_llvm_debug) {
+    llvm::DebugFlag = true;
   }
 
   if (!FLAGS_disable_opt) {

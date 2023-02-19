@@ -117,10 +117,15 @@ struct OffsetDomain {
   ValueDecl target_value;
   std::int64_t stack_offset;
 };
+
+struct ConstantDomain {
+  ValueDecl target_value;
+  std::uint64_t value;
+};
+
 struct SpecStackOffsets {
   std::vector<OffsetDomain> affine_equalities;
 };
-
 
 // A declaration for a callable entity.
 struct CallableDecl {
@@ -216,6 +221,8 @@ class BasicBlockContext {
 
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
 
+  virtual const std::vector<ConstantDomain> &GetConstants() const = 0;
+
   virtual size_t GetStackSize() const = 0;
 
   virtual size_t GetMaxStackSize() const = 0;
@@ -295,15 +302,19 @@ class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
   SpecStackOffsets offsets;
+  std::vector<ConstantDomain> constants;
   std::vector<ParameterDecl> live_params_at_entry;
   std::vector<ParameterDecl> live_params_at_exit;
 
  public:
   SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
+                   std::vector<ConstantDomain> constants,
                    std::vector<ParameterDecl> live_params_at_entry,
                    std::vector<ParameterDecl> live_params_at_exit);
 
   virtual const SpecStackOffsets &GetStackOffsets() const override;
+
+  virtual const std::vector<ConstantDomain> &GetConstants() const override;
 
   virtual const std::vector<ValueDecl> &ReturnValue() const override;
 
@@ -362,6 +373,9 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_exit;
+
+  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+      constant_values;
 
   std::uint64_t stack_depth;
 

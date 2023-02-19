@@ -290,7 +290,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     if (referenced_variable.has_value()) {
 
       auto g = anvill::ProvidePointerFromFunctionArgs(
-          &F, referenced_variable->decl.index, this->lifter.Options(), cont);
+          &F, referenced_variable->decl.index, cont);
       auto ptr = GetPtrToOffsetInto(ent_insert, this->lifter.DataLayout(),
                                     referenced_variable->decl.decl.type, g,
                                     referenced_variable->offset);
@@ -366,9 +366,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     anvill::GetBasicBlockStackPtr(&F)->addAttr(noalias);
 
     for (auto lives : cont.LiveParamsAtEntryAndExit()) {
-      ProvidePointerFromFunctionArgs(&F, lives.index, this->lifter.Options(),
-                                     cont)
-          ->addAttr(noalias);
+      ProvidePointerFromFunctionArgs(&F, lives.index, cont)->addAttr(noalias);
     }
   }
 

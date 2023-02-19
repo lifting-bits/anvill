@@ -595,11 +595,10 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
 
   for (auto &[blk_addr, ctx] : obj.block_context()) {
-    std::vector<OffsetDomain> affine_equalities;
+    std::vector<OffsetDomain> stack_offsets;
+    std::vector<ConstantDomain> constant_values;
     auto blk = decl.cfg[blk_addr];
     for (auto &symval : ctx.symvals()) {
-      OffsetDomain reg_off;
-
       if (!symval.has_target_value()) {
         LOG(FATAL) << "All equalities must have a target";
       }
@@ -624,17 +623,32 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         LOG(FATAL) << "Mapping should have current value";
       }
 
-      LOG_IF(FATAL, !symval.curr_val().has_stack_disp())
-          << "Only stack displacements supported for affine relations";
+      if (symval.curr_val().has_stack_disp()) {
+        OffsetDomain reg_off;
 
-      reg_off.stack_offset = symval.curr_val().stack_disp();
-      reg_off.target_value = target_vdecl.TakeValue();
+        reg_off.stack_offset = symval.curr_val().stack_disp();
+        reg_off.target_value = target_vdecl.TakeValue();
 
-      affine_equalities.push_back(reg_off);
+        stack_offsets.push_back(reg_off);
+      } else if (symval.curr_val().has_constant()) {
+        ConstantDomain const_val;
+
+        const_val.target_value = target_vdecl.TakeValue();
+        const_val.value = symval.curr_val().constant();
+
+        DLOG(INFO) << "Adding global register override for "
+                  << const_val.target_value.reg->name << " " << std::hex
+                  << const_val.value;
+        constant_values.push_back(const_val);
+      } else {
+        LOG(FATAL) << symval.curr_val().GetTypeName()
+                   << " is unimplemented for affine relations";
+      }
     }
 
-    SpecStackOffsets off = {affine_equalities};
-    decl.stack_offsets.insert({blk_addr, off});
+    SpecStackOffsets off = {stack_offsets};
+    decl.stack_offsets.emplace(blk_addr, std::move(off));
+    decl.constant_values.emplace(blk_addr, std::move(constant_values));
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());
