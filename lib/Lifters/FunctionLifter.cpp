@@ -361,9 +361,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
 // that all semantics and helpers are completely inlined.
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
-#ifndef NDEBUG
   CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
-#endif
   this->RecursivelyInlineFunctionCallees(this->native_func);
 }
 

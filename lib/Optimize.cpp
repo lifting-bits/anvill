@@ -193,8 +193,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   fpm.addPass(llvm::SCCPPass());
   fpm.addPass(llvm::VerifierPass());
-  fpm.addPass(llvm::DSEPass());
-  fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::EarlyCSEPass(true));
@@ -281,6 +279,12 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
 
   fpm.addPass(ConvertPointerArithmeticToGEP(contexts, types, structs, md));
+  fpm.addPass(llvm::VerifierPass());
+
+  // NOTE(alex): DSE is extremely slow for the code that we're emitting. Let's move it to the back
+  // of the series of passes and run it after a significant chunk of code has already been
+  // eliminated.
+  fpm.addPass(llvm::DSEPass());
   fpm.addPass(llvm::VerifierPass());
   pb.crossRegisterProxies(lam, fam, cam, mam);
 
