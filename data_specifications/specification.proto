@@ -153,11 +153,16 @@ message Callable {
 
 
 
+message Constant {
+  uint64 value = 1;
+  bool is_tainted_by_pc = 2;
+}
+
 message ValueDomain  {
   oneof inner {
     HighSymbol symb = 1;
     int64 stack_disp = 2; 
-    int64 constant = 3;
+    Constant constant = 3;
   }
 }
 

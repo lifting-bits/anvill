@@ -634,11 +634,13 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         ConstantDomain const_val;
 
         const_val.target_value = target_vdecl.TakeValue();
-        const_val.value = symval.curr_val().constant();
+        const_val.value = symval.curr_val().constant().value();
+        const_val.should_taint_by_pc =
+            symval.curr_val().constant().is_tainted_by_pc();
 
         DLOG(INFO) << "Adding global register override for "
-                  << const_val.target_value.reg->name << " " << std::hex
-                  << const_val.value;
+                   << const_val.target_value.reg->name << " " << std::hex
+                   << const_val.value;
         constant_values.push_back(const_val);
       } else {
         LOG(FATAL) << symval.curr_val().GetTypeName()
