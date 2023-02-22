@@ -121,6 +121,7 @@ struct OffsetDomain {
 struct ConstantDomain {
   ValueDecl target_value;
   std::uint64_t value;
+  bool should_taint_by_pc;
 };
 
 struct SpecStackOffsets {

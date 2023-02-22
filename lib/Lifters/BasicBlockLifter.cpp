@@ -487,10 +487,23 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
                          this->block_context->LiveBBParamsAtEntry());
 
   for (auto &reg_const : this->block_context->GetConstants()) {
-    auto new_value = this->options.program_counter_init_procedure(
-        ir, reg_const.target_value.reg->type, reg_const.value);
-    DLOG(INFO) << "Dumping " << reg_const.target_value.reg->name << " "
-               << std::hex << reg_const.value;
+    llvm::Value *new_value = nullptr;
+    llvm::Type *target_type = reg_const.target_value.type;
+    if (reg_const.should_taint_by_pc) {
+      new_value = this->options.program_counter_init_procedure(
+          ir, this->address_type, reg_const.value);
+
+      if (this->address_type != target_type) {
+        new_value = AdaptToType(ir, new_value, target_type);
+      }
+    } else {
+      new_value = llvm::ConstantInt::get(target_type, reg_const.value, false);
+    }
+
+
+    DLOG_IF(INFO, reg_const.target_value.reg)
+        << "Dumping " << reg_const.target_value.reg->name << " " << std::hex
+        << reg_const.value;
     auto nmem = StoreNativeValue(new_value, reg_const.target_value,
                                  type_provider.Dictionary(), intrinsics, ir,
                                  this->state_ptr,
