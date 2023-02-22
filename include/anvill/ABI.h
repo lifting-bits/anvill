@@ -88,4 +88,8 @@ extern const std::string kBasicBlockMetadata;
 /// Intrinsic that acts like a return instruction but leaves both the basic block and the parent function.
 extern const std::string kAnvillBasicBlockReturn;
 
+
+// Instrinsic that acts as a goto to an address
+extern const std::string kAnvillGoto;
+
 }  // namespace anvill

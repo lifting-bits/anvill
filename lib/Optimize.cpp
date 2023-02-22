@@ -73,6 +73,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "anvill/Passes/RemoveAssignmentsToNextPC.h"
 #include "anvill/Specification.h"
 
 namespace anvill {
@@ -296,6 +297,9 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
+  if (options.should_remove_assignments_to_next_pc) {
+    second_fpm.addPass(anvill::RemoveAssignmentsToNextPC(contexts, lifter));
+  }
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
