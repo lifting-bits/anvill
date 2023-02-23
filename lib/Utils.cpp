@@ -610,11 +610,12 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
 
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr) {
 
   llvm::IRBuilder ir(in_block);
-  return LoadLiftedValue(decl, types, intrinsics, ir, state_ptr, mem_ptr);
+  return LoadLiftedValue(decl, types, intrinsics, arch, ir, state_ptr, mem_ptr);
 }
 
 namespace {

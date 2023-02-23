@@ -327,8 +327,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 
   llvm::Value *ret_val = nullptr;
 
-  ret_val = LoadLiftedValue(decl.returns, types, intrinsics, block,
-                            native_state_ptr, mem_ptr);
+  ret_val = LoadLiftedValue(decl.returns, types, intrinsics, this->options.arch,
+                            block, native_state_ptr, mem_ptr);
   ir.SetInsertPoint(block);
 
 

@@ -560,8 +560,9 @@ void BasicBlockLifter::PackLiveValues(
       auto ptr = into_vars(decl.index);
 
       auto state_loaded_value = LoadLiftedValue(
-          decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
-          from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+          decl.param, this->type_provider.Dictionary(), this->intrinsics,
+          this->options.arch, bldr, from_state_ptr,
+          remill::LoadMemoryPointer(bldr, this->intrinsics));
 
       bldr.CreateStore(state_loaded_value, ptr);
     } else {

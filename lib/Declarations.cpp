@@ -324,14 +324,14 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, ir,
-                                  state_ptr, mem_ptr);
+  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, this->arch,
+                                  ir, state_ptr, mem_ptr);
   CHECK(ret_addr && !llvm::isa_and_nonnull<llvm::UndefValue>(ret_addr));
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val =
-        LoadLiftedValue(param_decl, types, intrinsics, ir, state_ptr, mem_ptr);
+    const auto val = LoadLiftedValue(param_decl, types, intrinsics, this->arch,
+                                     ir, state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }

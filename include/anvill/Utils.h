@@ -91,14 +91,14 @@ bool CanBeAliased(llvm::Value *val);
 // the lifted value associated with `decl`.
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
 
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
-                             llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
-                             llvm::Value *mem_ptr);
-
+                             const remill::Arch *arch, llvm::IRBuilder<> &ir,
+                             llvm::Value *state_ptr, llvm::Value *mem_ptr);
 
 void CloneIntrinsicsFromModule(llvm::Module &from, llvm::Module &into);
 
