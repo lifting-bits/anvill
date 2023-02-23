@@ -553,29 +553,19 @@ GetSubcomponentType(const LowLoc &loc, uint64_t offset, llvm::Type *target_type,
 
 llvm::Value *BuildMultiComponentValue(llvm::IRBuilder<> &ir,
                                       const std::vector<llvm::Value *> comps,
-                                      llvm::Type *target_type,
+                                      llvm::Type *sty, llvm::Type *target_type,
                                       llvm::DataLayout &dl) {
-  if (auto t = llvm::dyn_cast<llvm::IntegerType>(target_type)) {
-    llvm::Value *base = llvm::ConstantInt::get(target_type, 0, false);
-    std::vector<llvm::Value *> little_endian = comps;
-    // start with least sig
-    if (dl.isBigEndian()) {
-      std::reverse(little_endian.begin(), little_endian.end());
-    }
-
-    auto bit_off = 0;
-    for (auto v : little_endian) {
-      base = ir.CreateOr(
-          ir.CreateZExtOrTrunc(
-              ir.CreateShl(llvm::ConstantInt::get(v->getType(), bit_off), v),
-              target_type),
-          base);
-    }
-
-    return base;
-  } else {
-    LOG(FATAL) << "not doing structs right now";
+  auto i32_type = llvm::Type::getInt32Ty(sty->getContext());
+  auto storage = ir.CreateAlloca(sty);
+  uint64_t ind = 0;
+  for (auto c : comps) {
+    ir.CreateStore(c, ir.CreateGEP(sty, storage,
+                                   {llvm::ConstantInt::get(i32_type, 0),
+                                    llvm::ConstantInt::get(i32_type, ind)}));
+    ind += 1;
   }
+
+  return ir.CreateLoad(target_type, storage);
 }
 
 
@@ -605,7 +595,8 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
 
       offset += loc.Size();
     }
-    return BuildMultiComponentValue(ir, comps, decl.type, dl);
+    auto sty = CreateDeclSty(decl.oredered_locs, state_ptr->getContext());
+    return BuildMultiComponentValue(ir, comps, sty, decl.type, dl);
   }
 }
 
