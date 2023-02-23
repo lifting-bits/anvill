@@ -124,6 +124,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
     LOG(FATAL) << remill::GetErrorString(err);
   }
 
+  /*
   if (auto used = module.getGlobalVariable("llvm.used"); used) {
     used->setLinkage(llvm::GlobalValue::PrivateLinkage);
     used->eraseFromParent();
@@ -132,7 +133,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
     used->setLinkage(llvm::GlobalValue::PrivateLinkage);
     used->eraseFromParent();
-  }
+  }*/
 
   LOG(INFO) << "Optimizing module.";
 
