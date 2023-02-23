@@ -52,9 +52,11 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
 
     std::vector<llvm::Value *> args;
 
-    args.push_back(anvill::LoadLiftedValue(
-        ret_decl, this->lifter.Options().TypeDictionary(), intrinsics,
-        this->lifter.Options().arch, ir, state, mem));
+    if (ret_decl.oredered_locs.size() != 0 && !ret_decl.type->isVoidTy()) {
+      args.push_back(anvill::LoadLiftedValue(
+          ret_decl, this->lifter.Options().TypeDictionary(), intrinsics,
+          this->lifter.Options().arch, ir, state, mem));
+    }
 
 
     auto tgt = GetOrCreateAnvillReturnFunc(F.getParent());
