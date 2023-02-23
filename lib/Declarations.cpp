@@ -101,8 +101,8 @@ void FunctionDecl::AddBBContexts(
 }
 
 std::uint64_t LowLoc::Size() const {
-  if (this->mem_reg) {
-    return this->size;
+  if (this->size) {
+    return *this->size;
   } else {
     return this->reg->size;
   }

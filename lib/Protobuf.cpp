@@ -283,6 +283,10 @@ ProtobufTranslator::DecodeLowLoc(const ::specification::Value &value,
          << "' used for storing " << desc;
       return ss.str();
     }
+    if (reg.has_subreg_sz()) {
+      loc.size = reg.subreg_sz();
+    }
+
   } else if (value.has_mem()) {
     auto &mem = value.mem();
     if (mem.has_base_reg()) {
@@ -295,6 +299,7 @@ ProtobufTranslator::DecodeLowLoc(const ::specification::Value &value,
       }
     }
     loc.mem_offset = mem.offset();
+    loc.size = mem.size();
   } else {
     std::stringstream ss;
     ss << "A " << desc << " declaration must specify its location with "
@@ -356,12 +361,6 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
     return {"Parameter with no representation"};
   }
   auto &repr_var = param.repr_var();
-  if (repr_var.values_size() != 1) {
-    std::stringstream ss;
-    ss << "Unsupported number of values for parameter spec: "
-       << repr_var.values_size();
-    return ss.str();
-  }
 
   if (!repr_var.has_type()) {
     return {"Parameter without type spec"};

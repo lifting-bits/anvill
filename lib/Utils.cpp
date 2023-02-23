@@ -451,8 +451,13 @@ llvm::Value *StoreSubcomponent(llvm::Value *native_sub, const LowLoc &decl,
 
 llvm::Value *ExtractSubcomponent(unsigned int elem, llvm::Type *dest_type,
                                  llvm::Value *native_val,
+                                 llvm::Type *native_type,
                                  llvm::IRBuilder<> &ir) {
-  return ir.CreateExtractValue(native_val, {elem});
+  auto i32 = llvm::IntegerType::getInt32Ty(native_val->getContext());
+  return ir.CreateLoad(dest_type,
+                       ir.CreateGEP(native_type, native_val,
+                                    {llvm::ConstantInt::get(i32, 0),
+                                     llvm::ConstantInt::get(i32, elem)}));
 }
 
 
@@ -493,16 +498,14 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
     unsigned int ind = 0;
 
-    auto curr_val = native_val;
-    if (!native_val->getType()->isStructTy()) {
-      curr_val = ir.CreateBitCast(native_val,
-                                  CreateDeclSty(decl.oredered_locs, context));
-    }
+    auto sty = CreateDeclSty(decl.oredered_locs, context);
+    auto curr_val = ir.CreateAlloca(sty);
 
+    ir.CreateStore(native_val, curr_val);
     auto mem = mem_ptr;
     for (const auto &comp : decl.oredered_locs) {
       auto compvl =
-          ExtractSubcomponent(ind, LocType(comp, context), curr_val, ir);
+          ExtractSubcomponent(ind, LocType(comp, context), curr_val, sty, ir);
       mem = StoreSubcomponent(compvl, comp, types, intrinsics, ir, state_ptr,
                               mem);
       ind++;
@@ -562,12 +565,11 @@ llvm::Value *BuildMultiComponentValue(llvm::IRBuilder<> &ir,
 
     auto bit_off = 0;
     for (auto v : little_endian) {
-      base = ir.CreateOr(ir.CreateShl(llvm::ConstantInt::get(
-                                          llvm::IntegerType::get(
-                                              target_type->getContext(), 64),
-                                          bit_off),
-                                      v),
-                         base);
+      base = ir.CreateOr(
+          ir.CreateZExtOrTrunc(
+              ir.CreateShl(llvm::ConstantInt::get(v->getType(), bit_off), v),
+              target_type),
+          base);
     }
 
     return base;

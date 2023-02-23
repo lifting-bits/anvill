@@ -64,7 +64,7 @@ struct LowLoc {
   const remill::Register *reg{nullptr};
   const remill::Register *mem_reg{nullptr};
   std::int64_t mem_offset{0};
-  std::uint32_t size{0};
+  std::optional<std::uint64_t> size{std::nullopt};
 
   std::uint64_t Size() const;
 
