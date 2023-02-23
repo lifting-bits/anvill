@@ -139,4 +139,8 @@ ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
                                const anvill::BasicBlockContext &context);
 
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
+
+bool HasMemLoc(const ValueDecl &v);
+
+bool HasRegLoc(const ValueDecl &v);
 }  // namespace anvill

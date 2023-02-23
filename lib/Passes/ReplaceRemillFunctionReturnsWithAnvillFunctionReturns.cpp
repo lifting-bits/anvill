@@ -40,7 +40,7 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
   }
 
 
-  const std::vector<ValueDecl> &ret_decl = bbcont.ReturnValue();
+  ValueDecl ret_decl = bbcont.ReturnValue();
   remill::IntrinsicTable intrinsics(F.getParent());
   auto pres_analyses = llvm::PreservedAnalyses::all();
   for (auto rep : to_replace) {
@@ -51,11 +51,11 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
 
 
     std::vector<llvm::Value *> args;
-    for (auto vdecl : ret_decl) {
-      args.push_back(anvill::LoadLiftedValue(
-          vdecl, this->lifter.Options().TypeDictionary(), intrinsics, ir, state,
-          mem));
-    }
+
+    args.push_back(anvill::LoadLiftedValue(
+        ret_decl, this->lifter.Options().TypeDictionary(), intrinsics, ir,
+        state, mem));
+
 
     auto tgt = GetOrCreateAnvillReturnFunc(F.getParent());
     ir.CreateCall(tgt, args);

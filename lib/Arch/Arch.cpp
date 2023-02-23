@@ -44,7 +44,7 @@ bool RegisterConstraint::ContainsVariant(const std::string &name) const {
 
 Result<CallingConvention::Ptr, std::string>
 CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
-  switch (arch->arch_name) {
+  /*switch (arch->arch_name) {
     case remill::kArchInvalid: {
       return kInvalidArch;
     }
@@ -105,14 +105,15 @@ CallingConvention::CreateCCFromArch(const remill::Arch *arch) {
   std::stringstream ss;
   ss << "Unsupported architecture/OS pair: " << arch_name << " and "
      << os_name;
-  return ss.str();
+  return ss.str();*/
+  return CreateStubABI();
 }
 
 // Still need the arch to be passed in so we can create the calling convention
 Result<CallingConvention::Ptr, std::string>
-CallingConvention::CreateCCFromArchAndID(
-    const remill::Arch *arch, llvm::CallingConv::ID cc_id) {
-  switch (cc_id) {
+CallingConvention::CreateCCFromArchAndID(const remill::Arch *arch,
+                                         llvm::CallingConv::ID cc_id) {
+  /* switch (cc_id) {
     case llvm::CallingConv::C:
       if (arch->IsX86()) {
         return CreateX86_C(arch);
@@ -166,7 +167,8 @@ CallingConvention::CreateCCFromArchAndID(
 
   std::stringstream ss;
   ss << "Unsupported calling convention ID: " << static_cast<unsigned>(cc_id);
-  return ss.str();
+  return ss.str();*/
+  return CreateStubABI();
 }
 
 Result<FunctionDecl, std::string>
@@ -182,7 +184,7 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
   if (remill::IsError(maybe_decl)) {
     return remill::GetErrorString(maybe_decl);
   } else {
-    // Here we override the return type of the extern declaration to match how it was allocated 
+    // Here we override the return type of the extern declaration to match how it was allocated
     // In the future instead of doing this we should store information about how to extract return values at the llvm
     // level into the abi returns.
     // TODO(ian): Dont dont do this.
@@ -197,8 +199,7 @@ CallingConvention::AllocateSignature(llvm::Function &func) {
 // positional starting at 1.
 std::vector<std::string> TryRecoverParamNames(const llvm::Function &function) {
   std::vector<std::string> param_names;
-  param_names.reserve(
-      function.getFunctionType()->getNumParams());
+  param_names.reserve(function.getFunctionType()->getNumParams());
 
   auto i = 0u;
   for (auto &param : function.args()) {

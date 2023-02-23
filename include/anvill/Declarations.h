@@ -59,6 +59,18 @@ struct CodeBlock {
 
 class TypeDictionary;
 
+
+struct LowLoc {
+  const remill::Register *reg{nullptr};
+  const remill::Register *mem_reg{nullptr};
+  std::int64_t mem_offset{0};
+  std::uint32_t size{0};
+
+  std::uint64_t Size() const;
+
+  bool operator==(const LowLoc &loc) const;
+};
+
 // A value, such as a parameter or a return value. Values are resident
 // in one of two locations: either in a register, represented by a non-
 // nullptr `reg` value, or in memory, at `[mem_reg + mem_offset]`.
@@ -75,15 +87,14 @@ class TypeDictionary;
 // the caller allocate the space, and pass a pointer to that space into
 // the callee, and so that should be represented using a parameter.
 struct ValueDecl {
-  const remill::Register *reg{nullptr};
-  const remill::Register *mem_reg{nullptr};
-  std::int64_t mem_offset{0};
+  std::vector<LowLoc> oredered_locs;
 
   TypeSpec spec_type;
 
   // Type of this value.
   llvm::Type *type{nullptr};
 };
+
 
 // A value declaration corresponding with a named parameter.
 struct ParameterDecl : public ValueDecl {
@@ -169,7 +180,7 @@ struct CallableDecl {
   // NOTE(pag): In the case of the AMD64 Itanium ABI, we expect the
   //            specification to include `RDX` as an explicit return
   //            value when the function might throw an exception.
-  std::vector<ValueDecl> returns;
+  ValueDecl returns;
 
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
@@ -201,11 +212,6 @@ struct CallableDecl {
   DecodeFromPB(const remill::Arch *arch, const std::string &pb);
 };
 
-struct LocalVariableDecl {
-  std::string name;
-  std::vector<ValueDecl> values;
-};
-
 
 // Basic block contexts impose an ordering on live values s.t. shared Parameters between
 // live exits and entries
@@ -232,7 +238,7 @@ class BasicBlockContext {
 
   virtual uint64_t GetParentFunctionAddress() const = 0;
 
-  virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
+  virtual ValueDecl ReturnValue() const = 0;
 
   // Deduplicates locations and ensures there are no overlapping decls
   // A valid parameter list is a set of non overlapping a-locs with distinct names.
@@ -317,7 +323,7 @@ class SpecBlockContext : public BasicBlockContext {
 
   virtual const std::vector<ConstantDomain> &GetConstants() const override;
 
-  virtual const std::vector<ValueDecl> &ReturnValue() const override;
+  virtual ValueDecl ReturnValue() const override;
 
   virtual uint64_t GetParentFunctionAddress() const override;
 
@@ -365,7 +371,7 @@ struct FunctionDecl : public CallableDecl {
   // These are the blocks contained within the function representing the CFG.
   std::unordered_map<std::uint64_t, CodeBlock> cfg;
 
-  std::unordered_map<std::string, LocalVariableDecl> locals;
+  std::unordered_map<std::string, ParameterDecl> locals;
 
   std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
 

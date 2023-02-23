@@ -99,6 +99,7 @@ message Register {
 message Memory {
   optional string base_reg = 1;
   int64 offset = 2;
+  uint64 size = 3;
 }
 
 message Variable {

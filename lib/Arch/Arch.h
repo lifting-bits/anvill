@@ -145,7 +145,7 @@ class CallingConvention {
 
  protected:
   const remill::Arch *const arch;
-
+  /*
   static std::unique_ptr<CallingConvention>
   CreateX86_C(const remill::Arch *arch);
 
@@ -174,7 +174,9 @@ class CallingConvention {
   CreateSPARC64_C(const remill::Arch *arch);
 
   static std::unique_ptr<CallingConvention>
-  CreatePPC_SysV(const remill::Arch *arch);
+  CreatePPC_SysV(const remill::Arch *arch);*/
+
+  static std::unique_ptr<CallingConvention> CreateStubABI();
 
  private:
   const llvm::CallingConv::ID identity;
