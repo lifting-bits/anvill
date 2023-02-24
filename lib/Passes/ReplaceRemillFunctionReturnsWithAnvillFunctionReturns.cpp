@@ -40,6 +40,8 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
   }
 
 
+  auto unique_ret = UniqueReturn(&F);
+
   ValueDecl ret_decl = bbcont.ReturnValue();
   remill::IntrinsicTable intrinsics(F.getParent());
   auto pres_analyses = llvm::PreservedAnalyses::all();
@@ -48,7 +50,10 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
     auto mem = rep->getArgOperand(2);
     llvm::IRBuilder<> ir(rep);
     ir.SetInsertPoint(rep);
-
+    // TODO(Ian): assumes the block is terminated by a ret... what about conditional returns
+    if (unique_ret && to_replace.size() == 1) {
+      ir.SetInsertPoint(*unique_ret);
+    }
 
     std::vector<llvm::Value *> args;
 

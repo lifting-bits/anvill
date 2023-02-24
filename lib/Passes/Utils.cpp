@@ -245,4 +245,19 @@ llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *mod) {
                                 anvill::kAnvillBasicBlockReturn, mod);
 }
 
+std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func) {
+  std::optional<llvm::ReturnInst *> r = std::nullopt;
+  for (auto &insn : llvm::instructions(func)) {
+    if (auto nret = llvm::dyn_cast<llvm::ReturnInst>(&insn)) {
+      if (r) {
+        return std::nullopt;
+      } else {
+        r = nret;
+      }
+    }
+  }
+
+  return r;
+}
+
 }  // namespace anvill

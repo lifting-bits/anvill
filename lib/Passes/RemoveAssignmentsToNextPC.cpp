@@ -17,6 +17,8 @@
 
 #include <optional>
 
+#include "Utils.h"
+
 namespace anvill {
 
 llvm::StringRef RemoveAssignmentsToNextPC::name(void) {
@@ -39,20 +41,6 @@ UniqueAssignmentToNextPc(llvm::Function *func) {
   return std::nullopt;
 }
 
-std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func) {
-  std::optional<llvm::ReturnInst *> r = std::nullopt;
-  for (auto &insn : llvm::instructions(func)) {
-    if (auto nret = llvm::dyn_cast<llvm::ReturnInst>(&insn)) {
-      if (r) {
-        return std::nullopt;
-      } else {
-        r = nret;
-      }
-    }
-  }
-
-  return r;
-}
 
 llvm::Function *GetOrCreateGotoInstrinsic(llvm::Module *mod,
                                           llvm::IntegerType *addr_ty) {
