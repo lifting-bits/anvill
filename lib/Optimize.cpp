@@ -44,6 +44,7 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalOpt.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 
 #include <anvill/Providers.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
@@ -164,6 +165,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   //  llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam;
 
+  llvm::Triple ModuleTriple(module.getTargetTriple());
+  llvm::TargetLibraryInfoImpl TLII(ModuleTriple);
+  TLII.disableAllFunctions();
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(TLII); });
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cam);
