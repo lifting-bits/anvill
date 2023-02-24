@@ -113,16 +113,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
     LOG(FATAL) << remill::GetErrorString(err);
   }
 
-  if (auto used = module.getGlobalVariable("llvm.used"); used) {
-    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
-    used->eraseFromParent();
-  }
-
-  if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
-    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
-    used->eraseFromParent();
-  }
-
   LOG(INFO) << "Optimizing module.";
 
   if (auto memory_escape = module.getFunction(kMemoryPointerEscapeFunction)) {
@@ -268,6 +258,16 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module) {
   fam.clear();
   cam.clear();
   lam.clear();
+
+  if (auto used = module.getGlobalVariable("llvm.used"); used) {
+    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
+    used->eraseFromParent();
+  }
+
+  if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
+    used->setLinkage(llvm::GlobalValue::PrivateLinkage);
+    used->eraseFromParent();
+  }
 
   CHECK(remill::VerifyModule(&module));
 }
