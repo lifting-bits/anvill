@@ -586,8 +586,6 @@ void ProtobufTranslator::AddLiveValuesToBB(
   auto &v = map.insert({bb_addr, std::vector<ParameterDecl>()}).first->second;
 
   for (auto var : values) {
-    LOG_IF(FATAL, var.repr_var().values_size() != 1)
-        << "Symbols must be represented by a single valuedecl.";
     auto param = DecodeParameter(var);
     if (!param.Succeeded()) {
       LOG(ERROR) << "Unable to decode live parameter " << param.TakeError();
