@@ -326,24 +326,14 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   AnnotateInstructions(block, pc_annotation_id, GetPCAnnotation(func_address));
 
   llvm::Value *ret_val = nullptr;
-
-  if (decl.returns.size() == 1) {
-    ret_val = LoadLiftedValue(decl.returns.front(), types, intrinsics, block,
-                              native_state_ptr, mem_ptr);
-    ir.SetInsertPoint(block);
-
-  } else if (1 < decl.returns.size()) {
-    ret_val = llvm::UndefValue::get(native_func->getReturnType());
-    auto index = 0u;
-    for (auto &ret_decl : decl.returns) {
-      auto partial_ret_val = LoadLiftedValue(ret_decl, types, intrinsics, block,
-                                             native_state_ptr, mem_ptr);
-      ir.SetInsertPoint(block);
-      unsigned indexes[] = {index};
-      ret_val = ir.CreateInsertValue(ret_val, partial_ret_val, indexes);
-      index += 1;
-    }
+  if (decl.returns.oredered_locs.size() != 0 &&
+      !decl.returns.type->isVoidTy()) {
+    ret_val =
+        LoadLiftedValue(decl.returns, types, intrinsics, this->options.arch,
+                        block, native_state_ptr, mem_ptr);
   }
+  ir.SetInsertPoint(block);
+
 
   auto memory_escape = GetMemoryEscapeFunc(intrinsics);
   llvm::Value *escape_args[] = {mem_ptr};

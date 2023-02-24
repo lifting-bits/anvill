@@ -13,11 +13,14 @@
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -29,15 +32,20 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/Endian.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <unordered_set>
+#include <vector>
 
 namespace anvill {
 
@@ -316,6 +324,158 @@ void StoreNativeValueToRegister(llvm::Value *native_val,
 }
 
 
+llvm::Value *LoadSubcomponent(const LowLoc &loc, llvm::Type *target_type,
+                              const TypeDictionary &types,
+                              const remill::IntrinsicTable &intrinsics,
+                              llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
+                              llvm::Value *mem_ptr) {
+  auto func = ir.GetInsertBlock()->getParent();
+  auto module = func->getParent();
+  auto &context = module->getContext();
+  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
+
+  llvm::Type *decl_type = remill::RecontextualizeType(target_type, context);
+
+  // Load it out of a register.
+  if (loc.reg) {
+    auto reg_type = remill::RecontextualizeType(loc.reg->type, context);
+    auto ptr_to_reg = loc.reg->AddressOf(state_ptr, ir);
+    auto reg = ir.CreateLoad(reg_type, ptr_to_reg);
+    CopyMetadataTo(mem_ptr, reg);
+    auto adapted_val = types.ConvertValueToType(ir, reg, decl_type);
+
+    if (adapted_val) {
+      return adapted_val;
+    } else {
+      auto bc =
+          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(context, 0));
+      auto li = ir.CreateLoad(decl_type, bc);
+      CopyMetadataTo(mem_ptr, bc);
+      CopyMetadataTo(mem_ptr, li);
+      return li;
+    }
+
+    // Load it out of memory.
+  } else if (loc.mem_reg) {
+    auto mem_reg_type = remill::RecontextualizeType(loc.mem_reg->type, context);
+    auto ptr_to_reg = loc.mem_reg->AddressOf(state_ptr, ir);
+    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
+    CopyMetadataTo(mem_ptr, addr);
+    if (0ll < loc.mem_offset) {
+      addr = ir.CreateAdd(
+          addr,
+          llvm::ConstantInt::get(
+              mem_reg_type, static_cast<std::uint64_t>(loc.mem_offset), false));
+      CopyMetadataTo(mem_ptr, addr);
+
+    } else if (0ll > loc.mem_offset) {
+      addr = ir.CreateSub(
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(-loc.mem_offset),
+                    false));
+      CopyMetadataTo(mem_ptr, addr);
+    }
+
+    auto val = remill::LoadFromMemory(intrinsics, ir, decl_type, mem_ptr, addr);
+
+    return types.ConvertValueToType(ir, val, decl_type);
+
+    // Store to memory at an absolute offset.
+  } else if (loc.mem_offset) {
+    const auto addr = llvm::ConstantInt::get(
+        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
+        static_cast<std::uint64_t>(loc.mem_offset), false);
+    auto val = remill::LoadFromMemory(intrinsics, ir, decl_type, mem_ptr, addr);
+
+    CopyMetadataTo(mem_ptr, val);
+    return types.ConvertValueToType(ir, val, decl_type);
+
+  } else {
+    DLOG(ERROR) << "Unable to load lifted value of type: "
+                << remill::LLVMThingToString(target_type);
+    return llvm::UndefValue::get(decl_type);
+  }
+}
+
+
+llvm::Value *StoreSubcomponent(llvm::Value *native_sub, const LowLoc &decl,
+                               const TypeDictionary &types,
+                               const remill::IntrinsicTable &intrinsics,
+                               llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
+                               llvm::Value *mem_ptr) {
+
+  llvm::LLVMContext &context = state_ptr->getContext();
+  // Store it to a register.
+  if (decl.reg) {
+    StoreNativeValueToRegister(native_sub, decl.reg, types, intrinsics, ir,
+                               state_ptr);
+    return mem_ptr;
+
+    // Store it to memory.
+  } else if (decl.mem_reg) {
+    auto mem_reg_type =
+        remill::RecontextualizeType(decl.mem_reg->type, context);
+    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir);
+
+    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
+    CopyMetadataTo(native_sub, addr);
+
+    if (0ll < decl.mem_offset) {
+      addr = ir.CreateAdd(
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
+                    false));
+      CopyMetadataTo(native_sub, addr);
+
+    } else if (0ll > decl.mem_offset) {
+      addr = ir.CreateSub(
+          addr, llvm::ConstantInt::get(
+                    mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
+                    false));
+      CopyMetadataTo(native_sub, addr);
+    }
+
+    return remill::StoreToMemory(intrinsics, ir, native_sub, mem_ptr, addr);
+
+    // Store to memory at an absolute offset.
+  } else if (decl.mem_offset) {
+    const auto addr = llvm::ConstantInt::get(
+        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
+        static_cast<std::uint64_t>(decl.mem_offset), false);
+    return remill::StoreToMemory(intrinsics, ir, native_sub, mem_ptr, addr);
+
+  } else {
+    return llvm::UndefValue::get(mem_ptr->getType());
+  }
+}
+
+llvm::Value *ExtractSubcomponent(unsigned int elem, llvm::Type *dest_type,
+                                 llvm::Value *native_val,
+                                 llvm::Type *native_type,
+                                 llvm::IRBuilder<> &ir) {
+  auto i32 = llvm::IntegerType::getInt32Ty(native_val->getContext());
+  return ir.CreateLoad(dest_type,
+                       ir.CreateGEP(native_type, native_val,
+                                    {llvm::ConstantInt::get(i32, 0),
+                                     llvm::ConstantInt::get(i32, elem)}));
+}
+
+
+llvm::IntegerType *LocType(const LowLoc &loc, llvm::LLVMContext &cont) {
+  return llvm::IntegerType::get(cont, loc.Size() * 8);
+}
+
+llvm::StructType *CreateDeclSty(const std::vector<LowLoc> &lowlocs,
+                                llvm::LLVMContext &cont) {
+
+  std::vector<llvm::Type *> tys;
+  std::transform(lowlocs.begin(), lowlocs.end(), std::back_inserter(tys),
+                 [&cont](const LowLoc &loc) -> llvm::Type * {
+                   return LocType(loc, cont);
+                 });
+  return llvm::StructType::get(cont, tys, true);
+}
+
 llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               const TypeDictionary &types,
                               const remill::IntrinsicTable &intrinsics,
@@ -331,47 +491,27 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
   CHECK_EQ(module, intrinsics.read_memory_8->getParent());
   CHECK_EQ(native_val->getType(), decl_type);
 
-  // Store it to a register.
-  if (decl.reg) {
-    StoreNativeValueToRegister(native_val, decl.reg, types, intrinsics, ir,
-                               state_ptr);
-    return mem_ptr;
+  if (decl.oredered_locs.size() == 1) {
+    return StoreSubcomponent(native_val, decl.oredered_locs.at(0), types,
+                             intrinsics, ir, state_ptr, mem_ptr);
+  } else {
 
-    // Store it to memory.
-  } else if (decl.mem_reg) {
-    auto mem_reg_type =
-        remill::RecontextualizeType(decl.mem_reg->type, context);
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir);
+    unsigned int ind = 0;
 
-    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
-    CopyMetadataTo(native_val, addr);
+    auto sty = CreateDeclSty(decl.oredered_locs, context);
+    auto curr_val = ir.CreateAlloca(sty);
 
-    if (0ll < decl.mem_offset) {
-      addr = ir.CreateAdd(
-          addr, llvm::ConstantInt::get(
-                    mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
-                    false));
-      CopyMetadataTo(native_val, addr);
-
-    } else if (0ll > decl.mem_offset) {
-      addr = ir.CreateSub(
-          addr, llvm::ConstantInt::get(
-                    mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
-                    false));
-      CopyMetadataTo(native_val, addr);
+    ir.CreateStore(native_val, curr_val);
+    auto mem = mem_ptr;
+    for (const auto &comp : decl.oredered_locs) {
+      auto compvl =
+          ExtractSubcomponent(ind, LocType(comp, context), curr_val, sty, ir);
+      mem = StoreSubcomponent(compvl, comp, types, intrinsics, ir, state_ptr,
+                              mem);
+      ind++;
     }
 
-    return remill::StoreToMemory(intrinsics, ir, native_val, mem_ptr, addr);
-
-    // Store to memory at an absolute offset.
-  } else if (decl.mem_offset) {
-    const auto addr = llvm::ConstantInt::get(
-        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
-        static_cast<std::uint64_t>(decl.mem_offset), false);
-    return remill::StoreToMemory(intrinsics, ir, native_val, mem_ptr, addr);
-
-  } else {
-    return llvm::UndefValue::get(mem_ptr->getType());
+    return mem;
   }
 }
 
@@ -390,88 +530,85 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 }
 
 
+std::optional<llvm::Type *>
+GetSubcomponentType(const LowLoc &loc, uint64_t offset, llvm::Type *target_type,
+                    llvm::DataLayout &data) {
+  // there's two situations here, either we have a primitive target type in which case the loc must
+  // indicate the size for each component, otherwise we decompose the target
+  if (auto itype = llvm::isa_and_nonnull<llvm::IntegerType>(target_type)) {
+    return llvm::IntegerType::get(target_type->getContext(), loc.Size() * 8);
+  } else {
+    llvm::Type *ty = target_type;
+    llvm::APInt off(64, offset);
+    auto ind = data.getGEPIndexForOffset(ty, off);
+
+    if (ind) {
+      return ty;
+    }
+  }
+
+  return std::nullopt;
+}
+
+
+llvm::Value *BuildMultiComponentValue(llvm::IRBuilder<> &ir,
+                                      const std::vector<llvm::Value *> comps,
+                                      llvm::Type *sty, llvm::Type *target_type,
+                                      llvm::DataLayout &dl) {
+  auto i32_type = llvm::Type::getInt32Ty(sty->getContext());
+  auto storage = ir.CreateAlloca(sty);
+  uint64_t ind = 0;
+  for (auto c : comps) {
+    ir.CreateStore(c, ir.CreateGEP(sty, storage,
+                                   {llvm::ConstantInt::get(i32_type, 0),
+                                    llvm::ConstantInt::get(i32_type, ind)}));
+    ind += 1;
+  }
+
+  return ir.CreateLoad(target_type, storage);
+}
+
+
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
-                             llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
-                             llvm::Value *mem_ptr) {
-
-  auto func = ir.GetInsertBlock()->getParent();
-  auto module = func->getParent();
-  auto &context = module->getContext();
-  CHECK_EQ(module, intrinsics.read_memory_8->getParent());
-
-  llvm::Type *decl_type = remill::RecontextualizeType(decl.type, context);
-
-  // Load it out of a register.
-  if (decl.reg) {
-    auto reg_type = remill::RecontextualizeType(decl.reg->type, context);
-    auto ptr_to_reg = decl.reg->AddressOf(state_ptr, ir);
-    auto reg = ir.CreateLoad(reg_type, ptr_to_reg);
-    CopyMetadataTo(mem_ptr, reg);
-    auto adapted_val = types.ConvertValueToType(ir, reg, decl_type);
-
-    if (adapted_val) {
-      return adapted_val;
-    } else {
-      auto bc =
-          ir.CreateBitCast(ptr_to_reg, llvm::PointerType::get(context, 0));
-      auto li = ir.CreateLoad(decl_type, bc);
-      CopyMetadataTo(mem_ptr, bc);
-      CopyMetadataTo(mem_ptr, li);
-      return li;
-    }
-
-    // Load it out of memory.
-  } else if (decl.mem_reg) {
-    auto mem_reg_type =
-        remill::RecontextualizeType(decl.mem_reg->type, context);
-    auto ptr_to_reg = decl.mem_reg->AddressOf(state_ptr, ir);
-    llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
-    CopyMetadataTo(mem_ptr, addr);
-    if (0ll < decl.mem_offset) {
-      addr = ir.CreateAdd(
-          addr, llvm::ConstantInt::get(
-                    mem_reg_type, static_cast<std::uint64_t>(decl.mem_offset),
-                    false));
-      CopyMetadataTo(mem_ptr, addr);
-
-    } else if (0ll > decl.mem_offset) {
-      addr = ir.CreateSub(
-          addr, llvm::ConstantInt::get(
-                    mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
-                    false));
-      CopyMetadataTo(mem_ptr, addr);
-    }
-
-    auto val = remill::LoadFromMemory(intrinsics, ir, decl_type, mem_ptr, addr);
-
-    return types.ConvertValueToType(ir, val, decl_type);
-
-    // Store to memory at an absolute offset.
-  } else if (decl.mem_offset) {
-    const auto addr = llvm::ConstantInt::get(
-        remill::NthArgument(intrinsics.read_memory_8, 1u)->getType(),
-        static_cast<std::uint64_t>(decl.mem_offset), false);
-    auto val = remill::LoadFromMemory(intrinsics, ir, decl_type, mem_ptr, addr);
-
-    CopyMetadataTo(mem_ptr, val);
-    return types.ConvertValueToType(ir, val, decl_type);
-
+                             const remill::Arch *arch, llvm::IRBuilder<> &ir,
+                             llvm::Value *state_ptr, llvm::Value *mem_ptr) {
+  if (decl.oredered_locs.size() == 1) {
+    return LoadSubcomponent(decl.oredered_locs[0], decl.type, types, intrinsics,
+                            ir, state_ptr, mem_ptr);
   } else {
-    DLOG(ERROR) << "Unable to load lifted value of type: "
-                << remill::LLVMThingToString(decl.type);
-    return llvm::UndefValue::get(decl_type);
+    uint64_t offset = 0;
+    std::vector<llvm::Value *> comps;
+    auto dl = arch->DataLayout();
+
+    for (const auto &loc : decl.oredered_locs) {
+
+      auto subty = GetSubcomponentType(loc, offset, decl.type, dl);
+      if (!subty) {
+        LOG(ERROR) << "Lifted value undef because no subcomponent for "
+                   << remill::LLVMThingToString(decl.type) << " at offset "
+                   << offset;
+        return llvm::UndefValue::get(decl.type);
+      }
+      comps.push_back(LoadSubcomponent(loc, *subty, types, intrinsics, ir,
+                                       state_ptr, mem_ptr));
+
+      offset += loc.Size();
+    }
+    auto sty = CreateDeclSty(decl.oredered_locs, state_ptr->getContext());
+    return BuildMultiComponentValue(ir, comps, sty, decl.type, dl);
   }
 }
 
 
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr) {
 
   llvm::IRBuilder ir(in_block);
-  return LoadLiftedValue(decl, types, intrinsics, ir, state_ptr, mem_ptr);
+  return LoadLiftedValue(decl, types, intrinsics, arch, ir, state_ptr, mem_ptr);
 }
 
 namespace {
@@ -842,6 +979,16 @@ ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
   CHECK(remill::kNumBlockArgs + 1 + context.LiveParamsAtEntryAndExit().size() ==
         func->arg_size());
   return func->getArg(index + remill::kNumBlockArgs + 1);
+}
+
+bool HasMemLoc(const ValueDecl &v) {
+  return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
+                     [](const LowLoc &loc) -> bool { return loc.mem_reg; });
+}
+
+bool HasRegLoc(const ValueDecl &v) {
+  return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
+                     [](const LowLoc &loc) -> bool { return loc.reg; });
 }
 
 

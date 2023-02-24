@@ -406,7 +406,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       arg->setName(v.param.name);
     }
 
-    if (v.param.reg) {
+    if (std::all_of(v.param.oredered_locs.begin(), v.param.oredered_locs.end(),
+                    [](const LowLoc &loc) -> bool { return loc.reg; })) {
       // Registers should not have aliases
       arg->addAttr(llvm::Attribute::get(llvm_context,
                                         llvm::Attribute::AttrKind::NoAlias));
@@ -501,9 +502,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     }
 
 
-    DLOG_IF(INFO, reg_const.target_value.reg)
-        << "Dumping " << reg_const.target_value.reg->name << " " << std::hex
-        << reg_const.value;
+    //DLOG_IF(INFO, reg_const.target_value.reg)
+    //    << "Dumping " << reg_const.target_value.reg->name << " " << std::hex
+    //    << reg_const.value;
     auto nmem = StoreNativeValue(new_value, reg_const.target_value,
                                  type_provider.Dictionary(), intrinsics, ir,
                                  this->state_ptr,
@@ -555,17 +556,23 @@ void BasicBlockLifter::PackLiveValues(
 
   for (auto decl : decls) {
 
-    if (!decl.param.mem_reg) {
+    if (!HasMemLoc(decl.param)) {
       auto ptr = into_vars(decl.index);
 
       auto state_loaded_value = LoadLiftedValue(
-          decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
-          from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+          decl.param, this->type_provider.Dictionary(), this->intrinsics,
+          this->options.arch, bldr, from_state_ptr,
+          remill::LoadMemoryPointer(bldr, this->intrinsics));
 
       bldr.CreateStore(state_loaded_value, ptr);
+    } else {
+      // TODO(Ian): The assumption is we dont have live values split between the stack and a register for now...
+      // Maybe at some point we can just go ahead and store everything
+      CHECK(!HasRegLoc(decl.param));
     }
   }
 }
+
 
 void BasicBlockLifter::UnpackLiveValues(
     llvm::IRBuilder<> &bldr, PointerProvider returned_value,
@@ -575,7 +582,7 @@ void BasicBlockLifter::UnpackLiveValues(
 
   for (auto decl : decls) {
     // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
-    if (!decl.param.mem_reg) {
+    if (!HasMemLoc(decl.param)) {
       auto ptr = returned_value(decl.index);
       if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
         insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
@@ -592,6 +599,10 @@ void BasicBlockLifter::UnpackLiveValues(
 
       bldr.CreateStore(new_mem_ptr,
                        remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
+    } else {
+      // TODO(Ian): The assumption is we dont have live values split between the stack and a register for now...
+      // Maybe at some point we can just go ahead and store everything
+      CHECK(!HasRegLoc(decl.param));
     }
   }
   CHECK(bldr.GetInsertPoint() == blk->end());
@@ -625,9 +636,12 @@ void BasicBlockLifter::CallBasicBlockFunction(
                                   &stack](size_t index) -> llvm::Value * {
     auto repr_var = bbvars[index];
     LOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
-    if (repr_var.param.mem_reg) {
+    if (HasMemLoc(repr_var.param)) {
+      // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
+      // svars are single valuedecl contigous
+      CHECK(repr_var.param.oredered_locs.size() == 1);
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
-          builder, repr_var.param.mem_offset);
+          builder, repr_var.param.oredered_locs[0].mem_offset);
       if (stack_ptr) {
         return *stack_ptr;
       } else {
@@ -657,7 +671,7 @@ void BasicBlockLifter::CallBasicBlockFunction(
 
   this->UnpackLiveValues(builder, ptr_provider, parent_state,
                          this->block_context->LiveBBParamsAtExit());
-}
+}  // namespace BasicBlockLifter::UnpackLiveValues(llvm::IRBuilder<>&bldr,PointerProviderreturned_value,llvm::Value*into_state_ptr,conststd::vector<BasicBlockVariable>&decls)const
 
 
 void CallableBasicBlockFunction::CallBasicBlockFunction(
