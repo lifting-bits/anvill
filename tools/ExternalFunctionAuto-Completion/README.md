@@ -1,33 +1,83 @@
-# 脚本总体架构
+# External Functions Auto-completion tool
 
-脚本的总体架构设计见文档https://sole2021.feishu.cn/docx/ZujgdHixuodnsvxw8jLccm0unWc?from=from_copylink
+this tool is an External Functions Auto-completion tool. External functions are those functions that are dynamically linked and referenced from header files. (such as libc, libstdc++)
 
-## 各脚本详细介绍
-generate_abi_wrapper.py 是mcsema项目自带的生成补充函数的脚本，这边进行复用并进行了大幅度的修改(修改部分都有中文注释)。
-使用方法为：
- 
-首先配置环境变量：
+to use this tool ,you have to make sure the gcc version on your platform is larger than the targeting elf file(you'd better install the latest gcc on your computer).
 
-    export CLANG_EXE="/usr/lib/llvm-11/bin/clang" 指向编译器所在文件夹
-    export CLANG_LIB="/usr/lib/llvm-11/lib/libclang-11.so.1" 指向libclang-11.so.1
-然后输入：
+  The image below shows the overall architecture of the tool.
 
- 
-    python generate_abi_wrapper.py
-
-    --arch amd64
-
-    --type c/cpp 
-
-    --input  ABI_libc.h (包含待补充库函数的头文件)
-
-    --output ABI_ctype_11_28.c (解析出的补充函数结果文件)
+![Image text](https://github.com/Stephen-lei/anvill/blob/master/tools/ExternalFunctionAuto-Completion/framework.png)
 
 
-pyelftools下的readelf_back.py 是解析elf文件中的name mangling函数并生成补充函数的脚本。该脚本复用了python_readelf工具解析elf文件的大部分框架，主要以新添加一个执行选项来实现(修改部分都有中文注释)。使用方法为:
+# Dependencies
+to use this tool,you have to install :
 
-    python readelf_back.py 
+| Name                                                       | Version |
+| ---------------------------------------------------------- | ------- |
+| [jsoncpp](https://github.com/open-source-parsers/jsoncpp)                                | Latest  |
+| [llvm](https://github.com/llvm/llvm-project)                                | 11.0+   |
+| [Clang](http://clang.llvm.org/)                            | 11.0+   |
+| [pyelftools](https://github.com/eliben/pyelftools)           | Latest  |
 
-    -complement test(待翻译的elf文件)
+
+## How to use 
+1.put the EFAT.py under the pyelftools dir,the file structure must be the same with the template below.
+
+
+    |-- ExternalFunctionAuto-Completion
+        |-- DemanglingTools/
+            |--jsoncpp(clone from github and build)
+            |--llvm(builed llvm library in you computer,you have to copy it from /usr/lib/llvm-**/include/llvm)
+            |--test.cpp
+        |-- dict/
+        |-- pyelftools(clone from github and build)/
+            |--EFAT.py
+            |--elftools
+            |--...
+        |-- test/
+        |-- Result/
+        |-- README.md
+        |-- generate_glibc_dict.py
+
+
+
+2.set environment 'LIFT_GCC_LIB_PATH' to point to the "dict" dir
+    
+    
+    export LIFT_GCC_LIB_PATH="(path).../dict" 
+
+3.type command:
+    
+    
+    python EFAT.py -complement ../test/X86/MotivatingExample 
+
+4.the outputfile will generated in the 'Result' directory
+
+
+
+
+## Detailed introduction of other parts
+The project also has two sub-components, namely the C++ Demangling sub-module and the dict supplementary sub-module. The following describes how to use them respectively.
+
+## C++ Demangling sub-module 
+this sub-module is written by c++,and based on [jsoncpp](https://github.com/open-source-parsers/jsoncpp) and llvm/Demangle.h. To build the tools, you have to make sure the structure above.
+
+
+to regenerate the Demanglingtools,try:
+
+    clang++ -g   test.cpp -o Demanglingtools    (path to your llvm)/lib/libLLVMDemangle.a (path)/jsoncpp/build/debug/lib/libjsoncpp.a
+
+## Dict supplementary sub-module 
+This submodule is mainly responsible for parsing an AST tree containing header files of external libraries, and parsing function definitions (such as return values and parameters, etc.) from it. This information can assist the implementation of automation tools.
+
+to regenerate the dict library,try:
+
+    export CLANG_EXE="/usr/lib/llvm-11/bin/clang" (point to your clang)
+
+    export CLANG_LIB="/usr/lib/llvm-11/lib/libclang-**.so.1" (point to your libclang.so)
+    
+    python generate_glibc_dict.py  
+    --type c 
+    --input ./dict/libc.h 
+    --output ./dict/allcdict.py
             
-输出一个test.txt， 里面包含解析出的name mangling函数的补充。
