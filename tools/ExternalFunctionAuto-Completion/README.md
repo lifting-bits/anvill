@@ -1,8 +1,12 @@
-# External Functions Auto-completion tool
+# Static External Functions Auto-completion tool
 
 this tool is an External Functions Auto-completion tool. External functions are those functions that are dynamically linked and referenced from header files. (such as libc, libstdc++)
 
+the input of this tool is an elf file, and the output is a llvm IR which include the completed external functions' definations. 
+
 to use this tool ,you have to make sure the gcc version on your platform is larger than the targeting elf file(you'd better install the latest gcc on your computer).
+
+this tool has been tested to work on x86-64 Ubuntu20.04.
 
   The image below shows the overall architecture of the tool.
 
@@ -30,7 +34,7 @@ to use this tool,you have to install :
             |--llvm(builed llvm library in you computer,you have to copy it from /usr/lib/llvm-**/include/llvm)
             |--test.cpp
         |-- dict/
-        |-- pyelftools(clone from github and build)/
+        |-- pyelftools(clone source code from github,no need to build,just pip install)/
             |--EFAT.py
             |--elftools
             |--...
@@ -62,13 +66,18 @@ The project also has two sub-components, namely the C++ Demangling sub-module an
 ## C++ Demangling sub-module 
 this sub-module is written by c++,and based on [jsoncpp](https://github.com/open-source-parsers/jsoncpp) and llvm/Demangle.h. To build the tools, you have to make sure the structure above.
 
+your platform may have some error while lunching the Demanglingtools(elf)，we recommend you to regenerate the Demanglingtools,try:
 
-to regenerate the Demanglingtools,try:
+
+first clone the jsoncpp, and build it(see the dev.makefile in this projext). Then:
 
     clang++ -g   test.cpp -o Demanglingtools    (path to your llvm)/lib/libLLVMDemangle.a (path)/jsoncpp/build/debug/lib/libjsoncpp.a
 
+
 ## Dict supplementary sub-module 
 This submodule is mainly responsible for parsing an AST tree containing header files of external libraries, and parsing function definitions (such as return values and parameters, etc.) from it. This information can assist the implementation of automation tools.
+
+Now the libc.h and libcxx.h only include some common header files in gcc, not all the header files. the coverage of header files will affect the auto-completion rate. you can include more headers in these files.(also change the definition in EFAT.py)
 
 to regenerate the dict library,try:
 
