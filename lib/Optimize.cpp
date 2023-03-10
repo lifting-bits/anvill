@@ -11,6 +11,7 @@
 #include <glog/logging.h>
 
 // clang-format off
+#include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Pass.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -26,6 +27,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
@@ -59,7 +61,9 @@
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
+#include <anvill/Passes/InlineBasicBlockFunctions.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
+#include <anvill/Passes/RemoveAssignmentsToNextPC.h>
 #include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
 #include <anvill/Providers.h>
@@ -74,7 +78,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "anvill/Passes/RemoveAssignmentsToNextPC.h"
+#include "anvill/Passes/RemoveAnvillReturns.h"
 #include "anvill/Specification.h"
 
 namespace anvill {
@@ -337,6 +341,42 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
           &module);
     }
   }
+
+  if (lifter.Options().should_inline_basic_blocks) {
+    llvm::FunctionPassManager inliner;
+
+    inliner.addPass(InlineBasicBlockFunctions(contexts, lifter));
+
+    llvm::ModulePassManager mpminliner;
+    mpminliner.addPass(
+        llvm::createModuleToFunctionPassAdaptor(std::move(inliner)));
+    mpminliner.addPass(
+        llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::InlinerPass()));
+    llvm::FunctionPassManager rm_returns;
+    rm_returns.addPass(anvill::RemoveAnvillReturns());
+    mpminliner.addPass(
+        llvm::createModuleToFunctionPassAdaptor(std::move(rm_returns)));
+
+    mpminliner.run(module, mam);
+
+    // lets make sure we eliminate all the basic block functions because we dont care anymore
+    for (auto &f : module.getFunctionList()) {
+      if (anvill::GetBasicBlockAddr(&f)) {
+        f.setLinkage(llvm::GlobalValue::InternalLinkage);
+      }
+    }
+
+    auto intrinsics = module.getFunction("__remill_intrinsics");
+    if (intrinsics) {
+      intrinsics->eraseFromParent();
+    }
+
+    auto defaultmpm =
+        pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+
+    defaultmpm.run(module, mam);
+  }
+
 
   // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();
