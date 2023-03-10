@@ -92,12 +92,16 @@ struct ValueDecl;
 class Specification;
 class SpecBlockContexts : public BasicBlockContexts {
   std::unordered_map<uint64_t, SpecBlockContext> contexts;
+  std::unordered_map<uint64_t, std::shared_ptr<const FunctionDecl>> funcs;
 
  public:
   SpecBlockContexts(const Specification &spec);
 
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
   GetBasicBlockContextForAddr(uint64_t addr) const override;
+
+  virtual const FunctionDecl &
+  GetFunctionAtAddress(uint64_t addr) const override;
 };
 
 

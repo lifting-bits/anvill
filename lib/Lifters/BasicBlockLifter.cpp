@@ -8,6 +8,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -400,13 +401,14 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   auto start_ind = lifted_func_type->getNumParams() + 1;
-  for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
+  for (auto stack_var : decl.stack_variables) {
     auto arg = remill::NthArgument(func, start_ind);
-    if (!v.param.name.empty()) {
-      arg->setName(v.param.name);
+    if (!stack_var.name.empty()) {
+      arg->setName(stack_var.name);
     }
 
-    if (std::all_of(v.param.oredered_locs.begin(), v.param.oredered_locs.end(),
+    if (std::all_of(stack_var.oredered_locs.begin(),
+                    stack_var.oredered_locs.end(),
                     [](const LowLoc &loc) -> bool { return loc.reg; })) {
       // Registers should not have aliases
       arg->addAttr(llvm::Attribute::get(llvm_context,
@@ -417,6 +419,15 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
     start_ind += 1;
   }
+
+  decl.arch->ForEachRegister([&](const remill::Register *reg) {
+    auto arg = remill::NthArgument(func, start_ind);
+    arg->setName(reg->name);
+
+    arg->addAttr(
+        llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
+    ++start_ind;
+  });
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
@@ -478,8 +489,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   }
 
-  PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
-    return this->ProvidePointerFromFunctionArgs(func, index);
+  PointerProvider ptr_provider =
+      [this, func](const ParameterDecl &param) -> llvm::Value * {
+    return this->block_context->ProvidePointerFromFunctionArgs(func, param);
   };
 
   LOG(INFO) << "Live values at entry to function "
@@ -545,7 +557,15 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
 llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
-  return this->block_context->StructTypeFromVars(this->llvm_context);
+  std::vector<llvm::Type *> field_types;
+  std::transform(decl.stack_variables.begin(), decl.stack_variables.end(),
+                 std::back_inserter(field_types),
+                 [](auto &param) { return param.type; });
+  decl.arch->ForEachRegister(
+      [&](const remill::Register *reg) { field_types.push_back(reg->type); });
+
+  return llvm::StructType::get(llvm_context, field_types,
+                               "sty_for_basic_block_function");
 }
 
 // Packs in scope variables into a struct
@@ -557,7 +577,7 @@ void BasicBlockLifter::PackLiveValues(
   for (auto decl : decls) {
 
     if (!HasMemLoc(decl.param)) {
-      auto ptr = into_vars(decl.index);
+      auto ptr = into_vars(decl.param);
 
       auto state_loaded_value = LoadLiftedValue(
           decl.param, this->type_provider.Dictionary(), this->intrinsics,
@@ -583,7 +603,7 @@ void BasicBlockLifter::UnpackLiveValues(
   for (auto decl : decls) {
     // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
     if (!HasMemLoc(decl.param)) {
-      auto ptr = returned_value(decl.index);
+      auto ptr = returned_value(decl.param);
       if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
         insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
                                              decl.param.spec_type));
@@ -626,22 +646,20 @@ void BasicBlockLifter::CallBasicBlockFunction(
   args[remill::kNumBlockArgs] =
       remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
 
-  auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
-
   AbstractStack stack(
       builder.getContext(), {{decl.maximum_depth, parent_stack}},
       this->options.stack_frame_recovery_options.stack_grows_down,
       decl.GetPointerDisplacement());
-  PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
-                                  &stack](size_t index) -> llvm::Value * {
-    auto repr_var = bbvars[index];
-    LOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
-    if (HasMemLoc(repr_var.param)) {
+  PointerProvider ptr_provider =
+      [&builder, this, out_param_locals,
+       &stack](const ParameterDecl &repr_var) -> llvm::Value * {
+    LOG(INFO) << "Lifting: " << repr_var.name << " for call";
+    if (HasMemLoc(repr_var)) {
       // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
       // svars are single valuedecl contigous
-      CHECK(repr_var.param.oredered_locs.size() == 1);
+      CHECK(repr_var.oredered_locs.size() == 1);
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
-          builder, repr_var.param.oredered_locs[0].mem_offset);
+          builder, repr_var.oredered_locs[0].mem_offset);
       if (stack_ptr) {
         return *stack_ptr;
       } else {
@@ -649,16 +667,15 @@ void BasicBlockLifter::CallBasicBlockFunction(
             << "Unable to create a ptr to the stack, the stack is too small to represent the param.";
       }
     }
-    return this->ProvidePointerFromStruct(builder, out_param_locals, index);
+    return block_context->ProvidePointerFromStruct(builder, var_struct_ty,
+                                                   out_param_locals, repr_var);
   };
 
   this->PackLiveValues(builder, parent_state, ptr_provider,
                        this->block_context->LiveBBParamsAtEntry());
 
-
-  for (size_t ind = 0;
-       ind < this->block_context->LiveParamsAtEntryAndExit().size(); ind++) {
-    auto ptr = ptr_provider(ind);
+  for (auto &param : block_context->GetParams()) {
+    auto ptr = ptr_provider(param);
     CHECK(ptr != nullptr);
     args.push_back(ptr);
   }
@@ -716,23 +733,5 @@ const CodeBlock &CallableBasicBlockFunction::GetBlock() const {
 llvm::Function *CallableBasicBlockFunction::GetFunction() const {
   return this->func;
 }
-
-llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
-                                                        llvm::Value *target_sty,
-                                                        size_t index) const {
-  auto i32 = llvm::IntegerType::get(llvm_context, 32);
-  auto ptr = ir.CreateGEP(
-      this->var_struct_ty, target_sty,
-      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
-  return ptr;
-}
-
-llvm::Value *
-BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
-                                                 size_t index) const {
-  return anvill::ProvidePointerFromFunctionArgs(func, index,
-                                                *this->block_context);
-}
-
 
 }  // namespace anvill

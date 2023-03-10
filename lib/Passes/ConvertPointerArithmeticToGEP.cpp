@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/Declarations.h>
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
 #include <anvill/Type.h>
 #include <llvm/IR/Argument.h>
@@ -568,7 +569,7 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldScaledIndex(llvm::Function &f) {
 
 llvm::PreservedAnalyses ConvertPointerArithmeticToGEP::runOnBasicBlockFunction(
     llvm::Function &function, llvm::FunctionAnalysisManager &fam,
-    const anvill::BasicBlockContext &) {
+    const anvill::BasicBlockContext &, const FunctionDecl &) {
   bool changed = impl->ConvertLoadInt(function);
   changed |= impl->FoldPtrAdd(function);
   changed |= impl->FoldScaledIndex(function);
