@@ -217,13 +217,22 @@ struct CallableDecl {
 // live exits and entries
 struct BasicBlockVariable {
   ParameterDecl param;
-  size_t index;
   bool live_at_entry;
   bool live_at_exit;
 };
 
 class BasicBlockContext {
  public:
+  size_t GetParamIndex(const ParameterDecl &decl) const;
+
+  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
+                                        llvm::StructType *sty, llvm::Value *,
+                                        const ParameterDecl &decl) const;
+
+  llvm::Argument *
+  ProvidePointerFromFunctionArgs(llvm::Function *,
+                                 const ParameterDecl &decl) const;
+
   virtual ~BasicBlockContext() = default;
 
   virtual const SpecStackOffsets &GetStackOffsets() const = 0;
@@ -240,6 +249,8 @@ class BasicBlockContext {
 
   virtual ValueDecl ReturnValue() const = 0;
 
+  virtual const std::vector<ParameterDecl> &GetParams() const = 0;
+
   // Deduplicates locations and ensures there are no overlapping decls
   // A valid parameter list is a set of non overlapping a-locs with distinct names.
   std::vector<BasicBlockVariable> LiveParamsAtEntryAndExit() const;
@@ -247,9 +258,6 @@ class BasicBlockContext {
 
   std::vector<BasicBlockVariable> LiveBBParamsAtEntry() const;
   std::vector<BasicBlockVariable> LiveBBParamsAtExit() const;
-
-
-  llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
 
  protected:
   virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const = 0;
@@ -312,6 +320,7 @@ class SpecBlockContext : public BasicBlockContext {
   std::vector<ConstantDomain> constants;
   std::vector<ParameterDecl> live_params_at_entry;
   std::vector<ParameterDecl> live_params_at_exit;
+  std::vector<ParameterDecl> params;
 
  public:
   SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
@@ -333,6 +342,7 @@ class SpecBlockContext : public BasicBlockContext {
 
   virtual size_t GetPointerDisplacement() const override;
 
+  virtual const std::vector<ParameterDecl> &GetParams() const override;
 
  protected:
   virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const override;
@@ -393,6 +403,8 @@ struct FunctionDecl : public CallableDecl {
   std::int64_t parameter_offset{0};
 
   std::size_t parameter_size{0};
+
+  std::vector<ParameterDecl> stack_variables;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;

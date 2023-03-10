@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <anvill/Declarations.h>
 #include <anvill/Type.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Metadata.h>
@@ -34,7 +35,8 @@ class ConvertPointerArithmeticToGEP final
 
   llvm::PreservedAnalyses
   runOnBasicBlockFunction(llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-                          const anvill::BasicBlockContext &);
+                          const anvill::BasicBlockContext &,
+                          const FunctionDecl &);
 
   // Returns the pass name
   static llvm::StringRef name(void);

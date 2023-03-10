@@ -302,6 +302,8 @@ message StackFrame {
   uint64 max_frame_depth = 4;
 
   int64 parameter_offset = 5;
+
+  repeated Parameter stack_variables = 6;
 }
 
 message Function {

@@ -134,10 +134,6 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
 std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 
-llvm::Argument *
-ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
-                               const anvill::BasicBlockContext &context);
-
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
 
 bool HasMemLoc(const ValueDecl &v);

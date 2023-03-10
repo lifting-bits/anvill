@@ -73,7 +73,7 @@ llvm::BasicBlock *CreateTargetBlock(llvm::Value *mem_val, llvm::Constant *c,
 namespace pats = llvm::PatternMatch;
 llvm::PreservedAnalyses RemoveAssignmentsToNextPC::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const anvill::BasicBlockContext &cont) {
+    const anvill::BasicBlockContext &cont, const FunctionDecl &) {
 
   auto next_pc_assign = UniqueAssignmentToNextPc(&F);
   auto maybe_unique_ret = UniqueReturn(&F);

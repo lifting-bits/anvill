@@ -25,7 +25,7 @@ ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::name(void) {
 llvm::PreservedAnalyses
 ReplaceRemillFunctionReturnsWithAnvillFunctionReturns::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const anvill::BasicBlockContext &bbcont) {
+    const anvill::BasicBlockContext &bbcont, const FunctionDecl &) {
 
   std::vector<llvm::CallBase *> to_replace;
   for (auto &insn : llvm::instructions(F)) {

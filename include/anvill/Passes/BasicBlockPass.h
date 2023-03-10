@@ -16,6 +16,7 @@ class BasicBlockContexts {
  public:
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
   GetBasicBlockContextForAddr(uint64_t addr) const = 0;
+  virtual const FunctionDecl &GetFunctionAtAddress(uint64_t addr) const = 0;
 };
 
 template <class T>
@@ -34,9 +35,12 @@ class BasicBlockPass : public llvm::PassInfoMixin<BasicBlockPass<T>> {
     auto &bb_pass = *static_cast<T *>(this);
     auto bbaddr = anvill::GetBasicBlockAddr(&F);
     if (bbaddr.has_value()) {
-      auto bb_cont = this->contexts.GetBasicBlockContextForAddr(*bbaddr);
-      if (bb_cont) {
-        return bb_pass.runOnBasicBlockFunction(F, AM, *bb_cont);
+      auto maybe_bb_cont = contexts.GetBasicBlockContextForAddr(*bbaddr);
+      if (maybe_bb_cont) {
+        const BasicBlockContext &bb_cont = *maybe_bb_cont;
+        auto &parent_func =
+            contexts.GetFunctionAtAddress(bb_cont.GetParentFunctionAddress());
+        return bb_pass.runOnBasicBlockFunction(F, AM, bb_cont, parent_func);
       }
     }
 

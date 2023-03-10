@@ -25,6 +25,7 @@ class ReplaceRemillFunctionReturnsWithAnvillFunctionReturns
 
   llvm::PreservedAnalyses
   runOnBasicBlockFunction(llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-                          const anvill::BasicBlockContext &);
+                          const anvill::BasicBlockContext &,
+                          const FunctionDecl &);
 };
 }  // namespace anvill

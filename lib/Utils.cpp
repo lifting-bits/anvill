@@ -982,14 +982,6 @@ llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
   return func->getArg(0);
 }
 
-llvm::Argument *
-ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
-                               const anvill::BasicBlockContext &context) {
-  CHECK(remill::kNumBlockArgs + 1 + context.LiveParamsAtEntryAndExit().size() ==
-        func->arg_size());
-  return func->getArg(index + remill::kNumBlockArgs + 1);
-}
-
 bool HasMemLoc(const ValueDecl &v) {
   return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
                      [](const LowLoc &loc) -> bool { return loc.mem_reg; });

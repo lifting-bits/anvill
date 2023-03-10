@@ -38,13 +38,6 @@ class CallableBasicBlockFunction;
  */
 class BasicBlockLifter : public CodeLifter {
  private:
-  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir, llvm::Value *,
-                                        size_t index) const;
-
-  llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *,
-                                              size_t index) const;
-
-
   std::unique_ptr<BasicBlockContext> block_context;
   const CodeBlock &block_def;
 
@@ -110,7 +103,8 @@ class BasicBlockLifter : public CodeLifter {
   CallableBasicBlockFunction LiftBasicBlockFunction() &&;
 
 
-  using PointerProvider = std::function<llvm::Value *(size_t index)>;
+  using PointerProvider =
+      std::function<llvm::Value *(const ParameterDecl &param)>;
 
 
   // Packs in scope variables into a struct

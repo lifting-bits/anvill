@@ -154,8 +154,7 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
           if (!completely_covered) {
             std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
                       std::inserter(covered, covered.end()));
-            auto ind = res.size();
-            res.push_back({p, ind, live_at_ent, live_at_exit});
+            res.push_back({p, live_at_ent, live_at_exit});
           }
         }
       };
@@ -182,20 +181,6 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
       alllive.begin(), alllive.end(), std::back_inserter(res),
       [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
   return res;
-}
-
-llvm::StructType *
-BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {
-  std::vector<BasicBlockVariable> in_scope_locals =
-      this->LiveParamsAtEntryAndExit();
-  std::vector<llvm::Type *> field_types;
-  std::transform(
-      in_scope_locals.begin(), in_scope_locals.end(),
-      std::back_inserter(field_types),
-      [](const BasicBlockVariable &param) { return param.param.type; });
-
-  return llvm::StructType::get(llvm_context, field_types,
-                               "sty_for_basic_block_function");
 }
 
 // Declare this function in an LLVM module.
@@ -239,6 +224,50 @@ FunctionDecl::DeclareInModule(std::string_view name,
   return func;
 }
 
+size_t BasicBlockContext::GetParamIndex(const ParameterDecl &decl) const {
+  auto stack_var = std::find_if(
+      GetParams().begin(), GetParams().end(), [&](const ParameterDecl &param) {
+        if (param.oredered_locs.size() != decl.oredered_locs.size()) {
+          return false;
+        }
+
+        for (size_t i{0}; i < param.oredered_locs.size(); ++i) {
+          if (param.oredered_locs[i].reg &&
+              param.oredered_locs[i].reg != decl.oredered_locs[i].reg) {
+            return false;
+          }
+
+          if (param.oredered_locs[i].mem_reg != decl.oredered_locs[i].mem_reg) {
+            return false;
+          }
+
+          if (param.oredered_locs[i].mem_offset !=
+              decl.oredered_locs[i].mem_offset) {
+            return false;
+          }
+        }
+        return true;
+      });
+  CHECK(stack_var != GetParams().end());
+  return stack_var - GetParams().begin();
+}
+
+llvm::Value *BasicBlockContext::ProvidePointerFromStruct(
+    llvm::IRBuilder<> &ir, llvm::StructType *sty, llvm::Value *target_sty,
+    const ParameterDecl &decl) const {
+  auto i32 = llvm::IntegerType::get(ir.getContext(), 32);
+  auto index = GetParamIndex(decl);
+  auto ptr = ir.CreateGEP(
+      sty, target_sty,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
+  return ptr;
+}
+
+llvm::Argument *BasicBlockContext::ProvidePointerFromFunctionArgs(
+    llvm::Function *func, const ParameterDecl &param) const {
+  return func->getArg(GetParamIndex(param) + remill::kNumBlockArgs + 1);
+}
+
 ValueDecl SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
@@ -265,7 +294,32 @@ SpecBlockContext::SpecBlockContext(
       offsets(std::move(offsets)),
       constants(std::move(constants)),
       live_params_at_entry(std::move(live_params_at_entry)),
-      live_params_at_exit(std::move(live_params_at_exit)) {}
+      live_params_at_exit(std::move(live_params_at_exit)) {
+
+  params = decl.stack_variables;
+  auto ctx{decl.arch->context};
+  decl.arch->ForEachRegister([&](const remill::Register *reg) {
+    auto &decl = params.emplace_back();
+    decl.name = reg->name;
+    decl.type = reg->type;
+    // FIXME(frabert): there ought to be a better way to do this
+    if (decl.type == llvm::IntegerType::getInt8Ty(*ctx)) {
+      decl.spec_type = BaseType::UInt8;
+    } else if (decl.type == llvm::IntegerType::getInt16Ty(*ctx)) {
+      decl.spec_type = BaseType::UInt16;
+    } else if (decl.type == llvm::IntegerType::getInt32Ty(*ctx)) {
+      decl.spec_type = BaseType::UInt32;
+    } else if (decl.type == llvm::IntegerType::getInt64Ty(*ctx)) {
+      decl.spec_type = BaseType::UInt64;
+    } else if (decl.type == llvm::IntegerType::getFloatTy(*ctx)) {
+      decl.spec_type = BaseType::Float32;
+    } else if (decl.type == llvm::IntegerType::getDoubleTy(*ctx)) {
+      decl.spec_type = BaseType::Float64;
+    }
+    auto &loc = decl.oredered_locs.emplace_back();
+    loc.reg = reg;
+  });
+}
 
 size_t SpecBlockContext::GetPointerDisplacement() const {
   return this->decl.GetPointerDisplacement();
@@ -285,6 +339,10 @@ const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
 
 const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
   return this->constants;
+}
+
+const std::vector<ParameterDecl> &SpecBlockContext::GetParams() const {
+  return this->params;
 }
 
 // Interpret `target` as being the function to call, and call it from within
