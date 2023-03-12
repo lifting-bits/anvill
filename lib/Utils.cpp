@@ -376,6 +376,10 @@ llvm::Value *LoadSubcomponent(const LowLoc &loc, llvm::Type *target_type,
       CopyMetadataTo(mem_ptr, addr);
     }
 
+    if (addr->getType() != loc.mem_reg->arch->AddressType()) {
+      addr = AdaptToType(ir, addr, loc.mem_reg->arch->AddressType());
+    }
+
     auto val = remill::LoadFromMemory(intrinsics, ir, decl_type, mem_ptr, addr);
 
     return types.ConvertValueToType(ir, val, decl_type);
@@ -420,6 +424,7 @@ llvm::Value *StoreSubcomponent(llvm::Value *native_sub, const LowLoc &decl,
     llvm::Value *addr = ir.CreateLoad(mem_reg_type, ptr_to_reg);
     CopyMetadataTo(native_sub, addr);
 
+
     if (0ll < decl.mem_offset) {
       addr = ir.CreateAdd(
           addr, llvm::ConstantInt::get(
@@ -433,6 +438,10 @@ llvm::Value *StoreSubcomponent(llvm::Value *native_sub, const LowLoc &decl,
                     mem_reg_type, static_cast<std::uint64_t>(-decl.mem_offset),
                     false));
       CopyMetadataTo(native_sub, addr);
+    }
+
+    if (addr->getType() != decl.mem_reg->arch->AddressType()) {
+      addr = AdaptToType(ir, addr, decl.mem_reg->arch->AddressType());
     }
 
     return remill::StoreToMemory(intrinsics, ir, native_sub, mem_ptr, addr);
