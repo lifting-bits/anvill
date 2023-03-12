@@ -47,6 +47,9 @@ DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
 DEFINE_bool(llvm_debug, false, "Enable LLVM debug flag");
 DEFINE_bool(remove_next_pc_assignments, false,
             "Enables remove next pc assignment pass");
+DEFINE_bool(inline_basic_blocks, false,
+            "Enables inlining of basic blocks for high level output");
+
 
 DEFINE_string(
     default_callable_spec, "",
@@ -160,6 +163,7 @@ int main(int argc, char *argv[]) {
   anvill::SpecificationControlFlowProvider cfp(spec);
   anvill::SpecificationMemoryProvider mp(spec);
   anvill::LifterOptions options(spec.Arch().get(), module, *tp.get(), cfp, mp);
+  options.should_inline_basic_blocks = FLAGS_inline_basic_blocks;
 
   //  options.state_struct_init_procedure =
   //      anvill::StateStructureInitializationProcedure::kNone;
