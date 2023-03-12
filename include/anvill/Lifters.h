@@ -220,7 +220,7 @@ class LifterOptions {
         stack_pointer_is_signed(false),
         should_remove_anvill_pc(true),
         should_remove_assignments_to_next_pc(false),
-        should_inline_basic_blocks(true) {
+        should_inline_basic_blocks(false) {
     CheckModuleContextMatchesArch();
   }
 
