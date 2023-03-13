@@ -549,6 +549,15 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     }
   }
 
+  for (auto &used_reg : function.used_registers()) {
+    auto maybe_res = DecodeParameter(used_reg);
+    if (!maybe_res.Succeeded()) {
+      LOG(ERROR) << maybe_res.Error();
+    } else {
+      decl.used_registers.push_back(maybe_res.TakeValue());
+    }
+  }
+
   if (decl.maximum_depth < decl.stack_depth) {
     LOG(ERROR)
         << "Analyzed max depth is smaller than the initial depth overriding";
