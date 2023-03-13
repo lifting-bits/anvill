@@ -420,14 +420,17 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     start_ind += 1;
   }
 
-  decl.arch->ForEachRegister([&](const remill::Register *reg) {
+  for (auto reg : decl.used_registers) {
     auto arg = remill::NthArgument(func, start_ind);
-    arg->setName(reg->name);
+    if (!reg.name.empty()) {
+      arg->setName(reg.name);
+    }
 
     arg->addAttr(
         llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
-    ++start_ind;
-  });
+
+    start_ind += 1;
+  }
 
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
@@ -561,8 +564,9 @@ llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
   std::transform(decl.stack_variables.begin(), decl.stack_variables.end(),
                  std::back_inserter(field_types),
                  [](auto &param) { return param.type; });
-  decl.arch->ForEachRegister(
-      [&](const remill::Register *reg) { field_types.push_back(reg->type); });
+  std::transform(decl.used_registers.begin(), decl.used_registers.end(),
+                 std::back_inserter(field_types),
+                 [](auto &param) { return param.type; });
 
   return llvm::StructType::get(llvm_context, field_types,
                                "sty_for_basic_block_function");

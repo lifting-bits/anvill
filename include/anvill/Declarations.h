@@ -406,6 +406,8 @@ struct FunctionDecl : public CallableDecl {
 
   std::vector<ParameterDecl> stack_variables;
 
+  std::vector<ParameterDecl> used_registers;
+
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
 

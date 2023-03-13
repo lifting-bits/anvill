@@ -297,28 +297,8 @@ SpecBlockContext::SpecBlockContext(
       live_params_at_exit(std::move(live_params_at_exit)) {
 
   params = decl.stack_variables;
-  auto ctx{decl.arch->context};
-  decl.arch->ForEachRegister([&](const remill::Register *reg) {
-    auto &decl = params.emplace_back();
-    decl.name = reg->name;
-    decl.type = reg->type;
-    // FIXME(frabert): there ought to be a better way to do this
-    if (decl.type == llvm::IntegerType::getInt8Ty(*ctx)) {
-      decl.spec_type = BaseType::UInt8;
-    } else if (decl.type == llvm::IntegerType::getInt16Ty(*ctx)) {
-      decl.spec_type = BaseType::UInt16;
-    } else if (decl.type == llvm::IntegerType::getInt32Ty(*ctx)) {
-      decl.spec_type = BaseType::UInt32;
-    } else if (decl.type == llvm::IntegerType::getInt64Ty(*ctx)) {
-      decl.spec_type = BaseType::UInt64;
-    } else if (decl.type == llvm::IntegerType::getFloatTy(*ctx)) {
-      decl.spec_type = BaseType::Float32;
-    } else if (decl.type == llvm::IntegerType::getDoubleTy(*ctx)) {
-      decl.spec_type = BaseType::Float64;
-    }
-    auto &loc = decl.oredered_locs.emplace_back();
-    loc.reg = reg;
-  });
+  std::copy(decl.used_registers.begin(), decl.used_registers.end(),
+            std::back_inserter(params));
 }
 
 size_t SpecBlockContext::GetPointerDisplacement() const {
