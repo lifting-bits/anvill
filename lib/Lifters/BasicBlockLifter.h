@@ -27,6 +27,7 @@ struct BasicBlockFunction {
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
   llvm::Argument *next_pc_out_param;
+  llvm::Argument *stack;
 };
 
 class CallableBasicBlockFunction;
@@ -50,6 +51,14 @@ class BasicBlockLifter : public CodeLifter {
 
   const FunctionDecl &decl;
 
+  llvm::Function *bb_func{nullptr};
+
+  FunctionLifter &flifter;
+
+  llvm::BasicBlock *invalid_successor_block{nullptr};
+
+  llvm::Function *DeclareBasicBlockFunction();
+
   llvm::StructType *StructTypeFromVars() const;
 
   remill::DecodingContext ApplyContextAssignments(
@@ -62,6 +71,8 @@ class BasicBlockLifter : public CodeLifter {
 
   BasicBlockFunction CreateBasicBlockFunction();
 
+  void TerminateBasicBlockFunction(llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+                                   const BasicBlockFunction &bbfunc);
 
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,
                                                llvm::BasicBlock *&block);
@@ -92,15 +103,11 @@ class BasicBlockLifter : public CodeLifter {
                    const FunctionDecl &decl, const CodeBlock &block_def,
                    const LifterOptions &options_,
                    llvm::Module *semantics_module,
-                   const TypeTranslator &type_specifier);
-  static CallableBasicBlockFunction
-  LiftBasicBlock(std::unique_ptr<BasicBlockContext> block_context,
-                 const FunctionDecl &decl, const CodeBlock &block_def,
-                 const LifterOptions &options_, llvm::Module *semantics_module,
-                 const TypeTranslator &type_specifier);
+                   const TypeTranslator &type_specifier,
+                   FunctionLifter &flifter);
 
 
-  CallableBasicBlockFunction LiftBasicBlockFunction() &&;
+  CallableBasicBlockFunction LiftBasicBlockFunction();
 
 
   using PointerProvider =
@@ -118,9 +125,10 @@ class BasicBlockLifter : public CodeLifter {
 
 
   // Calls a basic block function and unpacks the result into the state
-  void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              const CallableBasicBlockFunction &,
-                              llvm::Value *parent_stack) const;
+  llvm::CallInst *
+  CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
+                         llvm::Value *parent_stack, llvm::Value *memory_pointer,
+                         llvm::Value *program_pointer_ref) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
