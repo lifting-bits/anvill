@@ -107,7 +107,7 @@ class BasicBlockLifter : public CodeLifter {
                    FunctionLifter &flifter);
 
 
-  CallableBasicBlockFunction LiftBasicBlockFunction();
+  void LiftBasicBlockFunction();
 
 
   using PointerProvider =
