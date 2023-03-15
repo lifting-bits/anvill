@@ -31,21 +31,13 @@
 
 namespace anvill {
 
-CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() {
+void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
-
-  //bbfunc.func->dump();
-  //lifted_func->dump();
-  //LOG(FATAL) << "fdumps";
-
-
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
-
-  return CallableBasicBlockFunction(bbfunc.func, block_def, std::move(*this));
 }
 
 
@@ -677,7 +669,6 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     llvm::Value *parent_stack, llvm::Value *memory_pointer,
     llvm::Value *program_pointer_ref) const {
-
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
