@@ -551,14 +551,14 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out, state};
 
-  TerminateBasicBlockFunction(ir, ret_mem, bbf);
+  TerminateBasicBlockFunction(func, ir, ret_mem, bbf);
 
   return bbf;
 }
 
 // Setup the returns for this function we tail call all successors
 void BasicBlockLifter::TerminateBasicBlockFunction(
-    llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+    llvm::Function *caller, llvm::IRBuilder<> &ir, llvm::Value *next_mem,
     const BasicBlockFunction &bbfunc) {
   this->invalid_successor_block = llvm::BasicBlock::Create(
       this->bb_func->getContext(), "invalid_successor", this->bb_func);
@@ -578,8 +578,8 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
         llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
     auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
-    auto retval = child_lifter.CallBasicBlockFunction(
-        calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem,
+    auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
+        caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem,
         bbfunc.next_pc_out_param);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
       calling_bb_builder.CreateRetVoid();
@@ -717,6 +717,22 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     CHECK(ptr != nullptr);
     args.push_back(ptr);
   }
+
+  auto retval = builder.CreateCall(bb_func, args);
+  retval->setTailCall(true);
+
+  return retval;
+}
+
+llvm::CallInst *BasicBlockLifter::ControlFlowCallBasicBlockFunction(
+    llvm::Function *caller, llvm::IRBuilder<> &builder,
+    llvm::Value *parent_state, llvm::Value *parent_stack,
+    llvm::Value *memory_pointer, llvm::Value *program_pointer_ref) const {
+
+  std::vector<llvm::Value *> args;
+  std::transform(caller->arg_begin(), caller->arg_end(),
+                 std::back_inserter(args),
+                 [](llvm::Argument &arg) -> llvm::Value * { return &arg; });
 
   auto retval = builder.CreateCall(bb_func, args);
   retval->setTailCall(true);

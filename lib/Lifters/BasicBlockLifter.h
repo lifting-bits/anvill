@@ -71,7 +71,8 @@ class BasicBlockLifter : public CodeLifter {
 
   BasicBlockFunction CreateBasicBlockFunction();
 
-  void TerminateBasicBlockFunction(llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+  void TerminateBasicBlockFunction(llvm::Function *caller,
+                                   llvm::IRBuilder<> &ir, llvm::Value *next_mem,
                                    const BasicBlockFunction &bbfunc);
 
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,
@@ -129,6 +130,11 @@ class BasicBlockLifter : public CodeLifter {
   CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
                          llvm::Value *parent_stack, llvm::Value *memory_pointer,
                          llvm::Value *program_pointer_ref) const;
+
+  llvm::CallInst *ControlFlowCallBasicBlockFunction(
+      llvm::Function *caller, llvm::IRBuilder<> &, llvm::Value *state_ptr,
+      llvm::Value *parent_stack, llvm::Value *memory_pointer,
+      llvm::Value *program_pointer_ref) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
