@@ -82,6 +82,10 @@ extern const std::string kAnvillDataProvenanceFunc;
 // `alloca`.
 extern const std::string kAnvillStackZero;
 
+// The alloca for the abstract stack prior to splitting at the return address. TODO(Ian): maybe we are fine to
+// use this to queue off of then just move it after the split
+extern const std::string kStackMetadata;
+
 extern const std::string kBasicBlockMetadata;
 
 
