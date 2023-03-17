@@ -345,7 +345,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   if (lifter.Options().should_inline_basic_blocks) {
     llvm::FunctionPassManager inliner;
 
-    inliner.addPass(InlineBasicBlockFunctions(contexts, lifter));
+    inliner.addPass(InlineBasicBlockFunctions(contexts));
 
     llvm::ModulePassManager mpminliner;
     mpminliner.addPass(
