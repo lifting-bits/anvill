@@ -36,7 +36,7 @@ class ConditionalComplexityVisitor
   void visitBinaryOperator(llvm::BinaryOperator &I) {
     if (auto *inttype = llvm::dyn_cast<llvm::IntegerType>(I.getType())) {
       if (inttype->getBitWidth() == 1) {
-        ConditionalComplexity++;
+        ++ConditionalComplexity;
         this->tryVisit(I.getOperand(0));
         this->tryVisit(I.getOperand(1));
       }
@@ -44,12 +44,12 @@ class ConditionalComplexityVisitor
   }
 
   void visitCmpInst(llvm::CmpInst &I) {
-    ConditionalComplexity++;
+    ++ConditionalComplexity;
   }
 
   void visitUnaryOperator(llvm::UnaryOperator &I) {
     if (auto *inttype = llvm::dyn_cast<llvm::IntegerType>(I.getType())) {
-      ConditionalComplexity++;
+      ++ConditionalComplexity;
       this->tryVisit(I.getOperand(0));
     }
   }
@@ -63,11 +63,11 @@ CodeQualityStatCollector::run(llvm::Function &function,
   ConditionalComplexityVisitor complexity_visitor;
   for (auto &i : llvm::instructions(function)) {
     if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
-      IntToPointerCasts++;
+      ++IntToPointerCasts;
     }
 
     if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
-      PointerToIntCasts++;
+      ++PointerToIntCasts;
     }
 
     if (auto *store_inst = llvm::dyn_cast<llvm::StoreInst>(&i)) {
@@ -82,7 +82,7 @@ CodeQualityStatCollector::run(llvm::Function &function,
       }
     }
 
-    NumberOfInstructions++;
+    ++NumberOfInstructions;
     if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
       if (branch->isConditional()) {
         complexity_visitor.tryVisit(branch->getCondition());
@@ -94,7 +94,7 @@ CodeQualityStatCollector::run(llvm::Function &function,
       if (target != nullptr) {
         if (target->getName() == kAnvillSwitchCompleteFunc ||
             target->getName() == kAnvillSwitchIncompleteFunc) {
-          AbruptControlFlow++;
+          ++AbruptControlFlow;
         }
       }
     }
