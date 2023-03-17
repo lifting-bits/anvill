@@ -11,13 +11,14 @@
 #include <llvm/IR/PassManager.h>
 
 namespace anvill {
-STATISTIC(
+ALWAYS_ENABLED_STATISTIC(
     ConditionalComplexity,
     "A factor that approximates the complexity of the condition in branch instructions");
-STATISTIC(NumberOfInstructions, "Total number of instructions");
-STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
-STATISTIC(IntToPointerCasts, "Integer to pointer casts");
-STATISTIC(PointerToIntCasts, "Pointer to integer casts");
+ALWAYS_ENABLED_STATISTIC(NumberOfInstructions, "Total number of instructions");
+ALWAYS_ENABLED_STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
+ALWAYS_ENABLED_STATISTIC(IntToPointerCasts, "Integer to pointer casts");
+ALWAYS_ENABLED_STATISTIC(PointerToIntCasts, "Pointer to integer casts");
+ALWAYS_ENABLED_STATISTIC(AnvillStackPointers, "Anvill stack pointer");
 
 
 namespace {
@@ -69,6 +70,17 @@ CodeQualityStatCollector::run(llvm::Function &function,
       PointerToIntCasts++;
     }
 
+    if (auto *store_inst = llvm::dyn_cast<llvm::StoreInst>(&i)) {
+      if (store_inst->getPointerOperand()->getName() == kSymbolicSPName) {
+        ++AnvillStackPointers;
+      }
+    }
+
+    if (auto *load_inst = llvm::dyn_cast<llvm::LoadInst>(&i)) {
+      if (load_inst->getPointerOperand()->getName() == kSymbolicSPName) {
+        ++AnvillStackPointers;
+      }
+    }
 
     NumberOfInstructions++;
     if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
