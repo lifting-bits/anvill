@@ -320,7 +320,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   second_fpm.addPass(llvm::VerifierPass());
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
-  second_fpm.addPass(CodeQualityStatCollector());
+  second_fpm.addPass(anvill::CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());
   AddConvertXorsToCmps(second_fpm);
   second_fpm.addPass(llvm::VerifierPass());
