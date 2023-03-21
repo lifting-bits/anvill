@@ -19,6 +19,7 @@ ALWAYS_ENABLED_STATISTIC(AbruptControlFlow, "Indirect control flow instructions"
 ALWAYS_ENABLED_STATISTIC(IntToPointerCasts, "Integer to pointer casts");
 ALWAYS_ENABLED_STATISTIC(PointerToIntCasts, "Pointer to integer casts");
 ALWAYS_ENABLED_STATISTIC(AnvillStackPointers, "Anvill stack pointer");
+ALWAYS_ENABLED_STATISTIC(AnvillPCPointers, "Anvill pc pointer");
 
 
 namespace {
@@ -61,6 +62,33 @@ llvm::PreservedAnalyses
 CodeQualityStatCollector::run(llvm::Function &function,
                               llvm::FunctionAnalysisManager &analysisManager) {
   ConditionalComplexityVisitor complexity_visitor;
+  llvm::GlobalVariable* anvill_sp = function.getParent()->getGlobalVariable(kSymbolicSPName);
+  llvm::GlobalVariable* anvill_pc = function.getParent()->getGlobalVariable(kSymbolicPCName);
+
+  if (anvill_sp != nullptr) {
+    for (const auto &U: anvill_sp->uses()) {
+      const auto &user = U.getUser();
+      if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
+        if (I->getFunction() == &function) {
+          ++AnvillStackPointers;
+          I->dump();
+        }
+      }
+    }
+  }
+
+  if (anvill_pc != nullptr) {
+    for (const auto &U: anvill_pc->uses()) {
+      const auto &user = U.getUser();
+      if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
+        if (I->getFunction() == &function) {
+          ++AnvillPCPointers;
+          I->dump();
+        }
+      }
+    }
+  }
+
   for (auto &i : llvm::instructions(function)) {
     if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
       ++IntToPointerCasts;
@@ -68,18 +96,6 @@ CodeQualityStatCollector::run(llvm::Function &function,
 
     if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
       ++PointerToIntCasts;
-    }
-
-    if (auto *store_inst = llvm::dyn_cast<llvm::StoreInst>(&i)) {
-      if (store_inst->getPointerOperand()->getName() == kSymbolicSPName) {
-        ++AnvillStackPointers;
-      }
-    }
-
-    if (auto *load_inst = llvm::dyn_cast<llvm::LoadInst>(&i)) {
-      if (load_inst->getPointerOperand()->getName() == kSymbolicSPName) {
-        ++AnvillStackPointers;
-      }
     }
 
     ++NumberOfInstructions;
