@@ -39,22 +39,34 @@ RemoveAnvillReturns::run(llvm::Function &F, llvm::FunctionAnalysisManager &AM) {
     }
 
     for (auto cc : calls) {
-      if (F.getReturnType() == cc->getArgOperand(0)->getType()) {
+      // either it's a void return with no args or there is 1 arg that is the type of the return
+      if ((F.getReturnType()->isVoidTy() && cc->arg_size() == 0) ||
+          (cc->arg_size() == 1 &&
+           F.getReturnType() == cc->getArgOperand(0)->getType())) {
         changed = true;
         auto to_block = cc->getParent()->getTerminator();
         // block must be wellformed
         CHECK(to_block);
         to_block->eraseFromParent();
 
-        llvm::ReturnInst::Create(F.getContext(), cc->getArgOperand(0),
-                                 cc->getParent());
+
+        if (F.getReturnType()->isVoidTy()) {
+          llvm::ReturnInst::Create(F.getContext(), cc->getParent());
+        } else {
+          llvm::ReturnInst::Create(F.getContext(), cc->getArgOperand(0),
+                                   cc->getParent());
+        }
+
         cc->eraseFromParent();
       } else {
 
-        LOG(ERROR) << "Ret ty: " << remill::LLVMThingToString(F.getReturnType())
-                   << " arg mismatch: "
-                   << remill::LLVMThingToString(
-                          cc->getArgOperand(0)->getType());
+        LOG_IF(ERROR, cc->arg_size() == 1)
+            << "Ret ty: " << remill::LLVMThingToString(F.getReturnType())
+            << " arg mismatch: "
+            << remill::LLVMThingToString(cc->getArgOperand(0)->getType());
+        LOG_IF(ERROR, cc->arg_size() == 0)
+            << "Expected void type for function with type: "
+            << remill::LLVMThingToString(F.getReturnType());
       }
     }
   }
