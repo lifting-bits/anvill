@@ -8,6 +8,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -176,15 +177,17 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
   // only handle inter-proc since intra-proc are handled implicitly by the CFG.
   llvm::IRBuilder<> builder(block);
   if (std::holds_alternative<anvill::Call>(override)) {
+
     auto cc = std::get<anvill::Call>(override);
 
+    llvm::CallInst *call = nullptr;
     if (cc.target_address.has_value()) {
-      this->AddCallFromBasicBlockFunctionToLifted(
+      call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics,
           this->options.program_counter_init_procedure(
               builder, this->address_type, *cc.target_address));
     } else {
-      this->AddCallFromBasicBlockFunctionToLifted(
+      call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics);
     }
     if (!cc.stop) {
@@ -194,6 +197,8 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
+      call->setDoesNotReturn();
+
       remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
     }
     return !cc.stop;
