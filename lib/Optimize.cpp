@@ -342,6 +342,8 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
     }
   }
 
+  mpm.run(module, mam);
+
   if (lifter.Options().should_inline_basic_blocks) {
     llvm::FunctionPassManager inliner;
 
