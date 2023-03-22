@@ -432,11 +432,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
-  auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
 
   memory->setName("memory");
   pc->setName("program_counter");
-  next_pc_out->setName("next_pc_out");
   state->setName("stack");
 
 
@@ -465,6 +463,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::BasicBlock::Create(context, "", func);
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
+  auto next_pc = ir.CreateAlloca(
+      llvm::IntegerType::getInt64Ty(func->getContext()), nullptr, "next_pc");
   ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
 
   this->state_ptr =
@@ -539,7 +539,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   ir.CreateStore(pc_val, pc_ptr);
 
   std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc_val, mem_res, next_pc_out};
+      this->state_ptr, pc_val, mem_res, next_pc};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
@@ -549,7 +549,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   CHECK(ir.GetInsertPoint() == func->getEntryBlock().end());
 
-  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out, state};
+  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc, state};
 
   TerminateBasicBlockFunction(func, ir, ret_mem, bbf);
 
@@ -567,7 +567,7 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
   new llvm::UnreachableInst(next_mem->getContext(),
                             this->invalid_successor_block);
 
-  auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out_param);
+  auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out);
   auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
 
   for (auto e : this->block_def.outgoing_edges) {
@@ -579,8 +579,7 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
     auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
     auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
-        caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem,
-        bbfunc.next_pc_out_param);
+        caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
       calling_bb_builder.CreateRetVoid();
     } else {
@@ -667,8 +666,7 @@ void BasicBlockLifter::UnpackLiveValues(
 // ref either from the args or from the parent func state
 llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
-    llvm::Value *parent_stack, llvm::Value *memory_pointer,
-    llvm::Value *program_pointer_ref) const {
+    llvm::Value *parent_stack, llvm::Value *memory_pointer) const {
 
   std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
@@ -678,7 +676,8 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
       builder, this->address_type, block_def.addr);
   args[remill::kMemoryPointerArgNum] = memory_pointer;
 
-  args[remill::kNumBlockArgs] = program_pointer_ref;
+  args[remill::kNumBlockArgs] = llvm::Constant::getNullValue(
+      llvm::PointerType::get(parent_stack->getContext(), 0));
 
   AbstractStack stack(
       builder.getContext(), {{decl.maximum_depth, parent_stack}},
@@ -727,7 +726,7 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
 llvm::CallInst *BasicBlockLifter::ControlFlowCallBasicBlockFunction(
     llvm::Function *caller, llvm::IRBuilder<> &builder,
     llvm::Value *parent_state, llvm::Value *parent_stack,
-    llvm::Value *memory_pointer, llvm::Value *program_pointer_ref) const {
+    llvm::Value *memory_pointer) const {
 
   std::vector<llvm::Value *> args;
   std::transform(caller->arg_begin(), caller->arg_end(),

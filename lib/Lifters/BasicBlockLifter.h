@@ -26,7 +26,7 @@ struct BasicBlockFunction {
   llvm::Function *func;
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
-  llvm::Argument *next_pc_out_param;
+  llvm::AllocaInst *next_pc_out;
   llvm::Argument *stack;
 };
 
@@ -126,15 +126,14 @@ class BasicBlockLifter : public CodeLifter {
 
 
   // Calls a basic block function and unpacks the result into the state
-  llvm::CallInst *
-  CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                         llvm::Value *parent_stack, llvm::Value *memory_pointer,
-                         llvm::Value *program_pointer_ref) const;
+  llvm::CallInst *CallBasicBlockFunction(llvm::IRBuilder<> &,
+                                         llvm::Value *state_ptr,
+                                         llvm::Value *parent_stack,
+                                         llvm::Value *memory_pointer) const;
 
   llvm::CallInst *ControlFlowCallBasicBlockFunction(
       llvm::Function *caller, llvm::IRBuilder<> &, llvm::Value *state_ptr,
-      llvm::Value *parent_stack, llvm::Value *memory_pointer,
-      llvm::Value *program_pointer_ref) const;
+      llvm::Value *parent_stack, llvm::Value *memory_pointer) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };
