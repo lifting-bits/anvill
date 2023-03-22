@@ -59,20 +59,17 @@ class ConditionalComplexityVisitor
 
 
 llvm::PreservedAnalyses
-CodeQualityStatCollector::run(llvm::Function &function,
-                              llvm::FunctionAnalysisManager &analysisManager) {
+CodeQualityStatCollector::run(llvm::Module &module,
+                              llvm::ModuleAnalysisManager &analysisManager) {
   ConditionalComplexityVisitor complexity_visitor;
-  llvm::GlobalVariable* anvill_sp = function.getParent()->getGlobalVariable(kSymbolicSPName);
-  llvm::GlobalVariable* anvill_pc = function.getParent()->getGlobalVariable(kSymbolicPCName);
+  llvm::GlobalVariable* anvill_sp = module.getGlobalVariable(kSymbolicSPName);
+  llvm::GlobalVariable* anvill_pc = module.getGlobalVariable(kSymbolicPCName);
 
   if (anvill_sp != nullptr) {
     for (const auto &U: anvill_sp->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        if (I->getFunction() == &function) {
-          ++AnvillStackPointers;
-          I->dump();
-        }
+        ++AnvillStackPointers;
       }
     }
   }
@@ -81,36 +78,35 @@ CodeQualityStatCollector::run(llvm::Function &function,
     for (const auto &U: anvill_pc->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        if (I->getFunction() == &function) {
-          ++AnvillPCPointers;
-          I->dump();
-        }
+        ++AnvillPCPointers;
       }
     }
   }
 
-  for (auto &i : llvm::instructions(function)) {
-    if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
-      ++IntToPointerCasts;
-    }
-
-    if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
-      ++PointerToIntCasts;
-    }
-
-    ++NumberOfInstructions;
-    if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
-      if (branch->isConditional()) {
-        complexity_visitor.tryVisit(branch->getCondition());
+  for (auto &function : module) {
+    for (auto &i : llvm::instructions(function)) {
+      if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
+        ++IntToPointerCasts;
       }
-    }
 
-    if (auto *cb = llvm::dyn_cast<llvm::CallBase>(&i)) {
-      auto target = cb->getCalledFunction();
-      if (target != nullptr) {
-        if (target->getName() == kAnvillSwitchCompleteFunc ||
-            target->getName() == kAnvillSwitchIncompleteFunc) {
-          ++AbruptControlFlow;
+      if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
+        ++PointerToIntCasts;
+      }
+
+      ++NumberOfInstructions;
+      if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
+        if (branch->isConditional()) {
+          complexity_visitor.tryVisit(branch->getCondition());
+        }
+      }
+
+      if (auto *cb = llvm::dyn_cast<llvm::CallBase>(&i)) {
+        auto target = cb->getCalledFunction();
+        if (target != nullptr) {
+          if (target->getName() == kAnvillSwitchCompleteFunc ||
+              target->getName() == kAnvillSwitchIncompleteFunc) {
+            ++AbruptControlFlow;
+          }
         }
       }
     }
