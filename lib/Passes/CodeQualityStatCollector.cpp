@@ -72,25 +72,23 @@ CodeQualityStatCollector::run(llvm::Module &module,
     for (const auto &U: anvill_sp->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        if (!sp_funcs.count(I->getFunction())) {
-          ++AnvillStackPointers;
-          sp_funcs.insert(I->getFunction());
-        }
+        sp_funcs.insert(I->getFunction());
       }
     }
   }
+
+  AnvillStackPointers = sp_funcs.size();
 
   if (anvill_pc != nullptr) {
     for (const auto &U: anvill_pc->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        if (!pc_funcs.count(I->getFunction())) {
-          ++AnvillPCPointers;
-          pc_funcs.insert(I->getFunction());
-        }
+        pc_funcs.insert(I->getFunction());
       }
     }
   }
+
+  AnvillPCPointers = pc_funcs.size();
 
   for (auto &function : module) {
     for (auto &i : llvm::instructions(function)) {
