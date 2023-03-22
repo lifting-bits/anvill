@@ -18,8 +18,8 @@ ALWAYS_ENABLED_STATISTIC(NumberOfInstructions, "Total number of instructions");
 ALWAYS_ENABLED_STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
 ALWAYS_ENABLED_STATISTIC(IntToPointerCasts, "Integer to pointer casts");
 ALWAYS_ENABLED_STATISTIC(PointerToIntCasts, "Pointer to integer casts");
-ALWAYS_ENABLED_STATISTIC(AnvillStackPointers, "Anvill stack pointer");
-ALWAYS_ENABLED_STATISTIC(AnvillPCPointers, "Anvill pc pointer");
+ALWAYS_ENABLED_STATISTIC(AnvillStackPointers, "Number of functions that expose an Anvill stack pointer");
+ALWAYS_ENABLED_STATISTIC(AnvillPCPointers, "Number of functions that expose an Anvill pc pointer");
 
 
 namespace {
@@ -65,11 +65,17 @@ CodeQualityStatCollector::run(llvm::Module &module,
   llvm::GlobalVariable* anvill_sp = module.getGlobalVariable(kSymbolicSPName);
   llvm::GlobalVariable* anvill_pc = module.getGlobalVariable(kSymbolicPCName);
 
+  llvm::DenseSet<const llvm::Function*> sp_funcs;
+  llvm::DenseSet<const llvm::Function*> pc_funcs;
+
   if (anvill_sp != nullptr) {
     for (const auto &U: anvill_sp->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        ++AnvillStackPointers;
+        if (!sp_funcs.count(I->getFunction())) {
+          ++AnvillStackPointers;
+          sp_funcs.insert(I->getFunction());
+        }
       }
     }
   }
@@ -78,7 +84,10 @@ CodeQualityStatCollector::run(llvm::Module &module,
     for (const auto &U: anvill_pc->uses()) {
       const auto &user = U.getUser();
       if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
-        ++AnvillPCPointers;
+        if (!pc_funcs.count(I->getFunction())) {
+          ++AnvillPCPointers;
+          pc_funcs.insert(I->getFunction());
+        }
       }
     }
   }
