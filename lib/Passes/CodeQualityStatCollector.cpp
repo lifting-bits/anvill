@@ -77,7 +77,7 @@ CodeQualityStatCollector::run(llvm::Module &module,
     }
   }
 
-  AnvillStackPointers = sp_funcs.size();
+  AnvillStackPointers += sp_funcs.size();
 
   if (anvill_pc != nullptr) {
     for (const auto &U: anvill_pc->uses()) {
@@ -88,7 +88,7 @@ CodeQualityStatCollector::run(llvm::Module &module,
     }
   }
 
-  AnvillPCPointers = pc_funcs.size();
+  AnvillPCPointers += pc_funcs.size();
 
   for (auto &function : module) {
     for (auto &i : llvm::instructions(function)) {
