@@ -192,9 +192,11 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
-    remill::AddTerminatingTailCall(block, intrinsics.function_return,
-                                   intrinsics);
-    return false;
+    auto func = block->getParent();
+    auto should_return = func->getArg(func->arg_size() - 1);
+    builder.CreateStore(llvm::Constant::getAllOnesValue(
+                            llvm::IntegerType::getInt1Ty(llvm_context)),
+                        should_return);
   }
 
   return true;
@@ -441,12 +443,14 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto liftedty = this->options.arch->LiftedFunctionType();
 
   std::vector<llvm::Type *> new_params;
-  new_params.reserve(liftedty->getNumParams() + 1);
+  new_params.reserve(liftedty->getNumParams() + 2);
 
   for (auto param : liftedty->params()) {
     new_params.push_back(param);
   }
-  new_params.push_back(llvm::PointerType::get(context, 0));
+  auto ptr_ty = llvm::PointerType::get(context, 0);
+  new_params.push_back(ptr_ty);
+  new_params.push_back(ptr_ty);
 
 
   llvm::FunctionType *new_func_type = llvm::FunctionType::get(
@@ -463,8 +467,11 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::BasicBlock::Create(context, "", func);
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
-  auto next_pc = ir.CreateAlloca(
-      llvm::IntegerType::getInt64Ty(func->getContext()), nullptr, "next_pc");
+  auto next_pc = ir.CreateAlloca(llvm::IntegerType::getInt64Ty(context),
+                                 nullptr, "next_pc");
+  auto should_return = ir.CreateAlloca(llvm::IntegerType::getInt1Ty(context),
+                                       nullptr, "should_return");
+  ir.CreateStore(llvm::ConstantInt::getFalse(context), should_return);
   ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
 
   this->state_ptr =
@@ -538,8 +545,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       ir, this->address_type, this->block_def.addr);
   ir.CreateStore(pc_val, pc_ptr);
 
-  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc_val, mem_res, next_pc};
+  std::array<llvm::Value *, remill::kNumBlockArgs + 2> args = {
+      this->state_ptr, pc_val, mem_res, next_pc, should_return};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
@@ -551,7 +558,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc, state};
 
-  TerminateBasicBlockFunction(func, ir, ret_mem, bbf);
+  TerminateBasicBlockFunction(func, ir, ret_mem, should_return, bbf);
 
   return bbf;
 }
@@ -559,14 +566,22 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 // Setup the returns for this function we tail call all successors
 void BasicBlockLifter::TerminateBasicBlockFunction(
     llvm::Function *caller, llvm::IRBuilder<> &ir, llvm::Value *next_mem,
-    const BasicBlockFunction &bbfunc) {
-  this->invalid_successor_block = llvm::BasicBlock::Create(
-      this->bb_func->getContext(), "invalid_successor", this->bb_func);
+    llvm::Value *should_return, const BasicBlockFunction &bbfunc) {
+  auto &context = this->bb_func->getContext();
+  this->invalid_successor_block =
+      llvm::BasicBlock::Create(context, "invalid_successor", this->bb_func);
+  auto jump_block = llvm::BasicBlock::Create(context, "", this->bb_func);
+  auto ret_block = llvm::BasicBlock::Create(context, "", this->bb_func);
 
   // TODO(Ian): maybe want to call remill_error here
   new llvm::UnreachableInst(next_mem->getContext(),
                             this->invalid_successor_block);
 
+  auto should_return_value =
+      ir.CreateLoad(llvm::IntegerType::getInt1Ty(context), should_return);
+  ir.CreateCondBr(should_return_value, ret_block, jump_block);
+
+  ir.SetInsertPoint(jump_block);
   auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out);
   auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
 
@@ -586,6 +601,16 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
       calling_bb_builder.CreateRet(retval);
     }
     sw->addCase(succ_const, calling_bb);
+  }
+
+  ir.SetInsertPoint(ret_block);
+  if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
+    ir.CreateRetVoid();
+  } else {
+    auto retval = anvill::LoadLiftedValue(
+        block_context->ReturnValue(), options.TypeDictionary(), intrinsics,
+        options.arch, ir, this->state_ptr, next_mem);
+    ir.CreateRet(retval);
   }
 }
 

@@ -73,6 +73,7 @@ class BasicBlockLifter : public CodeLifter {
 
   void TerminateBasicBlockFunction(llvm::Function *caller,
                                    llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+                                   llvm::Value *should_return,
                                    const BasicBlockFunction &bbfunc);
 
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,
