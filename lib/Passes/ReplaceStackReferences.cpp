@@ -153,17 +153,17 @@ class StackModel {
     return arch->DataLayout().getTypeSizeInBits(decl.type) / 8;
   }
 
-  StackModel(const std::vector<ParameterDecl> &stack_vars,
-             const remill::Arch *arch, const AbstractStack &abs_stack) {
+  StackModel(const BasicBlockContext &cont, const remill::Arch *arch,
+             const AbstractStack &abs_stack) {
     this->arch = arch;
     size_t index = 0;
     // this feels weird maybe it should be all stack variables but then if the variable isnt live...
     // we will have discovered something that should have been live.
-    for (const auto &v : stack_vars) {
-      if (HasMemLoc(v) && v.oredered_locs.size() == 1 &&
-          v.oredered_locs[0].mem_reg->name ==
+    for (const auto &v : cont.LiveParamsAtEntryAndExit()) {
+      if (HasMemLoc(v.param) && v.param.oredered_locs.size() == 1 &&
+          v.param.oredered_locs[0].mem_reg->name ==
               arch->StackPointerRegisterName()) {
-        this->InsertFrameVar(index, v);
+        this->InsertFrameVar(index, v.param);
       }
       index += 1;
     }
@@ -265,7 +265,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       lifter.Options().stack_frame_recovery_options.stack_grows_down,
       cont.GetPointerDisplacement());
 
-  StackModel smodel(fdecl.in_scope_variables, this->lifter.Options().arch, stk);
+  StackModel smodel(cont, this->lifter.Options().arch, stk);
 
   NullCrossReferenceResolver resolver;
   StackCrossReferenceResolver folder(resolver, this->lifter.DataLayout(), stk);
