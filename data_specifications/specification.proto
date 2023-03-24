@@ -302,8 +302,6 @@ message StackFrame {
   uint64 max_frame_depth = 4;
 
   int64 parameter_offset = 5;
-
-  repeated Parameter stack_variables = 6;
 }
 
 message Function {
@@ -319,7 +317,7 @@ message Function {
   StackEffects stack_effects = 8;
   StackFrame frame = 9;
 
-  repeated Parameter used_registers = 10;
+  repeated Parameter in_scope_vars = 10;
 }
 
 message GlobalVariable {

@@ -400,33 +400,18 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
           this->options.arch->LiftedFunctionType(), context));
   auto start_ind = lifted_func_type->getNumParams() + 1;
-  for (auto stack_var : decl.stack_variables) {
+  for (auto var : decl.in_scope_variables) {
     auto arg = remill::NthArgument(func, start_ind);
-    if (!stack_var.name.empty()) {
-      arg->setName(stack_var.name);
+    if (!var.name.empty()) {
+      arg->setName(var.name);
     }
 
-    if (std::all_of(stack_var.oredered_locs.begin(),
-                    stack_var.oredered_locs.end(),
+    if (std::all_of(var.oredered_locs.begin(), var.oredered_locs.end(),
                     [](const LowLoc &loc) -> bool { return loc.reg; })) {
       // Registers should not have aliases
       arg->addAttr(llvm::Attribute::get(llvm_context,
                                         llvm::Attribute::AttrKind::NoAlias));
     }
-    // TODO(Ian): If we can eliminate the stack then we also are able to declare more no aliases here, not sure the
-    // best way to handle this
-
-    start_ind += 1;
-  }
-
-  for (auto reg : decl.used_registers) {
-    auto arg = remill::NthArgument(func, start_ind);
-    if (!reg.name.empty()) {
-      arg->setName(reg.name);
-    }
-
-    arg->addAttr(
-        llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
 
     start_ind += 1;
   }
@@ -616,10 +601,7 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
 
 llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
   std::vector<llvm::Type *> field_types;
-  std::transform(decl.stack_variables.begin(), decl.stack_variables.end(),
-                 std::back_inserter(field_types),
-                 [](auto &param) { return param.type; });
-  std::transform(decl.used_registers.begin(), decl.used_registers.end(),
+  std::transform(decl.in_scope_variables.begin(), decl.in_scope_variables.end(),
                  std::back_inserter(field_types),
                  [](auto &param) { return param.type; });
 

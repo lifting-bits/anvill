@@ -539,22 +539,12 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 
   decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
-  for (auto &stack_var : frame.stack_variables()) {
-    auto maybe_res = DecodeParameter(stack_var);
+  for (auto &var : function.in_scope_vars()) {
+    auto maybe_res = DecodeParameter(var);
     if (!maybe_res.Succeeded()) {
-      return std::string("Couldn't decode stack variable: " +
-                         maybe_res.TakeError());
+      return std::string("Couldn't decode variable: " + maybe_res.TakeError());
     } else {
-      decl.stack_variables.push_back(maybe_res.TakeValue());
-    }
-  }
-
-  for (auto &used_reg : function.used_registers()) {
-    auto maybe_res = DecodeParameter(used_reg);
-    if (!maybe_res.Succeeded()) {
-      LOG(ERROR) << maybe_res.Error();
-    } else {
-      decl.used_registers.push_back(maybe_res.TakeValue());
+      decl.in_scope_variables.push_back(maybe_res.TakeValue());
     }
   }
 
