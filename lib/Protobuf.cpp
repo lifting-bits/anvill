@@ -542,7 +542,8 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   for (auto &var : function.in_scope_vars()) {
     auto maybe_res = DecodeParameter(var);
     if (!maybe_res.Succeeded()) {
-      return std::string("Couldn't decode variable: " + maybe_res.TakeError());
+      LOG(ERROR) << "Couldn't decode live variable: " << var.name()
+                 << " " + maybe_res.TakeError();
     } else {
       decl.in_scope_variables.push_back(maybe_res.TakeValue());
     }
