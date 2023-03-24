@@ -294,12 +294,8 @@ SpecBlockContext::SpecBlockContext(
       offsets(std::move(offsets)),
       constants(std::move(constants)),
       live_params_at_entry(std::move(live_params_at_entry)),
-      live_params_at_exit(std::move(live_params_at_exit)) {
-
-  params = decl.stack_variables;
-  std::copy(decl.used_registers.begin(), decl.used_registers.end(),
-            std::back_inserter(params));
-}
+      live_params_at_exit(std::move(live_params_at_exit)),
+      params(decl.in_scope_variables) {}
 
 size_t SpecBlockContext::GetPointerDisplacement() const {
   return this->decl.GetPointerDisplacement();

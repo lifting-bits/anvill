@@ -265,7 +265,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       lifter.Options().stack_frame_recovery_options.stack_grows_down,
       cont.GetPointerDisplacement());
 
-  StackModel smodel(fdecl.stack_variables, this->lifter.Options().arch, stk);
+  StackModel smodel(fdecl.in_scope_variables, this->lifter.Options().arch, stk);
 
   NullCrossReferenceResolver resolver;
   StackCrossReferenceResolver folder(resolver, this->lifter.DataLayout(), stk);
