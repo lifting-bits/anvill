@@ -157,7 +157,7 @@ jobs:
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
           fetch-depth: 0
-          submodules: false
+          submodules: true
           ssh-key: "${{ secrets.IRENE3_DEPLOY }}"
 
       - name: Add cargo bin to path

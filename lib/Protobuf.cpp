@@ -44,6 +44,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     CallableDecl &decl) const {
   decl.arch = arch;
   decl.is_noreturn = function.is_noreturn();
+
   decl.is_variadic = function.is_variadic();
   decl.calling_convention =
       static_cast<llvm::CallingConv::ID>(function.calling_convention());
