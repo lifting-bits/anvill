@@ -84,6 +84,8 @@ const std::string kAnvillStackZero(kAnvillNamePrefix + "stack_zero");
 
 const std::string kBasicBlockMetadata(kAnvillNamePrefix + "basic_block_md");
 
+const std::string kStackMetadata(kAnvillNamePrefix + "stack_alloc");
+
 const std::string kAnvillBasicBlockReturn(kAnvillNamePrefix +
                                           "basic_block_function_return");
 

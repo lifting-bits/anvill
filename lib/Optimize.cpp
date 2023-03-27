@@ -79,6 +79,7 @@
 #include <vector>
 
 #include "anvill/Passes/RemoveAnvillReturns.h"
+#include "anvill/Passes/SplitStackFrameAtReturnAddress.h"
 #include "anvill/Specification.h"
 
 namespace anvill {
@@ -354,6 +355,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
         llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::InlinerPass()));
     llvm::FunctionPassManager rm_returns;
     rm_returns.addPass(anvill::RemoveAnvillReturns());
+
     mpminliner.addPass(
         llvm::createModuleToFunctionPassAdaptor(std::move(rm_returns)));
 
@@ -371,10 +373,19 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
       intrinsics->eraseFromParent();
     }
 
+
     auto defaultmpm =
         pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
 
     defaultmpm.run(module, mam);
+
+    llvm::createModuleToFunctionPassAdaptor(
+        SplitStackFrameAtReturnAddress(options.stack_frame_recovery_options))
+        .run(module, mam);
+
+
+    pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3)
+        .run(module, mam);
   }
 
 
