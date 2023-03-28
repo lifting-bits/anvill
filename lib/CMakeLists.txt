@@ -44,7 +44,6 @@ set(anvill_passes
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
   RemoveErrorIntrinsics
-  RemoveRemillFunctionReturns
   RemoveStackPointerCExprs
   RemoveTrivialPhisAndSelects
   RemoveUnusedFPClassificationCalls
@@ -60,10 +59,7 @@ set(anvill_passes
   CombineAdjacentShifts
   ReplaceStackReferences
   RemoveCallIntrinsics
-  ReplaceRemillFunctionReturnsWithAnvillFunctionReturns
-  RemoveAssignmentsToNextPC
   InlineBasicBlockFunctions
-  RemoveAnvillReturns
 )
 
 set(anvill_arch_HEADERS
