@@ -46,7 +46,7 @@ class CallableBasicBlockFunction;
 class BasicBlockLifter : public CodeLifter {
  private:
   std::unique_ptr<BasicBlockContext> block_context;
-  const CodeBlock &block_def;
+  CodeBlock block_def;
 
   llvm::StructType *var_struct_ty{nullptr};
 
@@ -108,7 +108,7 @@ class BasicBlockLifter : public CodeLifter {
 
  public:
   BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,
-                   const FunctionDecl &decl, const CodeBlock &block_def,
+                   const FunctionDecl &decl, CodeBlock block_def,
                    const LifterOptions &options_,
                    llvm::Module *semantics_module,
                    const TypeTranslator &type_specifier,

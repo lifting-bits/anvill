@@ -745,12 +745,12 @@ llvm::CallInst *BasicBlockLifter::ControlFlowCallBasicBlockFunction(
 
 BasicBlockLifter::BasicBlockLifter(
     std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
-    const CodeBlock &block_def, const LifterOptions &options_,
+    CodeBlock block_def, const LifterOptions &options_,
     llvm::Module *semantics_module, const TypeTranslator &type_specifier,
     FunctionLifter &flifter)
     : CodeLifter(options_, semantics_module, type_specifier),
       block_context(std::move(block_context)),
-      block_def(block_def),
+      block_def(std::move(block_def)),
       decl(decl),
       flifter(flifter) {
   this->var_struct_ty = this->StructTypeFromVars();

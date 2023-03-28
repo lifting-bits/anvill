@@ -343,12 +343,19 @@ BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
   std::unique_ptr<SpecBlockContext> context =
       std::make_unique<SpecBlockContext>(
           this->curr_decl->GetBlockContext(addr));
-  auto &blk = this->curr_decl->cfg.at(addr);
+
+  CodeBlock defblk = {addr, 0, std::unordered_set<uint64_t>(),
+                      std::unordered_map<std::string, std::uint64_t>()};
+  auto maybe_blk = this->curr_decl->cfg.find(addr);
+  if (maybe_blk != this->curr_decl->cfg.end()) {
+    defblk = maybe_blk->second;
+  }
 
   auto inserted = this->bb_lifters.emplace(
-      addr, BasicBlockLifter(std::move(context), *this->curr_decl, blk,
-                             this->options, this->semantics_module.get(),
-                             this->type_specifier, *this));
+      addr,
+      BasicBlockLifter(std::move(context), *this->curr_decl, std::move(defblk),
+                       this->options, this->semantics_module.get(),
+                       this->type_specifier, *this));
   return inserted.first->second;
 }
 
