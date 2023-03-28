@@ -13,7 +13,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
-#include <remill/BC/ABI.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
 
@@ -197,7 +196,7 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     auto func = block->getParent();
-    auto should_return = func->getArg(func->arg_size() - 1);
+    auto should_return = func->getArg(kShouldReturnArgNum);
     builder.CreateStore(llvm::Constant::getAllOnesValue(
                             llvm::IntegerType::getInt1Ty(llvm_context)),
                         should_return);
@@ -350,7 +349,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
     llvm::IRBuilder<> builder(bb);
 
     builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
-                        this->lifted_func->getArg(remill::kNumBlockArgs));
+                        this->lifted_func->getArg(kNextPCArgNum));
 
 
     llvm::ReturnInst::Create(
@@ -531,7 +530,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       ir, this->address_type, this->block_def.addr);
   ir.CreateStore(pc_val, pc_ptr);
 
-  std::array<llvm::Value *, remill::kNumBlockArgs + 2> args = {
+  std::array<llvm::Value *, kNumLiftedBasicBlockArgs> args = {
       this->state_ptr, pc_val, mem_res, next_pc, should_return};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);

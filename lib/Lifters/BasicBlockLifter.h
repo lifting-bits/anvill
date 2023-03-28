@@ -9,6 +9,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/Lifter.h>
 
 #include <cstdint>
@@ -21,6 +22,11 @@
 
 namespace anvill {
 
+enum : size_t {
+  kNextPCArgNum = remill::kNumBlockArgs,
+  kShouldReturnArgNum,
+  kNumLiftedBasicBlockArgs
+};
 
 struct BasicBlockFunction {
   llvm::Function *func;
