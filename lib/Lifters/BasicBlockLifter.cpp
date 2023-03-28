@@ -376,9 +376,6 @@ llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   // pointer to state pointer
   params[remill::kStatePointerArgNum] = llvm::PointerType::get(context, 0);
 
-  //next_pc_out
-  params.push_back(llvm::PointerType::get(context, 0));
-
 
   for (size_t i = 0; i < this->var_struct_ty->getNumElements(); i++) {
     // pointer to each param
@@ -403,7 +400,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
           this->options.arch->LiftedFunctionType(), context));
-  auto start_ind = lifted_func_type->getNumParams() + 1;
+  auto start_ind = lifted_func_type->getNumParams();
   for (auto var : decl.in_scope_variables) {
     auto arg = remill::NthArgument(func, start_ind);
     if (!var.name.empty()) {
@@ -679,16 +676,13 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
     llvm::Value *parent_stack, llvm::Value *memory_pointer) const {
 
-  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs);
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
   args[0] = parent_stack;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
       builder, this->address_type, block_def.addr);
   args[remill::kMemoryPointerArgNum] = memory_pointer;
-
-  args[remill::kNumBlockArgs] = llvm::Constant::getNullValue(
-      llvm::PointerType::get(parent_stack->getContext(), 0));
 
   AbstractStack stack(
       builder.getContext(), {{decl.maximum_depth, parent_stack}},

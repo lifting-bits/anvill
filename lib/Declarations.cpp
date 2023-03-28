@@ -265,7 +265,7 @@ llvm::Value *BasicBlockContext::ProvidePointerFromStruct(
 
 llvm::Argument *BasicBlockContext::ProvidePointerFromFunctionArgs(
     llvm::Function *func, const ParameterDecl &param) const {
-  return func->getArg(GetParamIndex(param) + remill::kNumBlockArgs + 1);
+  return func->getArg(GetParamIndex(param) + remill::kNumBlockArgs);
 }
 
 ValueDecl SpecBlockContext::ReturnValue() const {
