@@ -68,7 +68,7 @@ struct LowLoc {
 
   std::uint64_t Size() const;
 
-  bool operator==(const LowLoc &loc) const;
+  bool operator==(const LowLoc &loc) const = default;
 };
 
 // A value, such as a parameter or a return value. Values are resident
@@ -93,6 +93,8 @@ struct ValueDecl {
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  bool operator==(const ValueDecl &) const = default;
 };
 
 
@@ -101,6 +103,8 @@ struct ParameterDecl : public ValueDecl {
 
   // Name of the parameter.
   std::string name;
+
+  bool operator==(const ParameterDecl &) const = default;
 };
 
 // A typed location in memory, that isn't actually code. This roughly

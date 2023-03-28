@@ -93,6 +93,8 @@ struct FunctionType;
 
 struct UnknownType {
   unsigned size;
+
+  bool operator==(const UnknownType &) const = default;
 };
 
 using TypeSpec =
@@ -108,6 +110,8 @@ struct PointerType {
         is_const(is_const) {}
   TypeSpec pointee;
   bool is_const;
+
+  bool operator==(const PointerType &) const = default;
 };
 
 struct VectorType {
@@ -117,6 +121,8 @@ struct VectorType {
         size(size) {}
   TypeSpec base;
   unsigned size;
+
+  bool operator==(const VectorType &) const = default;
 };
 
 struct ArrayType {
@@ -126,10 +132,14 @@ struct ArrayType {
         size(size) {}
   TypeSpec base;
   unsigned size;
+
+  bool operator==(const ArrayType &) const = default;
 };
 
 struct StructType {
   std::vector<TypeSpec> members;
+
+  bool operator==(const StructType &) const = default;
 };
 
 struct FunctionType {
@@ -142,6 +152,8 @@ struct FunctionType {
   TypeSpec return_type;
   std::vector<TypeSpec> arguments;
   bool is_variadic;
+
+  bool operator==(const FunctionType &) const = default;
 };
 
 // Dictionary of types to be used by the type specifier.

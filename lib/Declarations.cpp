@@ -71,11 +71,6 @@ struct std::hash<anvill::LowLoc> {
 
 namespace anvill {
 
-bool LowLoc::operator==(const LowLoc &loc) const {
-  return reg == loc.reg && mem_reg == loc.mem_reg &&
-         loc.mem_offset == mem_offset && loc.size == size;
-}
-
 // Declare this global variable in an LLVM module.
 llvm::GlobalVariable *
 VariableDecl::DeclareInModule(const std::string &name,
@@ -225,29 +220,7 @@ FunctionDecl::DeclareInModule(std::string_view name,
 }
 
 size_t BasicBlockContext::GetParamIndex(const ParameterDecl &decl) const {
-  auto stack_var = std::find_if(
-      GetParams().begin(), GetParams().end(), [&](const ParameterDecl &param) {
-        if (param.oredered_locs.size() != decl.oredered_locs.size()) {
-          return false;
-        }
-
-        for (size_t i{0}; i < param.oredered_locs.size(); ++i) {
-          if (param.oredered_locs[i].reg &&
-              param.oredered_locs[i].reg != decl.oredered_locs[i].reg) {
-            return false;
-          }
-
-          if (param.oredered_locs[i].mem_reg != decl.oredered_locs[i].mem_reg) {
-            return false;
-          }
-
-          if (param.oredered_locs[i].mem_offset !=
-              decl.oredered_locs[i].mem_offset) {
-            return false;
-          }
-        }
-        return true;
-      });
+  auto stack_var = std::find(GetParams().begin(), GetParams().end(), decl);
   CHECK(stack_var != GetParams().end());
   return stack_var - GetParams().begin();
 }
