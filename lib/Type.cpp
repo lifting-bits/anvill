@@ -34,6 +34,28 @@
 
 namespace anvill {
 
+bool operator==(std::shared_ptr<PointerType> a,
+                std::shared_ptr<PointerType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<VectorType> a, std::shared_ptr<VectorType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<ArrayType> a, std::shared_ptr<ArrayType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<StructType> a, std::shared_ptr<StructType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<FunctionType> a,
+                std::shared_ptr<FunctionType> b) {
+  return *a == *b;
+}
+
 class TypeSpecifierImpl {
  public:
   llvm::LLVMContext &context;

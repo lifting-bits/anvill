@@ -103,6 +103,12 @@ using TypeSpec =
                  std::shared_ptr<StructType>, std::shared_ptr<FunctionType>,
                  UnknownType>;
 
+bool operator==(std::shared_ptr<PointerType>, std::shared_ptr<PointerType>);
+bool operator==(std::shared_ptr<VectorType>, std::shared_ptr<VectorType>);
+bool operator==(std::shared_ptr<ArrayType>, std::shared_ptr<ArrayType>);
+bool operator==(std::shared_ptr<StructType>, std::shared_ptr<StructType>);
+bool operator==(std::shared_ptr<FunctionType>, std::shared_ptr<FunctionType>);
+
 struct PointerType {
   template <typename T>
   PointerType(T &&pointee, bool is_const)
