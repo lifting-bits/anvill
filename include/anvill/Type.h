@@ -371,4 +371,25 @@ struct hash<anvill::FunctionType> {
   }
 };
 
+template <>
+struct hash<std::shared_ptr<anvill::ArrayType>> {
+  size_t operator()(const std::shared_ptr<anvill::ArrayType> &unk) const {
+    return std::hash<anvill::ArrayType>()(*unk);
+  }
+};
+
+template <>
+struct hash<std::shared_ptr<anvill::FunctionType>> {
+  size_t operator()(const std::shared_ptr<anvill::FunctionType> &unk) const {
+    return std::hash<anvill::FunctionType>()(*unk);
+  }
+};
+
+template <>
+struct hash<std::shared_ptr<anvill::StructType>> {
+  size_t operator()(const std::shared_ptr<anvill::StructType> &unk) const {
+    return std::hash<anvill::StructType>()(*unk);
+  }
+};
+
 }  // namespace std
