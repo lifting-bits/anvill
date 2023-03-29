@@ -19,6 +19,13 @@
 
 #include "Result.h"
 
+template <class T>
+inline void hash_combine(std::size_t &seed, const T &v) {
+  std::hash<T> hasher;
+  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+
 namespace llvm {
 class DataLayout;
 class IntegerType;
@@ -108,6 +115,7 @@ bool operator==(std::shared_ptr<VectorType>, std::shared_ptr<VectorType>);
 bool operator==(std::shared_ptr<ArrayType>, std::shared_ptr<ArrayType>);
 bool operator==(std::shared_ptr<StructType>, std::shared_ptr<StructType>);
 bool operator==(std::shared_ptr<FunctionType>, std::shared_ptr<FunctionType>);
+
 
 struct PointerType {
   template <typename T>
@@ -273,3 +281,94 @@ class TypeTranslator {
 };
 
 }  // namespace anvill
+
+
+namespace std {
+template <>
+struct hash<anvill::UnknownType> {
+  size_t operator()(const anvill::UnknownType &unk) const {
+    return std::hash<unsigned>()(unk.size);
+  }
+};
+
+template <>
+struct hash<anvill::PointerType> {
+  size_t operator()(const anvill::PointerType &unk) const {
+    std::size_t result = 0;
+
+    hash_combine(result, unk.is_const);
+    hash_combine(result, unk.pointee);
+
+    return result;
+  }
+};
+
+
+template <>
+struct hash<std::shared_ptr<anvill::PointerType>> {
+  size_t operator()(const std::shared_ptr<anvill::PointerType> &unk) const {
+
+    return std::hash<anvill::PointerType>()(*unk);
+  }
+};
+
+template <>
+struct hash<anvill::VectorType> {
+  size_t operator()(const anvill::VectorType &unk) const {
+
+    std::size_t result = 0;
+
+    hash_combine(result, unk.size);
+    hash_combine(result, unk.base);
+
+    return result;
+  }
+};
+template <>
+struct hash<std::shared_ptr<anvill::VectorType>> {
+  size_t operator()(const std::shared_ptr<anvill::VectorType> &unk) const {
+    return std::hash<anvill::VectorType>()(*unk);
+  }
+};
+template <>
+struct hash<anvill::ArrayType> {
+  size_t operator()(const anvill::ArrayType &unk) const {
+    std::size_t result = 0;
+
+    hash_combine(result, unk.size);
+    hash_combine(result, unk.base);
+
+    return result;
+  }
+};
+template <>
+struct hash<anvill::StructType> {
+  size_t operator()(const anvill::StructType &unk) const {
+    std::size_t result = 0;
+
+
+    for (auto ty : unk.members) {
+      hash_combine(result, ty);
+    }
+
+    return result;
+  }
+};
+template <>
+struct hash<anvill::FunctionType> {
+  size_t operator()(const anvill::FunctionType &unk) const {
+    std::size_t result = 0;
+
+
+    for (auto ty : unk.arguments) {
+      hash_combine(result, ty);
+    }
+
+    hash_combine(result, unk.is_variadic);
+    hash_combine(result, unk.return_type);
+
+    return result;
+  }
+};
+
+}  // namespace std
