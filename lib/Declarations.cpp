@@ -71,11 +71,6 @@ struct std::hash<anvill::LowLoc> {
 
 namespace anvill {
 
-bool LowLoc::operator==(const LowLoc &loc) const {
-  return reg == loc.reg && mem_reg == loc.mem_reg &&
-         loc.mem_offset == mem_offset && loc.size == size;
-}
-
 // Declare this global variable in an LLVM module.
 llvm::GlobalVariable *
 VariableDecl::DeclareInModule(const std::string &name,
@@ -154,8 +149,7 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
           if (!completely_covered) {
             std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
                       std::inserter(covered, covered.end()));
-            auto ind = res.size();
-            res.push_back({p, ind, live_at_ent, live_at_exit});
+            res.push_back({p, live_at_ent, live_at_exit});
           }
         }
       };
@@ -182,20 +176,6 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
       alllive.begin(), alllive.end(), std::back_inserter(res),
       [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
   return res;
-}
-
-llvm::StructType *
-BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {
-  std::vector<BasicBlockVariable> in_scope_locals =
-      this->LiveParamsAtEntryAndExit();
-  std::vector<llvm::Type *> field_types;
-  std::transform(
-      in_scope_locals.begin(), in_scope_locals.end(),
-      std::back_inserter(field_types),
-      [](const BasicBlockVariable &param) { return param.param.type; });
-
-  return llvm::StructType::get(llvm_context, field_types,
-                               "sty_for_basic_block_function");
 }
 
 // Declare this function in an LLVM module.
@@ -239,6 +219,28 @@ FunctionDecl::DeclareInModule(std::string_view name,
   return func;
 }
 
+size_t BasicBlockContext::GetParamIndex(const ParameterDecl &decl) const {
+  auto stack_var = std::find(GetParams().begin(), GetParams().end(), decl);
+  CHECK(stack_var != GetParams().end());
+  return stack_var - GetParams().begin();
+}
+
+llvm::Value *BasicBlockContext::ProvidePointerFromStruct(
+    llvm::IRBuilder<> &ir, llvm::StructType *sty, llvm::Value *target_sty,
+    const ParameterDecl &decl) const {
+  auto i32 = llvm::IntegerType::get(ir.getContext(), 32);
+  auto index = GetParamIndex(decl);
+  auto ptr = ir.CreateGEP(
+      sty, target_sty,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
+  return ptr;
+}
+
+llvm::Argument *BasicBlockContext::ProvidePointerFromFunctionArgs(
+    llvm::Function *func, const ParameterDecl &param) const {
+  return func->getArg(GetParamIndex(param) + remill::kNumBlockArgs);
+}
+
 ValueDecl SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
@@ -265,7 +267,8 @@ SpecBlockContext::SpecBlockContext(
       offsets(std::move(offsets)),
       constants(std::move(constants)),
       live_params_at_entry(std::move(live_params_at_entry)),
-      live_params_at_exit(std::move(live_params_at_exit)) {}
+      live_params_at_exit(std::move(live_params_at_exit)),
+      params(decl.in_scope_variables) {}
 
 size_t SpecBlockContext::GetPointerDisplacement() const {
   return this->decl.GetPointerDisplacement();
@@ -285,6 +288,10 @@ const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
 
 const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
   return this->constants;
+}
+
+const std::vector<ParameterDecl> &SpecBlockContext::GetParams() const {
+  return this->params;
 }
 
 // Interpret `target` as being the function to call, and call it from within

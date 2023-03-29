@@ -1,10 +1,10 @@
 
 #pragma once
 
+#include <anvill/Declarations.h>
+#include <anvill/Lifters.h>
 #include <anvill/Passes/BasicBlockPass.h>
 #include <llvm/IR/PassManager.h>
-
-#include "anvill/Lifters.h"
 
 
 namespace anvill {
@@ -28,6 +28,7 @@ class ReplaceStackReferences final
 
   llvm::PreservedAnalyses
   runOnBasicBlockFunction(llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-                          const anvill::BasicBlockContext &);
+                          const anvill::BasicBlockContext &,
+                          const FunctionDecl &);
 };
 }  // namespace anvill

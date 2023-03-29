@@ -53,7 +53,6 @@
 #include <anvill/Passes/CodeQualityStatCollector.h>
 #include <anvill/Passes/BranchAnalysis.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
-#include <anvill/Passes/ReplaceRemillFunctionReturnsWithAnvillFunctionReturns.h>
 // clang-format on
 
 #include <anvill/ABI.h>
@@ -63,7 +62,6 @@
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
 #include <anvill/Passes/InlineBasicBlockFunctions.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
-#include <anvill/Passes/RemoveAssignmentsToNextPC.h>
 #include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
 #include <anvill/Providers.h>
@@ -78,7 +76,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "anvill/Passes/RemoveAnvillReturns.h"
 #include "anvill/Passes/SplitStackFrameAtReturnAddress.h"
 #include "anvill/Specification.h"
 
@@ -221,9 +218,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::InstCombinePass());
   fpm.addPass(llvm::VerifierPass());
-  fpm.addPass(anvill::ReplaceRemillFunctionReturnsWithAnvillFunctionReturns(
-      contexts, lifter));
-  fpm.addPass(llvm::VerifierPass());
   AddSinkSelectionsIntoBranchTargets(fpm);
   fpm.addPass(llvm::VerifierPass());
   AddRemoveUnusedFPClassificationCalls(fpm);
@@ -304,9 +298,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
-  if (options.should_remove_assignments_to_next_pc) {
-    second_fpm.addPass(anvill::RemoveAssignmentsToNextPC(contexts, lifter));
-  }
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
@@ -343,21 +334,18 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
     }
   }
 
+  mpm.run(module, mam);
+
   if (lifter.Options().should_inline_basic_blocks) {
     llvm::FunctionPassManager inliner;
 
-    inliner.addPass(InlineBasicBlockFunctions(contexts, lifter));
+    inliner.addPass(InlineBasicBlockFunctions(contexts));
 
     llvm::ModulePassManager mpminliner;
     mpminliner.addPass(
         llvm::createModuleToFunctionPassAdaptor(std::move(inliner)));
     mpminliner.addPass(
         llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::InlinerPass()));
-    llvm::FunctionPassManager rm_returns;
-    rm_returns.addPass(anvill::RemoveAnvillReturns());
-
-    mpminliner.addPass(
-        llvm::createModuleToFunctionPassAdaptor(std::move(rm_returns)));
 
     mpminliner.run(module, mam);
 

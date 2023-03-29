@@ -316,6 +316,8 @@ message Function {
   map<uint64, BlockContext> block_context = 7;
   StackEffects stack_effects = 8;
   StackFrame frame = 9;
+
+  repeated Parameter in_scope_vars = 10;
 }
 
 message GlobalVariable {

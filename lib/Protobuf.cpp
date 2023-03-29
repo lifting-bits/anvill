@@ -540,6 +540,16 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 
   decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
+  for (auto &var : function.in_scope_vars()) {
+    auto maybe_res = DecodeParameter(var);
+    if (!maybe_res.Succeeded()) {
+      LOG(ERROR) << "Couldn't decode live variable: " << var.name()
+                 << " " + maybe_res.TakeError();
+    } else {
+      decl.in_scope_variables.push_back(maybe_res.TakeValue());
+    }
+  }
+
   if (decl.maximum_depth < decl.stack_depth) {
     LOG(ERROR)
         << "Analyzed max depth is smaller than the initial depth overriding";

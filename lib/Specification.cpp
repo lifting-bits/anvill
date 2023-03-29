@@ -417,8 +417,9 @@ void Specification::ForEachSymbol(
 }
 
 SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
-  spec.ForEachFunction([this](auto decl) {
+  spec.ForEachFunction([this](std::shared_ptr<const FunctionDecl> decl) {
     decl->AddBBContexts(this->contexts);
+    funcs[decl->address] = decl;
     return true;
   });
 }
@@ -432,6 +433,11 @@ SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
 
   return std::optional<std::reference_wrapper<const BasicBlockContext>>{
       std::cref(cont->second)};
+}
+
+const FunctionDecl &
+SpecBlockContexts::GetFunctionAtAddress(uint64_t addr) const {
+  return *funcs.at(addr);
 }
 
 // Call `cb` on each function in the spec, until `cb` returns `false`.

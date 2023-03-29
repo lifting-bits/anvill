@@ -1,7 +1,6 @@
 #include "anvill/Passes/InlineBasicBlockFunctions.h"
 
 #include <anvill/ABI.h>
-#include <anvill/Passes/RemoveAssignmentsToNextPC.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -30,7 +29,7 @@ llvm::StringRef InlineBasicBlockFunctions::name(void) {
 
 llvm::PreservedAnalyses InlineBasicBlockFunctions::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const anvill::BasicBlockContext &cont) {
+    const anvill::BasicBlockContext &cont, const anvill::FunctionDecl &) {
   F.removeFnAttr(llvm::Attribute::NoInline);
   F.addFnAttr(llvm::Attribute::AlwaysInline);
   return llvm::PreservedAnalyses::all();

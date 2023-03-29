@@ -14,20 +14,16 @@ namespace anvill {
 // with the goto intrinsic
 class InlineBasicBlockFunctions final
     : public BasicBlockPass<InlineBasicBlockFunctions> {
- private:
-  const EntityLifter &lifter;
-
  public:
-  InlineBasicBlockFunctions(const BasicBlockContexts &contexts,
-                            const EntityLifter &lifter)
-      : BasicBlockPass(contexts),
-        lifter(lifter) {}
+  InlineBasicBlockFunctions(const BasicBlockContexts &contexts)
+      : BasicBlockPass(contexts) {}
 
   static llvm::StringRef name(void);
 
 
   llvm::PreservedAnalyses
   runOnBasicBlockFunction(llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-                          const anvill::BasicBlockContext &);
+                          const anvill::BasicBlockContext &,
+                          const anvill::FunctionDecl &);
 };
 }  // namespace anvill

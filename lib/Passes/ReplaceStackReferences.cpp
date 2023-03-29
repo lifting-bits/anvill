@@ -248,7 +248,7 @@ class StackModel {
 
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const BasicBlockContext &cont) {
+    const BasicBlockContext &cont, const FunctionDecl &fdecl) {
   size_t overrunsz = cont.GetMaxStackSize() - cont.GetStackSize();
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
@@ -265,9 +265,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       lifter.Options().stack_frame_recovery_options.stack_grows_down,
       cont.GetPointerDisplacement());
 
-
   StackModel smodel(cont, this->lifter.Options().arch, stk);
-
 
   NullCrossReferenceResolver resolver;
   StackCrossReferenceResolver folder(resolver, this->lifter.DataLayout(), stk);
@@ -293,8 +291,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     //TODO(Ian) handle nonzero offset
     if (referenced_variable.has_value()) {
 
-      auto g = anvill::ProvidePointerFromFunctionArgs(
-          &F, referenced_variable->decl.index, cont);
+      auto g = cont.ProvidePointerFromFunctionArgs(
+          &F, referenced_variable->decl.decl);
       auto ptr = GetPtrToOffsetInto(ent_insert, this->lifter.DataLayout(),
                                     referenced_variable->decl.decl.type, g,
                                     referenced_variable->offset);
@@ -369,8 +367,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     // TODO(Ian): this isnt sound if the resolved stack pointer then has further manipulation causing it to land inside a variable
     anvill::GetBasicBlockStackPtr(&F)->addAttr(noalias);
 
-    for (auto lives : cont.LiveParamsAtEntryAndExit()) {
-      ProvidePointerFromFunctionArgs(&F, lives.index, cont)->addAttr(noalias);
+    for (auto &param : cont.GetParams()) {
+      cont.ProvidePointerFromFunctionArgs(&F, param)->addAttr(noalias);
     }
   }
 

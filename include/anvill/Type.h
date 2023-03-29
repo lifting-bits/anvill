@@ -93,6 +93,8 @@ struct FunctionType;
 
 struct UnknownType {
   unsigned size;
+
+  bool operator==(const UnknownType &) const = default;
 };
 
 using TypeSpec =
@@ -101,6 +103,12 @@ using TypeSpec =
                  std::shared_ptr<StructType>, std::shared_ptr<FunctionType>,
                  UnknownType>;
 
+bool operator==(std::shared_ptr<PointerType>, std::shared_ptr<PointerType>);
+bool operator==(std::shared_ptr<VectorType>, std::shared_ptr<VectorType>);
+bool operator==(std::shared_ptr<ArrayType>, std::shared_ptr<ArrayType>);
+bool operator==(std::shared_ptr<StructType>, std::shared_ptr<StructType>);
+bool operator==(std::shared_ptr<FunctionType>, std::shared_ptr<FunctionType>);
+
 struct PointerType {
   template <typename T>
   PointerType(T &&pointee, bool is_const)
@@ -108,6 +116,8 @@ struct PointerType {
         is_const(is_const) {}
   TypeSpec pointee;
   bool is_const;
+
+  bool operator==(const PointerType &) const = default;
 };
 
 struct VectorType {
@@ -117,6 +127,8 @@ struct VectorType {
         size(size) {}
   TypeSpec base;
   unsigned size;
+
+  bool operator==(const VectorType &) const = default;
 };
 
 struct ArrayType {
@@ -126,10 +138,14 @@ struct ArrayType {
         size(size) {}
   TypeSpec base;
   unsigned size;
+
+  bool operator==(const ArrayType &) const = default;
 };
 
 struct StructType {
   std::vector<TypeSpec> members;
+
+  bool operator==(const StructType &) const = default;
 };
 
 struct FunctionType {
@@ -142,6 +158,8 @@ struct FunctionType {
   TypeSpec return_type;
   std::vector<TypeSpec> arguments;
   bool is_variadic;
+
+  bool operator==(const FunctionType &) const = default;
 };
 
 // Dictionary of types to be used by the type specifier.
