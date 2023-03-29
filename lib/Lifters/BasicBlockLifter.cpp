@@ -363,7 +363,8 @@ llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
 }
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
-  std::string name_ = "basic_block_func" + std::to_string(this->block_def.addr);
+  std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
+                      std::to_string(this->block_def.addr);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(

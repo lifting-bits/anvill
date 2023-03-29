@@ -336,7 +336,8 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
 }
 
 BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
-  auto lifter = this->bb_lifters.find(addr);
+  std::pair<uint64_t, uint64_t> key{curr_decl->address, addr};
+  auto lifter = this->bb_lifters.find(key);
   if (lifter != this->bb_lifters.end()) {
     return lifter->second;
   }
@@ -352,7 +353,7 @@ BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
   }
 
   auto inserted = this->bb_lifters.emplace(
-      addr,
+      key,
       BasicBlockLifter(std::move(context), *this->curr_decl, std::move(defblk),
                        this->options, this->semantics_module.get(),
                        this->type_specifier, *this));
@@ -696,11 +697,11 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
 
   const auto target_module = options.module;
   auto &module_context = target_module->getContext();
-
+  std::string prefix = "func" + std::to_string(decl.address);
 
   if (!func->isDeclaration()) {
     for (auto &[block_addr, block] : decl.cfg) {
-      std::string name = "basic_block_func" + std::to_string(block_addr);
+      std::string name = prefix + "basic_block" + std::to_string(block_addr);
       auto new_version = target_module->getFunction(name);
       auto old_version = semantics_module->getFunction(name);
       if (!new_version) {

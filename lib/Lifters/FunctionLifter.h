@@ -32,6 +32,19 @@
 #include "CodeLifter.h"
 #include "Lifters/BasicBlockLifter.h"
 
+namespace std {
+template <typename T1, typename T2>
+struct hash<std::pair<T1, T2>> {
+  std::size_t operator()(std::pair<T1, T2> const &p) const {
+    std::size_t seed(0);
+    llvm::hash_combine(seed, p.first);
+    llvm::hash_combine(seed, p.second);
+
+    return seed;
+  }
+};
+}  // namespace std
+
 namespace llvm {
 class Constant;
 class Function;
@@ -168,7 +181,8 @@ class FunctionLifter : public CodeLifter {
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
   // maps a bbaddr to the lifter for that block
-  std::unordered_map<uint64_t, BasicBlockLifter> bb_lifters;
+  std::unordered_map<std::pair<uint64_t, uint64_t>, BasicBlockLifter>
+      bb_lifters;
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
