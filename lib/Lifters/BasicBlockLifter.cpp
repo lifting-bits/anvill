@@ -409,9 +409,11 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
     if (std::all_of(var.oredered_locs.begin(), var.oredered_locs.end(),
                     [](const LowLoc &loc) -> bool { return loc.reg; })) {
-      // Registers should not have aliases
+      // Registers should not have aliases, or be captured
       arg->addAttr(llvm::Attribute::get(llvm_context,
                                         llvm::Attribute::AttrKind::NoAlias));
+      arg->addAttr(llvm::Attribute::get(llvm_context,
+                                        llvm::Attribute::AttrKind::NoCapture));
     }
 
     start_ind += 1;
