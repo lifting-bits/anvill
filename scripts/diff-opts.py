@@ -3,6 +3,8 @@ import tempfile
 import re
 import subprocess
 
+# use with `-llvm_print_all_before -llvm_print_all_after` flags
+
 def run_diff(name, before, after):
     if info_match := re.search("define [^ ]+ @func([0-9]+)basic_block([0-9]+)", before[1]):
         func_addr = int(info_match[1])
