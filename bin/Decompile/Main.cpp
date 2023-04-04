@@ -92,6 +92,10 @@ int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
 
+  if (FLAGS_llvm_debug) {
+    llvm::DebugFlag = true;
+  }
+
   if (FLAGS_llvm_print_before_all || FLAGS_llvm_print_after_all) {
     std::vector<const char*> fake_argv;
     // empty program name
@@ -260,10 +264,6 @@ int main(int argc, char *argv[]) {
 
   if (!FLAGS_stats_out.empty()) {
     llvm::EnableStatistics();
-  }
-
-  if (FLAGS_llvm_debug) {
-    llvm::DebugFlag = true;
   }
 
   if (!FLAGS_disable_opt) {
