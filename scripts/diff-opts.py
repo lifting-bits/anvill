@@ -4,6 +4,7 @@ import re
 import subprocess
 
 # use with `-llvm_print_all_before -llvm_print_all_after` flags
+# Adapted from: https://gist.github.com/porglezomp/f2dc233f971cf3f30d45e0b501ae5ead
 
 def run_diff(name, before, after):
     if info_match := re.search("define [^ ]+ @func([0-9]+)basic_block([0-9]+)", before[1]):
