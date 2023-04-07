@@ -13,6 +13,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
 
@@ -424,6 +425,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
 
   memory->setName("memory");
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoCapture));
   pc->setName("program_counter");
   state->setName("stack");
 
@@ -460,7 +465,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto should_return = ir.CreateAlloca(llvm::IntegerType::getInt1Ty(context),
                                        nullptr, "should_return");
   ir.CreateStore(llvm::ConstantInt::getFalse(context), should_return);
-  ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
+  auto lded_mem =
+      ir.CreateLoad(llvm::PointerType::get(this->llvm_context, 0), memory);
+
+  ir.CreateStore(lded_mem,
+                 ir.CreateAlloca(llvm::PointerType::get(this->llvm_context, 0),
+                                 nullptr, "MEMORY"));
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
@@ -546,6 +556,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc, state};
 
+
+  ir.CreateStore(ret_mem, memory);
+  ir.CreateStore(ret_mem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   TerminateBasicBlockFunction(func, ir, ret_mem, should_return, bbf);
 
   return bbf;
