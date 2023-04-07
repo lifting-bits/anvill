@@ -499,10 +499,10 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //       How should control flow redirection behave in this case?
   auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->func_address);
 
-  auto memptr = remill::LoadMemoryPointer(ir, this->intrinsics);
-
   auto call_inst = entry_lifter.CallBasicBlockFunction(
-      ir, lifted_func_st.state_ptr, abstract_stack, memptr);
+      ir, lifted_func_st.state_ptr, abstract_stack, this->mem_ptr_ref);
+
+  auto memptr = remill::LoadMemoryPointer(ir, this->intrinsics);
 
   if (!call_inst->getType()->isVoidTy()) {
     // TODO(Ian): this memptr is not right
