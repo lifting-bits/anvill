@@ -13,6 +13,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
 
@@ -739,6 +740,8 @@ llvm::CallInst *BasicBlockLifter::ControlFlowCallBasicBlockFunction(
   std::transform(caller->arg_begin(), caller->arg_end(),
                  std::back_inserter(args),
                  [](llvm::Argument &arg) -> llvm::Value * { return &arg; });
+
+  args[remill::kMemoryPointerArgNum] = memory_pointer;
 
   auto retval = builder.CreateCall(bb_func, args);
   retval->setTailCall(true);
