@@ -247,13 +247,17 @@ size_t SpecBlockContext::GetMaxStackSize() const {
 
 
 SpecBlockContext::SpecBlockContext(
-    const FunctionDecl &decl, SpecStackOffsets offsets,
-    std::vector<ConstantDomain> constants,
+    const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+    SpecStackOffsets offsets_at_exit,
+    std::vector<ConstantDomain> constants_at_entry,
+    std::vector<ConstantDomain> constants_at_exit,
     std::vector<ParameterDecl> live_params_at_entry,
     std::vector<ParameterDecl> live_params_at_exit)
     : decl(decl),
-      offsets(std::move(offsets)),
-      constants(std::move(constants)),
+      offsets_at_entry(std::move(offsets_at_entry)),
+      offsets_at_exit(std::move(offsets_at_exit)),
+      constants_at_entry(std::move(constants_at_entry)),
+      constants_at_exit(std::move(constants_at_exit)),
       live_params_at_entry(std::move(live_params_at_entry)),
       live_params_at_exit(std::move(live_params_at_exit)),
       params(decl.in_scope_variables) {}
@@ -270,12 +274,22 @@ const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtEntry() const {
   return this->live_params_at_entry;
 }
 
-const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
-  return this->offsets;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtEntry() const {
+  return this->offsets_at_entry;
 }
 
-const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
-  return this->constants;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtExit() const {
+  return this->offsets_at_exit;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtEntry() const {
+  return this->constants_at_entry;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtExit() const {
+  return this->constants_at_exit;
 }
 
 const std::vector<ParameterDecl> &SpecBlockContext::GetParams() const {
@@ -454,8 +468,12 @@ size_t FunctionDecl::GetPointerDisplacement() const {
 
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
-      *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
-      GetWithDef(addr, this->constant_values, std::vector<ConstantDomain>()),
+      *this, GetWithDef(addr, this->stack_offsets_at_entry, SpecStackOffsets()),
+      GetWithDef(addr, this->stack_offsets_at_exit, SpecStackOffsets()),
+      GetWithDef(addr, this->constant_values_at_entry,
+                 std::vector<ConstantDomain>()),
+      GetWithDef(addr, this->constant_values_at_exit,
+                 std::vector<ConstantDomain>()),
       GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }

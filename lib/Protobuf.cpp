@@ -622,10 +622,11 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
 
   for (auto &[blk_addr, ctx] : obj.block_context()) {
-    std::vector<OffsetDomain> stack_offsets;
-    std::vector<ConstantDomain> constant_values;
+    std::vector<OffsetDomain> stack_offsets_at_entry, stack_offsets_at_exit;
+    std::vector<ConstantDomain> constant_values_at_entry,
+        constant_values_at_exit;
     auto blk = decl.cfg[blk_addr];
-    for (auto &symval : ctx.symvals()) {
+    for (auto &symval : ctx.symvals_at_entry()) {
       if (!symval.has_target_value()) {
         LOG(FATAL) << "All equalities must have a target";
       }
@@ -656,7 +657,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         reg_off.stack_offset = symval.curr_val().stack_disp();
         reg_off.target_value = target_vdecl.TakeValue();
 
-        stack_offsets.push_back(reg_off);
+        stack_offsets_at_entry.push_back(reg_off);
       } else if (symval.curr_val().has_constant()) {
         ConstantDomain const_val;
 
@@ -668,16 +669,71 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         DLOG(INFO) << "Adding global register override for "
                    << const_val.target_value.oredered_locs[0].reg->name << " "
                    << std::hex << const_val.value;
-        constant_values.push_back(const_val);
+        constant_values_at_entry.push_back(const_val);
       } else {
         LOG(FATAL) << symval.curr_val().GetTypeName()
                    << " is unimplemented for affine relations";
       }
     }
 
-    SpecStackOffsets off = {stack_offsets};
-    decl.stack_offsets.emplace(blk_addr, std::move(off));
-    decl.constant_values.emplace(blk_addr, std::move(constant_values));
+    for (auto &symval : ctx.symvals_at_exit()) {
+      if (!symval.has_target_value()) {
+        LOG(FATAL) << "All equalities must have a target";
+      }
+
+      auto stackptr = arch->RegisterByName(arch->StackPointerRegisterName());
+      if (!stackptr) {
+        LOG(FATAL) << "No stack ptr";
+      }
+
+      auto stackptr_type_spec = SizeToType(stackptr->size * 8);
+
+      auto target_vdecl =
+          DecodeValueDecl(symval.target_value().values(), stackptr_type_spec,
+                          "Unable to get value decl for stack offset relation");
+
+      if (!target_vdecl.Succeeded()) {
+        LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
+        continue;
+      }
+
+      if (!symval.has_curr_val()) {
+        LOG(FATAL) << "Mapping should have current value";
+      }
+
+      if (symval.curr_val().has_stack_disp()) {
+        OffsetDomain reg_off;
+
+        reg_off.stack_offset = symval.curr_val().stack_disp();
+        reg_off.target_value = target_vdecl.TakeValue();
+
+        stack_offsets_at_exit.push_back(reg_off);
+      } else if (symval.curr_val().has_constant()) {
+        ConstantDomain const_val;
+
+        const_val.target_value = target_vdecl.TakeValue();
+        const_val.value = symval.curr_val().constant().value();
+        const_val.should_taint_by_pc =
+            symval.curr_val().constant().is_tainted_by_pc();
+
+        DLOG(INFO) << "Adding global register override for "
+                   << const_val.target_value.oredered_locs[0].reg->name << " "
+                   << std::hex << const_val.value;
+        constant_values_at_exit.push_back(const_val);
+      } else {
+        LOG(FATAL) << symval.curr_val().GetTypeName()
+                   << " is unimplemented for affine relations";
+      }
+    }
+
+    SpecStackOffsets off_entry = {stack_offsets_at_entry};
+    SpecStackOffsets off_exit = {stack_offsets_at_exit};
+    decl.stack_offsets_at_entry.emplace(blk_addr, std::move(off_entry));
+    decl.stack_offsets_at_exit.emplace(blk_addr, std::move(off_exit));
+    decl.constant_values_at_entry.emplace(blk_addr,
+                                          std::move(constant_values_at_entry));
+    decl.constant_values_at_exit.emplace(blk_addr,
+                                         std::move(constant_values_at_exit));
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());
