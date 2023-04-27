@@ -33,10 +33,12 @@
 #include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Endian.h>
+#include <llvm/Transforms/Scalar/SROA.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -992,5 +994,12 @@ bool HasRegLoc(const ValueDecl &v) {
                      [](const LowLoc &loc) -> bool { return loc.reg; });
 }
 
+void AddCFGModifyingSROAPass(llvm::FunctionPassManager &fpm) {
+#if LLVM_VERSION_NUMBER < LLVM_VERSION(16, 0)
+  fpm.addPass(llvm::SROAPass());
+#else
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+#endif
+}
 
 }  // namespace anvill

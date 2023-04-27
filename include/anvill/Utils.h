@@ -11,6 +11,7 @@
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/PassManager.h>
 #include <remill/Arch/Arch.h>
 
 #include <cstdint>
@@ -140,4 +141,7 @@ llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
 bool HasMemLoc(const ValueDecl &v);
 
 bool HasRegLoc(const ValueDecl &v);
+
+void AddCFGModifyingSROAPass(llvm::FunctionPassManager &fpm);
+
 }  // namespace anvill
