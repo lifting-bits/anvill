@@ -626,9 +626,9 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     std::vector<ConstantDomain> constant_values_at_entry,
         constant_values_at_exit;
     auto blk = decl.cfg[blk_addr];
-    auto symval_to_domain = [&](const specification::ValueMapping &symval,
-                                std::vector<OffsetDomain> &stack_offsets,
-                                std::vector<ConstantDomain> &constant_values) {
+    auto symval_to_domains = [&](const specification::ValueMapping &symval,
+                                 std::vector<OffsetDomain> &stack_offsets,
+                                 std::vector<ConstantDomain> &constant_values) {
       if (!symval.has_target_value()) {
         LOG(FATAL) << "All equalities must have a target";
       }
@@ -679,22 +679,16 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     };
 
     for (auto &symval : ctx.symvals_at_entry()) {
-      symval_to_domain(symval, stack_offsets_at_entry,
-                       constant_values_at_entry);
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_entry[blk_addr].affine_equalities,
+                        decl.constant_values_at_entry[blk_addr]);
     }
 
     for (auto &symval : ctx.symvals_at_exit()) {
-      symval_to_domain(symval, stack_offsets_at_exit, constant_values_at_exit);
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_exit[blk_addr].affine_equalities,
+                        decl.constant_values_at_exit[blk_addr]);
     }
-
-    SpecStackOffsets off_entry = {stack_offsets_at_entry};
-    SpecStackOffsets off_exit = {stack_offsets_at_exit};
-    decl.stack_offsets_at_entry.emplace(blk_addr, std::move(off_entry));
-    decl.stack_offsets_at_exit.emplace(blk_addr, std::move(off_exit));
-    decl.constant_values_at_entry.emplace(blk_addr,
-                                          std::move(constant_values_at_entry));
-    decl.constant_values_at_exit.emplace(blk_addr,
-                                         std::move(constant_values_at_exit));
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());
