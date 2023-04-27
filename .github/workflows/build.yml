@@ -52,7 +52,7 @@ jobs:
       matrix:
         image:
           - { name: "ubuntu", tag: "20.04" }
-        llvm: ["15"]
+        llvm: ["15", "16"]
         cxxcommon_version: ["v0.2.22"]
 
     runs-on:
@@ -419,7 +419,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["macos-11"]
-        llvm: ["15"]
+        llvm: ["15", "16"]
         cxxcommon_version: ["v0.2.22"]
 
     runs-on: macos-12
@@ -760,7 +760,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["15"]
+        llvm: ["15", "16"]
         ubuntu: ["20.04"]
     steps:
       - uses: actions/checkout@v3
