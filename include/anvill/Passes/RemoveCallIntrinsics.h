@@ -21,13 +21,16 @@ class RemoveCallIntrinsics final
   const CrossReferenceResolver &xref_resolver;
   const Specification &spec;
   const EntityLifter &lifter;
+  const std::optional<unsigned> pc_metadata_id;
 
  public:
   RemoveCallIntrinsics(const CrossReferenceResolver &xref_resolver,
-                       const Specification &spec, const EntityLifter &lifter)
+                       const Specification &spec, const EntityLifter &lifter,
+                       std::optional<unsigned> pc_metadata_id)
       : xref_resolver(xref_resolver),
         spec(spec),
-        lifter(lifter) {}
+        lifter(lifter),
+        pc_metadata_id(pc_metadata_id) {}
 
   llvm::PreservedAnalyses runOnIntrinsic(llvm::CallInst *indirectJump,
                                          llvm::FunctionAnalysisManager &am,

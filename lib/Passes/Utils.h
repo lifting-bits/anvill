@@ -78,6 +78,9 @@ llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module);
 
 llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *module);
 
+// Get the annotation for the program counter `pc`.
+llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc);
+
 std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func);
 
 }  // namespace anvill

@@ -277,7 +277,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
 
   fpm.addPass(llvm::VerifierPass());
-  fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
+  fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter, pc_metadata_id));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass());
   fpm.addPass(llvm::VerifierPass());
@@ -375,7 +375,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
     pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3)
         .run(module, mam);
   }
-
 
   // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();

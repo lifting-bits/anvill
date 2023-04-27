@@ -22,20 +22,7 @@
 #include "Utils.h"
 
 namespace anvill {
-namespace {
-
-// Get the annotation for the program counter `pc`.
-static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
-  auto &dl = module->getDataLayout();
-  auto &context = module->getContext();
-  auto address_type =
-      llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
-  auto pc_val = llvm::ConstantInt::get(address_type, pc);
-  auto pc_md = llvm::ValueAsMetadata::get(pc_val);
-  return llvm::MDNode::get(context, pc_md);
-}
-
-}  // namespace
+namespace {}  // namespace
 
 llvm::PreservedAnalyses
 ConvertAddressesToEntityUses::run(llvm::Function &function,

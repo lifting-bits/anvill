@@ -1,6 +1,7 @@
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <glog/logging.h>
+#include <llvm/IR/GlobalObject.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
@@ -8,6 +9,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <remill/BC/Util.h>
 
+#include "Utils.h"
 #include "anvill/Utils.h"
 
 namespace anvill {
@@ -31,7 +33,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
   auto target_func = remillFunctionCall->getArgOperand(1);
   auto state_ptr = remillFunctionCall->getArgOperand(0);
   auto mem_ptr = remillFunctionCall->getArgOperand(2);
-
+  auto module = remillFunctionCall->getFunction()->getParent();
   CrossReferenceFolder xref_folder(
       this->xref_resolver,
       remillFunctionCall->getFunction()->getParent()->getDataLayout());
@@ -47,6 +49,13 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
     auto fdecl = spec.FunctionAt(ra.u.address);
     auto entity = this->xref_resolver.EntityAtAddress(ra.u.address);
     if (fdecl && entity) {
+      if (pc_metadata_id) {
+        if (auto obj = llvm::dyn_cast<llvm::GlobalObject>(entity)) {
+          obj->setMetadata(*pc_metadata_id,
+                           GetPCAnnotation(module, ra.u.address));
+        }
+      }
+
       llvm::IRBuilder<> ir(remillFunctionCall->getParent());
       ir.SetInsertPoint(remillFunctionCall);
 

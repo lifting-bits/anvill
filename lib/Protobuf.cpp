@@ -77,7 +77,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
       return {ss.str()};
     }
 
-    auto type_spec = type_spec_result.Value();
+    auto type_spec = type_spec_result.TakeValue();
     auto type_result = type_translator.DecodeFromSpec(type_spec);
     if (!type_result.Succeeded()) {
       std::string spec;
@@ -101,7 +101,6 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     }
 
     decl.spec_type = std::get<std::shared_ptr<FunctionType>>(type_spec);
-
     if (decl.is_variadic != func_type->isVarArg()) {
       std::string spec;
       function.SerializeToString(&spec);
@@ -526,7 +525,6 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!parse_res.Succeeded()) {
     return parse_res.TakeError();
   }
-
 
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
