@@ -504,17 +504,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
-  std::vector<ConstantDomain> remaining;
-  std::copy_if(
-      block_context->GetConstantsAtEntry().begin(),
-      block_context->GetConstantsAtEntry().end(), std::back_inserter(remaining),
-      [&](auto &c) {
-        return std::find(this->block_context->GetConstantsAtExit().begin(),
-                         this->block_context->GetConstantsAtExit().end(),
-                         c) == this->block_context->GetConstantsAtExit().end();
-      });
-
-  for (auto &reg_const : remaining) {
+  for (auto &reg_const : block_context->GetConstantsAtEntry()) {
     llvm::Value *new_value = nullptr;
     llvm::Type *target_type = reg_const.target_value.type;
     if (reg_const.should_taint_by_pc) {

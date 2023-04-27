@@ -162,7 +162,29 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
   std::vector<BasicBlockVariable> res;
   std::copy_if(
       alllive.begin(), alllive.end(), std::back_inserter(res),
-      [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
+      [&](const BasicBlockVariable &bbvar) {
+        if (!bbvar.live_at_exit) {
+          return false;
+        }
+        auto &consts_at_exit = GetConstantsAtExit();
+        if (std::find_if(consts_at_exit.begin(), consts_at_exit.end(),
+                         [&](const ConstantDomain &cdomain) {
+                           return cdomain.target_value == bbvar.param;
+                         }) != consts_at_exit.end()) {
+          return false;
+        }
+
+        auto &offset_at_exit = GetStackOffsetsAtExit();
+        if (std::find_if(offset_at_exit.affine_equalities.begin(),
+                         offset_at_exit.affine_equalities.end(),
+                         [&](const OffsetDomain &odomain) {
+                           return odomain.target_value == bbvar.param;
+                         }) != offset_at_exit.affine_equalities.end()) {
+          return false;
+        }
+
+        return true;
+      });
   return res;
 }
 
