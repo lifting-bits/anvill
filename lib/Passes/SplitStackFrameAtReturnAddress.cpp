@@ -562,8 +562,8 @@ static void SplitStackFrameAround(llvm::AllocaInst *frame_alloca,
   }
 
   if (!below.empty()) {
-    auto frame_size =
-        dl.getTypeAllocSize(frame_alloca->getAllocatedType()).getKnownMinSize();
+    auto frame_size = dl.getTypeAllocSize(frame_alloca->getAllocatedType())
+                          .getKnownMinValue();
     auto num_slots = ((frame_size - end_of_ra) + (addr_size - 1u)) / addr_size;
     make_subframe(std::move(below), "locals", "parameters", num_slots);
   }
