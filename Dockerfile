@@ -32,7 +32,7 @@ ARG CXX_COMMON_VERSION
 ARG LIBRARIES
 
 RUN apt-get update && \
-    apt-get install -qqy xz-utils python3 make rpm && \
+    apt-get install -qqy xz-utils python3 python3.10-venv make rpm && \
     rm -rf /var/lib/apt/lists/*
 
 # Build dependencies
