@@ -484,7 +484,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
 
-  auto stack_offsets = this->block_context->GetStackOffsets();
+  auto stack_offsets = this->block_context->GetStackOffsetsAtEntry();
   for (auto &reg_off : stack_offsets.affine_equalities) {
     auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
         ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
@@ -504,7 +504,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
-  for (auto &reg_const : this->block_context->GetConstants()) {
+  for (auto &reg_const : block_context->GetConstantsAtEntry()) {
     llvm::Value *new_value = nullptr;
     llvm::Type *target_type = reg_const.target_value.type;
     if (reg_const.should_taint_by_pc) {
