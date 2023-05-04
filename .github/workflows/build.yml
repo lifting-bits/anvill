@@ -166,10 +166,10 @@ jobs:
           echo ~/.cargo/bin >>$GITHUB_PATH
 
       - name: "Setup Ghidra"
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
         run: |
-          wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.1.5_build/ghidra_10.1.5_PUBLIC_20220726.zip --output-document=ghidra.zip
-          unzip ghidra.zip
-          echo "GHIDRA_INSTALL_DIR=$(pwd)/ghidra_10.1.5_PUBLIC" >> $GITHUB_ENV
+          just install-ghidra
+          echo "GHIDRA_INSTALL_DIR=$(pwd)/deps/ghidra" >> $GITHUB_ENV
 
       - name: Install Ghidra Spec Generation
         shell: bash
