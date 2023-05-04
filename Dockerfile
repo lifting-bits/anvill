@@ -1,6 +1,6 @@
 ARG LLVM_VERSION=15
 ARG ARCH=amd64
-ARG UBUNTU_VERSION=20.04
+ARG UBUNTU_VERSION=22.04
 ARG CXX_COMMON_VERSION=0.2.16
 ARG DISTRO_BASE=ubuntu${UBUNTU_VERSION}
 ARG BUILD_BASE=ubuntu:${UBUNTU_VERSION}
@@ -15,7 +15,7 @@ ARG LLVM_VERSION
 ARG CXX_COMMON_VERSION
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install -qqy --no-install-recommends git libdbus-1-3 curl unzip python3 python3-pip python3.8 python3.8-venv python3-setuptools xz-utils cmake && \
+    apt-get install -qqy --no-install-recommends git libdbus-1-3 curl unzip python3 python3-pip python3-setuptools xz-utils cmake && \
     rm -rf /var/lib/apt/lists/*
 
 #### NOTE ####
@@ -32,7 +32,7 @@ ARG CXX_COMMON_VERSION
 ARG LIBRARIES
 
 RUN apt-get update && \
-    apt-get install -qqy xz-utils python3.8-venv make rpm && \
+    apt-get install -qqy xz-utils python3 make rpm && \
     rm -rf /var/lib/apt/lists/*
 
 # Build dependencies
@@ -59,7 +59,7 @@ ENV VIRTUAL_ENV=/opt/trailofbits/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # create a virtualenv in /opt/trailofbits/venv
-RUN python3.8 -m venv ${VIRTUAL_ENV}
+RUN python3 -m venv ${VIRTUAL_ENV}
 
 # Needed for sourcing venv
 SHELL ["/bin/bash", "-c"]
