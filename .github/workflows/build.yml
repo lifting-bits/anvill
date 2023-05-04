@@ -53,7 +53,7 @@ jobs:
         image:
           - { name: "ubuntu", tag: "22.04" }
         llvm: ["15"]
-        cxxcommon_version: ["v0.2.22"]
+        cxxcommon_version: ["v0.2.24"]
 
     runs-on:
       labels: gha-ubuntu-32
@@ -420,7 +420,7 @@ jobs:
       matrix:
         os: ["macos-11"]
         llvm: ["15"]
-        cxxcommon_version: ["v0.2.22"]
+        cxxcommon_version: ["v0.2.24"]
 
     runs-on: macos-12
 
