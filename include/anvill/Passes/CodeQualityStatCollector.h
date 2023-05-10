@@ -7,8 +7,8 @@ namespace anvill {
 class CodeQualityStatCollector
     : public llvm::PassInfoMixin<CodeQualityStatCollector> {
  public:
-  llvm::PreservedAnalyses run(llvm::Function &function,
-                              llvm::FunctionAnalysisManager &analysisManager);
+  llvm::PreservedAnalyses run(llvm::Module &module,
+                              llvm::ModuleAnalysisManager &analysisManager);
 
   static llvm::StringRef name(void);
 };

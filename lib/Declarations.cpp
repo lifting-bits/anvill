@@ -31,6 +31,7 @@
 #include <remill/BC/Util.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <unordered_map>
@@ -41,31 +42,16 @@
 #include "Protobuf.h"
 #include "anvill/Specification.h"
 
-
-namespace {
-// A value decl without a type, we assume a parameter occupying a location occupies the entire location
-// or that offsets are disjoin, this isnt completely correct if we start doing better stack liveness TODO(Ian)
-// We would need to check offset+size overlaps
-struct LocBase {
-  const remill::Register *reg_loc{nullptr};
-  const remill::Register *mem_base{nullptr};
-  std::int64_t offset{0};
-
-  bool operator==(const LocBase &lbase) const {
-    return reg_loc == lbase.reg_loc && mem_base == lbase.mem_base &&
-           lbase.offset == offset;
-  }
-};
-}  // namespace
-
-
 namespace std {
 template <>
-struct std::hash<LocBase> {
-  std::size_t operator()(const LocBase &c) const {
+struct std::hash<anvill::LowLoc> {
+  std::size_t operator()(const anvill::LowLoc &c) const {
     std::size_t result = 0;
 
-
+    hash_combine(result, c.mem_reg);
+    hash_combine(result, c.mem_offset);
+    hash_combine(result, c.reg);
+    hash_combine(result, c.size);
     return result;
   }
 };
@@ -97,6 +83,14 @@ void FunctionDecl::AddBBContexts(
   }
 }
 
+std::uint64_t LowLoc::Size() const {
+  if (this->size) {
+    return *this->size;
+  } else {
+    return this->reg->size;
+  }
+}
+
 
 // need to be careful here about overlapping values
 std::vector<BasicBlockVariable>
@@ -105,42 +99,48 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
   auto live_entries = this->LiveParamsAtEntry();
 
 
-  auto convert_to_locbas = [](const ParameterDecl &param) -> LocBase {
-    return {param.reg, param.mem_reg, param.mem_offset};
+  auto add_to_set = [](const std::vector<ParameterDecl> &params,
+                       std::unordered_set<LowLoc> &locs_to_add) {
+    for (const auto &p : params) {
+      std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
+                std::inserter(locs_to_add, locs_to_add.end()));
+    }
   };
 
-  auto add_to_set = [convert_to_locbas](
-                        const std::vector<ParameterDecl> &params,
-                        std::unordered_set<LocBase> &locs_to_add) {
-    std::transform(params.begin(), params.end(),
-                   std::inserter(locs_to_add, locs_to_add.end()),
-                   convert_to_locbas);
-  };
-
-  std::unordered_set<LocBase> covered_live_ent;
+  std::unordered_set<LowLoc> covered_live_ent;
   add_to_set(live_entries, covered_live_ent);
-  std::unordered_set<LocBase> covered_live_exit;
+  std::unordered_set<LowLoc> covered_live_exit;
   add_to_set(live_exits, covered_live_exit);
 
   std::vector<BasicBlockVariable> res;
-  std::unordered_set<LocBase> covered;
-  auto add_all_from_vector = [&res, &covered, &covered_live_ent,
-                              &covered_live_exit, convert_to_locbas](
-                                 std::vector<ParameterDecl> params) {
-    for (auto p : params) {
-      auto lbase = convert_to_locbas(p);
-      auto live_at_ent = covered_live_ent.find(lbase) != covered_live_ent.end();
-      auto live_at_exit =
-          covered_live_exit.find(lbase) != covered_live_exit.end();
-      CHECK(covered.find(lbase) == covered.end() ||
-            (live_at_ent && live_at_exit));
-      if (covered.find(lbase) == covered.end()) {
-        covered.insert(lbase);
-        auto ind = res.size();
-        res.push_back({p, ind, live_at_ent, live_at_exit});
-      }
-    }
-  };
+  std::unordered_set<LowLoc> covered;
+  auto add_all_from_vector =
+      [&res, &covered, &covered_live_ent,
+       &covered_live_exit](std::vector<ParameterDecl> params) {
+        for (auto p : params) {
+          auto completely_covered =
+              std::all_of(p.oredered_locs.begin(), p.oredered_locs.end(),
+                          [&covered](const LowLoc &loc) -> bool {
+                            return covered.find(loc) != covered.end();
+                          });
+          auto live_at_ent = std::any_of(
+              p.oredered_locs.begin(), p.oredered_locs.end(),
+              [&covered_live_ent](const LowLoc &loc) -> bool {
+                return covered_live_ent.find(loc) != covered_live_ent.end();
+              });
+          auto live_at_exit = std::any_of(
+              p.oredered_locs.begin(), p.oredered_locs.end(),
+              [&covered_live_exit](const LowLoc &loc) -> bool {
+                return covered_live_exit.find(loc) != covered_live_exit.end();
+              });
+
+          if (!completely_covered) {
+            std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
+                      std::inserter(covered, covered.end()));
+            res.push_back({p, live_at_ent, live_at_exit});
+          }
+        }
+      };
 
   add_all_from_vector(live_entries);
   add_all_from_vector(live_exits);
@@ -162,22 +162,30 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
   std::vector<BasicBlockVariable> res;
   std::copy_if(
       alllive.begin(), alllive.end(), std::back_inserter(res),
-      [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
+      [&](const BasicBlockVariable &bbvar) {
+        if (!bbvar.live_at_exit) {
+          return false;
+        }
+        auto &consts_at_exit = GetConstantsAtExit();
+        if (std::find_if(consts_at_exit.begin(), consts_at_exit.end(),
+                         [&](const ConstantDomain &cdomain) {
+                           return cdomain.target_value == bbvar.param;
+                         }) != consts_at_exit.end()) {
+          return false;
+        }
+
+        auto &offset_at_exit = GetStackOffsetsAtExit();
+        if (std::find_if(offset_at_exit.affine_equalities.begin(),
+                         offset_at_exit.affine_equalities.end(),
+                         [&](const OffsetDomain &odomain) {
+                           return odomain.target_value == bbvar.param;
+                         }) != offset_at_exit.affine_equalities.end()) {
+          return false;
+        }
+
+        return true;
+      });
   return res;
-}
-
-llvm::StructType *
-BasicBlockContext::StructTypeFromVars(llvm::LLVMContext &llvm_context) const {
-  std::vector<BasicBlockVariable> in_scope_locals =
-      this->LiveParamsAtEntryAndExit();
-  std::vector<llvm::Type *> field_types;
-  std::transform(
-      in_scope_locals.begin(), in_scope_locals.end(),
-      std::back_inserter(field_types),
-      [](const BasicBlockVariable &param) { return param.param.type; });
-
-  return llvm::StructType::get(llvm_context, field_types,
-                               "sty_for_basic_block_function");
 }
 
 // Declare this function in an LLVM module.
@@ -221,7 +229,29 @@ FunctionDecl::DeclareInModule(std::string_view name,
   return func;
 }
 
-const std::vector<ValueDecl> &SpecBlockContext::ReturnValue() const {
+size_t BasicBlockContext::GetParamIndex(const ParameterDecl &decl) const {
+  auto stack_var = std::find(GetParams().begin(), GetParams().end(), decl);
+  CHECK(stack_var != GetParams().end());
+  return stack_var - GetParams().begin();
+}
+
+llvm::Value *BasicBlockContext::ProvidePointerFromStruct(
+    llvm::IRBuilder<> &ir, llvm::StructType *sty, llvm::Value *target_sty,
+    const ParameterDecl &decl) const {
+  auto i32 = llvm::IntegerType::get(ir.getContext(), 32);
+  auto index = GetParamIndex(decl);
+  auto ptr = ir.CreateGEP(
+      sty, target_sty,
+      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
+  return ptr;
+}
+
+llvm::Argument *BasicBlockContext::ProvidePointerFromFunctionArgs(
+    llvm::Function *func, const ParameterDecl &param) const {
+  return func->getArg(GetParamIndex(param) + remill::kNumBlockArgs);
+}
+
+ValueDecl SpecBlockContext::ReturnValue() const {
   return this->decl.returns;
 }
 
@@ -239,15 +269,20 @@ size_t SpecBlockContext::GetMaxStackSize() const {
 
 
 SpecBlockContext::SpecBlockContext(
-    const FunctionDecl &decl, SpecStackOffsets offsets,
-    std::vector<ConstantDomain> constants,
+    const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+    SpecStackOffsets offsets_at_exit,
+    std::vector<ConstantDomain> constants_at_entry,
+    std::vector<ConstantDomain> constants_at_exit,
     std::vector<ParameterDecl> live_params_at_entry,
     std::vector<ParameterDecl> live_params_at_exit)
     : decl(decl),
-      offsets(std::move(offsets)),
-      constants(std::move(constants)),
+      offsets_at_entry(std::move(offsets_at_entry)),
+      offsets_at_exit(std::move(offsets_at_exit)),
+      constants_at_entry(std::move(constants_at_entry)),
+      constants_at_exit(std::move(constants_at_exit)),
       live_params_at_entry(std::move(live_params_at_entry)),
-      live_params_at_exit(std::move(live_params_at_exit)) {}
+      live_params_at_exit(std::move(live_params_at_exit)),
+      params(decl.in_scope_variables) {}
 
 size_t SpecBlockContext::GetPointerDisplacement() const {
   return this->decl.GetPointerDisplacement();
@@ -261,12 +296,26 @@ const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtEntry() const {
   return this->live_params_at_entry;
 }
 
-const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
-  return this->offsets;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtEntry() const {
+  return this->offsets_at_entry;
 }
 
-const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
-  return this->constants;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtExit() const {
+  return this->offsets_at_exit;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtEntry() const {
+  return this->constants_at_entry;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtExit() const {
+  return this->constants_at_exit;
+}
+
+const std::vector<ParameterDecl> &SpecBlockContext::GetParams() const {
+  return this->params;
 }
 
 // Interpret `target` as being the function to call, and call it from within
@@ -306,14 +355,14 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   llvm::SmallVector<llvm::Value *, 4> param_vals;
 
   // Get the return address.
-  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, ir,
-                                  state_ptr, mem_ptr);
+  auto ret_addr = LoadLiftedValue(return_address, types, intrinsics, this->arch,
+                                  ir, state_ptr, mem_ptr);
   CHECK(ret_addr && !llvm::isa_and_nonnull<llvm::UndefValue>(ret_addr));
 
   // Get the parameters.
   for (const auto &param_decl : params) {
-    const auto val =
-        LoadLiftedValue(param_decl, types, intrinsics, ir, state_ptr, mem_ptr);
+    const auto val = LoadLiftedValue(param_decl, types, intrinsics, this->arch,
+                                     ir, state_ptr, mem_ptr);
     if (auto inst_val = llvm::dyn_cast<llvm::Instruction>(val)) {
       inst_val->setName(param_decl.name);
     }
@@ -333,25 +382,10 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
     ret_val->setDoesNotReturn();
   }
 
-  // There is a single return value, store it to the lifted state.
-  if (returns.size() == 1) {
-    auto call_ret = ret_val;
-
-    mem_ptr = StoreNativeValue(call_ret, returns.front(), types, intrinsics, ir,
+  auto call_ret = ret_val;
+  if (!call_ret->getType()->isVoidTy()) {
+    mem_ptr = StoreNativeValue(call_ret, this->returns, types, intrinsics, ir,
                                state_ptr, mem_ptr);
-
-    // There are possibly multiple return values (or zero). Unpack the
-    // return value (it will be a struct type) into its components and
-    // write each one out into the lifted state.
-  } else {
-    unsigned index = 0;
-    for (const auto &ret_decl : returns) {
-      unsigned indexes[] = {index};
-      auto elem_val = ir.CreateExtractValue(ret_val, indexes);
-      mem_ptr = StoreNativeValue(elem_val, ret_decl, types, intrinsics, ir,
-                                 state_ptr, mem_ptr);
-      index += 1;
-    }
   }
 
   // TODO(Ian): ... well ok so we already did stuff assuming the PC was one way since we lifted below it.
@@ -434,27 +468,9 @@ void CallableDecl::OverrideFunctionTypeWithABIParamLayout() {
 }
 
 void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
-  if (this->returns.size() < 1) {
-    return;
-  } else if (this->returns.size() == 1) {
-    // Override the return type with the type of the last return
-    auto new_func_type =
-        llvm::FunctionType::get(this->returns.front().type,
-                                this->type->params(), this->type->isVarArg());
-    this->type = new_func_type;
-  } else {
-    // Create a structure that has a field for each return
-    std::vector<llvm::Type *> elems;
-    for (const auto &ret : this->returns) {
-      elems.push_back(ret.type);
-    }
-
-    auto ret_type_struct = llvm::StructType::create(elems);
-
-    auto new_func_type = llvm::FunctionType::get(
-        ret_type_struct, this->type->params(), this->type->isVarArg());
-    this->type = new_func_type;
-  }
+  auto new_func_type = llvm::FunctionType::get(
+      this->returns.type, this->type->params(), this->type->isVarArg());
+  this->type = new_func_type;
 }
 
 namespace {
@@ -474,8 +490,12 @@ size_t FunctionDecl::GetPointerDisplacement() const {
 
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
-      *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
-      GetWithDef(addr, this->constant_values, std::vector<ConstantDomain>()),
+      *this, GetWithDef(addr, this->stack_offsets_at_entry, SpecStackOffsets()),
+      GetWithDef(addr, this->stack_offsets_at_exit, SpecStackOffsets()),
+      GetWithDef(addr, this->constant_values_at_entry,
+                 std::vector<ConstantDomain>()),
+      GetWithDef(addr, this->constant_values_at_exit,
+                 std::vector<ConstantDomain>()),
       GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }

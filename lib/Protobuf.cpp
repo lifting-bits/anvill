@@ -44,6 +44,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     CallableDecl &decl) const {
   decl.arch = arch;
   decl.is_noreturn = function.is_noreturn();
+
   decl.is_variadic = function.is_variadic();
   decl.calling_convention =
       static_cast<llvm::CallingConv::ID>(function.calling_convention());
@@ -159,8 +160,15 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     // Get the return address location.
     if (function.has_return_address()) {
       auto ret_addr = function.return_address();
-      auto maybe_ret = DecodeValue(ret_addr, SizeToType(arch->address_size),
-                                   "return address");
+      auto maybe_low_loc_ret_addr = DecodeLowLoc(ret_addr, "return address");
+      if (!maybe_low_loc_ret_addr.Succeeded()) {
+        return maybe_low_loc_ret_addr.TakeError();
+      }
+
+      std::vector<LowLoc> low_loc_ret_addr = {
+          maybe_low_loc_ret_addr.TakeValue()};
+      auto maybe_ret = ValueDeclFromOrderedLowLoc(
+          low_loc_ret_addr, SizeToType(arch->address_size), "return address");
       if (!maybe_ret.Succeeded()) {
         auto err = maybe_ret.TakeError();
         std::stringstream ss;
@@ -217,41 +225,26 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     }
 
     i = 0u;
-    for (const ::specification::Value &ret : function.return_().values()) {
-      auto maybe_ret = DecodeValue(ret, maybe_ret_type.Value(), "return value");
-      if (maybe_ret.Succeeded()) {
-        decl.returns.emplace_back(maybe_ret.Value());
-      } else {
-        auto err = maybe_ret.TakeError();
-        std::stringstream ss;
-        ss << "Could not decode " << i << "th return value in function at "
-           << address_str << ": " << err;
-        return {ss.str()};
-      }
-      ++i;
+
+
+    auto maybe_ret =
+        DecodeValueDecl(function.return_().values(), maybe_ret_type.TakeValue(),
+                        "return value");
+    if (!maybe_ret.Succeeded()) {
+      auto err = maybe_ret.TakeError();
+      std::stringstream ss;
+      ss << "Could not decode " << i << "th return value in function at "
+         << address_str << ": " << err;
+      return {ss.str()};
     }
+    decl.returns = maybe_ret.TakeValue();
+
 
     // Figure out the return type of this function based off the return
     // values.
-    llvm::Type *ret_type = nullptr;
-    if (decl.returns.empty()) {
+    llvm::Type *ret_type = ret_type = decl.returns.type;
+    if (decl.returns.oredered_locs.empty()) {
       ret_type = llvm::Type::getVoidTy(context);
-
-    } else if (decl.returns.size() == 1) {
-      ret_type = decl.returns[0].type;
-
-      // The multiple return value case is most interesting, and somewhere
-      // where we see some divergence between C and what we will decompile.
-      // For example, on 32-bit x86, a 64-bit return value might be spread
-      // across EAX:EDX. Instead of representing this by a single value, we
-      // represent it as a structure if two 32-bit ints, and make sure to say
-      // that one part is in EAX, and the other is in EDX.
-    } else {
-      llvm::SmallVector<llvm::Type *, 8> ret_types;
-      for (auto &ret_val : decl.returns) {
-        ret_types.push_back(ret_val.type);
-      }
-      ret_type = llvm::StructType::get(context, ret_types, false);
     }
 
     llvm::SmallVector<llvm::Type *, 8> param_types;
@@ -277,34 +270,37 @@ ProtobufTranslator::ProtobufTranslator(
           type_translator.Dictionary().u.named.void_, context)),
       type_map(type_map) {}
 
-// Decode the location of a value. This applies to both parameters and
-// return values.
-anvill::Result<ValueDecl, std::string>
-ProtobufTranslator::DecodeValue(const ::specification::Value &value,
-                                TypeSpec type, const char *desc) const {
-  ValueDecl decl;
 
+anvill::Result<LowLoc, std::string>
+ProtobufTranslator::DecodeLowLoc(const ::specification::Value &value,
+                                 const char *desc) const {
+  LowLoc loc;
   if (value.has_reg()) {
     auto &reg = value.reg();
-    decl.reg = arch->RegisterByName(reg.register_name());
-    if (!decl.reg) {
+    loc.reg = arch->RegisterByName(reg.register_name());
+    if (!loc.reg) {
       std::stringstream ss;
       ss << "Unable to locate register '" << reg.register_name()
          << "' used for storing " << desc;
       return ss.str();
     }
+    if (reg.has_subreg_sz()) {
+      loc.size = reg.subreg_sz();
+    }
+
   } else if (value.has_mem()) {
     auto &mem = value.mem();
     if (mem.has_base_reg()) {
-      decl.mem_reg = arch->RegisterByName(mem.base_reg());
-      if (!decl.mem_reg) {
+      loc.mem_reg = arch->RegisterByName(mem.base_reg());
+      if (!loc.mem_reg) {
         std::stringstream ss;
         ss << "Unable to locate base register '" << mem.base_reg()
            << "' used for storing " << desc;
         return ss.str();
       }
     }
-    decl.mem_offset = mem.offset();
+    loc.mem_offset = mem.offset();
+    loc.size = mem.size();
   } else {
     std::stringstream ss;
     ss << "A " << desc << " declaration must specify its location with "
@@ -312,6 +308,16 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
     return ss.str();
   }
 
+  return loc;
+}
+
+anvill::Result<ValueDecl, std::string>
+ProtobufTranslator::ValueDeclFromOrderedLowLoc(std::vector<LowLoc> loc,
+                                               TypeSpec type,
+                                               const char *desc) const {
+
+  ValueDecl decl;
+  decl.oredered_locs = std::move(loc);
   decl.spec_type = type;
   auto llvm_type = type_translator.DecodeFromSpec(decl.spec_type);
   if (!llvm_type.Succeeded()) {
@@ -325,6 +331,25 @@ ProtobufTranslator::DecodeValue(const ::specification::Value &value,
   return decl;
 }
 
+
+// Decode the location of a value. This applies to both parameters and
+// return values.
+anvill::Result<ValueDecl, std::string> ProtobufTranslator::DecodeValueDecl(
+    const ::google::protobuf::RepeatedPtrField<::specification::Value> &values,
+    TypeSpec type, const char *desc) const {
+  std::vector<LowLoc> locs;
+  for (const auto &val : values) {
+    auto loc = DecodeLowLoc(val, desc);
+    if (!loc.Succeeded()) {
+      return loc.TakeError();
+    }
+    locs.push_back(loc.TakeValue());
+  }
+
+  return ValueDeclFromOrderedLowLoc(std::move(locs), type, desc);
+}
+
+
 // Decode a parameter from the JSON spec. Parameters should have names,
 // as that makes the bitcode slightly easier to read, but names are
 // not required. They must have types, and these types should be mostly
@@ -337,12 +362,6 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
     return {"Parameter with no representation"};
   }
   auto &repr_var = param.repr_var();
-  if (repr_var.values_size() != 1) {
-    std::stringstream ss;
-    ss << "Unsupported number of values for parameter spec: "
-       << repr_var.values_size();
-    return ss.str();
-  }
 
   if (!repr_var.has_type()) {
     return {"Parameter without type spec"};
@@ -352,8 +371,8 @@ Result<ParameterDecl, std::string> ProtobufTranslator::DecodeParameter(
     return maybe_type.TakeError();
   }
 
-  auto &val = repr_var.values()[0];
-  auto maybe_decl = DecodeValue(val, maybe_type.Value(), "function parameter");
+  auto maybe_decl = DecodeValueDecl(repr_var.values(), maybe_type.Value(),
+                                    "function parameter");
   if (!maybe_decl.Succeeded()) {
     return maybe_decl.TakeError();
   }
@@ -521,6 +540,16 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 
   decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
+  for (auto &var : function.in_scope_vars()) {
+    auto maybe_res = DecodeParameter(var);
+    if (!maybe_res.Succeeded()) {
+      LOG(ERROR) << "Couldn't decode live variable: " << var.name()
+                 << " " + maybe_res.TakeError();
+    } else {
+      decl.in_scope_variables.push_back(maybe_res.TakeValue());
+    }
+  }
+
   if (decl.maximum_depth < decl.stack_depth) {
     LOG(ERROR)
         << "Analyzed max depth is smaller than the initial depth overriding";
@@ -542,20 +571,20 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   }
 
   for (auto &[name, local] : function.local_variables()) {
-    decl.locals[name].name = name;
     auto type_spec = DecodeType(local.type());
     if (!type_spec.Succeeded()) {
       return type_spec.Error();
     }
 
-    for (auto &value : local.values()) {
-      auto value_decl = DecodeValue(value, type_spec.Value(), "local variable");
-      if (!value_decl.Succeeded()) {
-        return value_decl.Error();
-      }
-      decl.locals[name].values.push_back(value_decl.Value());
+    auto value_decl =
+        DecodeValueDecl(local.values(), type_spec.Value(), "local variable");
+    if (!value_decl.Succeeded()) {
+      return value_decl.Error();
     }
+
+    decl.locals[name] = {value_decl.TakeValue(), name};
   }
+
 
   return decl;
 }
@@ -568,8 +597,6 @@ void ProtobufTranslator::AddLiveValuesToBB(
   auto &v = map.insert({bb_addr, std::vector<ParameterDecl>()}).first->second;
 
   for (auto var : values) {
-    LOG_IF(FATAL, var.repr_var().values_size() != 1)
-        << "Symbols must be represented by a single valuedecl.";
     auto param = DecodeParameter(var);
     if (!param.Succeeded()) {
       LOG(ERROR) << "Unable to decode live parameter " << param.TakeError();
@@ -595,10 +622,13 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
 
   for (auto &[blk_addr, ctx] : obj.block_context()) {
-    std::vector<OffsetDomain> stack_offsets;
-    std::vector<ConstantDomain> constant_values;
+    std::vector<OffsetDomain> stack_offsets_at_entry, stack_offsets_at_exit;
+    std::vector<ConstantDomain> constant_values_at_entry,
+        constant_values_at_exit;
     auto blk = decl.cfg[blk_addr];
-    for (auto &symval : ctx.symvals()) {
+    auto symval_to_domains = [&](const specification::ValueMapping &symval,
+                                 std::vector<OffsetDomain> &stack_offsets,
+                                 std::vector<ConstantDomain> &constant_values) {
       if (!symval.has_target_value()) {
         LOG(FATAL) << "All equalities must have a target";
       }
@@ -611,12 +641,12 @@ void ProtobufTranslator::ParseCFGIntoFunction(
       auto stackptr_type_spec = SizeToType(stackptr->size * 8);
 
       auto target_vdecl =
-          DecodeValue(symval.target_value().values()[0], stackptr_type_spec,
-                      "Unable to get value decl for stack offset relation");
+          DecodeValueDecl(symval.target_value().values(), stackptr_type_spec,
+                          "Unable to get value decl for stack offset relation");
 
       if (!target_vdecl.Succeeded()) {
         LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
-        continue;
+        return;
       }
 
       if (!symval.has_curr_val()) {
@@ -639,18 +669,26 @@ void ProtobufTranslator::ParseCFGIntoFunction(
             symval.curr_val().constant().is_tainted_by_pc();
 
         DLOG(INFO) << "Adding global register override for "
-                   << const_val.target_value.reg->name << " " << std::hex
-                   << const_val.value;
+                   << const_val.target_value.oredered_locs[0].reg->name << " "
+                   << std::hex << const_val.value;
         constant_values.push_back(const_val);
       } else {
         LOG(FATAL) << symval.curr_val().GetTypeName()
                    << " is unimplemented for affine relations";
       }
+    };
+
+    for (auto &symval : ctx.symvals_at_entry()) {
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_entry[blk_addr].affine_equalities,
+                        decl.constant_values_at_entry[blk_addr]);
     }
 
-    SpecStackOffsets off = {stack_offsets};
-    decl.stack_offsets.emplace(blk_addr, std::move(off));
-    decl.constant_values.emplace(blk_addr, std::move(constant_values));
+    for (auto &symval : ctx.symvals_at_exit()) {
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_exit[blk_addr].affine_equalities,
+                        decl.constant_values_at_exit[blk_addr]);
+    }
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());

@@ -78,4 +78,6 @@ llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module);
 
 llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *module);
 
+std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func);
+
 }  // namespace anvill

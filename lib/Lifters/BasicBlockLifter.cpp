@@ -8,6 +8,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -24,26 +25,19 @@
 #include <vector>
 
 #include "Lifters/CodeLifter.h"
+#include "Lifters/FunctionLifter.h"
 #include "anvill/Declarations.h"
 #include "anvill/Optimize.h"
 
 namespace anvill {
 
-CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlockFunction() && {
+void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
   CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
   CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
-
-  //bbfunc.func->dump();
-  //lifted_func->dump();
-  //LOG(FATAL) << "fdumps";
-
-
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
-
-  return CallableBasicBlockFunction(bbfunc.func, block_def, std::move(*this));
 }
 
 
@@ -176,15 +170,17 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
   // only handle inter-proc since intra-proc are handled implicitly by the CFG.
   llvm::IRBuilder<> builder(block);
   if (std::holds_alternative<anvill::Call>(override)) {
+
     auto cc = std::get<anvill::Call>(override);
 
+    llvm::CallInst *call = nullptr;
     if (cc.target_address.has_value()) {
-      this->AddCallFromBasicBlockFunctionToLifted(
+      call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics,
           this->options.program_counter_init_procedure(
               builder, this->address_type, *cc.target_address));
     } else {
-      this->AddCallFromBasicBlockFunctionToLifted(
+      call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics);
     }
     if (!cc.stop) {
@@ -194,13 +190,17 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
+      call->setDoesNotReturn();
+
       remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {
-    remill::AddTerminatingTailCall(block, intrinsics.function_return,
-                                   intrinsics);
-    return false;
+    auto func = block->getParent();
+    auto should_return = func->getArg(kShouldReturnArgNum);
+    builder.CreateStore(llvm::Constant::getAllOnesValue(
+                            llvm::IntegerType::getInt1Ty(llvm_context)),
+                        should_return);
   }
 
   return true;
@@ -350,7 +350,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
     llvm::IRBuilder<> builder(bb);
 
     builder.CreateStore(remill::LoadNextProgramCounter(bb, this->intrinsics),
-                        this->lifted_func->getArg(remill::kNumBlockArgs));
+                        this->lifted_func->getArg(kNextPCArgNum));
 
 
     llvm::ReturnInst::Create(
@@ -363,8 +363,9 @@ llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
 
-BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
-  std::string name_ = "basic_block_func" + std::to_string(this->block_def.addr);
+llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
+  std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
+                      std::to_string(this->block_def.addr);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
@@ -376,43 +377,45 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // pointer to state pointer
   params[remill::kStatePointerArgNum] = llvm::PointerType::get(context, 0);
 
-  //next_pc_out
-  params.push_back(llvm::PointerType::get(context, 0));
-
 
   for (size_t i = 0; i < this->var_struct_ty->getNumElements(); i++) {
     // pointer to each param
     params.push_back(llvm::PointerType::get(context, 0));
   }
 
-
-  llvm::FunctionType *func_type =
-      llvm::FunctionType::get(lifted_func_type->getReturnType(), params, false);
-
+  auto ret_type = this->block_context->ReturnValue();
+  llvm::FunctionType *func_type = llvm::FunctionType::get(
+      this->flifter.curr_decl->type->getReturnType(), params, false);
 
   llvm::StringRef name(name_.data(), name_.size());
-  auto func =
-      llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage, 0u,
-                             name, this->semantics_module);
+  return llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
+                                0u, name, this->semantics_module);
+}
 
+BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
+  auto func = bb_func;
   func->setMetadata(anvill::kBasicBlockMetadata,
                     GetBasicBlockAnnotation(this->block_def.addr));
 
-
-  auto start_ind = lifted_func_type->getNumParams() + 1;
-  for (auto v : this->block_context->LiveParamsAtEntryAndExit()) {
+  auto &context = this->semantics_module->getContext();
+  llvm::FunctionType *lifted_func_type =
+      llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
+          this->options.arch->LiftedFunctionType(), context));
+  auto start_ind = lifted_func_type->getNumParams();
+  for (auto var : decl.in_scope_variables) {
     auto arg = remill::NthArgument(func, start_ind);
-    if (!v.param.name.empty()) {
-      arg->setName(v.param.name);
+    if (!var.name.empty()) {
+      arg->setName(var.name);
     }
 
-    if (v.param.reg) {
-      // Registers should not have aliases
+    if (std::all_of(var.oredered_locs.begin(), var.oredered_locs.end(),
+                    [](const LowLoc &loc) -> bool { return loc.reg; })) {
+      // Registers should not have aliases, or be captured
       arg->addAttr(llvm::Attribute::get(llvm_context,
                                         llvm::Attribute::AttrKind::NoAlias));
+      arg->addAttr(llvm::Attribute::get(llvm_context,
+                                        llvm::Attribute::AttrKind::NoCapture));
     }
-    // TODO(Ian): If we can eliminate the stack then we also are able to declare more no aliases here, not sure the
-    // best way to handle this
 
     start_ind += 1;
   }
@@ -420,23 +423,27 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto memory = remill::NthArgument(func, remill::kMemoryPointerArgNum);
   auto state = remill::NthArgument(func, remill::kStatePointerArgNum);
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
-  auto next_pc_out = remill::NthArgument(func, remill::kNumBlockArgs);
 
   memory->setName("memory");
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoCapture));
   pc->setName("program_counter");
-  next_pc_out->setName("next_pc_out");
   state->setName("stack");
 
 
   auto liftedty = this->options.arch->LiftedFunctionType();
 
   std::vector<llvm::Type *> new_params;
-  new_params.reserve(liftedty->getNumParams() + 1);
+  new_params.reserve(liftedty->getNumParams() + 2);
 
   for (auto param : liftedty->params()) {
     new_params.push_back(param);
   }
-  new_params.push_back(llvm::PointerType::get(context, 0));
+  auto ptr_ty = llvm::PointerType::get(context, 0);
+  new_params.push_back(ptr_ty);
+  new_params.push_back(ptr_ty);
 
 
   llvm::FunctionType *new_func_type = llvm::FunctionType::get(
@@ -445,7 +452,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   this->lifted_func = llvm::Function::Create(
       new_func_type, llvm::GlobalValue::ExternalLinkage, 0u,
-      std::string(name) + "lowlift", this->semantics_module);
+      func->getName() + "lowlift", this->semantics_module);
 
   options.arch->InitializeEmptyLiftedFunction(this->lifted_func);
 
@@ -453,7 +460,17 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   llvm::BasicBlock::Create(context, "", func);
   auto &blk = func->getEntryBlock();
   llvm::IRBuilder<> ir(&blk);
-  ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
+  auto next_pc = ir.CreateAlloca(llvm::IntegerType::getInt64Ty(context),
+                                 nullptr, "next_pc");
+  auto should_return = ir.CreateAlloca(llvm::IntegerType::getInt1Ty(context),
+                                       nullptr, "should_return");
+  ir.CreateStore(llvm::ConstantInt::getFalse(context), should_return);
+  auto lded_mem =
+      ir.CreateLoad(llvm::PointerType::get(this->llvm_context, 0), memory);
+
+  ir.CreateStore(lded_mem,
+                 ir.CreateAlloca(llvm::PointerType::get(this->llvm_context, 0),
+                                 nullptr, "MEMORY"));
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
@@ -467,7 +484,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
 
-  auto stack_offsets = this->block_context->GetStackOffsets();
+  auto stack_offsets = this->block_context->GetStackOffsetsAtEntry();
   for (auto &reg_off : stack_offsets.affine_equalities) {
     auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
         ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
@@ -477,8 +494,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     ir.CreateStore(nmem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   }
 
-  PointerProvider ptr_provider = [this, func](size_t index) -> llvm::Value * {
-    return this->ProvidePointerFromFunctionArgs(func, index);
+  PointerProvider ptr_provider =
+      [this, func](const ParameterDecl &param) -> llvm::Value * {
+    return this->block_context->ProvidePointerFromFunctionArgs(func, param);
   };
 
   DLOG(INFO) << "Live values at entry to function "
@@ -486,7 +504,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
-  for (auto &reg_const : this->block_context->GetConstants()) {
+  for (auto &reg_const : block_context->GetConstantsAtEntry()) {
     llvm::Value *new_value = nullptr;
     llvm::Type *target_type = reg_const.target_value.type;
     if (reg_const.should_taint_by_pc) {
@@ -501,9 +519,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     }
 
 
-    DLOG_IF(INFO, reg_const.target_value.reg)
-        << "Dumping " << reg_const.target_value.reg->name << " " << std::hex
-        << reg_const.value;
+    //DLOG_IF(INFO, reg_const.target_value.reg)
+    //    << "Dumping " << reg_const.target_value.reg->name << " " << std::hex
+    //    << reg_const.value;
     auto nmem = StoreNativeValue(new_value, reg_const.target_value,
                                  type_provider.Dictionary(), intrinsics, ir,
                                  this->state_ptr,
@@ -525,8 +543,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       ir, this->address_type, this->block_def.addr);
   ir.CreateStore(pc_val, pc_ptr);
 
-  std::array<llvm::Value *, remill::kNumBlockArgs + 1> args = {
-      this->state_ptr, pc_val, mem_res, next_pc_out};
+  std::array<llvm::Value *, kNumLiftedBasicBlockArgs> args = {
+      this->state_ptr, pc_val, mem_res, next_pc, should_return};
 
   auto ret_mem = ir.CreateCall(this->lifted_func, args);
 
@@ -535,16 +553,76 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
 
   CHECK(ir.GetInsertPoint() == func->getEntryBlock().end());
-  ir.CreateRet(ret_mem);
 
-  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc_out};
+  BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc, state};
+
+
+  ir.CreateStore(ret_mem, memory);
+  ir.CreateStore(ret_mem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
+  TerminateBasicBlockFunction(func, ir, ret_mem, should_return, bbf);
 
   return bbf;
 }
 
+// Setup the returns for this function we tail call all successors
+void BasicBlockLifter::TerminateBasicBlockFunction(
+    llvm::Function *caller, llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+    llvm::Value *should_return, const BasicBlockFunction &bbfunc) {
+  auto &context = this->bb_func->getContext();
+  this->invalid_successor_block =
+      llvm::BasicBlock::Create(context, "invalid_successor", this->bb_func);
+  auto jump_block = llvm::BasicBlock::Create(context, "", this->bb_func);
+  auto ret_block = llvm::BasicBlock::Create(context, "", this->bb_func);
+
+  // TODO(Ian): maybe want to call remill_error here
+  new llvm::UnreachableInst(next_mem->getContext(),
+                            this->invalid_successor_block);
+
+  auto should_return_value =
+      ir.CreateLoad(llvm::IntegerType::getInt1Ty(context), should_return);
+  ir.CreateCondBr(should_return_value, ret_block, jump_block);
+
+  ir.SetInsertPoint(jump_block);
+  auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out);
+  auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
+
+  for (auto e : this->block_def.outgoing_edges) {
+    auto succ_const = llvm::ConstantInt::get(
+        llvm::cast<llvm::IntegerType>(this->address_type), e);
+
+    auto calling_bb =
+        llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
+    llvm::IRBuilder<> calling_bb_builder(calling_bb);
+    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
+    auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
+        caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
+    if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
+      calling_bb_builder.CreateRetVoid();
+    } else {
+      calling_bb_builder.CreateRet(retval);
+    }
+    sw->addCase(succ_const, calling_bb);
+  }
+
+  ir.SetInsertPoint(ret_block);
+  if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
+    ir.CreateRetVoid();
+  } else {
+    auto retval = anvill::LoadLiftedValue(
+        block_context->ReturnValue(), options.TypeDictionary(), intrinsics,
+        options.arch, ir, this->state_ptr, next_mem);
+    ir.CreateRet(retval);
+  }
+}
 
 llvm::StructType *BasicBlockLifter::StructTypeFromVars() const {
-  return this->block_context->StructTypeFromVars(this->llvm_context);
+  std::vector<llvm::Type *> field_types;
+  std::transform(decl.in_scope_variables.begin(), decl.in_scope_variables.end(),
+                 std::back_inserter(field_types),
+                 [](auto &param) { return param.type; });
+
+  return llvm::StructType::get(llvm_context, field_types,
+                               "sty_for_basic_block_function");
 }
 
 // Packs in scope variables into a struct
@@ -555,17 +633,23 @@ void BasicBlockLifter::PackLiveValues(
 
   for (auto decl : decls) {
 
-    if (!decl.param.mem_reg) {
-      auto ptr = into_vars(decl.index);
+    if (!HasMemLoc(decl.param)) {
+      auto ptr = into_vars(decl.param);
 
       auto state_loaded_value = LoadLiftedValue(
-          decl.param, this->type_provider.Dictionary(), this->intrinsics, bldr,
-          from_state_ptr, remill::LoadMemoryPointer(bldr, this->intrinsics));
+          decl.param, this->type_provider.Dictionary(), this->intrinsics,
+          this->options.arch, bldr, from_state_ptr,
+          remill::LoadMemoryPointer(bldr, this->intrinsics));
 
       bldr.CreateStore(state_loaded_value, ptr);
+    } else {
+      // TODO(Ian): The assumption is we dont have live values split between the stack and a register for now...
+      // Maybe at some point we can just go ahead and store everything
+      CHECK(!HasRegLoc(decl.param));
     }
   }
 }
+
 
 void BasicBlockLifter::UnpackLiveValues(
     llvm::IRBuilder<> &bldr, PointerProvider returned_value,
@@ -575,8 +659,8 @@ void BasicBlockLifter::UnpackLiveValues(
 
   for (auto decl : decls) {
     // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
-    if (!decl.param.mem_reg) {
-      auto ptr = returned_value(decl.index);
+    if (!HasMemLoc(decl.param)) {
+      auto ptr = returned_value(decl.param);
       if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
         insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
                                              decl.param.spec_type));
@@ -592,42 +676,43 @@ void BasicBlockLifter::UnpackLiveValues(
 
       bldr.CreateStore(new_mem_ptr,
                        remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
+    } else {
+      // TODO(Ian): The assumption is we dont have live values split between the stack and a register for now...
+      // Maybe at some point we can just go ahead and store everything
+      CHECK(!HasRegLoc(decl.param));
     }
   }
   CHECK(bldr.GetInsertPoint() == blk->end());
 }
 
-
-void BasicBlockLifter::CallBasicBlockFunction(
+// TODO(Ian): dependent on calling context we need fetch the memory and next program counter
+// ref either from the args or from the parent func state
+llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     llvm::IRBuilder<> &builder, llvm::Value *parent_state,
-    const CallableBasicBlockFunction &cbfunc, llvm::Value *parent_stack) const {
+    llvm::Value *parent_stack, llvm::Value *memory_pointer) const {
 
-
-  std::vector<llvm::Value *> args(remill::kNumBlockArgs + 1);
+  std::vector<llvm::Value *> args(remill::kNumBlockArgs);
   auto out_param_locals = builder.CreateAlloca(this->var_struct_ty);
   args[0] = parent_stack;
 
   args[remill::kPCArgNum] = options.program_counter_init_procedure(
-      builder, this->address_type, cbfunc.GetBlock().addr);
-  args[remill::kMemoryPointerArgNum] =
-      remill::LoadMemoryPointer(builder, this->intrinsics);
-
-  args[remill::kNumBlockArgs] =
-      remill::LoadNextProgramCounterRef(builder.GetInsertBlock());
-
-  auto bbvars = this->block_context->LiveParamsAtEntryAndExit();
+      builder, this->address_type, block_def.addr);
+  args[remill::kMemoryPointerArgNum] = memory_pointer;
 
   AbstractStack stack(
       builder.getContext(), {{decl.maximum_depth, parent_stack}},
       this->options.stack_frame_recovery_options.stack_grows_down,
       decl.GetPointerDisplacement());
-  PointerProvider ptr_provider = [&builder, this, out_param_locals, &bbvars,
-                                  &stack](size_t index) -> llvm::Value * {
-    auto repr_var = bbvars[index];
-    DLOG(INFO) << "Lifting: " << repr_var.param.name << " for call";
-    if (repr_var.param.mem_reg) {
+  PointerProvider ptr_provider =
+      [&builder, this, out_param_locals,
+       &stack](const ParameterDecl &repr_var) -> llvm::Value * {
+    DLOG(INFO) << "Lifting: " << repr_var.name << " for call";
+    if (HasMemLoc(repr_var)) {
+      // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
+      // svars are single valuedecl contigous
+      CHECK(repr_var.oredered_locs.size() == 1);
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
-          builder, repr_var.param.mem_offset);
+          builder, repr_var.oredered_locs[0].mem_offset);
       if (stack_ptr) {
         return *stack_ptr;
       } else {
@@ -635,57 +720,57 @@ void BasicBlockLifter::CallBasicBlockFunction(
             << "Unable to create a ptr to the stack, the stack is too small to represent the param.";
       }
     }
-    return this->ProvidePointerFromStruct(builder, out_param_locals, index);
+
+    // ok so this should be provide pointer from args in a way
+    // stack probably shouldnt be passed at all, if we dont have a loc
+    // then it's not live
+    return block_context->ProvidePointerFromStruct(builder, var_struct_ty,
+                                                   out_param_locals, repr_var);
   };
 
   this->PackLiveValues(builder, parent_state, ptr_provider,
                        this->block_context->LiveBBParamsAtEntry());
 
-
-  for (size_t ind = 0;
-       ind < this->block_context->LiveParamsAtEntryAndExit().size(); ind++) {
-    auto ptr = ptr_provider(ind);
+  for (auto &param : block_context->GetParams()) {
+    auto ptr = ptr_provider(param);
     CHECK(ptr != nullptr);
     args.push_back(ptr);
   }
 
-  auto new_mem_ptr = builder.CreateCall(cbfunc.GetFunction(), args);
+  auto retval = builder.CreateCall(bb_func, args);
+  retval->setTailCall(true);
 
-  auto mem_ptr_ref = remill::LoadMemoryPointerRef(builder.GetInsertBlock());
-
-  builder.CreateStore(new_mem_ptr, mem_ptr_ref);
-
-  this->UnpackLiveValues(builder, ptr_provider, parent_state,
-                         this->block_context->LiveBBParamsAtExit());
+  return retval;
 }
 
+llvm::CallInst *BasicBlockLifter::ControlFlowCallBasicBlockFunction(
+    llvm::Function *caller, llvm::IRBuilder<> &builder,
+    llvm::Value *parent_state, llvm::Value *parent_stack,
+    llvm::Value *memory_pointer) const {
 
-void CallableBasicBlockFunction::CallBasicBlockFunction(
-    llvm::IRBuilder<> &add_to_llvm, llvm::Value *parent_state,
-    llvm::Value *abstract_stack) const {
-  this->bb_lifter.CallBasicBlockFunction(add_to_llvm, parent_state, *this,
-                                         abstract_stack);
-}
+  std::vector<llvm::Value *> args;
+  std::transform(caller->arg_begin(), caller->arg_end(),
+                 std::back_inserter(args),
+                 [](llvm::Argument &arg) -> llvm::Value * { return &arg; });
 
-CallableBasicBlockFunction BasicBlockLifter::LiftBasicBlock(
-    std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
-    const CodeBlock &block_def, const LifterOptions &options_,
-    llvm::Module *semantics_module, const TypeTranslator &type_specifier) {
+  auto retval = builder.CreateCall(bb_func, args);
+  retval->setTailCall(true);
 
-  return BasicBlockLifter(std::move(block_context), decl, block_def, options_,
-                          semantics_module, type_specifier)
-      .LiftBasicBlockFunction();
+  return retval;
 }
 
 BasicBlockLifter::BasicBlockLifter(
     std::unique_ptr<BasicBlockContext> block_context, const FunctionDecl &decl,
-    const CodeBlock &block_def, const LifterOptions &options_,
-    llvm::Module *semantics_module, const TypeTranslator &type_specifier)
+    CodeBlock block_def, const LifterOptions &options_,
+    llvm::Module *semantics_module, const TypeTranslator &type_specifier,
+    FunctionLifter &flifter)
     : CodeLifter(options_, semantics_module, type_specifier),
       block_context(std::move(block_context)),
-      block_def(block_def),
-      decl(decl) {
+      block_def(std::move(block_def)),
+      decl(decl),
+      flifter(flifter) {
   this->var_struct_ty = this->StructTypeFromVars();
+  this->bb_func = this->DeclareBasicBlockFunction();
 }
 
 CallableBasicBlockFunction::CallableBasicBlockFunction(
@@ -702,23 +787,5 @@ const CodeBlock &CallableBasicBlockFunction::GetBlock() const {
 llvm::Function *CallableBasicBlockFunction::GetFunction() const {
   return this->func;
 }
-
-llvm::Value *BasicBlockLifter::ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
-                                                        llvm::Value *target_sty,
-                                                        size_t index) const {
-  auto i32 = llvm::IntegerType::get(llvm_context, 32);
-  auto ptr = ir.CreateGEP(
-      this->var_struct_ty, target_sty,
-      {llvm::ConstantInt::get(i32, 0), llvm::ConstantInt::get(i32, index)});
-  return ptr;
-}
-
-llvm::Value *
-BasicBlockLifter::ProvidePointerFromFunctionArgs(llvm::Function *func,
-                                                 size_t index) const {
-  return anvill::ProvidePointerFromFunctionArgs(func, index,
-                                                *this->block_context);
-}
-
 
 }  // namespace anvill

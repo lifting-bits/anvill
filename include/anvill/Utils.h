@@ -20,6 +20,7 @@
 #include "anvill/Declarations.h"
 #include "anvill/Lifters.h"
 
+
 namespace llvm {
 class BasicBlock;
 class Instruction;
@@ -91,14 +92,14 @@ bool CanBeAliased(llvm::Value *val);
 // the lifted value associated with `decl`.
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
 
 llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
-                             llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
-                             llvm::Value *mem_ptr);
-
+                             const remill::Arch *arch, llvm::IRBuilder<> &ir,
+                             llvm::Value *state_ptr, llvm::Value *mem_ptr);
 
 void CloneIntrinsicsFromModule(llvm::Module &from, llvm::Module &into);
 
@@ -134,9 +135,9 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
 
 std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 
-llvm::Argument *
-ProvidePointerFromFunctionArgs(llvm::Function *func, size_t index,
-                               const anvill::BasicBlockContext &context);
-
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
+
+bool HasMemLoc(const ValueDecl &v);
+
+bool HasRegLoc(const ValueDecl &v);
 }  // namespace anvill

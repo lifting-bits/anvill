@@ -283,7 +283,7 @@ GetArch(llvm::LLVMContext &context,
       arch_name = remill::kArchAMD64_AVX512;
       break;
     case ::specification::ARCH_AARCH64:
-      arch_name = remill::kArchAArch64LittleEndian;
+      arch_name = remill::kArchAArch64LittleEndian_SLEIGH;
       break;
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
@@ -417,8 +417,9 @@ void Specification::ForEachSymbol(
 }
 
 SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
-  spec.ForEachFunction([this](auto decl) {
+  spec.ForEachFunction([this](std::shared_ptr<const FunctionDecl> decl) {
     decl->AddBBContexts(this->contexts);
+    funcs[decl->address] = decl;
     return true;
   });
 }
@@ -432,6 +433,11 @@ SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
 
   return std::optional<std::reference_wrapper<const BasicBlockContext>>{
       std::cref(cont->second)};
+}
+
+const FunctionDecl &
+SpecBlockContexts::GetFunctionAtAddress(uint64_t addr) const {
+  return *funcs.at(addr);
 }
 
 // Call `cb` on each function in the spec, until `cb` returns `false`.

@@ -44,7 +44,6 @@ set(anvill_passes
   RemoveCompilerBarriers
   RemoveDelaySlotIntrinsics
   RemoveErrorIntrinsics
-  RemoveRemillFunctionReturns
   RemoveStackPointerCExprs
   RemoveTrivialPhisAndSelects
   RemoveUnusedFPClassificationCalls
@@ -60,28 +59,31 @@ set(anvill_passes
   CombineAdjacentShifts
   ReplaceStackReferences
   RemoveCallIntrinsics
-  ReplaceRemillFunctionReturnsWithAnvillFunctionReturns
-  RemoveAssignmentsToNextPC
+  InlineBasicBlockFunctions
 )
 
 set(anvill_arch_HEADERS
-  "Arch/AllocationState.h"
+
+  # "Arch/AllocationState.h"
   "Arch/Arch.h"
 )
 
 set(anvill_arch_SOURCES
-  "Arch/AArch32_C.cpp"
-  "Arch/AArch64_C.cpp"
-  "Arch/AllocationState.cpp"
+
+  # "Arch/AArch32_C.cpp"
+  # "Arch/AArch64_C.cpp"
+  # "Arch/AllocationState.cpp"
   "Arch/Arch.cpp"
-  "Arch/PPC_SysV.cpp"
-  "Arch/SPARC32_C.cpp"
-  "Arch/SPARC64_C.cpp"
-  "Arch/X86_64_SysV.cpp"
-  "Arch/X86_C.cpp"
-  "Arch/X86_FastCall.cpp"
-  "Arch/X86_StdCall.cpp"
-  "Arch/X86_ThisCall.cpp"
+  "Arch/StubABI.cpp"
+
+  # "Arch/PPC_SysV.cpp"
+  # "Arch/SPARC32_C.cpp"
+  # "Arch/SPARC64_C.cpp"
+  # "Arch/X86_64_SysV.cpp"
+  # "Arch/X86_C.cpp"
+  # "Arch/X86_FastCall.cpp"
+  # "Arch/X86_StdCall.cpp"
+  # "Arch/X86_ThisCall.cpp"
 )
 
 set(anvill_lifters_HEADERS

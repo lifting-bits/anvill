@@ -16,6 +16,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <vector>
 
 #include "anvill/Type.h"
 #include "specification.pb.h"
@@ -62,11 +63,22 @@ class ProtobufTranslator {
       const ::specification::TypeSpec &obj,
       const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map);
 
+
   // Parse the location of a value. This applies to both parameters and
   // return values.
+  anvill::Result<LowLoc, std::string>
+  DecodeLowLoc(const ::specification::Value &value, const char *desc) const;
+
   anvill::Result<ValueDecl, std::string>
-  DecodeValue(const ::specification::Value &obj, TypeSpec type,
-              const char *desc) const;
+  ValueDeclFromOrderedLowLoc(std::vector<LowLoc> loc, TypeSpec type,
+                             const char *desc) const;
+
+  // Parse the location of a value. This applies to both parameters and
+  // return values.
+  anvill::Result<ValueDecl, std::string> DecodeValueDecl(
+      const ::google::protobuf::RepeatedPtrField<::specification::Value>
+          &values,
+      TypeSpec type, const char *desc) const;
 
 
   Result<std::monostate, std::string>

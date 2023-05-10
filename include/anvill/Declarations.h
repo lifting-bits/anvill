@@ -59,6 +59,18 @@ struct CodeBlock {
 
 class TypeDictionary;
 
+
+struct LowLoc {
+  const remill::Register *reg{nullptr};
+  const remill::Register *mem_reg{nullptr};
+  std::int64_t mem_offset{0};
+  std::optional<std::uint64_t> size{std::nullopt};
+
+  std::uint64_t Size() const;
+
+  bool operator==(const LowLoc &loc) const = default;
+};
+
 // A value, such as a parameter or a return value. Values are resident
 // in one of two locations: either in a register, represented by a non-
 // nullptr `reg` value, or in memory, at `[mem_reg + mem_offset]`.
@@ -75,21 +87,24 @@ class TypeDictionary;
 // the caller allocate the space, and pass a pointer to that space into
 // the callee, and so that should be represented using a parameter.
 struct ValueDecl {
-  const remill::Register *reg{nullptr};
-  const remill::Register *mem_reg{nullptr};
-  std::int64_t mem_offset{0};
+  std::vector<LowLoc> oredered_locs;
 
   TypeSpec spec_type;
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  bool operator==(const ValueDecl &) const = default;
 };
+
 
 // A value declaration corresponding with a named parameter.
 struct ParameterDecl : public ValueDecl {
 
   // Name of the parameter.
   std::string name;
+
+  bool operator==(const ParameterDecl &) const = default;
 };
 
 // A typed location in memory, that isn't actually code. This roughly
@@ -122,6 +137,8 @@ struct ConstantDomain {
   ValueDecl target_value;
   std::uint64_t value;
   bool should_taint_by_pc;
+
+  bool operator==(const ConstantDomain &) const = default;
 };
 
 struct SpecStackOffsets {
@@ -169,7 +186,7 @@ struct CallableDecl {
   // NOTE(pag): In the case of the AMD64 Itanium ABI, we expect the
   //            specification to include `RDX` as an explicit return
   //            value when the function might throw an exception.
-  std::vector<ValueDecl> returns;
+  ValueDecl returns;
 
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
@@ -201,28 +218,34 @@ struct CallableDecl {
   DecodeFromPB(const remill::Arch *arch, const std::string &pb);
 };
 
-struct LocalVariableDecl {
-  std::string name;
-  std::vector<ValueDecl> values;
-};
-
 
 // Basic block contexts impose an ordering on live values s.t. shared Parameters between
 // live exits and entries
 struct BasicBlockVariable {
   ParameterDecl param;
-  size_t index;
   bool live_at_entry;
   bool live_at_exit;
 };
 
 class BasicBlockContext {
  public:
+  size_t GetParamIndex(const ParameterDecl &decl) const;
+
+  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
+                                        llvm::StructType *sty, llvm::Value *,
+                                        const ParameterDecl &decl) const;
+
+  llvm::Argument *
+  ProvidePointerFromFunctionArgs(llvm::Function *,
+                                 const ParameterDecl &decl) const;
+
   virtual ~BasicBlockContext() = default;
 
-  virtual const SpecStackOffsets &GetStackOffsets() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const = 0;
 
-  virtual const std::vector<ConstantDomain> &GetConstants() const = 0;
+  virtual const std::vector<ConstantDomain> &GetConstantsAtEntry() const = 0;
+  virtual const std::vector<ConstantDomain> &GetConstantsAtExit() const = 0;
 
   virtual size_t GetStackSize() const = 0;
 
@@ -232,7 +255,9 @@ class BasicBlockContext {
 
   virtual uint64_t GetParentFunctionAddress() const = 0;
 
-  virtual const std::vector<ValueDecl> &ReturnValue() const = 0;
+  virtual ValueDecl ReturnValue() const = 0;
+
+  virtual const std::vector<ParameterDecl> &GetParams() const = 0;
 
   // Deduplicates locations and ensures there are no overlapping decls
   // A valid parameter list is a set of non overlapping a-locs with distinct names.
@@ -241,9 +266,6 @@ class BasicBlockContext {
 
   std::vector<BasicBlockVariable> LiveBBParamsAtEntry() const;
   std::vector<BasicBlockVariable> LiveBBParamsAtExit() const;
-
-
-  llvm::StructType *StructTypeFromVars(llvm::LLVMContext &llvm_context) const;
 
  protected:
   virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const = 0;
@@ -302,22 +324,31 @@ struct FunctionDecl;
 class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
-  SpecStackOffsets offsets;
-  std::vector<ConstantDomain> constants;
+  SpecStackOffsets offsets_at_entry;
+  SpecStackOffsets offsets_at_exit;
+  std::vector<ConstantDomain> constants_at_entry;
+  std::vector<ConstantDomain> constants_at_exit;
   std::vector<ParameterDecl> live_params_at_entry;
   std::vector<ParameterDecl> live_params_at_exit;
+  std::vector<ParameterDecl> params;
 
  public:
-  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
-                   std::vector<ConstantDomain> constants,
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+                   SpecStackOffsets offsets_at_exit,
+                   std::vector<ConstantDomain> constants_at_entry,
+                   std::vector<ConstantDomain> constants_at_exit,
                    std::vector<ParameterDecl> live_params_at_entry,
                    std::vector<ParameterDecl> live_params_at_exit);
 
-  virtual const SpecStackOffsets &GetStackOffsets() const override;
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const override;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const override;
 
-  virtual const std::vector<ConstantDomain> &GetConstants() const override;
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtEntry() const override;
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtExit() const override;
 
-  virtual const std::vector<ValueDecl> &ReturnValue() const override;
+  virtual ValueDecl ReturnValue() const override;
 
   virtual uint64_t GetParentFunctionAddress() const override;
 
@@ -327,6 +358,7 @@ class SpecBlockContext : public BasicBlockContext {
 
   virtual size_t GetPointerDisplacement() const override;
 
+  virtual const std::vector<ParameterDecl> &GetParams() const override;
 
  protected:
   virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const override;
@@ -365,9 +397,11 @@ struct FunctionDecl : public CallableDecl {
   // These are the blocks contained within the function representing the CFG.
   std::unordered_map<std::uint64_t, CodeBlock> cfg;
 
-  std::unordered_map<std::string, LocalVariableDecl> locals;
+  std::unordered_map<std::string, ParameterDecl> locals;
 
-  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
+  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_entry;
+
+  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_exit;
 
   std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_entry;
@@ -376,7 +410,10 @@ struct FunctionDecl : public CallableDecl {
       live_regs_at_exit;
 
   std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
-      constant_values;
+      constant_values_at_entry;
+
+  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+      constant_values_at_exit;
 
   std::uint64_t stack_depth;
 
@@ -387,6 +424,8 @@ struct FunctionDecl : public CallableDecl {
   std::int64_t parameter_offset{0};
 
   std::size_t parameter_size{0};
+
+  std::vector<ParameterDecl> in_scope_variables;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;

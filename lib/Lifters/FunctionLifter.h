@@ -32,6 +32,19 @@
 #include "CodeLifter.h"
 #include "Lifters/BasicBlockLifter.h"
 
+namespace std {
+template <typename T1, typename T2>
+struct hash<std::pair<T1, T2>> {
+  std::size_t operator()(std::pair<T1, T2> const &p) const {
+    std::size_t seed(0);
+    llvm::hash_combine(seed, p.first);
+    llvm::hash_combine(seed, p.second);
+
+    return seed;
+  }
+};
+}  // namespace std
+
 namespace llvm {
 class Constant;
 class Function;
@@ -64,6 +77,8 @@ struct LiftedFunction {
 
 // Orchestrates lifting of instructions and control-flow between instructions.
 class FunctionLifter : public CodeLifter {
+  friend class BasicBlockLifter;
+
  public:
   ~FunctionLifter(void);
 
@@ -89,8 +104,9 @@ class FunctionLifter : public CodeLifter {
                                        const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t addr);
 
-  CallableBasicBlockFunction LiftBasicBlockFunction(const CodeBlock &) const;
+  const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
 
   llvm::Function *GetBasicBlockFunction(uint64_t address) const;
 
@@ -164,8 +180,9 @@ class FunctionLifter : public CodeLifter {
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
-
-  llvm::BasicBlock *invalid_successor_block{nullptr};
+  // maps a bbaddr to the lifter for that block
+  std::unordered_map<std::pair<uint64_t, uint64_t>, BasicBlockLifter>
+      bb_lifters;
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
@@ -174,23 +191,6 @@ class FunctionLifter : public CodeLifter {
   // Declare the function decl `decl` and return an `llvm::Function *`. The
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
-
-
-  llvm::BranchInst *BranchToInst(uint64_t from_addr, uint64_t to_addr,
-                                 const remill::DecodingContext &mapper,
-                                 llvm::BasicBlock *from_block);
-
-  // Helper to get the basic block to contain the instruction at `addr`. This
-  // function drives a work list, where the first time we ask for the
-  // instruction at `addr`, we enqueue a bit of work to decode and lift that
-  // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t addr);
-
-  // Attempts to lookup any redirection of the given address, and then
-  // calls GetOrCreateBlock
-  llvm::BasicBlock *
-  GetOrCreateTargetBlock(const remill::Instruction &from_inst, uint64_t to_addr,
-                         const remill::DecodingContext &mapper);
 
   void InsertError(llvm::BasicBlock *block);
 

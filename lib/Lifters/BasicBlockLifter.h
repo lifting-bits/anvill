@@ -9,6 +9,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/Lifter.h>
 
 #include <cstdint>
@@ -21,12 +22,18 @@
 
 namespace anvill {
 
+enum : size_t {
+  kNextPCArgNum = remill::kNumBlockArgs,
+  kShouldReturnArgNum,
+  kNumLiftedBasicBlockArgs
+};
 
 struct BasicBlockFunction {
   llvm::Function *func;
   llvm::Argument *pc_arg;
   llvm::Argument *mem_ptr;
-  llvm::Argument *next_pc_out_param;
+  llvm::AllocaInst *next_pc_out;
+  llvm::Argument *stack;
 };
 
 class CallableBasicBlockFunction;
@@ -38,15 +45,8 @@ class CallableBasicBlockFunction;
  */
 class BasicBlockLifter : public CodeLifter {
  private:
-  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir, llvm::Value *,
-                                        size_t index) const;
-
-  llvm::Value *ProvidePointerFromFunctionArgs(llvm::Function *,
-                                              size_t index) const;
-
-
   std::unique_ptr<BasicBlockContext> block_context;
-  const CodeBlock &block_def;
+  CodeBlock block_def;
 
   llvm::StructType *var_struct_ty{nullptr};
 
@@ -56,6 +56,14 @@ class BasicBlockLifter : public CodeLifter {
   llvm::Function *lifted_func{nullptr};
 
   const FunctionDecl &decl;
+
+  llvm::Function *bb_func{nullptr};
+
+  FunctionLifter &flifter;
+
+  llvm::BasicBlock *invalid_successor_block{nullptr};
+
+  llvm::Function *DeclareBasicBlockFunction();
 
   llvm::StructType *StructTypeFromVars() const;
 
@@ -69,6 +77,10 @@ class BasicBlockLifter : public CodeLifter {
 
   BasicBlockFunction CreateBasicBlockFunction();
 
+  void TerminateBasicBlockFunction(llvm::Function *caller,
+                                   llvm::IRBuilder<> &ir, llvm::Value *next_mem,
+                                   llvm::Value *should_return,
+                                   const BasicBlockFunction &bbfunc);
 
   bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &insn,
                                                llvm::BasicBlock *&block);
@@ -96,21 +108,18 @@ class BasicBlockLifter : public CodeLifter {
 
  public:
   BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,
-                   const FunctionDecl &decl, const CodeBlock &block_def,
+                   const FunctionDecl &decl, CodeBlock block_def,
                    const LifterOptions &options_,
                    llvm::Module *semantics_module,
-                   const TypeTranslator &type_specifier);
-  static CallableBasicBlockFunction
-  LiftBasicBlock(std::unique_ptr<BasicBlockContext> block_context,
-                 const FunctionDecl &decl, const CodeBlock &block_def,
-                 const LifterOptions &options_, llvm::Module *semantics_module,
-                 const TypeTranslator &type_specifier);
+                   const TypeTranslator &type_specifier,
+                   FunctionLifter &flifter);
 
 
-  CallableBasicBlockFunction LiftBasicBlockFunction() &&;
+  void LiftBasicBlockFunction();
 
 
-  using PointerProvider = std::function<llvm::Value *(size_t index)>;
+  using PointerProvider =
+      std::function<llvm::Value *(const ParameterDecl &param)>;
 
 
   // Packs in scope variables into a struct
@@ -124,9 +133,14 @@ class BasicBlockLifter : public CodeLifter {
 
 
   // Calls a basic block function and unpacks the result into the state
-  void CallBasicBlockFunction(llvm::IRBuilder<> &, llvm::Value *state_ptr,
-                              const CallableBasicBlockFunction &,
-                              llvm::Value *parent_stack) const;
+  llvm::CallInst *CallBasicBlockFunction(llvm::IRBuilder<> &,
+                                         llvm::Value *state_ptr,
+                                         llvm::Value *parent_stack,
+                                         llvm::Value *memory_pointer) const;
+
+  llvm::CallInst *ControlFlowCallBasicBlockFunction(
+      llvm::Function *caller, llvm::IRBuilder<> &, llvm::Value *state_ptr,
+      llvm::Value *parent_stack, llvm::Value *memory_pointer) const;
 
   BasicBlockLifter(BasicBlockLifter &&) = default;
 };

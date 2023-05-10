@@ -11,6 +11,7 @@
 #include <glog/logging.h>
 
 // clang-format off
+#include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Pass.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -26,6 +27,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Utils/Local.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
@@ -44,13 +46,13 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalOpt.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 
 #include <anvill/Providers.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Passes/CodeQualityStatCollector.h>
 #include <anvill/Passes/BranchAnalysis.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
-#include <anvill/Passes/ReplaceRemillFunctionReturnsWithAnvillFunctionReturns.h>
 // clang-format on
 
 #include <anvill/ABI.h>
@@ -58,6 +60,7 @@
 #include <anvill/Declarations.h>
 #include <anvill/Lifters.h>
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
+#include <anvill/Passes/InlineBasicBlockFunctions.h>
 #include <anvill/Passes/JumpTableAnalysis.h>
 #include <anvill/Passes/RemoveCallIntrinsics.h>
 #include <anvill/Passes/ReplaceStackReferences.h>
@@ -73,7 +76,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "anvill/Passes/RemoveAssignmentsToNextPC.h"
+#include "anvill/Passes/SplitStackFrameAtReturnAddress.h"
 #include "anvill/Specification.h"
 
 namespace anvill {
@@ -124,6 +127,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
     LOG(FATAL) << remill::GetErrorString(err);
   }
 
+  /*
   if (auto used = module.getGlobalVariable("llvm.used"); used) {
     used->setLinkage(llvm::GlobalValue::PrivateLinkage);
     used->eraseFromParent();
@@ -132,7 +136,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   if (auto used = module.getGlobalVariable("llvm.compiler.used"); used) {
     used->setLinkage(llvm::GlobalValue::PrivateLinkage);
     used->eraseFromParent();
-  }
+  }*/
 
   LOG(INFO) << "Optimizing module.";
 
@@ -163,6 +167,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   //  llvm::InlineParams params;
   llvm::FunctionAnalysisManager fam;
 
+  llvm::Triple ModuleTriple(module.getTargetTriple());
+  llvm::TargetLibraryInfoImpl TLII(ModuleTriple);
+  TLII.disableAllFunctions();
+  fam.registerPass([&] { return llvm::TargetLibraryAnalysis(TLII); });
   pb.registerFunctionAnalyses(fam);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cam);
@@ -207,9 +215,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::SimplifyCFGPass());
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::InstCombinePass());
-  fpm.addPass(llvm::VerifierPass());
-  fpm.addPass(anvill::ReplaceRemillFunctionReturnsWithAnvillFunctionReturns(
-      contexts, lifter));
   fpm.addPass(llvm::VerifierPass());
   AddSinkSelectionsIntoBranchTargets(fpm);
   fpm.addPass(llvm::VerifierPass());
@@ -297,9 +302,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   AddTransformRemillJumpIntrinsics(second_fpm, xr);
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
-  if (options.should_remove_assignments_to_next_pc) {
-    second_fpm.addPass(anvill::RemoveAssignmentsToNextPC(contexts, lifter));
-  }
   //AddRemoveRemillFunctionReturns(second_fpm, xr);
   //AddConvertSymbolicReturnAddressToConcreteReturnAddress(second_fpm);
   AddLowerRemillUndefinedIntrinsics(second_fpm);
@@ -314,7 +316,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
   second_fpm.addPass(llvm::VerifierPass());
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
-  second_fpm.addPass(CodeQualityStatCollector());
   second_fpm.addPass(llvm::VerifierPass());
   AddConvertXorsToCmps(second_fpm);
   second_fpm.addPass(llvm::VerifierPass());
@@ -325,6 +326,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
 
   mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(second_fpm)));
+  mpm.addPass(anvill::CodeQualityStatCollector());
   mpm.run(module, mam);
 
   // Get rid of all final uses of `__anvill_pc`.
@@ -335,6 +337,49 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
           &module);
     }
   }
+
+  mpm.run(module, mam);
+
+  if (lifter.Options().should_inline_basic_blocks) {
+    llvm::FunctionPassManager inliner;
+
+    inliner.addPass(InlineBasicBlockFunctions(contexts));
+
+    llvm::ModulePassManager mpminliner;
+    mpminliner.addPass(
+        llvm::createModuleToFunctionPassAdaptor(std::move(inliner)));
+    mpminliner.addPass(
+        llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::InlinerPass()));
+
+    mpminliner.run(module, mam);
+
+    // lets make sure we eliminate all the basic block functions because we dont care anymore
+    for (auto &f : module.getFunctionList()) {
+      if (anvill::GetBasicBlockAddr(&f)) {
+        f.setLinkage(llvm::GlobalValue::InternalLinkage);
+      }
+    }
+
+    auto intrinsics = module.getFunction("__remill_intrinsics");
+    if (intrinsics) {
+      intrinsics->eraseFromParent();
+    }
+
+
+    auto defaultmpm =
+        pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+
+    defaultmpm.run(module, mam);
+
+    llvm::createModuleToFunctionPassAdaptor(
+        SplitStackFrameAtReturnAddress(options.stack_frame_recovery_options))
+        .run(module, mam);
+
+
+    pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3)
+        .run(module, mam);
+  }
+
 
   // Manually clear the analyses to prevent ASAN failures in the destructors.
   mam.clear();

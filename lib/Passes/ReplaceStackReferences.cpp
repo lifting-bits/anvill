@@ -160,8 +160,9 @@ class StackModel {
     // this feels weird maybe it should be all stack variables but then if the variable isnt live...
     // we will have discovered something that should have been live.
     for (const auto &v : cont.LiveParamsAtEntryAndExit()) {
-      if (v.param.mem_reg &&
-          v.param.mem_reg->name == arch->StackPointerRegisterName()) {
+      if (HasMemLoc(v.param) && v.param.oredered_locs.size() == 1 &&
+          v.param.oredered_locs[0].mem_reg->name ==
+              arch->StackPointerRegisterName()) {
         this->InsertFrameVar(index, v.param);
       }
       index += 1;
@@ -189,7 +190,7 @@ class StackModel {
 
 
     auto prev_decl = (--prec)->second;
-    CHECK(prev_decl.decl.mem_offset <= off);
+    CHECK(prev_decl.decl.oredered_locs[0].mem_offset <= off);
     return {prev_decl};
   }
 
@@ -201,16 +202,17 @@ class StackModel {
       return std::nullopt;
     }
 
-    DLOG(INFO) << "value found lte offset: " << vlte->decl.mem_offset << " "
-               << off;
+    DLOG(INFO) << "value found lte offset: "
+               << vlte->decl.oredered_locs[0].mem_offset << " " << off;
 
-    auto offset_into_var = off - vlte->decl.mem_offset;
+    auto offset_into_var = off - vlte->decl.oredered_locs[0].mem_offset;
     if (offset_into_var <
         static_cast<std::int64_t>(GetParamDeclSize(vlte->decl))) {
       return {{offset_into_var, *vlte}};
     }
     DLOG(INFO) << "Looking for off  " << off << " but not fitting "
-               << offset_into_var << " got off " << vlte->decl.mem_offset;
+               << offset_into_var << " got off "
+               << vlte->decl.oredered_locs[0].mem_offset;
     return std::nullopt;
   }
 
@@ -223,28 +225,30 @@ class StackModel {
 
 
   void InsertFrameVar(size_t index, ParameterDecl var) {
-    if (VarOverlaps(var.mem_offset) ||
-        VarOverlaps(var.mem_offset + GetParamDeclSize(var) - 1)) {
+    if (VarOverlaps(var.oredered_locs[0].mem_offset) ||
+        VarOverlaps(var.oredered_locs[0].mem_offset + GetParamDeclSize(var) -
+                    1)) {
 
-      auto oparam = GetOverlappingParam(var.mem_offset);
-      if (!VarOverlaps(var.mem_offset)) {
-        oparam =
-            GetOverlappingParam(var.mem_offset + GetParamDeclSize(var) - 1);
+      auto oparam = GetOverlappingParam(var.oredered_locs[0].mem_offset);
+      if (!VarOverlaps(var.oredered_locs[0].mem_offset)) {
+        oparam = GetOverlappingParam(var.oredered_locs[0].mem_offset +
+                                     GetParamDeclSize(var) - 1);
       }
 
       LOG(FATAL) << "Inserting variable that overlaps with current frame "
-                 << var.mem_offset << " with size: " << GetParamDeclSize(var)
-                 << " Overlaps with " << oparam->decl.decl.mem_offset
+                 << var.oredered_locs[0].mem_offset
+                 << " with size: " << GetParamDeclSize(var) << " Overlaps with "
+                 << oparam->decl.decl.oredered_locs[0].mem_offset
                  << " with size " << GetParamDeclSize(oparam->decl.decl);
     }
 
-    this->frame.insert({var.mem_offset, {index, var}});
+    this->frame.insert({var.oredered_locs[0].mem_offset, {index, var}});
   }
 };
 
 llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     llvm::Function &F, llvm::FunctionAnalysisManager &AM,
-    const BasicBlockContext &cont) {
+    const BasicBlockContext &cont, const FunctionDecl &fdecl) {
   size_t overrunsz = cont.GetMaxStackSize() - cont.GetStackSize();
   llvm::IRBuilder<> ent_insert(&F.getEntryBlock(), F.getEntryBlock().begin());
   auto overrunptr = ent_insert.CreateAlloca(
@@ -261,9 +265,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       lifter.Options().stack_frame_recovery_options.stack_grows_down,
       cont.GetPointerDisplacement());
 
-
   StackModel smodel(cont, this->lifter.Options().arch, stk);
-
 
   NullCrossReferenceResolver resolver;
   StackCrossReferenceResolver folder(resolver, this->lifter.DataLayout(), stk);
@@ -289,8 +291,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     //TODO(Ian) handle nonzero offset
     if (referenced_variable.has_value()) {
 
-      auto g = anvill::ProvidePointerFromFunctionArgs(
-          &F, referenced_variable->decl.index, cont);
+      auto g = cont.ProvidePointerFromFunctionArgs(
+          &F, referenced_variable->decl.decl);
       auto ptr = GetPtrToOffsetInto(ent_insert, this->lifter.DataLayout(),
                                     referenced_variable->decl.decl.type, g,
                                     referenced_variable->offset);
@@ -365,8 +367,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     // TODO(Ian): this isnt sound if the resolved stack pointer then has further manipulation causing it to land inside a variable
     anvill::GetBasicBlockStackPtr(&F)->addAttr(noalias);
 
-    for (auto lives : cont.LiveParamsAtEntryAndExit()) {
-      ProvidePointerFromFunctionArgs(&F, lives.index, cont)->addAttr(noalias);
+    for (auto &param : cont.GetParams()) {
+      cont.ProvidePointerFromFunctionArgs(&F, param)->addAttr(noalias);
     }
   }
 
