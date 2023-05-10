@@ -37,7 +37,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       remillFunctionCall->getFunction()->getParent()->getDataLayout());
   auto ra = xref_folder.TryResolveReferenceWithClearedCache(target_func);
   auto f = remillFunctionCall->getFunction();
-  CHECK(!llvm::verifyFunction(*f, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*f, &llvm::errs()));
 
   if (ra.references_entity ||  // Related to an existing lifted entity.
       ra.references_global_value ||  // Related to a global var/func.
@@ -67,7 +67,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
     }
   }
 
-  CHECK(!llvm::verifyFunction(*f, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*f, &llvm::errs()));
 
   return prev;
 }

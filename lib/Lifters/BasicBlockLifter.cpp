@@ -34,8 +34,8 @@ namespace anvill {
 void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
-  CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
 }

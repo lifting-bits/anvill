@@ -353,7 +353,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     }
   }
 
-  CHECK(!llvm::verifyFunction(F, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
 
   // This isnt a sound check at all we could still derive a pointer to a variable from another variable. Essentially need to check that all
