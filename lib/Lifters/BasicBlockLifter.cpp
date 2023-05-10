@@ -34,8 +34,8 @@ namespace anvill {
 void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
-  CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
 }
@@ -151,8 +151,8 @@ BasicBlockLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
   //                     function? Try this on Compiler Explorer!
   if (!enc.u.op && !enc.u.op2) {
-    LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
-              << std::hex << pc << " at " << inst.pc << std::dec;
+    DLOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
+               << std::hex << pc << " at " << inst.pc << std::dec;
 
     llvm::IRBuilder<> ir(block);
     return {pc + 4u,
@@ -314,13 +314,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
   auto init_context = this->CreateDecodingContext(this->block_def);
 
-  LOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
-            << " with size " << this->block_def.size;
+  DLOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
+             << " with size " << this->block_def.size;
   bool ended_on_terminal = false;
   while (reached_addr < this->block_def.addr + this->block_def.size &&
          !ended_on_terminal) {
     auto addr = reached_addr;
-    LOG(INFO) << "Decoding at addr " << std::hex << addr;
+    DLOG(INFO) << "Decoding at addr " << std::hex << addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
       remill::AddTerminatingTailCall(bb, this->intrinsics.error,
@@ -342,7 +342,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);
-    LOG_IF(INFO, ended_on_terminal)
+    DLOG_IF(INFO, ended_on_terminal)
         << "On terminal at addr: " << std::hex << addr;
   }
 
@@ -499,8 +499,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     return this->block_context->ProvidePointerFromFunctionArgs(func, param);
   };
 
-  LOG(INFO) << "Live values at entry to function "
-            << this->block_context->LiveBBParamsAtEntry().size();
+  DLOG(INFO) << "Live values at entry to function "
+             << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
@@ -706,7 +706,7 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
   PointerProvider ptr_provider =
       [&builder, this, out_param_locals,
        &stack](const ParameterDecl &repr_var) -> llvm::Value * {
-    LOG(INFO) << "Lifting: " << repr_var.name << " for call";
+    DLOG(INFO) << "Lifting: " << repr_var.name << " for call";
     if (HasMemLoc(repr_var)) {
       // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
       // svars are single valuedecl contigous
