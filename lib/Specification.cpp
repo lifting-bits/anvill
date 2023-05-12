@@ -283,7 +283,7 @@ GetArch(llvm::LLVMContext &context,
       arch_name = remill::kArchAMD64_AVX512;
       break;
     case ::specification::ARCH_AARCH64:
-      arch_name = remill::kArchAArch64LittleEndian;
+      arch_name = remill::kArchAArch64LittleEndian_SLEIGH;
       break;
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;

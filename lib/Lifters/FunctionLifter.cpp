@@ -319,7 +319,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
 // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so
 // that all semantics and helpers are completely inlined.
 void FunctionLifter::RecursivelyInlineLiftedFunctionIntoNativeFunction(void) {
-  CHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
+  DCHECK(!llvm::verifyModule(*this->native_func->getParent(), &llvm::errs()));
   this->RecursivelyInlineFunctionCallees(this->native_func);
 }
 
@@ -522,7 +522,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Go lift all instructions!
   VisitBlocks(lifted_func_st.state_ptr, abstract_stack);
 
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.

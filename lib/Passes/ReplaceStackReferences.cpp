@@ -61,7 +61,7 @@ class StackCrossReferenceResolver : public CrossReferenceFolder {
  protected:
   virtual std::optional<ResolvedCrossReference>
   ResolveValueCallback(llvm::Value *v) const override {
-    LOG(INFO) << "Looking at: " << remill::LLVMThingToString(v);
+    DLOG(INFO) << "Looking at: " << remill::LLVMThingToString(v);
     auto stack_ref = abs_stack.StackPointerFromStackCompreference(v);
     if (stack_ref) {
       return this->StackPtrToXref(*stack_ref);
@@ -202,17 +202,17 @@ class StackModel {
       return std::nullopt;
     }
 
-    LOG(INFO) << "value found lte offset: "
-              << vlte->decl.oredered_locs[0].mem_offset << " " << off;
+    DLOG(INFO) << "value found lte offset: "
+               << vlte->decl.oredered_locs[0].mem_offset << " " << off;
 
     auto offset_into_var = off - vlte->decl.oredered_locs[0].mem_offset;
     if (offset_into_var <
         static_cast<std::int64_t>(GetParamDeclSize(vlte->decl))) {
       return {{offset_into_var, *vlte}};
     }
-    LOG(INFO) << "Looking for off  " << off << " but not fitting "
-              << offset_into_var << " got off "
-              << vlte->decl.oredered_locs[0].mem_offset;
+    DLOG(INFO) << "Looking for off  " << off << " but not fitting "
+               << offset_into_var << " got off "
+               << vlte->decl.oredered_locs[0].mem_offset;
     return std::nullopt;
   }
 
@@ -254,10 +254,10 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
   auto overrunptr = ent_insert.CreateAlloca(
       AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
 
-  LOG(INFO) << "Replacing stack vars in bb: " << std::hex
-            << *anvill::GetBasicBlockAddr(&F);
-  LOG(INFO) << "Stack size " << cont.GetStackSize();
-  LOG(INFO) << "Max stack size " << cont.GetMaxStackSize();
+  DLOG(INFO) << "Replacing stack vars in bb: " << std::hex
+             << *anvill::GetBasicBlockAddr(&F);
+  DLOG(INFO) << "Stack size " << cont.GetStackSize();
+  DLOG(INFO) << "Max stack size " << cont.GetMaxStackSize();
   AbstractStack stk(
       F.getContext(),
       {{cont.GetStackSize(), anvill::GetBasicBlockStackPtr(&F)},
@@ -307,8 +307,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       collision = true;
     }
 
-    LOG(INFO) << "Escaping stack access " << stack_offset << " "
-              << remill::LLVMThingToString(use->get());
+    DLOG(INFO) << "Escaping stack access " << stack_offset << " "
+               << remill::LLVMThingToString(use->get());
 
     // otherwise we are going to escape the abstract stack
     to_replace_vars.push_back({use, stack_offset});
@@ -353,7 +353,7 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
     }
   }
 
-  CHECK(!llvm::verifyFunction(F, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(F, &llvm::errs()));
 
 
   // This isnt a sound check at all we could still derive a pointer to a variable from another variable. Essentially need to check that all

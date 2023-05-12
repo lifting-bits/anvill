@@ -622,10 +622,13 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
 
   for (auto &[blk_addr, ctx] : obj.block_context()) {
-    std::vector<OffsetDomain> stack_offsets;
-    std::vector<ConstantDomain> constant_values;
+    std::vector<OffsetDomain> stack_offsets_at_entry, stack_offsets_at_exit;
+    std::vector<ConstantDomain> constant_values_at_entry,
+        constant_values_at_exit;
     auto blk = decl.cfg[blk_addr];
-    for (auto &symval : ctx.symvals()) {
+    auto symval_to_domains = [&](const specification::ValueMapping &symval,
+                                 std::vector<OffsetDomain> &stack_offsets,
+                                 std::vector<ConstantDomain> &constant_values) {
       if (!symval.has_target_value()) {
         LOG(FATAL) << "All equalities must have a target";
       }
@@ -643,7 +646,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
       if (!target_vdecl.Succeeded()) {
         LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
-        continue;
+        return;
       }
 
       if (!symval.has_curr_val()) {
@@ -673,11 +676,19 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         LOG(FATAL) << symval.curr_val().GetTypeName()
                    << " is unimplemented for affine relations";
       }
+    };
+
+    for (auto &symval : ctx.symvals_at_entry()) {
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_entry[blk_addr].affine_equalities,
+                        decl.constant_values_at_entry[blk_addr]);
     }
 
-    SpecStackOffsets off = {stack_offsets};
-    decl.stack_offsets.emplace(blk_addr, std::move(off));
-    decl.constant_values.emplace(blk_addr, std::move(constant_values));
+    for (auto &symval : ctx.symvals_at_exit()) {
+      symval_to_domains(symval,
+                        decl.stack_offsets_at_exit[blk_addr].affine_equalities,
+                        decl.constant_values_at_exit[blk_addr]);
+    }
 
     this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
                             ctx.live_at_entries());
