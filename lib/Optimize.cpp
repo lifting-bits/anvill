@@ -204,7 +204,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::DSEPass());
   fpm.addPass(llvm::VerifierPass());
-  AddCFGModifyingSROAPass(fpm);
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::EarlyCSEPass(true));
   fpm.addPass(llvm::VerifierPass());
@@ -239,7 +239,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::VerifierPass());
-  AddCFGModifyingSROAPass(fpm);
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   fpm.addPass(llvm::VerifierPass());
 
   // Sometimes we observe patterns where PC- and SP-related offsets are
@@ -261,10 +261,10 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
-  AddCFGModifyingSROAPass(fpm);
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   //fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   fpm.addPass(llvm::VerifierPass());
-  AddCFGModifyingSROAPass(fpm);
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   fpm.addPass(llvm::VerifierPass());
 
   AddCombineAdjacentShifts(fpm);
@@ -279,7 +279,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
   fpm.addPass(llvm::VerifierPass());
-  AddCFGModifyingSROAPass(fpm);
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   fpm.addPass(llvm::VerifierPass());
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
 

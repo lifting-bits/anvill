@@ -142,6 +142,4 @@ bool HasMemLoc(const ValueDecl &v);
 
 bool HasRegLoc(const ValueDecl &v);
 
-void AddCFGModifyingSROAPass(llvm::FunctionPassManager &fpm);
-
 }  // namespace anvill
