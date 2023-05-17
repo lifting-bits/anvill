@@ -90,7 +90,7 @@ then
 fi
 
 if ! ${ANVILL_DECOMPILE} --version &>/dev/null;
-then   
+then
     echo "[!] Could not execute anvill decompile cmd: ${ANVILL_DECOMPILE}"
     exit 1
 fi
@@ -120,7 +120,8 @@ do
         --run-name "anvill-live-ci-amp-bins" \
         --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json" \
         --dump-stats \
-        --dump-benchmark
+        --dump-benchmark \
+        --jobs 26
 
 
     if ! check_test "$(pwd)/results/${dir}/python/stats.json"
