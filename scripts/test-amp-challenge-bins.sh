@@ -121,7 +121,7 @@ do
         --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json" \
         --dump-stats \
         --dump-benchmark \
-        --jobs 26
+        --jobs 18
 
 
     if ! check_test "$(pwd)/results/${dir}/python/stats.json"
