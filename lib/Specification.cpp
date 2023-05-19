@@ -32,8 +32,10 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_)
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_, std::string image_name_, uint64_t image_base_)
     : arch(std::move(arch_)),
+      image_name(image_name_),
+      image_base(image_base_),
       type_dictionary(*(arch->context)),
       type_translator(type_dictionary, arch.get()) {}
 
@@ -249,6 +251,16 @@ std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
   return std::shared_ptr<const remill::Arch>(impl, impl->arch.get());
 }
 
+// Return the architecture used by this specification.
+std::string Specification::ImageName(void) const {
+  return impl->image_name;
+}
+
+// Return the architecture used by this specification.
+uint64_t Specification::ImageBase(void) const {
+  return impl->image_base;
+}
+
 // Return the type dictionary used by this specification.
 const ::anvill::TypeDictionary &Specification::TypeDictionary(void) const {
   return impl->type_dictionary;
@@ -326,8 +338,11 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
     return arch.Error();
   }
 
+  auto image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
@@ -355,8 +370,12 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
     return arch.Error();
   }
 
+  auto image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
