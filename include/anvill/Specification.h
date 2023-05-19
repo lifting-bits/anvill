@@ -128,7 +128,7 @@ class Specification {
   std::string ImageName(void) const;
 
   // Return the image base address used by this specification.
-  uint64_t ImageBase(void) const;
+  std::uint64_t ImageBase(void) const;
 
   // Return the type dictionary used by this specification.
   const ::anvill::TypeDictionary &TypeDictionary(void) const;

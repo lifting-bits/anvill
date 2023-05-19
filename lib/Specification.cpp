@@ -32,7 +32,7 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_, std::string image_name_, uint64_t image_base_)
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_, std::string image_name_, std::uint64_t image_base_)
     : arch(std::move(arch_)),
       image_name(image_name_),
       image_base(image_base_),
@@ -257,7 +257,7 @@ std::string Specification::ImageName(void) const {
 }
 
 // Return the architecture used by this specification.
-uint64_t Specification::ImageBase(void) const {
+std::uint64_t Specification::ImageBase(void) const {
   return impl->image_base;
 }
 
