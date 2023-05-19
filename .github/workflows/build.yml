@@ -52,8 +52,8 @@ jobs:
       matrix:
         image:
           - { name: "ubuntu", tag: "22.04" }
-        llvm: ["15"]
-        cxxcommon_version: ["v0.2.24"]
+        llvm: ["16"]
+        cxxcommon_version: ["v0.3.2"]
 
     runs-on:
       labels: gha-ubuntu-32
@@ -418,9 +418,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["macos-11"]
-        llvm: ["15"]
-        cxxcommon_version: ["v0.2.24"]
+        os: ["macos-12"]
+        llvm: ["16"]
+        cxxcommon_version: ["v0.3.2"]
 
     runs-on: macos-12
 
@@ -497,7 +497,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-13.0_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-14.2_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/lifting-bits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -726,8 +726,8 @@ jobs:
           zip -r9 anvill_ubuntu-22.04_packages.zip \
                   ubuntu-22.04*
 
-          zip -r9 anvill_macos-11_packages.zip \
-                  macos-11*
+          zip -r9 anvill_macos-12_packages.zip \
+                  macos-12*
 
       - name: Upload the Ubuntu 22.04 packages
         uses: actions/upload-release-asset@v1
@@ -749,8 +749,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: anvill_macos-11_packages.zip
-          asset_name: anvill_macos-11_packages.zip
+          asset_path: anvill_macos-12_packages.zip
+          asset_name: anvill_macos-12_packages.zip
           asset_content_type: application/gzip
 
   Docker_Linux:
@@ -760,7 +760,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["15"]
+        llvm: ["16"]
         ubuntu: ["22.04"]
     steps:
       - uses: actions/checkout@v3
