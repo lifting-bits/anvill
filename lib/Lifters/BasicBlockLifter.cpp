@@ -661,12 +661,11 @@ void BasicBlockLifter::UnpackLiveValues(
     // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
     if (!HasMemLoc(decl.param)) {
       auto ptr = returned_value(decl.param);
-      if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
-        insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
-                                             decl.param.spec_type));
-      }
       auto loaded_var_val =
           bldr.CreateLoad(decl.param.type, ptr, decl.param.name);
+      loaded_var_val->setMetadata(
+          "anvill.type",
+          this->type_specifier.EncodeToMetadata(decl.param.spec_type));
 
       auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
       auto new_mem_ptr = StoreNativeValue(
