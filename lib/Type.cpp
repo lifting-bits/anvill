@@ -64,6 +64,7 @@ class TypeSpecifierImpl {
   std::unordered_map<llvm::StructType *, size_t> type_to_id;
   std::vector<llvm::StructType *> id_to_type;
   std::unordered_map<void *, llvm::MDNode *> type_to_md;
+  std::unordered_map<llvm::MDNode *, TypeSpec> md_to_type;
 
   inline TypeSpecifierImpl(const TypeDictionary &type_dict_,
                            const llvm::DataLayout &dl_)
@@ -609,6 +610,77 @@ std::string TypeTranslator::EncodeToString(llvm::Type *type,
 
 llvm::MDNode *TypeTranslator::EncodeToMetadata(TypeSpec spec) const {
   return std::visit([this](auto &&t) { return impl->TypeToMetadata(t); }, spec);
+}
+
+TypeSpec TypeTranslator::DecodeFromMetadata(llvm::MDNode *md) const {
+  if (impl->md_to_type.count(md)) {
+    return impl->md_to_type[md];
+  }
+
+  auto &res = impl->md_to_type[md];
+  auto kind = llvm::cast<llvm::MDString>(md->getOperand(0).get());
+  if (kind->getString().equals("BaseType")) {
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    res = static_cast<BaseType>(const_int->getZExtValue());
+  } else if (kind->getString().equals("PointerType")) {
+    auto ptrtype = std::make_shared<PointerType>(UnknownType{}, false);
+    res = ptrtype;
+    auto pointee = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    ptrtype->pointee = DecodeFromMetadata(pointee);
+  } else if (kind->getString().equals("VectorType")) {
+    auto vectype = std::make_shared<VectorType>(UnknownType{}, 0);
+    res = vectype;
+    auto base = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(2).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    vectype->base = DecodeFromMetadata(base);
+    vectype->size = const_int->getZExtValue();
+  } else if (kind->getString().equals("ArrayType")) {
+    auto arrtype = std::make_shared<ArrayType>(UnknownType{}, 0);
+    res = arrtype;
+    auto base = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(2).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    arrtype->base = DecodeFromMetadata(base);
+    arrtype->size = const_int->getZExtValue();
+  } else if (kind->getString().equals("StructType")) {
+    auto strcttype = std::make_shared<StructType>();
+    res = strcttype;
+    for (size_t i = 1; i < md->getNumOperands(); ++i) {
+      strcttype->members.push_back(DecodeFromMetadata(
+          llvm::cast<llvm ::MDNode>(md->getOperand(i).get())));
+    }
+  } else if (kind->getString().equals("FunctionType")) {
+    auto functype = std::make_shared<FunctionType>(
+        UnknownType{}, std::vector<TypeSpec>{}, false);
+    res = functype;
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    functype->is_variadic = const_int->getZExtValue();
+    functype->return_type =
+        DecodeFromMetadata(llvm::cast<llvm ::MDNode>(md->getOperand(2).get()));
+    for (size_t i = 3; i < md->getNumOperands(); ++i) {
+      functype->arguments.push_back(DecodeFromMetadata(
+          llvm::cast<llvm ::MDNode>(md->getOperand(i).get())));
+    }
+  } else if (kind->getString().equals("UnknownType")) {
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    res = UnknownType{static_cast<unsigned>(const_int->getZExtValue())};
+  }
+
+  return res;
 }
 
 // Parse an encoded type string into its represented type.

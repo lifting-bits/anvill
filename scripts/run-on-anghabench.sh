@@ -7,7 +7,7 @@ export BINJA_DECODE_KEY=__BINJA_DECODE_KEY__
 export BINJA_CHANNEL=__BINJA_CHANNEL__
 export BINJA_VERSION=__BINJA_VERSION__
 
-export LLVM_VERSION=15
+export LLVM_VERSION=16
 export CC=clang-13 CXX=clang++-13
 
 dpkg --add-architecture i386
