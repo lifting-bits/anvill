@@ -32,7 +32,9 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_, std::string image_name_, std::uint64_t image_base_)
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                                     const std::string &image_name_,
+                                     std::uint64_t image_base_)
     : arch(std::move(arch_)),
       image_name(image_name_),
       image_base(image_base_),
@@ -252,7 +254,7 @@ std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
 }
 
 // Return the architecture used by this specification.
-std::string Specification::ImageName(void) const {
+const std::string &Specification::ImageName(void) const {
   return impl->image_name;
 }
 
@@ -338,7 +340,7 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
     return arch.Error();
   }
 
-  auto image_name = spec.image_name();
+  const auto &image_name = spec.image_name();
   auto image_base = spec.image_base();
 
   std::shared_ptr<SpecificationImpl> pimpl(
@@ -370,7 +372,7 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
     return arch.Error();
   }
 
-  auto image_name = spec.image_name();
+  const auto &image_name = spec.image_name();
   auto image_base = spec.image_base();
 
 

@@ -125,7 +125,7 @@ class Specification {
   std::shared_ptr<const remill::Arch> Arch(void) const;
 
   // Return the image name used by this specification.
-  std::string ImageName(void) const;
+  const std::string &ImageName(void) const;
 
   // Return the image base address used by this specification.
   std::uint64_t ImageBase(void) const;

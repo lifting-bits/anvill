@@ -34,7 +34,8 @@ class SpecificationImpl
   friend class Specification;
 
   SpecificationImpl(void) = delete;
-  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_, std::string image_name_, std::uint64_t image_base_);
+  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                    const std::string &image_name_, std::uint64_t image_base_);
 
   Result<std::vector<std::string>, std::string>
   ParseSpecification(const ::specification::Specification &obj);
