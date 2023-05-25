@@ -6,17 +6,17 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/ABI.h>
 #include <anvill/Passes/SliceManager.h>
-
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Operator.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <remill/BC/Util.h>
+
 #include <exception>
 #include <iostream>
-#include <anvill/ABI.h>
 
 namespace anvill {
 
@@ -57,14 +57,13 @@ void SliceManager::insertClonedSliceIntoFunction(
   auto bb = llvm::BasicBlock::Create(this->mod.get()->getContext(),
                                      "slicebasicblock." + std::to_string(id.id),
                                      targetFunc);
+  llvm::IRBuilder<> builder(bb);
 
-  std::for_each(slice.begin(), slice.end(), [bb](llvm::Instruction *insn) {
-    bb->getInstList().push_back(insn);
-  });
+  std::for_each(slice.begin(), slice.end(),
+                [&builder](llvm::Instruction *insn) { builder.Insert(insn); });
 
 
-  llvm::ReturnInst::Create(this->mod.get()->getContext(), newReturn,
-                           bb);
+  llvm::ReturnInst::Create(this->mod.get()->getContext(), newReturn, bb);
   return;
 }
 
@@ -177,7 +176,6 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   std::for_each(cloned.begin(), cloned.end(),
                 [&mapper](llvm::Instruction *insn) {
                   llvm::RemapInstruction(insn, mapper);
-
                 });
 
 
@@ -187,28 +185,30 @@ SliceManager::addSlice(llvm::ArrayRef<llvm::Instruction *> slice,
   this->insertClonedSliceIntoFunction(id, slice_repr, new_ret, cloned);
 
   // Remove anvill pc to make interpretable
-  if (auto anvill_pc = this->mod.get()->getGlobalVariable(::anvill::kSymbolicPCName)) {
+  if (auto anvill_pc =
+          this->mod.get()->getGlobalVariable(::anvill::kSymbolicPCName)) {
     remill::ReplaceAllUsesOfConstant(
-        anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()), this->mod.get());
+        anvill_pc, llvm::Constant::getNullValue(anvill_pc->getType()),
+        this->mod.get());
   }
 
   if (!this->replaceAllGVConstantsWithInterpretableValue(cloned)) {
     slice_repr->eraseFromParent();
     return std::nullopt;
   }
-  
+
   assert(remill::VerifyModule(this->mod.get()));
   return {id};
 }
 
 
-InterpreterBuilder SliceManager::IntoInterpreterBuilder(SliceManager&& x) {
+InterpreterBuilder SliceManager::IntoInterpreterBuilder(SliceManager &&x) {
   return InterpreterBuilder(std::move(x.mod));
 }
 
 InterpreterBuilder::Slice InterpreterBuilder::getSlice(SliceID i) const {
   auto repr = this->mod->getFunction(SliceManager::getFunctionName(i));
-  return InterpreterBuilder::Slice(repr,i);
+  return InterpreterBuilder::Slice(repr, i);
 }
 
 SliceInterpreter InterpreterBuilder::getInterp() const {

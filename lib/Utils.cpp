@@ -33,10 +33,12 @@
 #include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Endian.h>
+#include <llvm/Transforms/Scalar/SROA.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -991,6 +993,5 @@ bool HasRegLoc(const ValueDecl &v) {
   return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
                      [](const LowLoc &loc) -> bool { return loc.reg; });
 }
-
 
 }  // namespace anvill

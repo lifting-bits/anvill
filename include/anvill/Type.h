@@ -275,6 +275,7 @@ class TypeTranslator {
                  EncodingFormat alphanum = EncodingFormat::kDefault) const;
 
   llvm::MDNode *EncodeToMetadata(TypeSpec spec) const;
+  TypeSpec DecodeFromMetadata(llvm::MDNode *md) const;
 
   Result<llvm::Type *, TypeSpecificationError>
   DecodeFromSpec(TypeSpec spec) const;

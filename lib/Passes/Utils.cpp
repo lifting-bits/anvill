@@ -65,7 +65,7 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
     // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinValue() < pointer_width) {
       int_ty =
           llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       val_to_convert = llvm::ConstantExpr::getZExt(val_to_convert, int_ty);
@@ -113,7 +113,7 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
     // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinValue() < pointer_width) {
       int_ty =
           llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       auto dest = ir.CreateZExt(val_to_convert, int_ty);
