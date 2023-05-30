@@ -277,7 +277,7 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   // Initialize cleanup optimizations
 
 
-  DCHECK(llvm::verifyFunction(*inf, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*inf, &llvm::errs()));
 
   llvm::legacy::FunctionPassManager fpm(inf->getParent());
   fpm.add(llvm::createCFGSimplificationPass());
