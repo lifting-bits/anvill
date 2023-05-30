@@ -378,13 +378,13 @@ message ControlFlowOverrides {
 message Specification {
   Arch arch = 1;
   OS operating_system = 2;
-  string image_name = 3;
-  uint64 image_base = 4;
-  repeated Function functions = 5;
-  repeated Callsite callsites = 6;
-  repeated GlobalVariable global_variables = 7;
-  repeated Symbol symbols = 8;
-  repeated MemoryRange memory_ranges = 9;
-  ControlFlowOverrides overrides = 10;
-  map<int64, TypeSpec> type_aliases = 11;
+  repeated Function functions = 3;
+  repeated Callsite callsites = 4;
+  repeated GlobalVariable global_variables = 5;
+  repeated Symbol symbols = 6;
+  repeated MemoryRange memory_ranges = 7;
+  ControlFlowOverrides overrides = 8;
+  map<int64, TypeSpec> type_aliases = 9;
+  string image_name = 10;
+  uint64 image_base = 11;
 }
