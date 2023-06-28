@@ -73,7 +73,11 @@
         "challenge-3-x86-program_go_patched-nodebug",
         "challenge-3-arm64-program_go-nodebug",
         "challenge-10-ppc-program_c.elf",
-        "challenge-10-ppc-vle-program_c.elf"
+        "challenge-10-ppc-vle-program_c.elf",
+        "challenge-3-armv7-program_go",
+        "challenge-3-armv7-program_go-nodebug",
+        "challenge-3-armv7-program_go_patched",
+        "challenge-3-armv7-program_go_patched-nodebug"
     ],
     "language_id_overrides": {
         "ppc-adc_mpc5744p.elf": "PowerPC:BE:64:VLE-32addr",
