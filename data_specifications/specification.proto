@@ -385,4 +385,6 @@ message Specification {
   repeated MemoryRange memory_ranges = 7;
   ControlFlowOverrides overrides = 8;
   map<int64, TypeSpec> type_aliases = 9;
+  string image_name = 10;
+  uint64 image_base = 11;
 }
