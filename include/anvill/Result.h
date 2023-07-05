@@ -18,6 +18,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <utility>
 #include <variant>
 
 namespace anvill {
@@ -44,10 +45,10 @@ class Result final {
   const ValueType *operator->(void) const;
 
   Result(const ValueType &value);
-  Result(ValueType &&value): destroyed(false), data(std::move(value)) {}
+  Result(ValueType &&value) : destroyed(false), data(std::move(value)) {}
 
   Result(const ErrorType &error);
-  Result(ErrorType &&error):  destroyed(false), data(std::move(error)) {}
+  Result(ErrorType &&error) : destroyed(false), data(std::move(error)) {}
 
   Result(Result &&other) noexcept;
   Result &operator=(Result &&other) noexcept;
