@@ -22,7 +22,7 @@ plugin that is currently closed source. You can checkout the tag: [binja-final-v
 
 ## Getting Help
 
-If you are experiencing undocumented problems with Anvill then ask for help in the `#binary-lifting` channel of the [Empire Hacking Slack](https://empireslacking.herokuapp.com/).
+If you are experiencing undocumented problems with Anvill then ask for help in the `#binary-lifting` channel of the [Empire Hacking Slack](https://slack.empirehacking.nyc/).
 
 ## Supported Platforms
 
