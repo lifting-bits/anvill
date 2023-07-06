@@ -546,7 +546,7 @@ GetSubcomponentType(const LowLoc &loc, uint64_t offset, llvm::Type *target_type,
                     llvm::DataLayout &data) {
   // there's two situations here, either we have a primitive target type in which case the loc must
   // indicate the size for each component, otherwise we decompose the target
-  if (auto itype = llvm::isa_and_nonnull<llvm::IntegerType>(target_type)) {
+  if (target_type->isIntegerTy() || target_type->isFloatingPointTy()) {
     return llvm::IntegerType::get(target_type->getContext(), loc.Size() * 8);
   } else {
     llvm::Type *ty = target_type;
