@@ -92,6 +92,8 @@ class SpecificationImpl
   std::vector<Misc> misc_overrides;
 
   std::unordered_map<std::uint64_t, ControlFlowOverride> control_flow_overrides;
+
+  std::vector<std::string> required_globals;
 };
 
 }  // namespace anvill

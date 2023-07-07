@@ -539,4 +539,8 @@ void Specification::ForEachMiscOverride(
   }
 }
 
+const std::vector<std::string> &Specification::GetRequiredGlobals() const {
+  return impl->required_globals;
+}
+
 }  // namespace anvill
