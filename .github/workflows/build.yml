@@ -367,7 +367,7 @@ jobs:
           scripts/test-amp-challenge-bins.sh \
           --ghidra-install-dir $GHIDRA_INSTALL_DIR \
           --decompile-cmd "anvill-decompile-spec" \
-          --jobs 16
+          --jobs 8
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
       - name: Tar and Compress logs
