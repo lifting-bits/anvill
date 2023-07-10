@@ -387,4 +387,5 @@ message Specification {
   map<int64, TypeSpec> type_aliases = 9;
   string image_name = 10;
   uint64 image_base = 11;
+  repeated string required_globals = 12;
 }

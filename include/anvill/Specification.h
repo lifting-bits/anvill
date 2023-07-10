@@ -199,6 +199,8 @@ class Specification {
   SpecBlockContexts GetBlockContexts() const {
     return SpecBlockContexts(*this);
   }
+
+  const std::unordered_set<std::string> &GetRequiredGlobals() const;
 };
 
 }  // namespace anvill
