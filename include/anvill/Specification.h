@@ -200,7 +200,7 @@ class Specification {
     return SpecBlockContexts(*this);
   }
 
-  const std::vector<std::string> &GetRequiredGlobals() const;
+  const std::unordered_set<std::string> &GetRequiredGlobals() const;
 };
 
 }  // namespace anvill

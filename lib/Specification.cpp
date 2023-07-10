@@ -238,7 +238,8 @@ SpecificationImpl::ParseSpecification(
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  // TODO(frabert): Parse everything else
+  required_globals = {spec.required_globals().begin(),
+                      spec.required_globals().end()};
 
   return dec_err;
 }
@@ -539,7 +540,8 @@ void Specification::ForEachMiscOverride(
   }
 }
 
-const std::vector<std::string> &Specification::GetRequiredGlobals() const {
+const std::unordered_set<std::string> &
+Specification::GetRequiredGlobals() const {
   return impl->required_globals;
 }
 
