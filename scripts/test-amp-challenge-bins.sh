@@ -11,6 +11,7 @@ function Help
   echo "Options:"
   echo "  --ghidra-install-dir <dir>        The ghidra install dir. Default ${GHIDRA_INSTALL_DIR}"
   echo "  --decompile-cmd <cmd>     The anvill decompile command to invoke. Default ${ANVILL_DECOMPILE}"
+  echo "  --jobs <N>                The number of jobs that can run concurrently. Defaults to system's CPU count"
   echo "  -h --help                 Print help."
 }
 
@@ -72,6 +73,12 @@ while [[ $# -gt 0 ]] ; do
             shift # past argument
         ;;
 
+        # How many concurrent jobs
+        --jobs)
+            NUM_JOBS=${2}
+            shift # past argument
+        ;;
+
         *)
             # unknown option
             echo "[x] Unknown option: ${key}"
@@ -90,7 +97,7 @@ then
 fi
 
 if ! ${ANVILL_DECOMPILE} --version &>/dev/null;
-then   
+then
     echo "[!] Could not execute anvill decompile cmd: ${ANVILL_DECOMPILE}"
     exit 1
 fi
@@ -112,15 +119,20 @@ FAILED="no"
 for dir in binaries
 do
     echo "[+] Testing ${dir}"
-    ${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts/anvill.py \
-        --ghidra-install-dir "${GHIDRA_INSTALL_DIR}" \
-        --anvill-decompile "${ANVILL_DECOMPILE}" \
-        --input-dir "$(pwd)/${dir}" \
-        --output-dir "$(pwd)/results/${dir}" \
-        --run-name "anvill-live-ci-amp-bins" \
-        --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json" \
-        --dump-stats \
+    args=(
+        --ghidra-install-dir "${GHIDRA_INSTALL_DIR}"
+        --anvill-decompile "${ANVILL_DECOMPILE}"
+        --input-dir "$(pwd)/${dir}"
+        --output-dir "$(pwd)/results/${dir}"
+        --run-name "anvill-live-ci-amp-bins"
+        --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json"
+        --dump-stats
         --dump-benchmark
+    )
+    if [[ -v NUM_JOBS ]]; then
+        args+=(--jobs "${NUM_JOBS}")
+    fi
+    ${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts/anvill.py "${args[@]}"
 
 
     if ! check_test "$(pwd)/results/${dir}/python/stats.json"

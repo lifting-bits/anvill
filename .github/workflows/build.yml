@@ -366,7 +366,8 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
           --ghidra-install-dir $GHIDRA_INSTALL_DIR \
-          --decompile-cmd "anvill-decompile-spec"
+          --decompile-cmd "anvill-decompile-spec" \
+          --jobs 8
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
       - name: Tar and Compress logs
