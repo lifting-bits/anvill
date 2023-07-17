@@ -303,7 +303,7 @@ GetArch(llvm::LLVMContext &context,
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
       break;
-    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32; break;
+    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32_SLEIGH; break;
     case ::specification::ARCH_SPARC64: arch_name = remill::kArchSparc64; break;
     case ::specification::ARCH_PPC: arch_name = remill::kArchPPC; break;
   }
