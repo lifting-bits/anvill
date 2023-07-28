@@ -190,9 +190,17 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
-      call->setDoesNotReturn();
-
-      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+      if (cc.is_noreturn) {
+        call->setDoesNotReturn();
+        remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+      } else {
+        // a call that stops that is not noreturn should be a call + return
+        auto func = block->getParent();
+        auto should_return = func->getArg(kShouldReturnArgNum);
+        builder.CreateStore(llvm::Constant::getAllOnesValue(
+          llvm::IntegerType::getInt1Ty(llvm_context)),
+                            should_return);
+      }
     }
     return !cc.stop;
   } else if (std::holds_alternative<anvill::Return>(override)) {

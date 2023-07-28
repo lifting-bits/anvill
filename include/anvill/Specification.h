@@ -72,6 +72,7 @@ struct Jump : ControlFlowOverrideSpec {
 struct Call : ControlFlowOverrideSpec {
   std::optional<std::uint64_t> return_address;
   bool is_tailcall;
+  bool is_noreturn;
   std::optional<std::uint64_t> target_address;
 };
 

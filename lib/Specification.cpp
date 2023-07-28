@@ -201,6 +201,7 @@ SpecificationImpl::ParseSpecification(
   for (auto &call : spec.overrides().calls()) {
     Call callspec{};
     callspec.stop = call.stop();
+    callspec.is_noreturn = call.noreturn();
     callspec.address = call.address();
     if (call.has_return_address()) {
       callspec.return_address = call.return_address();
