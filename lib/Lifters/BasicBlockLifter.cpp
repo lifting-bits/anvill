@@ -202,7 +202,7 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
                             should_return);
       }
     }
-    return !cc.stop;
+    return !cc.stop || !cc.is_noreturn;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     auto func = block->getParent();
     auto should_return = func->getArg(kShouldReturnArgNum);
