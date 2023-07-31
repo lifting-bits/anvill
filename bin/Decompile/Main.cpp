@@ -16,10 +16,10 @@
 #include <glog/logging.h>
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/PrintPasses.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/IR/PrintPasses.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
@@ -47,8 +47,10 @@ DEFINE_bool(add_breakpoints, false,
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
 DEFINE_bool(llvm_debug, false, "Enable LLVM debug flag");
-DEFINE_bool(llvm_print_changed_diff, false, "Print IR diff. NOTE: LLVM must be compiled as Debug");
-DEFINE_bool(llvm_print_changed_color_diff, false, "Print IR colored diff. NOTE: LLVM must be compiled as Debug");
+DEFINE_bool(llvm_print_changed_diff, false,
+            "Print IR diff. NOTE: LLVM must be compiled as Debug");
+DEFINE_bool(llvm_print_changed_color_diff, false,
+            "Print IR colored diff. NOTE: LLVM must be compiled as Debug");
 DEFINE_bool(inline_basic_blocks, false,
             "Enables inlining of basic blocks for high level output");
 
@@ -190,7 +192,8 @@ int main(int argc, char *argv[]) {
   options.stack_frame_recovery_options.stack_offset_metadata_name =
       "stack_offset";
 
-  options.debug_pm = FLAGS_llvm_debug || FLAGS_llvm_print_changed_diff || FLAGS_llvm_print_changed_color_diff;
+  options.debug_pm = FLAGS_llvm_debug || FLAGS_llvm_print_changed_diff ||
+                     FLAGS_llvm_print_changed_color_diff;
 
   anvill::EntityLifter lifter(options);
 

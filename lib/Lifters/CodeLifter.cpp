@@ -9,11 +9,11 @@
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Scalar/SimplifyCFG.h>
-#include <llvm/Transforms/Scalar/DeadStoreElimination.h>
 #include <llvm/Transforms/Scalar/DCE.h>
+#include <llvm/Transforms/Scalar/DeadStoreElimination.h>
 #include <llvm/Transforms/Scalar/Reassociate.h>
 #include <llvm/Transforms/Scalar/SROA.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/Mem2Reg.h>
@@ -295,10 +295,13 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   llvm::FunctionPassManager fpm;
 
   llvm::PassInstrumentationCallbacks pic;
-  llvm::StandardInstrumentations si(inf->getContext(), /*DebugLogging=*/ options.debug_pm, /*VerifyEach=*/ options.debug_pm);
+  llvm::StandardInstrumentations si(inf->getContext(),
+                                    /*DebugLogging=*/options.debug_pm,
+                                    /*VerifyEach=*/options.debug_pm);
   si.registerCallbacks(pic, &fam);
 
-  llvm::PassBuilder pb(nullptr, llvm::PipelineTuningOptions(), std::nullopt, &pic);
+  llvm::PassBuilder pb(nullptr, llvm::PipelineTuningOptions(), std::nullopt,
+                       &pic);
   pb.registerModuleAnalyses(mam);
   pb.registerFunctionAnalyses(fam);
   pb.registerLoopAnalyses(lam);
