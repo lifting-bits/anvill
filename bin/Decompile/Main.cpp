@@ -16,6 +16,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/PrintPasses.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/CommandLine.h>
@@ -46,8 +47,8 @@ DEFINE_bool(add_breakpoints, false,
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
 DEFINE_bool(llvm_debug, false, "Enable LLVM debug flag");
-DEFINE_bool(llvm_print_before_all, false, "Print IR before each pass");
-DEFINE_bool(llvm_print_after_all, false, "Print IR after each pass");
+DEFINE_bool(llvm_print_changed_diff, false, "Print IR diff. NOTE: LLVM must be compiled as Debug");
+DEFINE_bool(llvm_print_changed_color_diff, false, "Print IR colored diff. NOTE: LLVM must be compiled as Debug");
 DEFINE_bool(inline_basic_blocks, false,
             "Enables inlining of basic blocks for high level output");
 
@@ -96,18 +97,10 @@ int main(int argc, char *argv[]) {
     llvm::DebugFlag = true;
   }
 
-  if (FLAGS_llvm_print_before_all || FLAGS_llvm_print_after_all) {
-    std::vector<const char*> fake_argv;
-    // empty program name
-    fake_argv.push_back("");
-    if (FLAGS_llvm_print_after_all) {
-      fake_argv.push_back("-print-after-all");
-    }
-    if (FLAGS_llvm_print_before_all) {
-      fake_argv.push_back("-print-before-all");
-    }
-    fake_argv.push_back(NULL);
-    llvm::cl::ParseCommandLineOptions(fake_argv.size() - 1, fake_argv.data());
+  if (FLAGS_llvm_print_changed_diff) {
+    llvm::PrintChanged = llvm::ChangePrinter::DiffVerbose;
+  } else if (FLAGS_llvm_print_changed_color_diff) {
+    llvm::PrintChanged = llvm::ChangePrinter::ColourDiffVerbose;
   }
 
   if (FLAGS_spec.empty()) {
