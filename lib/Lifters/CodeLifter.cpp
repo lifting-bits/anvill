@@ -295,7 +295,7 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   llvm::FunctionPassManager fpm;
 
   llvm::PassInstrumentationCallbacks pic;
-  llvm::StandardInstrumentations si(inf->getContext(), /*DebugLogging*/ true);
+  llvm::StandardInstrumentations si(inf->getContext(), /*DebugLogging=*/ options.debug_pm, /*VerifyEach=*/ options.debug_pm);
   si.registerCallbacks(pic, &fam);
 
   llvm::PassBuilder pb(nullptr, llvm::PipelineTuningOptions(), std::nullopt, &pic);

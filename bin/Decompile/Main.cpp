@@ -190,6 +190,8 @@ int main(int argc, char *argv[]) {
   options.stack_frame_recovery_options.stack_offset_metadata_name =
       "stack_offset";
 
+  options.debug_pm = FLAGS_llvm_debug || FLAGS_llvm_print_changed_diff || FLAGS_llvm_print_changed_color_diff;
+
   anvill::EntityLifter lifter(options);
 
   std::unordered_map<uint64_t, std::string> names;
