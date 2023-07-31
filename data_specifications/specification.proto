@@ -259,10 +259,11 @@ message BlockContext {
   // Affine equalities between values
   // and high symbols at entry to
   // the block
-  repeated ValueMapping symvals = 1;
+  repeated ValueMapping symvals_at_entry = 1;
+  repeated ValueMapping symvals_at_exit = 2;
   
-  repeated Parameter live_at_entries = 2;
-  repeated Parameter live_at_exits = 3;
+  repeated Parameter live_at_entries = 3;
+  repeated Parameter live_at_exits = 4;
 }
 
 
@@ -384,4 +385,7 @@ message Specification {
   repeated MemoryRange memory_ranges = 7;
   ControlFlowOverrides overrides = 8;
   map<int64, TypeSpec> type_aliases = 9;
+  string image_name = 10;
+  uint64 image_base = 11;
+  repeated string required_globals = 12;
 }

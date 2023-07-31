@@ -137,6 +137,8 @@ struct ConstantDomain {
   ValueDecl target_value;
   std::uint64_t value;
   bool should_taint_by_pc;
+
+  bool operator==(const ConstantDomain &) const = default;
 };
 
 struct SpecStackOffsets {
@@ -239,9 +241,11 @@ class BasicBlockContext {
 
   virtual ~BasicBlockContext() = default;
 
-  virtual const SpecStackOffsets &GetStackOffsets() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const = 0;
 
-  virtual const std::vector<ConstantDomain> &GetConstants() const = 0;
+  virtual const std::vector<ConstantDomain> &GetConstantsAtEntry() const = 0;
+  virtual const std::vector<ConstantDomain> &GetConstantsAtExit() const = 0;
 
   virtual size_t GetStackSize() const = 0;
 
@@ -320,21 +324,29 @@ struct FunctionDecl;
 class SpecBlockContext : public BasicBlockContext {
  private:
   const FunctionDecl &decl;
-  SpecStackOffsets offsets;
-  std::vector<ConstantDomain> constants;
+  SpecStackOffsets offsets_at_entry;
+  SpecStackOffsets offsets_at_exit;
+  std::vector<ConstantDomain> constants_at_entry;
+  std::vector<ConstantDomain> constants_at_exit;
   std::vector<ParameterDecl> live_params_at_entry;
   std::vector<ParameterDecl> live_params_at_exit;
   std::vector<ParameterDecl> params;
 
  public:
-  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets,
-                   std::vector<ConstantDomain> constants,
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+                   SpecStackOffsets offsets_at_exit,
+                   std::vector<ConstantDomain> constants_at_entry,
+                   std::vector<ConstantDomain> constants_at_exit,
                    std::vector<ParameterDecl> live_params_at_entry,
                    std::vector<ParameterDecl> live_params_at_exit);
 
-  virtual const SpecStackOffsets &GetStackOffsets() const override;
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const override;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const override;
 
-  virtual const std::vector<ConstantDomain> &GetConstants() const override;
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtEntry() const override;
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtExit() const override;
 
   virtual ValueDecl ReturnValue() const override;
 
@@ -387,7 +399,9 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::string, ParameterDecl> locals;
 
-  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets;
+  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_entry;
+
+  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_exit;
 
   std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
       live_regs_at_entry;
@@ -396,7 +410,10 @@ struct FunctionDecl : public CallableDecl {
       live_regs_at_exit;
 
   std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
-      constant_values;
+      constant_values_at_entry;
+
+  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+      constant_values_at_exit;
 
   std::uint64_t stack_depth;
 

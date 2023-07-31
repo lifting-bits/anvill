@@ -277,11 +277,7 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   // Initialize cleanup optimizations
 
 
-  if (llvm::verifyFunction(*inf, &llvm::errs())) {
-
-    LOG(FATAL) << "Function verification failed: " << inf->getName().str()
-               << " " << remill::LLVMThingToString(inf->getType());
-  }
+  DCHECK(!llvm::verifyFunction(*inf, &llvm::errs()));
 
   llvm::legacy::FunctionPassManager fpm(inf->getParent());
   fpm.add(llvm::createCFGSimplificationPass());

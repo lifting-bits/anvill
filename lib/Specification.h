@@ -17,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "anvill/Passes/BasicBlockPass.h"
@@ -34,7 +35,8 @@ class SpecificationImpl
   friend class Specification;
 
   SpecificationImpl(void) = delete;
-  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_);
+  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                    const std::string &image_name_, std::uint64_t image_base_);
 
   Result<std::vector<std::string>, std::string>
   ParseSpecification(const ::specification::Specification &obj);
@@ -44,6 +46,9 @@ class SpecificationImpl
 
   // Architecture used by all of the function and global variable declarations.
   const std::unique_ptr<const remill::Arch> arch;
+
+  std::string image_name;
+  std::uint64_t image_base;
 
   const TypeDictionary type_dictionary;
   const TypeTranslator type_translator;
@@ -88,6 +93,8 @@ class SpecificationImpl
   std::vector<Misc> misc_overrides;
 
   std::unordered_map<std::uint64_t, ControlFlowOverride> control_flow_overrides;
+
+  std::unordered_set<std::string> required_globals;
 };
 
 }  // namespace anvill

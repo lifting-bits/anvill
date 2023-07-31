@@ -162,7 +162,29 @@ std::vector<BasicBlockVariable> BasicBlockContext::LiveBBParamsAtExit() const {
   std::vector<BasicBlockVariable> res;
   std::copy_if(
       alllive.begin(), alllive.end(), std::back_inserter(res),
-      [](const BasicBlockVariable &bbvar) { return bbvar.live_at_exit; });
+      [&](const BasicBlockVariable &bbvar) {
+        if (!bbvar.live_at_exit) {
+          return false;
+        }
+        auto &consts_at_exit = GetConstantsAtExit();
+        if (std::find_if(consts_at_exit.begin(), consts_at_exit.end(),
+                         [&](const ConstantDomain &cdomain) {
+                           return cdomain.target_value == bbvar.param;
+                         }) != consts_at_exit.end()) {
+          return false;
+        }
+
+        auto &offset_at_exit = GetStackOffsetsAtExit();
+        if (std::find_if(offset_at_exit.affine_equalities.begin(),
+                         offset_at_exit.affine_equalities.end(),
+                         [&](const OffsetDomain &odomain) {
+                           return odomain.target_value == bbvar.param;
+                         }) != offset_at_exit.affine_equalities.end()) {
+          return false;
+        }
+
+        return true;
+      });
   return res;
 }
 
@@ -247,13 +269,17 @@ size_t SpecBlockContext::GetMaxStackSize() const {
 
 
 SpecBlockContext::SpecBlockContext(
-    const FunctionDecl &decl, SpecStackOffsets offsets,
-    std::vector<ConstantDomain> constants,
+    const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+    SpecStackOffsets offsets_at_exit,
+    std::vector<ConstantDomain> constants_at_entry,
+    std::vector<ConstantDomain> constants_at_exit,
     std::vector<ParameterDecl> live_params_at_entry,
     std::vector<ParameterDecl> live_params_at_exit)
     : decl(decl),
-      offsets(std::move(offsets)),
-      constants(std::move(constants)),
+      offsets_at_entry(std::move(offsets_at_entry)),
+      offsets_at_exit(std::move(offsets_at_exit)),
+      constants_at_entry(std::move(constants_at_entry)),
+      constants_at_exit(std::move(constants_at_exit)),
       live_params_at_entry(std::move(live_params_at_entry)),
       live_params_at_exit(std::move(live_params_at_exit)),
       params(decl.in_scope_variables) {}
@@ -270,12 +296,22 @@ const std::vector<ParameterDecl> &SpecBlockContext::LiveParamsAtEntry() const {
   return this->live_params_at_entry;
 }
 
-const SpecStackOffsets &SpecBlockContext::GetStackOffsets() const {
-  return this->offsets;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtEntry() const {
+  return this->offsets_at_entry;
 }
 
-const std::vector<ConstantDomain> &SpecBlockContext::GetConstants() const {
-  return this->constants;
+const SpecStackOffsets &SpecBlockContext::GetStackOffsetsAtExit() const {
+  return this->offsets_at_exit;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtEntry() const {
+  return this->constants_at_entry;
+}
+
+const std::vector<ConstantDomain> &
+SpecBlockContext::GetConstantsAtExit() const {
+  return this->constants_at_exit;
 }
 
 const std::vector<ParameterDecl> &SpecBlockContext::GetParams() const {
@@ -306,8 +342,8 @@ llvm::Value *CallableDecl::CallFromLiftedBlock(
   // the function, which will be based off of the register state
   // on entry to the function.
   auto new_sp_base = return_stack_pointer->AddressOf(state_ptr, ir);
-  LOG(INFO) << "Modifying ret stack pointer by: "
-            << return_stack_pointer_offset;
+  DLOG(INFO) << "Modifying ret stack pointer by: "
+             << return_stack_pointer_offset;
 
   // TODO(Ian): this could go in the wrong direction if stack option is set to go up
   const auto sp_val_on_exit = ir.CreateAdd(
@@ -454,8 +490,12 @@ size_t FunctionDecl::GetPointerDisplacement() const {
 
 SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
   return SpecBlockContext(
-      *this, GetWithDef(addr, this->stack_offsets, SpecStackOffsets()),
-      GetWithDef(addr, this->constant_values, std::vector<ConstantDomain>()),
+      *this, GetWithDef(addr, this->stack_offsets_at_entry, SpecStackOffsets()),
+      GetWithDef(addr, this->stack_offsets_at_exit, SpecStackOffsets()),
+      GetWithDef(addr, this->constant_values_at_entry,
+                 std::vector<ConstantDomain>()),
+      GetWithDef(addr, this->constant_values_at_exit,
+                 std::vector<ConstantDomain>()),
       GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
       GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
@@ -465,9 +505,9 @@ AbstractStack::StackOffsetFromStackPointer(std::int64_t stack_off) const {
   if (this->stack_grows_down) {
     auto displaced_offset =
         stack_off - static_cast<std::int64_t>(this->pointer_displacement);
-    LOG(INFO) << this->total_size;
-    LOG(INFO) << "disp: " << this->pointer_displacement;
-    LOG(INFO) << "Displaced offset: " << displaced_offset;
+    DLOG(INFO) << this->total_size;
+    DLOG(INFO) << "disp: " << this->pointer_displacement;
+    DLOG(INFO) << "Displaced offset: " << displaced_offset;
     if (!(static_cast<std::int64_t>(this->total_size) >=
           llabs(displaced_offset))) {
       return std::nullopt;
@@ -510,13 +550,13 @@ AbstractStack::PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
   }
 
   auto i32 = llvm::IntegerType::getInt32Ty(this->context);
-  LOG(INFO) << "Looking for offset" << *off;
+  DLOG(INFO) << "Looking for offset" << *off;
   auto curr_off = 0;
   auto curr_ind = 0;
   for (auto [sz, ptr] : this->components) {
     if (off < curr_off + sz) {
-      LOG(INFO) << "Found for " << remill::LLVMThingToString(ptr);
-      LOG(INFO) << curr_off << " " << sz;
+      DLOG(INFO) << "Found for " << remill::LLVMThingToString(ptr);
+      DLOG(INFO) << curr_off << " " << sz;
       return ir.CreateGEP(this->stack_types[curr_ind], ptr,
                           {llvm::ConstantInt::get(i32, 0),
                            llvm::ConstantInt::get(i32, *off - curr_off)});

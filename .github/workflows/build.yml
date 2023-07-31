@@ -26,7 +26,7 @@ on:
 
 jobs:
   cleanup_stale_workflows:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Clone the anvill repository
@@ -51,9 +51,9 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { name: "ubuntu", tag: "20.04" }
-        llvm: ["15"]
-        cxxcommon_version: ["v0.2.22"]
+          - { name: "ubuntu", tag: "22.04" }
+        llvm: ["16"]
+        cxxcommon_version: ["v0.3.2"]
 
     runs-on:
       labels: gha-ubuntu-32
@@ -166,10 +166,10 @@ jobs:
           echo ~/.cargo/bin >>$GITHUB_PATH
 
       - name: "Setup Ghidra"
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
         run: |
-          wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.1.5_build/ghidra_10.1.5_PUBLIC_20220726.zip --output-document=ghidra.zip
-          unzip ghidra.zip
-          echo "GHIDRA_INSTALL_DIR=$(pwd)/ghidra_10.1.5_PUBLIC" >> $GITHUB_ENV
+          just install-ghidra
+          echo "GHIDRA_INSTALL_DIR=$(pwd)/deps/ghidra" >> $GITHUB_ENV
 
       - name: Install Ghidra Spec Generation
         shell: bash
@@ -366,7 +366,8 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-amp-challenge-bins.sh \
           --ghidra-install-dir $GHIDRA_INSTALL_DIR \
-          --decompile-cmd "anvill-decompile-spec"
+          --decompile-cmd "anvill-decompile-spec" \
+          --jobs 8
         env:
           TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
       - name: Tar and Compress logs
@@ -418,9 +419,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["macos-11"]
-        llvm: ["15"]
-        cxxcommon_version: ["v0.2.22"]
+        os: ["macos-12"]
+        llvm: ["16"]
+        cxxcommon_version: ["v0.3.2"]
 
     runs-on: macos-12
 
@@ -497,7 +498,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-13.0_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-14.2_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/lifting-bits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -675,7 +676,7 @@ jobs:
 
   passes_ci:
     needs: build_linux
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     if: always()
     steps:
       - name: Successful linux build
@@ -688,7 +689,7 @@ jobs:
   release_packages:
     # Do not run the release procedure if any of the builds has failed
     needs: [build_linux, build_macos]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
 
     steps:
@@ -723,13 +724,13 @@ jobs:
 
       - name: Group the packages by platform
         run: |
-          zip -r9 anvill_ubuntu-20.04_packages.zip \
-                  ubuntu-20.04*
+          zip -r9 anvill_ubuntu-22.04_packages.zip \
+                  ubuntu-22.04*
 
-          zip -r9 anvill_macos-11_packages.zip \
-                  macos-11*
+          zip -r9 anvill_macos-12_packages.zip \
+                  macos-12*
 
-      - name: Upload the Ubuntu 20.04 packages
+      - name: Upload the Ubuntu 22.04 packages
         uses: actions/upload-release-asset@v1
 
         env:
@@ -737,8 +738,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: anvill_ubuntu-20.04_packages.zip
-          asset_name: anvill_ubuntu-20.04_packages.zip
+          asset_path: anvill_ubuntu-22.04_packages.zip
+          asset_name: anvill_ubuntu-22.04_packages.zip
           asset_content_type: application/gzip
 
       - name: Upload the macOS 11 packages
@@ -749,8 +750,8 @@ jobs:
 
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: anvill_macos-11_packages.zip
-          asset_name: anvill_macos-11_packages.zip
+          asset_path: anvill_macos-12_packages.zip
+          asset_name: anvill_macos-12_packages.zip
           asset_content_type: application/gzip
 
   Docker_Linux:
@@ -760,8 +761,8 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["15"]
-        ubuntu: ["20.04"]
+        llvm: ["16"]
+        ubuntu: ["22.04"]
     steps:
       - uses: actions/checkout@v3
         with:

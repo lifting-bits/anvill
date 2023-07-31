@@ -124,6 +124,12 @@ class Specification {
   // Return the architecture used by this specification.
   std::shared_ptr<const remill::Arch> Arch(void) const;
 
+  // Return the image name used by this specification.
+  const std::string &ImageName(void) const;
+
+  // Return the image base address used by this specification.
+  std::uint64_t ImageBase(void) const;
+
   // Return the type dictionary used by this specification.
   const ::anvill::TypeDictionary &TypeDictionary(void) const;
 
@@ -193,6 +199,8 @@ class Specification {
   SpecBlockContexts GetBlockContexts() const {
     return SpecBlockContexts(*this);
   }
+
+  const std::unordered_set<std::string> &GetRequiredGlobals() const;
 };
 
 }  // namespace anvill

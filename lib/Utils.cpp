@@ -33,10 +33,12 @@
 #include <llvm/IR/Use.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Endian.h>
+#include <llvm/Transforms/Scalar/SROA.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
 #include <remill/BC/IntrinsicTable.h>
 #include <remill/BC/Util.h>
+#include <remill/BC/Version.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -544,7 +546,7 @@ GetSubcomponentType(const LowLoc &loc, uint64_t offset, llvm::Type *target_type,
                     llvm::DataLayout &data) {
   // there's two situations here, either we have a primitive target type in which case the loc must
   // indicate the size for each component, otherwise we decompose the target
-  if (auto itype = llvm::isa_and_nonnull<llvm::IntegerType>(target_type)) {
+  if (target_type->isIntegerTy() || target_type->isFloatingPointTy()) {
     return llvm::IntegerType::get(target_type->getContext(), loc.Size() * 8);
   } else {
     llvm::Type *ty = target_type;
@@ -991,6 +993,5 @@ bool HasRegLoc(const ValueDecl &v) {
   return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
                      [](const LowLoc &loc) -> bool { return loc.reg; });
 }
-
 
 }  // namespace anvill

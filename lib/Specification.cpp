@@ -32,8 +32,12 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_)
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                                     const std::string &image_name_,
+                                     std::uint64_t image_base_)
     : arch(std::move(arch_)),
+      image_name(image_name_),
+      image_base(image_base_),
       type_dictionary(*(arch->context)),
       type_translator(type_dictionary, arch.get()) {}
 
@@ -234,7 +238,8 @@ SpecificationImpl::ParseSpecification(
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  // TODO(frabert): Parse everything else
+  required_globals = {spec.required_globals().begin(),
+                      spec.required_globals().end()};
 
   return dec_err;
 }
@@ -247,6 +252,16 @@ Specification::Specification(std::shared_ptr<SpecificationImpl> impl_)
 // Return the architecture used by this specification.
 std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
   return std::shared_ptr<const remill::Arch>(impl, impl->arch.get());
+}
+
+// Return the architecture used by this specification.
+const std::string &Specification::ImageName(void) const {
+  return impl->image_name;
+}
+
+// Return the architecture used by this specification.
+std::uint64_t Specification::ImageBase(void) const {
+  return impl->image_base;
 }
 
 // Return the type dictionary used by this specification.
@@ -283,7 +298,7 @@ GetArch(llvm::LLVMContext &context,
       arch_name = remill::kArchAMD64_AVX512;
       break;
     case ::specification::ARCH_AARCH64:
-      arch_name = remill::kArchAArch64LittleEndian;
+      arch_name = remill::kArchAArch64LittleEndian_SLEIGH;
       break;
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
@@ -326,8 +341,11 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
     return arch.Error();
   }
 
+  const auto &image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
@@ -355,8 +373,12 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
     return arch.Error();
   }
 
+  const auto &image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
@@ -516,6 +538,11 @@ void Specification::ForEachMiscOverride(
       return;
     }
   }
+}
+
+const std::unordered_set<std::string> &
+Specification::GetRequiredGlobals() const {
+  return impl->required_globals;
 }
 
 }  // namespace anvill

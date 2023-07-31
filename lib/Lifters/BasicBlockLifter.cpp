@@ -13,6 +13,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
+#include <remill/BC/ABI.h>
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/Util.h>
 
@@ -33,8 +34,8 @@ namespace anvill {
 void BasicBlockLifter::LiftBasicBlockFunction() {
   auto bbfunc = this->CreateBasicBlockFunction();
   this->LiftInstructionsIntoLiftedFunction();
-  CHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
-  CHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*this->lifted_func, &llvm::errs()));
+  DCHECK(!llvm::verifyFunction(*bbfunc.func, &llvm::errs()));
 
   this->RecursivelyInlineFunctionCallees(bbfunc.func);
 }
@@ -150,8 +151,8 @@ BasicBlockLifter::LoadFunctionReturnAddress(const remill::Instruction &inst,
   // TODO(pag, kumarak): Does a zero value in `enc.u.imm22` imply a no-return
   //                     function? Try this on Compiler Explorer!
   if (!enc.u.op && !enc.u.op2) {
-    LOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
-              << std::hex << pc << " at " << inst.pc << std::dec;
+    DLOG(INFO) << "Found structure return of size " << enc.u.imm22 << " to "
+               << std::hex << pc << " at " << inst.pc << std::dec;
 
     llvm::IRBuilder<> ir(block);
     return {pc + 4u,
@@ -313,13 +314,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
   auto init_context = this->CreateDecodingContext(this->block_def);
 
-  LOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
-            << " with size " << this->block_def.size;
+  DLOG(INFO) << "Decoding block at addr: " << std::hex << this->block_def.addr
+             << " with size " << this->block_def.size;
   bool ended_on_terminal = false;
   while (reached_addr < this->block_def.addr + this->block_def.size &&
          !ended_on_terminal) {
     auto addr = reached_addr;
-    LOG(INFO) << "Decoding at addr " << std::hex << addr;
+    DLOG(INFO) << "Decoding at addr " << std::hex << addr;
     auto res = this->DecodeInstructionInto(addr, false, &inst, init_context);
     if (!res) {
       remill::AddTerminatingTailCall(bb, this->intrinsics.error,
@@ -341,7 +342,7 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);
-    LOG_IF(INFO, ended_on_terminal)
+    DLOG_IF(INFO, ended_on_terminal)
         << "On terminal at addr: " << std::hex << addr;
   }
 
@@ -424,6 +425,10 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto pc = remill::NthArgument(func, remill::kPCArgNum);
 
   memory->setName("memory");
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoAlias));
+  memory->addAttr(
+      llvm::Attribute::get(llvm_context, llvm::Attribute::AttrKind::NoCapture));
   pc->setName("program_counter");
   state->setName("stack");
 
@@ -460,7 +465,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto should_return = ir.CreateAlloca(llvm::IntegerType::getInt1Ty(context),
                                        nullptr, "should_return");
   ir.CreateStore(llvm::ConstantInt::getFalse(context), should_return);
-  ir.CreateStore(memory, ir.CreateAlloca(memory->getType(), nullptr, "MEMORY"));
+  auto lded_mem =
+      ir.CreateLoad(llvm::PointerType::get(this->llvm_context, 0), memory);
+
+  ir.CreateStore(lded_mem,
+                 ir.CreateAlloca(llvm::PointerType::get(this->llvm_context, 0),
+                                 nullptr, "MEMORY"));
 
   this->state_ptr =
       this->AllocateAndInitializeStateStructure(&blk, options.arch);
@@ -474,7 +484,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   // Initialize the stack pointer.
   ir.CreateStore(sp_value, sp_ptr);
 
-  auto stack_offsets = this->block_context->GetStackOffsets();
+  auto stack_offsets = this->block_context->GetStackOffsetsAtEntry();
   for (auto &reg_off : stack_offsets.affine_equalities) {
     auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
         ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
@@ -489,12 +499,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
     return this->block_context->ProvidePointerFromFunctionArgs(func, param);
   };
 
-  LOG(INFO) << "Live values at entry to function "
-            << this->block_context->LiveBBParamsAtEntry().size();
+  DLOG(INFO) << "Live values at entry to function "
+             << this->block_context->LiveBBParamsAtEntry().size();
   this->UnpackLiveValues(ir, ptr_provider, this->state_ptr,
                          this->block_context->LiveBBParamsAtEntry());
 
-  for (auto &reg_const : this->block_context->GetConstants()) {
+  for (auto &reg_const : block_context->GetConstantsAtEntry()) {
     llvm::Value *new_value = nullptr;
     llvm::Type *target_type = reg_const.target_value.type;
     if (reg_const.should_taint_by_pc) {
@@ -546,6 +556,9 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   BasicBlockFunction bbf{func, pc_arg, mem_arg, next_pc, state};
 
+
+  ir.CreateStore(ret_mem, memory);
+  ir.CreateStore(ret_mem, remill::LoadMemoryPointerRef(ir.GetInsertBlock()));
   TerminateBasicBlockFunction(func, ir, ret_mem, should_return, bbf);
 
   return bbf;
@@ -648,12 +661,11 @@ void BasicBlockLifter::UnpackLiveValues(
     // is this how we want to do this.... now the value really doesnt live in memory anywhere but the frame.
     if (!HasMemLoc(decl.param)) {
       auto ptr = returned_value(decl.param);
-      if (auto insn = llvm::dyn_cast<llvm::Instruction>(ptr)) {
-        insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
-                                             decl.param.spec_type));
-      }
       auto loaded_var_val =
           bldr.CreateLoad(decl.param.type, ptr, decl.param.name);
+      loaded_var_val->setMetadata(
+          "anvill.type",
+          this->type_specifier.EncodeToMetadata(decl.param.spec_type));
 
       auto mem_ptr = remill::LoadMemoryPointer(bldr, this->intrinsics);
       auto new_mem_ptr = StoreNativeValue(
@@ -693,7 +705,7 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
   PointerProvider ptr_provider =
       [&builder, this, out_param_locals,
        &stack](const ParameterDecl &repr_var) -> llvm::Value * {
-    LOG(INFO) << "Lifting: " << repr_var.name << " for call";
+    DLOG(INFO) << "Lifting: " << repr_var.name << " for call";
     if (HasMemLoc(repr_var)) {
       // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
       // svars are single valuedecl contigous
