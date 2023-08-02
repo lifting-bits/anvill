@@ -364,7 +364,7 @@ function Help
   echo "  --build-dir        Change the default (${BUILD_DIR}) build directory."
   echo "  --debug            Build with Debug symbols."
   echo "  --extra-cmake-args Extra CMake arguments to build with."
-  echo "  --install          Just install Rellic, do not package it."
+  echo "  --install          Just install Anvill, do not package it."
   echo "  -h --help          Print help."
 }
 
