@@ -638,11 +638,16 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         LOG(FATAL) << "No stack ptr";
       }
 
-      auto stackptr_type_spec = SizeToType(stackptr->size * 8);
+      auto target_type_spec = DecodeType(symval.target_value().type());
+      if (!target_type_spec.Succeeded()) {
+        LOG(ERROR) << "Failed to lift target type "
+                   << target_type_spec.TakeError();
+        return;
+      }
 
-      auto target_vdecl =
-          DecodeValueDecl(symval.target_value().values(), stackptr_type_spec,
-                          "Unable to get value decl for stack offset relation");
+      auto target_vdecl = DecodeValueDecl(
+          symval.target_value().values(), target_type_spec.TakeValue(),
+          "Unable to get value decl for stack offset relation");
 
       if (!target_vdecl.Succeeded()) {
         LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
