@@ -647,7 +647,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
       auto target_vdecl = DecodeValueDecl(
           symval.target_value().values(), target_type_spec.TakeValue(),
-          "Unable to get value decl for stack offset relation");
+          "Unable to get value decl for target");
 
       if (!target_vdecl.Succeeded()) {
         LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
