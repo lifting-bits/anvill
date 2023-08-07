@@ -1,0 +1,74 @@
+{
+   "Function" : [
+      {
+         "BaseName" : "endl",
+         "DeclContextName" : "std",
+         "EntireName" : "std::basic_ostream<char, std::char_traits<char> >& std::endl<char, std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&)",
+         "FunctionName" : "std::endl<char, std::char_traits<char> >",
+         "MangledName" : "_ZSt4endlIcSt11char_traitsIcEERSt13basic_ostreamIT_T0_ES6_",
+         "Parameters" : "(std::basic_ostream<char, std::char_traits<char> >&)",
+         "ReturnType" : "std::basic_ostream<char, std::char_traits<char> >&",
+         "hasFunctionQualifiers" : false,
+         "isCtorOrDtor" : false,
+         "isData" : false,
+         "isFunction" : true,
+         "isSpecialName" : false
+      },
+      {
+         "BaseName" : "operator<<",
+         "DeclContextName" : "std::ostream",
+         "EntireName" : "std::ostream::operator<<(std::ostream& (*)(std::ostream&))",
+         "FunctionName" : "std::ostream::operator<<",
+         "MangledName" : "_ZNSolsEPFRSoS_E",
+         "Parameters" : "(std::ostream& (*)(std::ostream&))",
+         "ReturnType" : "",
+         "hasFunctionQualifiers" : false,
+         "isCtorOrDtor" : false,
+         "isData" : false,
+         "isFunction" : true,
+         "isSpecialName" : false
+      },
+      {
+         "BaseName" : "Init",
+         "DeclContextName" : "std::ios_base::Init",
+         "EntireName" : "std::ios_base::Init::Init()",
+         "FunctionName" : "std::ios_base::Init::Init",
+         "MangledName" : "_ZNSt8ios_base4InitC1Ev",
+         "Parameters" : "()",
+         "ReturnType" : "",
+         "hasFunctionQualifiers" : false,
+         "isCtorOrDtor" : true,
+         "isData" : false,
+         "isFunction" : true,
+         "isSpecialName" : false
+      },
+      {
+         "BaseName" : "operator<<",
+         "DeclContextName" : "std::ostream",
+         "EntireName" : "std::ostream::operator<<(double)",
+         "FunctionName" : "std::ostream::operator<<",
+         "MangledName" : "_ZNSolsEd",
+         "Parameters" : "(double)",
+         "ReturnType" : "",
+         "hasFunctionQualifiers" : false,
+         "isCtorOrDtor" : false,
+         "isData" : false,
+         "isFunction" : true,
+         "isSpecialName" : false
+      },
+      {
+         "BaseName" : "~Init",
+         "DeclContextName" : "std::ios_base::Init",
+         "EntireName" : "std::ios_base::Init::~Init()",
+         "FunctionName" : "std::ios_base::Init::~Init",
+         "MangledName" : "_ZNSt8ios_base4InitD1Ev",
+         "Parameters" : "()",
+         "ReturnType" : "",
+         "hasFunctionQualifiers" : false,
+         "isCtorOrDtor" : true,
+         "isData" : false,
+         "isFunction" : true,
+         "isSpecialName" : false
+      }
+   ]
+}
