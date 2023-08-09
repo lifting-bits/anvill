@@ -54,6 +54,7 @@ struct CodeBlock {
   // A block may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a block.
   std::unordered_map<std::string, std::uint64_t> context_assignments;
+  uint64_t uid;
 };
 
 
@@ -443,7 +444,7 @@ struct FunctionDecl : public CallableDecl {
   static Result<FunctionDecl, std::string> Create(llvm::Function &func,
                                                   const remill::Arch *arch);
 
-  SpecBlockContext GetBlockContext(std::uint64_t addr) const;
+  SpecBlockContext GetBlockContext(std::uint64_t uid) const;
 
   void
   AddBBContexts(std::unordered_map<uint64_t, SpecBlockContext> &contexts) const;

@@ -531,7 +531,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
-  auto frame = function.frame();
+  const auto& frame = function.frame();
 
   decl.stack_depth = frame.frame_size();
   decl.ret_ptr_offset = frame.return_address_offset();
@@ -608,7 +608,7 @@ void ProtobufTranslator::AddLiveValuesToBB(
 
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
-  for (auto blk : obj.blocks()) {
+  for (const auto& blk : obj.blocks()) {
     CodeBlock nblk = {
         blk.second.address(),
         blk.second.size(),
@@ -616,16 +616,17 @@ void ProtobufTranslator::ParseCFGIntoFunction(
          blk.second.outgoing_blocks().end()},
         {blk.second.context_assignments().begin(),
          blk.second.context_assignments().end()},
+         blk.first,
     };
     decl.cfg.emplace(blk.first, std::move(nblk));
   }
 
 
-  for (auto &[blk_addr, ctx] : obj.block_context()) {
+  for (auto &[blk_uid, ctx] : obj.block_context()) {
     std::vector<OffsetDomain> stack_offsets_at_entry, stack_offsets_at_exit;
     std::vector<ConstantDomain> constant_values_at_entry,
         constant_values_at_exit;
-    auto blk = decl.cfg[blk_addr];
+    auto blk = decl.cfg[blk_uid];
     auto symval_to_domains = [&](const specification::ValueMapping &symval,
                                  std::vector<OffsetDomain> &stack_offsets,
                                  std::vector<ConstantDomain> &constant_values) {
@@ -680,20 +681,20 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
     for (auto &symval : ctx.symvals_at_entry()) {
       symval_to_domains(symval,
-                        decl.stack_offsets_at_entry[blk_addr].affine_equalities,
-                        decl.constant_values_at_entry[blk_addr]);
+                        decl.stack_offsets_at_entry[blk_uid].affine_equalities,
+                        decl.constant_values_at_entry[blk_uid]);
     }
 
     for (auto &symval : ctx.symvals_at_exit()) {
       symval_to_domains(symval,
-                        decl.stack_offsets_at_exit[blk_addr].affine_equalities,
-                        decl.constant_values_at_exit[blk_addr]);
+                        decl.stack_offsets_at_exit[blk_uid].affine_equalities,
+                        decl.constant_values_at_exit[blk_uid]);
     }
 
-    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
+    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_uid,
                             ctx.live_at_entries());
 
-    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_addr,
+    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_uid,
                             ctx.live_at_exits());
   }
 }

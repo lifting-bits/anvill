@@ -104,7 +104,9 @@ class FunctionLifter : public CodeLifter {
                                        const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
-  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t addr);
+  // Get or create a basic block lifter for the basic block with specified
+  // uid. If a lifter for the uid does not exist, this function will create it
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t uid);
 
   const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
 
@@ -180,7 +182,7 @@ class FunctionLifter : public CodeLifter {
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
-  // maps a bbaddr to the lifter for that block
+  // maps a uid to the lifter for that block
   std::unordered_map<std::pair<uint64_t, uint64_t>, BasicBlockLifter>
       bb_lifters;
 

@@ -42,6 +42,6 @@ target_include_directories(test_anvill_passes PRIVATE
 
 add_test(
   NAME test_anvill_passes
-  COMMAND "$<TARGET_FILE:test_anvill_passes>"
+  COMMAND test_anvill_passes
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )

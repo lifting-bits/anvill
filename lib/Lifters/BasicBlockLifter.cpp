@@ -365,7 +365,7 @@ llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
-                      std::to_string(this->block_def.addr);
+                      std::to_string(this->block_def.addr) + "_" + std::to_string(this->block_def.uid);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
@@ -586,14 +586,12 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
   auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out);
   auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
 
-  for (auto e : this->block_def.outgoing_edges) {
-    auto succ_const = llvm::ConstantInt::get(
-        llvm::cast<llvm::IntegerType>(this->address_type), e);
-
+  for (auto edge_uid : this->block_def.outgoing_edges) {
     auto calling_bb =
         llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
-    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
+    auto edge_bb = this->decl.cfg.at(edge_uid);
+    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(edge_bb.uid);
     auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
         caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
@@ -601,6 +599,9 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     } else {
       calling_bb_builder.CreateRet(retval);
     }
+
+    auto succ_const = llvm::ConstantInt::get(
+        llvm::cast<llvm::IntegerType>(this->address_type), edge_bb.addr);
     sw->addCase(succ_const, calling_bb);
   }
 

@@ -488,16 +488,16 @@ size_t FunctionDecl::GetPointerDisplacement() const {
   return this->parameter_size + this->parameter_offset;
 }
 
-SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t addr) const {
+SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t uid) const {
   return SpecBlockContext(
-      *this, GetWithDef(addr, this->stack_offsets_at_entry, SpecStackOffsets()),
-      GetWithDef(addr, this->stack_offsets_at_exit, SpecStackOffsets()),
-      GetWithDef(addr, this->constant_values_at_entry,
+      *this, GetWithDef(uid, this->stack_offsets_at_entry, SpecStackOffsets()),
+      GetWithDef(uid, this->stack_offsets_at_exit, SpecStackOffsets()),
+      GetWithDef(uid, this->constant_values_at_entry,
                  std::vector<ConstantDomain>()),
-      GetWithDef(addr, this->constant_values_at_exit,
+      GetWithDef(uid, this->constant_values_at_exit,
                  std::vector<ConstantDomain>()),
-      GetWithDef(addr, this->live_regs_at_entry, std::vector<ParameterDecl>()),
-      GetWithDef(addr, this->live_regs_at_exit, std::vector<ParameterDecl>()));
+      GetWithDef(uid, this->live_regs_at_entry, std::vector<ParameterDecl>()),
+      GetWithDef(uid, this->live_regs_at_exit, std::vector<ParameterDecl>()));
 }
 
 std::optional<size_t>
