@@ -73,6 +73,9 @@ class BasicBlockLifter : public CodeLifter {
 
   remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
 
+
+  void ApplyTypeHint(llvm::IRBuilder<> &bldr, const ValueDecl &type_hint);
+
   void LiftInstructionsIntoLiftedFunction();
 
   BasicBlockFunction CreateBasicBlockFunction();
