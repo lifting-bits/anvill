@@ -302,6 +302,8 @@ bool BasicBlockLifter::DecodeInstructionInto(const uint64_t addr,
 
 void BasicBlockLifter::ApplyTypeHint(llvm::IRBuilder<> &bldr,
                                      const ValueDecl &type_hint) {
+
+  auto ty_hint = this->GetTypeHintFunction();
   auto state_ptr_internal =
       this->lifted_func->getArg(remill::kStatePointerArgNum);
   auto mem_ptr =
@@ -309,17 +311,21 @@ void BasicBlockLifter::ApplyTypeHint(llvm::IRBuilder<> &bldr,
   auto curr_value =
       anvill::LoadLiftedValue(type_hint, options.TypeDictionary(), intrinsics,
                               options.arch, bldr, state_ptr_internal, mem_ptr);
-  if (llvm::Instruction *insn = llvm::dyn_cast<llvm::Instruction>(curr_value)) {
-    insn->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
-                                         type_hint.spec_type));
 
-    auto new_mem_ptr =
-        StoreNativeValue(curr_value, type_hint, options.TypeDictionary(),
-                         intrinsics, bldr, state_ptr_internal, mem_ptr);
-    bldr.CreateStore(new_mem_ptr,
-                     remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
+  if (curr_value->getType()->isPointerTy()) {
+    auto call = bldr.CreateCall(ty_hint, {curr_value});
+    call->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
+                                         type_hint.spec_type));
+    curr_value = call;
   }
+
+  auto new_mem_ptr =
+      StoreNativeValue(curr_value, type_hint, options.TypeDictionary(),
+                       intrinsics, bldr, state_ptr_internal, mem_ptr);
+  bldr.CreateStore(new_mem_ptr,
+                   remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
 }
+
 
 void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
   auto entry_block = &this->lifted_func->getEntryBlock();
