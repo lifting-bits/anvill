@@ -6,6 +6,7 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
+#include <anvill/ABI.h>
 #include <anvill/Declarations.h>
 #include <anvill/Passes/ConvertPointerArithmeticToGEP.h>
 #include <anvill/Type.h>
@@ -18,6 +19,7 @@
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstIterator.h>
+#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
@@ -71,6 +73,8 @@ struct ConvertPointerArithmeticToGEP::Impl {
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, UnknownType t);
   llvm::MDNode *TypeSpecToMD(llvm::LLVMContext &context, TypeSpec type);
 
+
+  bool ConvertTypeHints(llvm::Function &f);
   bool ConvertLoadInt(llvm::Function &f);
   bool FoldPtrAdd(llvm::Function &f);
   bool FoldScaledIndex(llvm::Function &f);
@@ -330,6 +334,26 @@ llvm::StringRef ConvertPointerArithmeticToGEP::name() {
   return "ConvertPointerArithmeticToGEP";
 }
 
+bool ConvertPointerArithmeticToGEP::Impl::ConvertTypeHints(llvm::Function &f) {
+  std::vector<llvm::CallBase *> calls;
+  for (auto &insn : llvm::instructions(f)) {
+    if (auto *call = llvm::dyn_cast<llvm::CallBase>(&insn)) {
+      if (call->getCalledFunction() &&
+          call->getCalledFunction()->getName() == kTypeHintFunctionPrefix) {
+        calls.push_back(call);
+      }
+    }
+  }
+
+  for (auto call : calls) {
+    auto arg = call->getArgOperand(0);
+    call->replaceAllUsesWith(arg);
+    call->eraseFromParent();
+  }
+
+  return !calls.empty();
+}
+
 // Finds `(load i64, P)` and converts it to `(ptrtoint (load ptr, P))`
 bool ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
   using namespace llvm::PatternMatch;
@@ -573,6 +597,7 @@ llvm::PreservedAnalyses ConvertPointerArithmeticToGEP::runOnBasicBlockFunction(
   bool changed = impl->ConvertLoadInt(function);
   changed |= impl->FoldPtrAdd(function);
   changed |= impl->FoldScaledIndex(function);
+  changed |= impl->ConvertTypeHints(function);
   return changed ? llvm::PreservedAnalyses::none()
                  : llvm::PreservedAnalyses::all();
 }

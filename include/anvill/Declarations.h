@@ -365,6 +365,11 @@ class SpecBlockContext : public BasicBlockContext {
   virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const override;
 };
 
+
+struct TypeHint {
+  uint64_t target_addr;
+  ValueDecl hint;
+};
 // A function decl, as represented at a "near ABI" level. To be specific,
 // not all C, and most C++ decls, as written would be directly translatable
 // to this. This ought nearly represent how LLVM represents a C/C++ function
@@ -414,6 +419,9 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
       constant_values_at_exit;
+
+  // sorted vector of hints
+  std::vector<TypeHint> type_hints;
 
   std::uint64_t stack_depth;
 

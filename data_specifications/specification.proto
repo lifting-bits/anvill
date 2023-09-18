@@ -305,6 +305,11 @@ message StackFrame {
   int64 parameter_offset = 5;
 }
 
+message TypeHint {
+  uint64 target_addr = 1;
+  Variable target_var = 2;
+}
+
 message Function {
   uint64 entry_address = 1;
   FunctionLinkage func_linkage = 3; 
@@ -319,6 +324,11 @@ message Function {
   StackFrame frame = 9;
 
   repeated Parameter in_scope_vars = 10;
+
+  // an instruction can have a set of typehints that says this loc is known 
+  // to have this type after this instruction, these will be translated into 
+  // a low lifting of that location with spec type metadata
+  repeated TypeHint type_hints = 11;
 }
 
 message GlobalVariable {
