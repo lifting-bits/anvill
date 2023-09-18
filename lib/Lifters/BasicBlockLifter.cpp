@@ -11,7 +11,6 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
-#include <llvm/Support/Casting.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/ABI.h>
