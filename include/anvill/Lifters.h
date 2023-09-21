@@ -219,8 +219,7 @@ class LifterOptions {
         //TODO(ian): This should be initialized by an OS + arch pair
         stack_pointer_is_signed(false),
         should_remove_anvill_pc(true),
-        should_inline_basic_blocks(false),
-        debug_pm(false) {
+        should_inline_basic_blocks(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -293,10 +292,6 @@ class LifterOptions {
   bool should_remove_anvill_pc : 1;
 
   bool should_inline_basic_blocks : 1;
-
-  // enable pass manager debug printout
-  bool debug_pm;
-
 
  private:
   LifterOptions(void) = delete;

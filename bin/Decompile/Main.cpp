@@ -17,8 +17,6 @@
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
-#include <llvm/IR/PrintPasses.h>
-#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Error.h>
@@ -47,10 +45,6 @@ DEFINE_bool(add_breakpoints, false,
 DEFINE_bool(add_names, false, "Try to apply symbol names to lifted entities.");
 DEFINE_bool(disable_opt, false, "Dont apply optimization passes");
 DEFINE_bool(llvm_debug, false, "Enable LLVM debug flag");
-DEFINE_bool(llvm_print_changed_diff, false,
-            "Print IR diff. NOTE: LLVM must be compiled as Debug");
-DEFINE_bool(llvm_print_changed_color_diff, false,
-            "Print IR colored diff. NOTE: LLVM must be compiled as Debug");
 DEFINE_bool(inline_basic_blocks, false,
             "Enables inlining of basic blocks for high level output");
 
@@ -94,16 +88,6 @@ int main(int argc, char *argv[]) {
   SetVersion();
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
-
-  if (FLAGS_llvm_debug) {
-    llvm::DebugFlag = true;
-  }
-
-  if (FLAGS_llvm_print_changed_diff) {
-    llvm::PrintChanged = llvm::ChangePrinter::DiffVerbose;
-  } else if (FLAGS_llvm_print_changed_color_diff) {
-    llvm::PrintChanged = llvm::ChangePrinter::ColourDiffVerbose;
-  }
 
   if (FLAGS_spec.empty()) {
     std::cerr
@@ -192,9 +176,6 @@ int main(int argc, char *argv[]) {
   options.stack_frame_recovery_options.stack_offset_metadata_name =
       "stack_offset";
 
-  options.debug_pm = FLAGS_llvm_debug || FLAGS_llvm_print_changed_diff ||
-                     FLAGS_llvm_print_changed_color_diff;
-
   anvill::EntityLifter lifter(options);
 
   std::unordered_map<uint64_t, std::string> names;
@@ -262,6 +243,10 @@ int main(int argc, char *argv[]) {
 
   if (!FLAGS_stats_out.empty()) {
     llvm::EnableStatistics();
+  }
+
+  if (FLAGS_llvm_debug) {
+    llvm::DebugFlag = true;
   }
 
   if (!FLAGS_disable_opt) {

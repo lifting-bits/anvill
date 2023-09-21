@@ -6,20 +6,13 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
-#include <llvm/Passes/PassBuilder.h>
-#include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Scalar/DCE.h>
-#include <llvm/Transforms/Scalar/DeadStoreElimination.h>
-#include <llvm/Transforms/Scalar/Reassociate.h>
-#include <llvm/Transforms/Scalar/SROA.h>
-#include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include <llvm/Transforms/Utils/Mem2Reg.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Context.h>
 #include <remill/Arch/Instruction.h>
@@ -306,44 +299,18 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
 
   DCHECK(!llvm::verifyFunction(*inf, &llvm::errs()));
 
-  llvm::ModuleAnalysisManager mam;
-  llvm::FunctionAnalysisManager fam;
-  llvm::LoopAnalysisManager lam;
-  llvm::CGSCCAnalysisManager cam;
-
-  llvm::ModulePassManager mpm;
-  llvm::FunctionPassManager fpm;
-
-  llvm::PassInstrumentationCallbacks pic;
-  llvm::StandardInstrumentations si(inf->getContext(),
-                                    /*DebugLogging=*/options.debug_pm,
-                                    /*VerifyEach=*/options.debug_pm);
-  si.registerCallbacks(pic, &fam);
-
-  llvm::PassBuilder pb(nullptr, llvm::PipelineTuningOptions(), std::nullopt,
-                       &pic);
-  pb.registerModuleAnalyses(mam);
-  pb.registerFunctionAnalyses(fam);
-  pb.registerLoopAnalyses(lam);
-  pb.registerCGSCCAnalyses(cam);
-  pb.crossRegisterProxies(lam, fam, cam, mam);
-
-  fpm.addPass(llvm::SimplifyCFGPass());
-  fpm.addPass(llvm::PromotePass());
-  fpm.addPass(llvm::ReassociatePass());
-  fpm.addPass(llvm::DSEPass());
-  fpm.addPass(llvm::DCEPass());
-  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
-  fpm.addPass(llvm::DCEPass());
-  fpm.addPass(llvm::InstCombinePass());
-
-  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
-  mpm.run(*inf->getParent(), mam);
-
-  mam.clear();
-  fam.clear();
-  lam.clear();
-  cam.clear();
+  llvm::legacy::FunctionPassManager fpm(inf->getParent());
+  fpm.add(llvm::createCFGSimplificationPass());
+  fpm.add(llvm::createPromoteMemoryToRegisterPass());
+  fpm.add(llvm::createReassociatePass());
+  fpm.add(llvm::createDeadStoreEliminationPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createSROAPass());
+  fpm.add(llvm::createDeadCodeEliminationPass());
+  fpm.add(llvm::createInstructionCombiningPass());
+  fpm.doInitialization();
+  fpm.run(*inf);
+  fpm.doFinalization();
 
   ClearVariableNames(inf);
 }
