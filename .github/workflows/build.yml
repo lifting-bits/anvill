@@ -368,6 +368,20 @@ jobs:
             --ghidra-install-dir $GHIDRA_INSTALL_DIR \
             --decompile-cmd "anvill-decompile-spec"
 
+      - name: Tar and Compress logs
+        if: failure()
+        run: |
+          shopt -s globstar
+          tar -cf test-errs.tar.xz ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/angha-test-50/**/std*
+        shell: bash
+
+      - name: Upload stderr/stdout logs on error
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: AnghaBench 50 logs
+          path: test-errs.tar.xz
+
       - name: Store the DEB package
         uses: actions/upload-artifact@v3
         with:
