@@ -1,6 +1,9 @@
 #include "CodeLifter.h"
 
+#include <anvill/ABI.h>
+#include <anvill/Type.h>
 #include <glog/logging.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -16,8 +19,6 @@
 #include <remill/BC/Util.h>
 
 #include <unordered_set>
-
-#include "anvill/Type.h"
 
 namespace anvill {
 namespace {
@@ -161,6 +162,25 @@ void CodeLifter::InitializeStateStructureFromGlobalRegisterVariables(
       ir.CreateStore(ir.CreateLoad(reg->type, reg_global), reg_ptr);
     }
   });
+}
+
+llvm::Function *CodeLifter::GetTypeHintFunction() {
+  const auto &func_name = kTypeHintFunctionPrefix;
+
+  auto func = semantics_module->getFunction(func_name);
+  if (func != nullptr) {
+    return func;
+  }
+
+  auto ptr = llvm::PointerType::get(this->semantics_module->getContext(), 0);
+  llvm::Type *func_parameters[] = {ptr};
+
+  auto func_type = llvm::FunctionType::get(ptr, func_parameters, false);
+
+  func = llvm::Function::Create(func_type, llvm::GlobalValue::ExternalLinkage,
+                                func_name, this->semantics_module);
+
+  return func;
 }
 
 llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,

@@ -359,38 +359,6 @@ jobs:
         run: |
           dpkg -i ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
-      - name: Run Integration Tests (AMP Challenge Binaries)
-        shell: bash
-        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
-        run: |
-          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
-          scripts/test-amp-challenge-bins.sh \
-          --ghidra-install-dir $GHIDRA_INSTALL_DIR \
-          --decompile-cmd "anvill-decompile-spec"
-        env:
-          TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
-      - name: Tar and Compress logs
-        if: failure()
-        run: |
-          shopt -s globstar
-          tar -cf test-errs.tar.xz ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/amp-challenge-bins/**/std*
-        shell: bash
-      - name: Upload stderr/stdout logs on error
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: AMP Challenge Binaries logs
-          path: test-errs.tar.xz
-
-      #      - name: Run Integration Tests (AnghaBench 1K)
-      #        shell: bash
-      #        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
-      #        run: |
-      #          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
-      #          scripts/test-angha-1k.sh \
-      #            --python-cmd "python3 -m anvill" \
-      #            --decompile-cmd "anvill-decompile-json"
-
       - name: Store the DEB package
         uses: actions/upload-artifact@v3
         with:

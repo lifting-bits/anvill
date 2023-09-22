@@ -298,6 +298,33 @@ bool BasicBlockLifter::DecodeInstructionInto(const uint64_t addr,
 }
 
 
+void BasicBlockLifter::ApplyTypeHint(llvm::IRBuilder<> &bldr,
+                                     const ValueDecl &type_hint) {
+
+  auto ty_hint = this->GetTypeHintFunction();
+  auto state_ptr_internal =
+      this->lifted_func->getArg(remill::kStatePointerArgNum);
+  auto mem_ptr =
+      remill::LoadMemoryPointer(bldr.GetInsertBlock(), this->intrinsics);
+  auto curr_value =
+      anvill::LoadLiftedValue(type_hint, options.TypeDictionary(), intrinsics,
+                              options.arch, bldr, state_ptr_internal, mem_ptr);
+
+  if (curr_value->getType()->isPointerTy()) {
+    auto call = bldr.CreateCall(ty_hint, {curr_value});
+    call->setMetadata("anvill.type", this->type_specifier.EncodeToMetadata(
+                                         type_hint.spec_type));
+    curr_value = call;
+  }
+
+  auto new_mem_ptr =
+      StoreNativeValue(curr_value, type_hint, options.TypeDictionary(),
+                       intrinsics, bldr, state_ptr_internal, mem_ptr);
+  bldr.CreateStore(new_mem_ptr,
+                   remill::LoadMemoryPointerRef(bldr.GetInsertBlock()));
+}
+
+
 void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
   auto entry_block = &this->lifted_func->getEntryBlock();
 
@@ -339,6 +366,22 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
     std::ignore = inst.GetLifter()->LiftIntoBlock(
         inst, bb, this->lifted_func->getArg(remill::kStatePointerArgNum),
         false /* is_delayed */);
+
+    llvm::IRBuilder<> builder(bb);
+
+    auto start =
+        std::lower_bound(decl.type_hints.begin(), decl.type_hints.end(),
+                         inst.pc, [](const TypeHint &hint_rhs, uint64_t addr) {
+                           return hint_rhs.target_addr < addr;
+                         });
+    auto end =
+        std::upper_bound(decl.type_hints.begin(), decl.type_hints.end(),
+                         inst.pc, [](uint64_t addr, const TypeHint &hint_rhs) {
+                           return addr < hint_rhs.target_addr;
+                         });
+    for (; start != end; start++) {
+      this->ApplyTypeHint(builder, start->hint);
+    }
 
     ended_on_terminal =
         !this->ApplyInterProceduralControlFlowOverride(inst, bb);

@@ -262,7 +262,6 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   //AddRecoverBasicStackFrame(fpm, options.stack_frame_recovery_options);
   //AddSplitStackFrameAtReturnAddress(fpm, options.stack_frame_recovery_options);
   fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
-  //fpm.addPass(anvill::ReplaceStackReferences(contexts, lifter));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
   fpm.addPass(llvm::VerifierPass());

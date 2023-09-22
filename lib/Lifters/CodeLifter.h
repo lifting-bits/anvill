@@ -73,6 +73,9 @@ class CodeLifter {
 
   unsigned pc_annotation_id;
 
+
+  llvm::Function *GetTypeHintFunction();
+
   llvm::MDNode *GetAddrAnnotation(uint64_t addr,
                                   llvm::LLVMContext &context) const;
 
