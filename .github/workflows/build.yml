@@ -359,6 +359,15 @@ jobs:
         run: |
           dpkg -i ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
 
+      - name: Run Integration Tests (AnghaBench 50)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+        run: |
+          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+          scripts/test-angha-50.sh \
+            --ghidra-install-dir $GHIDRA_INSTALL_DIR \
+            --decompile-cmd "anvill-decompile-spec"
+
       - name: Store the DEB package
         uses: actions/upload-artifact@v3
         with:
