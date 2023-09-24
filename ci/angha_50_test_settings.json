@@ -1,4 +1,5 @@
 {
+    "timeout.seconds": "600",
     "tests.ignore": [
         "x86/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
         "amd64/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
