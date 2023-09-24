@@ -352,6 +352,13 @@ ValueLifterImpl::Lift(llvm::ArrayRef<uint8_t> data, llvm::Type *type,
       return llvm::ConstantFP::get(type, val.bitsToDouble());
     }
 
+    case llvm::Type::X86_FP80TyID: {
+      const auto size = static_cast<uint64_t>(dl.getTypeStoreSize(type));
+      auto val = ConsumeBytesAsInt(data, size);
+      const llvm::APFloat float_val(llvm::APFloat::x87DoubleExtended(), val);
+      return llvm::ConstantFP::get(type, float_val);
+    }
+
     default:
       LOG(FATAL) << "Cannot initialize constant of unhandled LLVM type "
                  << remill::LLVMThingToString(type) << " at " << std::hex
