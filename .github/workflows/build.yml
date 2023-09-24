@@ -159,7 +159,7 @@ jobs:
           fetch-depth: 0
           submodules: true
           ssh-key: "${{ secrets.IRENE3_DEPLOY }}"
-          ref: "alex/angha-debugging"
+          ref: "alex/reg-fix"
 
       - name: Add cargo bin to path
         shell: bash
