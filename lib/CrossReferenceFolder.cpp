@@ -385,7 +385,7 @@ CrossReferenceFolderImpl::ResolveConstant(llvm::Constant *const_val) {
     xr.is_valid = false;
 
     if (val.isNegative()) {
-      if (val.getMinSignedBits() <= 64) {
+      if (val.getNumSignBits() <= 64) {
         xr.u.address = static_cast<uint64_t>(val.getSExtValue());
         xr.is_valid = true;
       }
