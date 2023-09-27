@@ -45,6 +45,7 @@ class CodeLifter {
   const TypeProvider &type_provider;
   const TypeTranslator &type_specifier;
   llvm::IntegerType *const address_type;
+  llvm::IntegerType *const uid_type;
 
 
   // Convenient to keep around.
@@ -77,6 +78,8 @@ class CodeLifter {
   llvm::Function *GetTypeHintFunction();
 
   llvm::MDNode *GetAddrAnnotation(uint64_t addr,
+                                  llvm::LLVMContext &context) const;
+  llvm::MDNode *GetUidAnnotation(uint64_t uid,
                                   llvm::LLVMContext &context) const;
 
  public:

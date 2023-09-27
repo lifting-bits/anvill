@@ -447,8 +447,8 @@ SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
 }
 
 std::optional<std::reference_wrapper<const BasicBlockContext>>
-SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
-  auto cont = this->contexts.find(addr);
+SpecBlockContexts::GetBasicBlockContextForUid(uint64_t uid) const {
+  auto cont = this->contexts.find(uid);
   if (cont == this->contexts.end()) {
     return std::nullopt;
   }

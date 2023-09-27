@@ -15,7 +15,7 @@ namespace anvill {
 class BasicBlockContexts {
  public:
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
-  GetBasicBlockContextForAddr(uint64_t addr) const = 0;
+  GetBasicBlockContextForUid(uint64_t uid) const = 0;
   virtual const FunctionDecl &GetFunctionAtAddress(uint64_t addr) const = 0;
 };
 
@@ -33,9 +33,9 @@ class BasicBlockPass : public llvm::PassInfoMixin<BasicBlockPass<T>> {
   llvm::PreservedAnalyses run(llvm::Function &F,
                               llvm::FunctionAnalysisManager &AM) {
     auto &bb_pass = *static_cast<T *>(this);
-    auto bbaddr = anvill::GetBasicBlockAddr(&F);
-    if (bbaddr.has_value()) {
-      auto maybe_bb_cont = contexts.GetBasicBlockContextForAddr(*bbaddr);
+    auto bbuid = anvill::GetBasicBlockUid(&F);
+    if (bbuid.has_value()) {
+      auto maybe_bb_cont = contexts.GetBasicBlockContextForUid(*bbuid);
       if (maybe_bb_cont) {
         const BasicBlockContext &bb_cont = *maybe_bb_cont;
         auto &parent_func =

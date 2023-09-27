@@ -78,8 +78,8 @@ VariableDecl::DeclareInModule(const std::string &name,
 
 void FunctionDecl::AddBBContexts(
     std::unordered_map<uint64_t, SpecBlockContext> &contexts) const {
-  for (const auto &[addr, _] : this->cfg) {
-    contexts.insert({addr, this->GetBlockContext(addr)});
+  for (const auto &[uid, _] : this->cfg) {
+    contexts.insert({uid, this->GetBlockContext(uid)});
   }
 }
 
@@ -475,12 +475,12 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
 
 namespace {
 template <class V>
-V GetWithDef(uint64_t addr, const std::unordered_map<uint64_t, V> &map, V def) {
-  if (map.find(addr) == map.end()) {
+V GetWithDef(uint64_t uid, const std::unordered_map<uint64_t, V> &map, V def) {
+  if (map.find(uid) == map.end()) {
     return def;
   }
 
-  return map.find(addr)->second;
+  return map.find(uid)->second;
 }
 }  // namespace
 

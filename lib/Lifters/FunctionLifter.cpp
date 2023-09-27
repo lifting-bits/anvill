@@ -354,7 +354,6 @@ BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t uid) {
           this->curr_decl->GetBlockContext(uid));
 
   auto &cfg = this->curr_decl->cfg;
-  CHECK(cfg.contains(uid));
   CodeBlock defblk = cfg.find(uid)->second;
 
   auto inserted = this->bb_lifters.emplace(
@@ -384,8 +383,8 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
              << ": " << this->curr_decl->cfg.size();
 
 
-  for (const auto &[addr, blk] : this->curr_decl->cfg) {
-    DLOG(INFO) << "Visiting: " << std::hex << addr;
+  for (const auto &[uid, blk] : this->curr_decl->cfg) {
+    DLOG(INFO) << "Visiting: " << std::hex << blk.addr << " " << std::dec << uid;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
 }
@@ -724,9 +723,13 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
       }
       remill::CloneFunctionInto(old_version, new_version);
       new_version->setMetadata(
-          kBasicBlockMetadata,
+          kBasicBlockAddrMetadata,
           this->GetAddrAnnotation(block.addr, module_context));
+      new_version->setMetadata(
+          kBasicBlockUidMetadata,
+          this->GetUidAnnotation(block.uid, module_context));
       CHECK(anvill::GetBasicBlockAddr(new_version).has_value());
+      CHECK(anvill::GetBasicBlockUid(new_version).has_value());
     }
   }
 

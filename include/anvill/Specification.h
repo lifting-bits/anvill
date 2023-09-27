@@ -98,7 +98,7 @@ class SpecBlockContexts : public BasicBlockContexts {
   SpecBlockContexts(const Specification &spec);
 
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
-  GetBasicBlockContextForAddr(uint64_t addr) const override;
+  GetBasicBlockContextForUid(uint64_t uid) const override;
 
   virtual const FunctionDecl &
   GetFunctionAtAddress(uint64_t addr) const override;

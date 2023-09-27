@@ -402,8 +402,11 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 }
 
 
-llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
+llvm::MDNode *BasicBlockLifter::GetBasicBlockAddrAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
+}
+llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(uint64_t uid) const {
+  return this->GetUidAnnotation(uid, this->semantics_module->getContext());
 }
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
@@ -437,8 +440,10 @@ llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
 
 BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto func = bb_func;
-  func->setMetadata(anvill::kBasicBlockMetadata,
-                    GetBasicBlockAnnotation(this->block_def.addr));
+  func->setMetadata(anvill::kBasicBlockAddrMetadata,
+                    GetBasicBlockAddrAnnotation(this->block_def.addr));
+  func->setMetadata(anvill::kBasicBlockUidMetadata,
+                    GetBasicBlockUidAnnotation(this->block_def.uid));
 
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
