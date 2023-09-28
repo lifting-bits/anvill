@@ -14,15 +14,6 @@ on:
   # - cron: "0 */6 * * *"
 
   push:
-    branches:
-      - "*"
-
-    tags:
-      - "*"
-
-  pull_request:
-    branches:
-      - "*"
 
 jobs:
   cleanup_stale_workflows:
