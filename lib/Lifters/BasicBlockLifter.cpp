@@ -638,8 +638,9 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     auto calling_bb =
         llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
-    auto edge_bb = this->decl.cfg.at(edge_uid);
-    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(edge_bb.uid);
+    auto edge_bb = this->decl.cfg.find(edge_uid);
+    CHECK(edge_bb != this->decl.cfg.end());
+    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(edge_bb->second.uid);
     auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
         caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
@@ -649,7 +650,7 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     }
 
     auto succ_const = llvm::ConstantInt::get(
-        llvm::cast<llvm::IntegerType>(this->address_type), edge_bb.addr);
+        llvm::cast<llvm::IntegerType>(this->address_type), edge_bb->second.addr);
     sw->addCase(succ_const, calling_bb);
   }
 

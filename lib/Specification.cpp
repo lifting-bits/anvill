@@ -9,6 +9,7 @@
 #include "Specification.h"
 
 #include <glog/logging.h>
+#include <google/protobuf/util/json_util.h>
 #include <llvm/ADT/StringRef.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -333,7 +334,10 @@ anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
   ::specification::Specification spec;
   if (!spec.ParseFromString(pb)) {
-    return {"Failed to parse specification"};
+    auto status = google::protobuf::util::JsonStringToMessage(pb, &spec);
+    if (!status.ok()) {
+      return {"Failed to parse specification"};
+    }
   }
 
   auto arch{GetArch(context, spec)};

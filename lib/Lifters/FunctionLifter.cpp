@@ -502,7 +502,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
   auto &cfg = this->curr_decl->cfg;
-  auto blk = std::find_if(std::begin(cfg), std::end(cfg),
+  auto blk = std::find_if(cfg.begin(), cfg.end(),
                                 [this](auto&& p) { return p.second.addr == this->func_address; });
   CHECK(blk != cfg.end());
   auto &entry_lifter = this->GetOrCreateBasicBlockLifter(blk->second.uid);

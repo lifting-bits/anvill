@@ -91,7 +91,7 @@ class ProtobufTranslator {
 
   void AddLiveValuesToBB(
       std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
-      Uid bb_addr,
+      Uid bb_uid,
       const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
           &values) const;
 
