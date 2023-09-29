@@ -336,15 +336,15 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
-static uint64_t GetRandUid() {
+static Uid GetRandUid() {
   static std::random_device rd;
   static std::mt19937_64 engine(rd());
   static std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-  return dist(engine);
+  return {dist(engine)};
 }
 
-BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t uid) {
-  std::pair<uint64_t, uint64_t> key{curr_decl->address, uid};
+BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(Uid uid) {
+  std::pair<uint64_t, uint64_t> key{curr_decl->address, uid.value};
   auto lifter = this->bb_lifters.find(key);
   if (lifter != this->bb_lifters.end()) {
     return lifter->second;
@@ -384,7 +384,7 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
 
 
   for (const auto &[uid, blk] : this->curr_decl->cfg) {
-    DLOG(INFO) << "Visiting: " << std::hex << blk.addr << " " << std::dec << uid;
+    DLOG(INFO) << "Visiting: " << std::hex << blk.addr << " " << std::dec << uid.value;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
 }
@@ -710,7 +710,7 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
   if (!func->isDeclaration()) {
     for (auto &[block_uid, block] : decl.cfg) {
       CHECK(block_uid == block.uid);
-      std::string name = prefix + "basic_block" + std::to_string(block.addr) + "_" + std::to_string(block.uid);
+      std::string name = prefix + "basic_block" + std::to_string(block.addr) + "_" + std::to_string(block.uid.value);
 
       auto new_version = target_module->getFunction(name);
       auto old_version = semantics_module->getFunction(name);

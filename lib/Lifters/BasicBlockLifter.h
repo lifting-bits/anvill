@@ -108,7 +108,7 @@ class BasicBlockLifter : public CodeLifter {
 
 
   llvm::MDNode *GetBasicBlockAddrAnnotation(uint64_t addr) const;
-  llvm::MDNode *GetBasicBlockUidAnnotation(uint64_t uid) const;
+  llvm::MDNode *GetBasicBlockUidAnnotation(Uid uid) const;
 
  public:
   BasicBlockLifter(std::unique_ptr<BasicBlockContext> block_context,

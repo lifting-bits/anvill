@@ -405,13 +405,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
 llvm::MDNode *BasicBlockLifter::GetBasicBlockAddrAnnotation(uint64_t addr) const {
   return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
 }
-llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(uint64_t uid) const {
+llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(Uid uid) const {
   return this->GetUidAnnotation(uid, this->semantics_module->getContext());
 }
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
-                      std::to_string(this->block_def.addr) + "_" + std::to_string(this->block_def.uid);
+                      std::to_string(this->block_def.addr) + "_" + std::to_string(this->block_def.uid.value);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(

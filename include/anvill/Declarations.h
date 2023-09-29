@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,16 +46,31 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+struct Uid {
+  std::uint64_t value;
+  bool operator==(const Uid &) const = default;
+};
+
+}
+
+template <>
+struct std::hash<anvill::Uid> {
+  size_t operator()(const anvill::Uid &uid) const noexcept {
+    return std::hash<uint64_t>()(uid.value);
+  }
+};
+
+namespace anvill {
 
 struct CodeBlock {
   uint64_t addr;
   uint32_t size;
-  std::unordered_set<uint64_t> outgoing_edges;
+  std::unordered_set<Uid> outgoing_edges;
   // The set of context assignments that occur at the entry point to this block.
   // A block may have specific decoding context properties such as "TM=1" (the thumb bit is set)
   // So we declare the context assignments that occur at the entry point to a block.
   std::unordered_map<std::string, std::uint64_t> context_assignments;
-  uint64_t uid;
+  Uid uid;
 };
 
 
@@ -401,24 +417,24 @@ struct FunctionDecl : public CallableDecl {
   bool is_extern{false};
 
   // These are the blocks contained within the function representing the CFG.
-  std::unordered_map<std::uint64_t, CodeBlock> cfg;
+  std::unordered_map<Uid, CodeBlock> cfg;
 
   std::unordered_map<std::string, ParameterDecl> locals;
 
-  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_entry;
+  std::unordered_map<Uid, SpecStackOffsets> stack_offsets_at_entry;
 
-  std::unordered_map<std::uint64_t, SpecStackOffsets> stack_offsets_at_exit;
+  std::unordered_map<Uid, SpecStackOffsets> stack_offsets_at_exit;
 
-  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
+  std::unordered_map<Uid, std::vector<ParameterDecl>>
       live_regs_at_entry;
 
-  std::unordered_map<std::uint64_t, std::vector<ParameterDecl>>
+  std::unordered_map<Uid, std::vector<ParameterDecl>>
       live_regs_at_exit;
 
-  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+  std::unordered_map<Uid, std::vector<ConstantDomain>>
       constant_values_at_entry;
 
-  std::unordered_map<std::uint64_t, std::vector<ConstantDomain>>
+  std::unordered_map<Uid, std::vector<ConstantDomain>>
       constant_values_at_exit;
 
   // sorted vector of hints
@@ -452,10 +468,10 @@ struct FunctionDecl : public CallableDecl {
   static Result<FunctionDecl, std::string> Create(llvm::Function &func,
                                                   const remill::Arch *arch);
 
-  SpecBlockContext GetBlockContext(std::uint64_t uid) const;
+  SpecBlockContext GetBlockContext(Uid uid) const;
 
   void
-  AddBBContexts(std::unordered_map<uint64_t, SpecBlockContext> &contexts) const;
+  AddBBContexts(std::unordered_map<Uid, SpecBlockContext> &contexts) const;
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a

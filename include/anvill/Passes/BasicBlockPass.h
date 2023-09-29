@@ -15,7 +15,7 @@ namespace anvill {
 class BasicBlockContexts {
  public:
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
-  GetBasicBlockContextForUid(uint64_t uid) const = 0;
+  GetBasicBlockContextForUid(Uid uid) const = 0;
   virtual const FunctionDecl &GetFunctionAtAddress(uint64_t addr) const = 0;
 };
 

@@ -90,8 +90,8 @@ class ProtobufTranslator {
                             FunctionDecl &decl) const;
 
   void AddLiveValuesToBB(
-      std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
-      uint64_t bb_addr,
+      std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
+      Uid bb_addr,
       const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
           &values) const;
 

@@ -20,6 +20,8 @@
 
 #include <unordered_set>
 
+#include "anvill/Declarations.h"
+
 namespace anvill {
 namespace {
 // Clear out LLVM variable names. They're usually not helpful.
@@ -193,10 +195,10 @@ llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,
   return llvm::MDNode::get(context, pc_md);
 }
 
-llvm::MDNode *CodeLifter::GetUidAnnotation(uint64_t uid,
+llvm::MDNode *CodeLifter::GetUidAnnotation(Uid uid,
                                             llvm::LLVMContext &context) const {
   auto uid_val = llvm::ConstantInt::get(
-      remill::RecontextualizeType(uid_type, context), uid);
+      remill::RecontextualizeType(uid_type, context), uid.value);
   auto uid_md = llvm::ValueAsMetadata::get(uid_val);
   return llvm::MDNode::get(context, uid_md);
 }

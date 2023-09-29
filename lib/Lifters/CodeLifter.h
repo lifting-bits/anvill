@@ -7,6 +7,7 @@
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
+#include "anvill/Declarations.h"
 #include "anvill/Lifters.h"
 
 namespace anvill {
@@ -79,7 +80,7 @@ class CodeLifter {
 
   llvm::MDNode *GetAddrAnnotation(uint64_t addr,
                                   llvm::LLVMContext &context) const;
-  llvm::MDNode *GetUidAnnotation(uint64_t uid,
+  llvm::MDNode *GetUidAnnotation(Uid uid,
                                   llvm::LLVMContext &context) const;
 
  public:

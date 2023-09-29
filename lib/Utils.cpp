@@ -979,7 +979,7 @@ std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
 
   return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
 }
-std::optional<uint64_t> GetBasicBlockUid(llvm::Function *func) {
+std::optional<Uid> GetBasicBlockUid(llvm::Function *func) {
   auto meta = func->getMetadata(kBasicBlockUidMetadata);
   if (!meta) {
     return std::nullopt;
@@ -987,7 +987,7 @@ std::optional<uint64_t> GetBasicBlockUid(llvm::Function *func) {
 
   auto v = llvm::cast<llvm::ValueAsMetadata>(meta->getOperand(0))->getValue();
 
-  return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
+  return Uid{llvm::cast<llvm::ConstantInt>(v)->getLimitedValue()};
 }
 
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {

@@ -106,7 +106,7 @@ class FunctionLifter : public CodeLifter {
 
   // Get or create a basic block lifter for the basic block with specified
   // uid. If a lifter for the uid does not exist, this function will create it
-  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t uid);
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(Uid uid);
 
   const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
 

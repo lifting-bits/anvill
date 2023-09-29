@@ -447,7 +447,7 @@ SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
 }
 
 std::optional<std::reference_wrapper<const BasicBlockContext>>
-SpecBlockContexts::GetBasicBlockContextForUid(uint64_t uid) const {
+SpecBlockContexts::GetBasicBlockContextForUid(Uid uid) const {
   auto cont = this->contexts.find(uid);
   if (cont == this->contexts.end()) {
     return std::nullopt;

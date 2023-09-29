@@ -77,7 +77,7 @@ VariableDecl::DeclareInModule(const std::string &name,
 }
 
 void FunctionDecl::AddBBContexts(
-    std::unordered_map<uint64_t, SpecBlockContext> &contexts) const {
+    std::unordered_map<Uid, SpecBlockContext> &contexts) const {
   for (const auto &[uid, _] : this->cfg) {
     contexts.insert({uid, this->GetBlockContext(uid)});
   }
@@ -475,7 +475,7 @@ void CallableDecl::OverrideFunctionTypeWithABIReturnLayout() {
 
 namespace {
 template <class V>
-V GetWithDef(uint64_t uid, const std::unordered_map<uint64_t, V> &map, V def) {
+V GetWithDef(Uid uid, const std::unordered_map<Uid, V> &map, V def) {
   if (map.find(uid) == map.end()) {
     return def;
   }
@@ -488,7 +488,7 @@ size_t FunctionDecl::GetPointerDisplacement() const {
   return this->parameter_size + this->parameter_offset;
 }
 
-SpecBlockContext FunctionDecl::GetBlockContext(std::uint64_t uid) const {
+SpecBlockContext FunctionDecl::GetBlockContext(Uid uid) const {
   return SpecBlockContext(
       *this, GetWithDef(uid, this->stack_offsets_at_entry, SpecStackOffsets()),
       GetWithDef(uid, this->stack_offsets_at_exit, SpecStackOffsets()),
