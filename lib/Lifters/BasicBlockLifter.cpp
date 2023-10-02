@@ -440,8 +440,6 @@ llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
 
 BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto func = bb_func;
-  func->setMetadata(anvill::kBasicBlockAddrMetadata,
-                    GetBasicBlockAddrAnnotation(this->block_def.addr));
   func->setMetadata(anvill::kBasicBlockUidMetadata,
                     GetBasicBlockUidAnnotation(this->block_def.uid));
 

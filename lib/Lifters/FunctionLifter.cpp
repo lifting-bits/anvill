@@ -723,12 +723,8 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
       }
       remill::CloneFunctionInto(old_version, new_version);
       new_version->setMetadata(
-          kBasicBlockAddrMetadata,
-          this->GetAddrAnnotation(block.addr, module_context));
-      new_version->setMetadata(
           kBasicBlockUidMetadata,
           this->GetUidAnnotation(block.uid, module_context));
-      CHECK(anvill::GetBasicBlockAddr(new_version).has_value());
       CHECK(anvill::GetBasicBlockUid(new_version).has_value());
     }
   }

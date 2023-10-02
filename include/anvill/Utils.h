@@ -134,7 +134,6 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
 
-std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
 std::optional<Uid> GetBasicBlockUid(llvm::Function *func);
 
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);

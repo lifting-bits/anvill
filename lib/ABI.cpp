@@ -82,7 +82,6 @@ const std::string kAnvillDataProvenanceFunc(kAnvillNamePrefix +
 // `alloca`.
 const std::string kAnvillStackZero(kAnvillNamePrefix + "stack_zero");
 
-const std::string kBasicBlockAddrMetadata(kAnvillNamePrefix + "basic_block_addr_md");
 const std::string kBasicBlockUidMetadata(kAnvillNamePrefix + "basic_block_uid_md");
 
 const std::string kStackMetadata(kAnvillNamePrefix + "stack_alloc");
