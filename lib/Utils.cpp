@@ -244,6 +244,34 @@ std::string CreateVariableName(std::uint64_t addr) {
   return ss.str();
 }
 
+std::optional<std::uint64_t> GetMetadata(llvm::StringRef tag,
+                                         llvm::Instruction &instr) {
+  if (auto *metadata = instr.getMetadata(tag)) {
+    for (const auto &op : metadata->operands()) {
+      if (auto *md = dyn_cast<llvm::ConstantAsMetadata>(op.get())) {
+        if (auto c = dyn_cast<llvm::ConstantInt>(md->getValue())) {
+          auto pc_val = c->getValue().getZExtValue();
+          return pc_val;
+        }
+      }
+    }
+  }
+
+  return {};
+}
+
+void SetMetadata(llvm::StringRef tag, llvm::Instruction &insn,
+                 std::uint64_t pc_val) {
+  auto &context = insn.getContext();
+  auto &dl = insn.getModule()->getDataLayout();
+  auto *address_type =
+      llvm::Type::getIntNTy(context, dl.getPointerSizeInBits(0));
+  auto *cam = llvm::ConstantAsMetadata::get(
+      llvm::ConstantInt::get(address_type, pc_val));
+  auto *node = llvm::MDNode::get(insn.getContext(), cam);
+  insn.setMetadata(tag, node);
+}
+
 void CopyMetadataTo(llvm::Value *src, llvm::Value *dst) {
   if (src == dst) {
     return;
