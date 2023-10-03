@@ -38,7 +38,8 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       ra.references_global_value ||  // Related to a global var/func.
       ra.references_program_counter) {  // Related to `__anvill_pc`.
 
-    std::optional<CallableDecl> maybe_decl;
+    std::shared_ptr<const CallableDecl> callable_decl =
+        spec.FunctionAt(ra.u.address);
 
     if (auto pc_val =
             GetMetadata(lifter.Options().pc_metadata_name, *remillFunctionCall);
@@ -50,21 +51,17 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
             bb_ctx_ref.has_value()) {
           const auto &bb_ctx = bb_ctx_ref->get();
           auto func = bb_ctx.GetParentFunctionAddress();
-          if (auto calldecl = spec.CallSiteAt({func, *pc_val})) {
+          if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
             DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val
                        << " in " << std::hex << func;
-            maybe_decl = *calldecl;
+            callable_decl = override_decl;
           }
         }
       }
     }
-    if (!maybe_decl.has_value()) {
-      if (auto funcdecl = spec.FunctionAt(ra.u.address)) {
-        maybe_decl = *funcdecl;
-      }
-    }
-    auto entity = this->xref_resolver.EntityAtAddress(ra.u.address);
-    if (maybe_decl.has_value() && (entity != nullptr)) {
+
+    auto *entity = this->xref_resolver.EntityAtAddress(ra.u.address);
+    if (callable_decl && entity) {
       llvm::IRBuilder<> ir(remillFunctionCall->getParent());
       ir.SetInsertPoint(remillFunctionCall);
 
@@ -74,7 +71,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
                  << remill::LLVMThingToString(remillFunctionCall)
                  << " with call to " << std::hex << ra.u.address
                  << " d has: " << std::string(entity->getName());
-      auto new_mem = maybe_decl->CallFromLiftedBlock(
+      auto *new_mem = callable_decl->CallFromLiftedBlock(
           entity, lifter.Options().TypeDictionary(), table, ir, state_ptr,
           mem_ptr);
 
