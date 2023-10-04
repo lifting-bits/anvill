@@ -46,16 +46,12 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
         pc_val.has_value()) {
       if (auto bb_addr = GetBasicBlockAddr(f); bb_addr.has_value()) {
         auto block_contexts = spec.GetBlockContexts();
-        if (auto bb_ctx_ref =
-                block_contexts.GetBasicBlockContextForAddr(*bb_addr);
-            bb_ctx_ref.has_value()) {
-          const auto &bb_ctx = bb_ctx_ref->get();
-          auto func = bb_ctx.GetParentFunctionAddress();
-          if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
-            DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val
-                       << " in " << std::hex << func;
-            callable_decl = std::move(override_decl);
-          }
+        const auto &bb_ctx = block_contexts.GetBasicBlockContextForAddr(*bb_addr)->get();
+        auto func = bb_ctx.GetParentFunctionAddress();
+        if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
+          DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val
+                     << " in " << std::hex << func;
+          callable_decl = std::move(override_decl);
         }
       }
     }
