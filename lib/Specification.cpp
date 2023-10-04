@@ -84,7 +84,8 @@ SpecificationImpl::ParseSpecification(
       continue;
     }
     auto cs_obj = maybe_cs.Value();
-    std::pair<uint64_t, uint64_t> loc{cs_obj.function_address, cs_obj.address};
+    std::pair<std::uint64_t, std::uint64_t> loc{cs_obj.function_address,
+                                                cs_obj.address};
 
     if (loc_to_call_site.count(loc)) {
       std::stringstream ss;
@@ -392,6 +393,16 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   }
 
   return Specification(std::move(pimpl));
+}
+
+// Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
+std::shared_ptr<const CallSiteDecl> Specification::CallSiteAt(
+    const std::pair<std::uint64_t, std::uint64_t> &loc) const {
+  auto it = impl->loc_to_call_site.find(loc);
+  if (it != impl->loc_to_call_site.end()) {
+    return {impl, it->second};
+  }
+  return {};
 }
 
 // Return the function beginning at `address`, or an empty `shared_ptr`.
