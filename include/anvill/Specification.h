@@ -148,7 +148,7 @@ class Specification {
 
   // Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
   std::shared_ptr<const CallSiteDecl>
-  CallSiteAt(std::pair<std::uint64_t, std::uint64_t> loc) const;
+  CallSiteAt(const std::pair<std::uint64_t, std::uint64_t> &loc) const;
 
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;

@@ -54,7 +54,7 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
           if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
             DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val
                        << " in " << std::hex << func;
-            callable_decl = override_decl;
+            callable_decl = std::move(override_decl);
           }
         }
       }

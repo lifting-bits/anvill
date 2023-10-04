@@ -245,7 +245,7 @@ std::string CreateVariableName(std::uint64_t addr) {
 }
 
 std::optional<std::uint64_t> GetMetadata(llvm::StringRef tag,
-                                         llvm::Instruction &instr) {
+                                         const llvm::Instruction &instr) {
   if (auto *metadata = instr.getMetadata(tag)) {
     for (const auto &op : metadata->operands()) {
       if (auto *md = dyn_cast<llvm::ConstantAsMetadata>(op.get())) {
