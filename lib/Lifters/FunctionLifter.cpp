@@ -336,13 +336,6 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
-static Uid GetRandUid() {
-  static std::random_device rd;
-  static std::mt19937_64 engine(rd());
-  static std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-  return {dist(engine)};
-}
-
 BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(Uid uid) {
   std::pair<uint64_t, uint64_t> key{curr_decl->address, uid.value};
   auto lifter = this->bb_lifters.find(key);
@@ -501,11 +494,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  auto &cfg = this->curr_decl->cfg;
-  auto blk = std::find_if(cfg.begin(), cfg.end(),
-                                [this](auto&& p) { return p.second.addr == this->func_address; });
-  CHECK(blk != cfg.end());
-  auto &entry_lifter = this->GetOrCreateBasicBlockLifter(blk->second.uid);
+  const auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->curr_decl->entry_uid);
 
   auto call_inst = entry_lifter.CallBasicBlockFunction(
       ir, lifted_func_st.state_ptr, abstract_stack, this->mem_ptr_ref);

@@ -315,7 +315,8 @@ message TypeHint {
 
 message Function {
   uint64 entry_address = 1;
-  FunctionLinkage func_linkage = 3; 
+  uint64 entry_uid = 12;
+  FunctionLinkage func_linkage = 3;
   Callable callable = 4;
   // Mapping of unique ID to codeblock
   map<uint64, CodeBlock> blocks = 5;

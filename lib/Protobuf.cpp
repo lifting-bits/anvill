@@ -516,6 +516,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     const ::specification::Function &function) const {
   FunctionDecl decl;
   decl.address = function.entry_address();
+  decl.entry_uid = Uid{function.entry_uid()};
 
   if (!function.has_callable()) {
     return std::string("all functions should have a callable");

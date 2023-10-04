@@ -401,10 +401,6 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
   }
 }
 
-
-llvm::MDNode *BasicBlockLifter::GetBasicBlockAddrAnnotation(uint64_t addr) const {
-  return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
-}
 llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(Uid uid) const {
   return this->GetUidAnnotation(uid, this->semantics_module->getContext());
 }

@@ -107,7 +107,6 @@ class BasicBlockLifter : public CodeLifter {
                              remill::DecodingContext context);
 
 
-  llvm::MDNode *GetBasicBlockAddrAnnotation(uint64_t addr) const;
   llvm::MDNode *GetBasicBlockUidAnnotation(Uid uid) const;
 
  public:

@@ -407,6 +407,8 @@ struct FunctionDecl : public CallableDecl {
  public:
   // Address of this function in memory.
   std::uint64_t address{0};
+  // Entry block UID
+  Uid entry_uid{0};
 
   // The maximum number of bytes of redzone afforded to this function
   // (if it doesn't change the stack pointer, or, for example, writes
