@@ -51,7 +51,7 @@ std::string CreateVariableName(std::uint64_t addr);
 
 // Get metadata for an instruction
 std::optional<std::uint64_t> GetMetadata(llvm::StringRef tag,
-                                         llvm::Instruction &instr);
+                                         const llvm::Instruction &instr);
 
 // Set metadata for an instruction
 void SetMetadata(llvm::StringRef tag, llvm::Instruction &insn,
