@@ -29,6 +29,7 @@ class CodeLifter {
 
   remill::OperandLifter::OpLifterPtr op_lifter;
 
+
   // Are we lifting SPARC code? This affects whether or not we need to do
   // double checking on function return addresses;
   const bool is_sparc;
@@ -71,6 +72,9 @@ class CodeLifter {
                                                 llvm::Value *new_state_ptr);
 
   unsigned pc_annotation_id;
+
+
+  llvm::Function *GetTypeHintFunction();
 
   llvm::MDNode *GetAddrAnnotation(uint64_t addr,
                                   llvm::LLVMContext &context) const;

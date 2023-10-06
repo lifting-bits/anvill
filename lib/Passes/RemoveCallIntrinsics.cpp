@@ -22,11 +22,6 @@ llvm::PreservedAnalyses
 RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
                                      llvm::FunctionAnalysisManager &am,
                                      llvm::PreservedAnalyses prev) {
-  // remillFunctionCall->getFunction()->dump();
-  // if (remillFunctionCall->getFunction()->getName().endswith(
-  //         "basic_block_func4201200")) {
-  //   LOG(FATAL) << "done";
-  // }
   CHECK(remillFunctionCall->getNumOperands() == 4);
   auto target_func = remillFunctionCall->getArgOperand(1);
   auto state_ptr = remillFunctionCall->getArgOperand(0);
@@ -43,23 +38,38 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
       ra.references_global_value ||  // Related to a global var/func.
       ra.references_program_counter) {  // Related to `__anvill_pc`.
 
-    // TODO(Ian): ignoring callsite decls for now
-    auto fdecl = spec.FunctionAt(ra.u.address);
-    auto entity = this->xref_resolver.EntityAtAddress(ra.u.address);
-    if (fdecl && entity) {
+    std::shared_ptr<const CallableDecl> callable_decl =
+        spec.FunctionAt(ra.u.address);
+
+    if (auto pc_val =
+            GetMetadata(lifter.Options().pc_metadata_name, *remillFunctionCall);
+        pc_val.has_value()) {
+      if (auto bb_addr = GetBasicBlockAddr(f); bb_addr.has_value()) {
+        auto block_contexts = spec.GetBlockContexts();
+        const auto &bb_ctx = block_contexts.GetBasicBlockContextForAddr(*bb_addr)->get();
+        auto func = bb_ctx.GetParentFunctionAddress();
+        if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
+          DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val
+                     << " in " << std::hex << func;
+          callable_decl = std::move(override_decl);
+        }
+      }
+    }
+
+    auto *entity = this->xref_resolver.EntityAtAddress(ra.u.address);
+    if (callable_decl && entity) {
       llvm::IRBuilder<> ir(remillFunctionCall->getParent());
       ir.SetInsertPoint(remillFunctionCall);
 
 
-      const remill::IntrinsicTable table(
-          remillFunctionCall->getFunction()->getParent());
+      const remill::IntrinsicTable table(f->getParent());
       DLOG(INFO) << "Replacing call from: "
                  << remill::LLVMThingToString(remillFunctionCall)
                  << " with call to " << std::hex << ra.u.address
                  << " d has: " << std::string(entity->getName());
-      auto new_mem =
-          fdecl->CallFromLiftedBlock(entity, lifter.Options().TypeDictionary(),
-                                     table, ir, state_ptr, mem_ptr);
+      auto *new_mem = callable_decl->CallFromLiftedBlock(
+          entity, lifter.Options().TypeDictionary(), table, ir, state_ptr,
+          mem_ptr);
 
       remillFunctionCall->replaceAllUsesWith(new_mem);
       remillFunctionCall->eraseFromParent();

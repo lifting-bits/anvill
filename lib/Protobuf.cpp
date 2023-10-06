@@ -558,6 +558,27 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 
   this->ParseCFGIntoFunction(function, decl);
 
+
+  for (auto &ty_hint : function.type_hints()) {
+    auto maybe_type = DecodeType(ty_hint.target_var().type());
+    if (maybe_type.Succeeded()) {
+      auto maybe_var =
+          DecodeValueDecl(ty_hint.target_var().values(), maybe_type.TakeValue(),
+                          "attempting to decode type hint value");
+      if (maybe_var.Succeeded()) {
+        decl.type_hints.push_back(
+            {ty_hint.target_addr(), maybe_var.TakeValue()});
+      }
+    } else {
+      LOG(ERROR) << "Failed to decode type for type hint";
+    }
+  }
+
+  std::sort(decl.type_hints.begin(), decl.type_hints.end(),
+            [](const TypeHint &hint_lhs, const TypeHint &hint_rhs) {
+              return hint_lhs.target_addr < hint_rhs.target_addr;
+            });
+
   auto link = function.func_linkage();
 
   if (link == specification::FUNCTION_LINKAGE_DECL) {
@@ -638,11 +659,16 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         LOG(FATAL) << "No stack ptr";
       }
 
-      auto stackptr_type_spec = SizeToType(stackptr->size * 8);
+      auto target_type_spec = DecodeType(symval.target_value().type());
+      if (!target_type_spec.Succeeded()) {
+        LOG(ERROR) << "Failed to lift target type "
+                   << target_type_spec.TakeError();
+        return;
+      }
 
-      auto target_vdecl =
-          DecodeValueDecl(symval.target_value().values(), stackptr_type_spec,
-                          "Unable to get value decl for stack offset relation");
+      auto target_vdecl = DecodeValueDecl(
+          symval.target_value().values(), target_type_spec.TakeValue(),
+          "Unable to get value decl for target");
 
       if (!target_vdecl.Succeeded()) {
         LOG(ERROR) << "Failed to lift value " << target_vdecl.TakeError();
