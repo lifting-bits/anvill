@@ -367,7 +367,8 @@ jobs:
           python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
           scripts/test-angha-50.sh \
             --ghidra-install-dir $GHIDRA_INSTALL_DIR \
-            --decompile-cmd "anvill-decompile-spec"
+            --decompile-cmd "anvill-decompile-spec" \
+            --jobs 8
 
       - name: Tar and Compress logs
         if: failure()
