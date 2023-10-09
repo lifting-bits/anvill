@@ -143,18 +143,6 @@ void FunctionLifter::InsertError(llvm::BasicBlock *block) {
   AnnotateInstruction(tail, pc_annotation_id, pc_annotation);
 }
 
-
-std::optional<CallableDecl>
-FunctionLifter::TryGetTargetFunctionType(const remill::Instruction &from_inst,
-                                         std::uint64_t address) {
-  std::optional<CallableDecl> opt_callable_decl =
-      type_provider.TryGetCalledFunctionTypeOrDefault(func_address, from_inst,
-                                                      address);
-
-  return opt_callable_decl;
-}
-
-
 // Get the annotation for the program counter `pc`, or `nullptr` if we're
 // not doing annotations.
 llvm::MDNode *FunctionLifter::GetPCAnnotation(uint64_t pc) const {

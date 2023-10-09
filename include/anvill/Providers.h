@@ -45,11 +45,6 @@ class TypeProvider {
   std::optional<FunctionDecl>
   TryGetFunctionTypeOrDefault(uint64_t address) const;
 
-  std::optional<CallableDecl>
-  TryGetCalledFunctionTypeOrDefault(uint64_t function_address,
-                                    const remill::Instruction &from_inst,
-                                    uint64_t to_address) const;
-
   std::optional<VariableDecl>
   TryGetVariableTypeOrDefault(uint64_t address,
                               llvm::Type *hinted_value_type = nullptr) const;
@@ -59,19 +54,6 @@ class TypeProvider {
   // type is the prototype of the function.
   virtual std::optional<FunctionDecl>
   TryGetFunctionType(uint64_t address) const = 0;
-
-  // Try to return the type of a function that has been called from `from_isnt`.
-  virtual std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst) const;
-
-  // Try to return the type of a function starting at address `to_address`. This
-  // type is the prototype of the function. The type can be call site specific,
-  // where the call site is `from_inst`.
-  virtual std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst,
-                           uint64_t to_address) const;
 
   // Try to return the variable at given address or containing the address
   virtual std::optional<VariableDecl>
@@ -153,19 +135,6 @@ class ProxyTypeProvider : public TypeProvider {
   std::optional<FunctionDecl>
   TryGetFunctionType(uint64_t address) const override;
 
-  // Try to return the type of a function that has been called from `from_isnt`.
-  std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst) const override;
-
-  // Try to return the type of a function starting at address `to_address`. This
-  // type is the prototype of the function. The type can be call site specific,
-  // where the call site is `from_inst`.
-  std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst,
-                           uint64_t to_address) const override;
-
   // Try to return the variable at given address or containing the address
   std::optional<VariableDecl>
   TryGetVariableType(uint64_t address,
@@ -206,11 +175,6 @@ class DefaultCallableTypeProvider : public ProxyTypeProvider {
   // Set `decl` to the default callable type for `arch`.
   void SetDefault(remill::ArchName arch, CallableDecl decl);
 
-  // Try to return the type of a function that has been called from `from_isnt`.
-  std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst) const override;
-
   std::optional<anvill::FunctionDecl>
   TryGetFunctionType(uint64_t address) const override;
 };
@@ -224,11 +188,6 @@ class SpecificationTypeProvider : public BaseTypeProvider {
   virtual ~SpecificationTypeProvider(void);
 
   explicit SpecificationTypeProvider(const Specification &spec);
-
-  // Try to return the type of a function that has been called from `from_isnt`.
-  std::optional<CallableDecl>
-  TryGetCalledFunctionType(uint64_t function_address,
-                           const remill::Instruction &from_inst) const override;
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.
