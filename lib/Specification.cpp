@@ -68,6 +68,16 @@ SpecificationImpl::ParseSpecification(
     }
 
     auto func_ptr = new FunctionDecl(std::move(func_obj));
+
+    for (const auto& [uid, bb]: func_ptr->cfg) {
+      if (uid_to_block.count(uid)) {
+        std::stringstream ss;
+        ss << "Duplicate block Uid: " << uid.value;
+        return ss.str();
+      }
+      uid_to_block[uid] = &bb;
+    }
+
     functions.emplace_back(func_ptr);
     address_to_function.emplace(func_address, func_ptr);
   }
@@ -404,6 +414,17 @@ Specification::FunctionAt(std::uint64_t address) const {
   auto it = impl->address_to_function.find(address);
   if (it != impl->address_to_function.end()) {
     return std::shared_ptr<const FunctionDecl>(impl, it->second);
+  } else {
+    return {};
+  }
+}
+
+// Return the block with `uid`, or an empty `shared_ptr`.
+std::shared_ptr<const CodeBlock>
+Specification::BlockAt(Uid uid) const {
+  auto it = impl->uid_to_block.find(uid);
+  if (it != impl->uid_to_block.end()) {
+    return std::shared_ptr<const CodeBlock>(impl, it->second);
   } else {
     return {};
   }
