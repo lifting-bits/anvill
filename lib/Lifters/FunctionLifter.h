@@ -224,13 +224,6 @@ class FunctionLifter : public CodeLifter {
   bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
                     std::optional<std::uint64_t> target_pc);
 
-  // A wrapper around the type provider's TryGetFunctionType that makes use
-  // of the control flow provider to handle control flow redirections for
-  // thunks
-  std::optional<CallableDecl>
-  TryGetTargetFunctionType(const remill::Instruction &inst,
-                           std::uint64_t address);
-
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
   // `inst.branch_taken_pc`. In practice, what we do in this situation is try

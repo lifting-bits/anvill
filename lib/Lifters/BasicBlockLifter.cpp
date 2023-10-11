@@ -28,6 +28,7 @@
 #include "Lifters/FunctionLifter.h"
 #include "anvill/Declarations.h"
 #include "anvill/Optimize.h"
+#include "anvill/Utils.h"
 
 namespace anvill {
 
@@ -183,6 +184,7 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics);
     }
+    SetMetadata(options.pc_metadata_name, *call, insn.pc);
     if (!cc.stop) {
       auto [_, raddr] = this->LoadFunctionReturnAddress(insn, block);
       auto npc = remill::LoadNextProgramCounterRef(block);
