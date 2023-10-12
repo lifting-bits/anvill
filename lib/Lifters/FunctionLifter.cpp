@@ -56,6 +56,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -323,22 +324,18 @@ llvm::Function *FunctionLifter::DeclareFunction(const FunctionDecl &decl) {
   return GetOrDeclareFunction(decl);
 }
 
-BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
-  std::pair<uint64_t, uint64_t> key{curr_decl->address, addr};
+BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(Uid uid) {
+  std::pair<uint64_t, uint64_t> key{curr_decl->address, uid.value};
   auto lifter = this->bb_lifters.find(key);
   if (lifter != this->bb_lifters.end()) {
     return lifter->second;
   }
   std::unique_ptr<SpecBlockContext> context =
       std::make_unique<SpecBlockContext>(
-          this->curr_decl->GetBlockContext(addr));
+          this->curr_decl->GetBlockContext(uid));
 
-  CodeBlock defblk = {addr, 0, std::unordered_set<uint64_t>(),
-                      std::unordered_map<std::string, std::uint64_t>()};
-  auto maybe_blk = this->curr_decl->cfg.find(addr);
-  if (maybe_blk != this->curr_decl->cfg.end()) {
-    defblk = maybe_blk->second;
-  }
+  auto &cfg = this->curr_decl->cfg;
+  CodeBlock defblk = cfg.find(uid)->second;
 
   auto inserted = this->bb_lifters.emplace(
       key,
@@ -350,7 +347,7 @@ BasicBlockLifter &FunctionLifter::GetOrCreateBasicBlockLifter(uint64_t addr) {
 
 const BasicBlockLifter &
 FunctionLifter::LiftBasicBlockFunction(const CodeBlock &blk) {
-  auto &lifter = this->GetOrCreateBasicBlockLifter(blk.addr);
+  auto &lifter = this->GetOrCreateBasicBlockLifter(blk.uid);
   lifter.LiftBasicBlockFunction();
   return lifter;
 }
@@ -367,8 +364,8 @@ void FunctionLifter::VisitBlocks(llvm::Value *lifted_function_state,
              << ": " << this->curr_decl->cfg.size();
 
 
-  for (const auto &[addr, blk] : this->curr_decl->cfg) {
-    DLOG(INFO) << "Visiting: " << std::hex << addr;
+  for (const auto &[uid, blk] : this->curr_decl->cfg) {
+    DLOG(INFO) << "Visiting: " << std::hex << blk.addr << " " << std::dec << uid.value;
     this->VisitBlock(blk, lifted_function_state, abstract_stack);
   }
 }
@@ -485,7 +482,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   //
   // TODO: This could be a thunk, that we are maybe lifting on purpose.
   //       How should control flow redirection behave in this case?
-  auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->func_address);
+  const auto &entry_lifter = this->GetOrCreateBasicBlockLifter(this->curr_decl->entry_uid);
 
   auto call_inst = entry_lifter.CallBasicBlockFunction(
       ir, lifted_func_st.state_ptr, abstract_stack, this->mem_ptr_ref);
@@ -688,8 +685,10 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
   std::string prefix = "func" + std::to_string(decl.address);
 
   if (!func->isDeclaration()) {
-    for (auto &[block_addr, block] : decl.cfg) {
-      std::string name = prefix + "basic_block" + std::to_string(block_addr);
+    for (auto &[block_uid, block] : decl.cfg) {
+      CHECK(block_uid == block.uid);
+      std::string name = prefix + "basic_block" + std::to_string(block.addr) + "_" + std::to_string(block.uid.value);
+
       auto new_version = target_module->getFunction(name);
       auto old_version = semantics_module->getFunction(name);
       if (!new_version) {
@@ -701,9 +700,9 @@ FunctionLifter::AddFunctionToContext(llvm::Function *func,
       }
       remill::CloneFunctionInto(old_version, new_version);
       new_version->setMetadata(
-          kBasicBlockMetadata,
-          this->GetAddrAnnotation(block_addr, module_context));
-      CHECK(anvill::GetBasicBlockAddr(new_version).has_value());
+          kBasicBlockUidMetadata,
+          this->GetUidAnnotation(block.uid, module_context));
+      CHECK(anvill::GetBasicBlockUid(new_version).has_value());
     }
   }
 

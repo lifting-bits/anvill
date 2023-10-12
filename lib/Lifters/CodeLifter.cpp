@@ -20,6 +20,8 @@
 
 #include <unordered_set>
 
+#include "anvill/Declarations.h"
+
 namespace anvill {
 namespace {
 // Clear out LLVM variable names. They're usually not helpful.
@@ -57,6 +59,7 @@ CodeLifter::CodeLifter(const LifterOptions &options,
       type_specifier(type_specifier),
       address_type(
           llvm::Type::getIntNTy(llvm_context, options.arch->address_size)),
+      uid_type(llvm::Type::getInt64Ty(llvm_context)),
       i8_type(llvm::Type::getInt8Ty(llvm_context)),
       i8_zero(llvm::Constant::getNullValue(i8_type)),
       i32_type(llvm::Type::getInt32Ty(llvm_context)),
@@ -189,6 +192,14 @@ llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,
       remill::RecontextualizeType(address_type, context), addr);
   auto pc_md = llvm::ValueAsMetadata::get(pc_val);
   return llvm::MDNode::get(context, pc_md);
+}
+
+llvm::MDNode *CodeLifter::GetUidAnnotation(Uid uid,
+                                            llvm::LLVMContext &context) const {
+  auto uid_val = llvm::ConstantInt::get(
+      remill::RecontextualizeType(uid_type, context), uid.value);
+  auto uid_md = llvm::ValueAsMetadata::get(uid_val);
+  return llvm::MDNode::get(context, uid_md);
 }
 
 // Allocate and initialize the state structure.

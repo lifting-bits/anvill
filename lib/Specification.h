@@ -65,6 +65,9 @@ class SpecificationImpl
   // List of functions that have been parsed from the JSON spec.
   std::unordered_map<std::uint64_t, const FunctionDecl *> address_to_function;
 
+  // List of basic blocks that have been parsed from the JSON spec.
+  std::unordered_map<Uid, const CodeBlock *> uid_to_block;
+
   // Inverted mapping of byte addresses to the variables containing those
   // addresses.
   std::unordered_map<std::uint64_t, const VariableDecl *> address_to_var;

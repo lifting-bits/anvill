@@ -516,6 +516,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
     const ::specification::Function &function) const {
   FunctionDecl decl;
   decl.address = function.entry_address();
+  decl.entry_uid = Uid{function.entry_uid()};
 
   if (!function.has_callable()) {
     return std::string("all functions should have a callable");
@@ -531,7 +532,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
-  auto frame = function.frame();
+  const auto& frame = function.frame();
 
   decl.stack_depth = frame.frame_size();
   decl.ret_ptr_offset = frame.return_address_offset();
@@ -611,11 +612,11 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 }
 
 void ProtobufTranslator::AddLiveValuesToBB(
-    std::unordered_map<uint64_t, std::vector<ParameterDecl>> &map,
-    uint64_t bb_addr,
+    std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
+    Uid bb_uid,
     const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
         &values) const {
-  auto &v = map.insert({bb_addr, std::vector<ParameterDecl>()}).first->second;
+  auto &v = map.insert({bb_uid, std::vector<ParameterDecl>()}).first->second;
 
   for (auto var : values) {
     auto param = DecodeParameter(var);
@@ -629,24 +630,29 @@ void ProtobufTranslator::AddLiveValuesToBB(
 
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
-  for (auto blk : obj.blocks()) {
+  for (const auto& blk : obj.blocks()) {
+    std::unordered_set<Uid> tmp;
+    for (auto o : blk.second.outgoing_blocks()) {
+      tmp.insert({o});
+    }
     CodeBlock nblk = {
         blk.second.address(),
         blk.second.size(),
-        {blk.second.outgoing_blocks().begin(),
-         blk.second.outgoing_blocks().end()},
+        tmp,
         {blk.second.context_assignments().begin(),
          blk.second.context_assignments().end()},
+      {blk.first},
     };
-    decl.cfg.emplace(blk.first, std::move(nblk));
+    decl.cfg.emplace(Uid{blk.first}, std::move(nblk));
   }
 
 
-  for (auto &[blk_addr, ctx] : obj.block_context()) {
+  for (auto &[blk_uid_, ctx] : obj.block_context()) {
     std::vector<OffsetDomain> stack_offsets_at_entry, stack_offsets_at_exit;
     std::vector<ConstantDomain> constant_values_at_entry,
         constant_values_at_exit;
-    auto blk = decl.cfg[blk_addr];
+    Uid blk_uid = {blk_uid_};
+    auto blk = decl.cfg[blk_uid];
     auto symval_to_domains = [&](const specification::ValueMapping &symval,
                                  std::vector<OffsetDomain> &stack_offsets,
                                  std::vector<ConstantDomain> &constant_values) {
@@ -706,20 +712,20 @@ void ProtobufTranslator::ParseCFGIntoFunction(
 
     for (auto &symval : ctx.symvals_at_entry()) {
       symval_to_domains(symval,
-                        decl.stack_offsets_at_entry[blk_addr].affine_equalities,
-                        decl.constant_values_at_entry[blk_addr]);
+                        decl.stack_offsets_at_entry[blk_uid].affine_equalities,
+                        decl.constant_values_at_entry[blk_uid]);
     }
 
     for (auto &symval : ctx.symvals_at_exit()) {
       symval_to_domains(symval,
-                        decl.stack_offsets_at_exit[blk_addr].affine_equalities,
-                        decl.constant_values_at_exit[blk_addr]);
+                        decl.stack_offsets_at_exit[blk_uid].affine_equalities,
+                        decl.constant_values_at_exit[blk_uid]);
     }
 
-    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_addr,
+    this->AddLiveValuesToBB(decl.live_regs_at_entry, blk_uid,
                             ctx.live_at_entries());
 
-    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_addr,
+    this->AddLiveValuesToBB(decl.live_regs_at_exit, blk_uid,
                             ctx.live_at_exits());
   }
 }

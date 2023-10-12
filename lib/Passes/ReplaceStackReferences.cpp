@@ -255,7 +255,8 @@ llvm::PreservedAnalyses ReplaceStackReferences::runOnBasicBlockFunction(
       AbstractStack::StackTypeFromSize(F.getContext(), overrunsz));
 
   DLOG(INFO) << "Replacing stack vars in bb: " << std::hex
-             << *anvill::GetBasicBlockAddr(&F);
+             << fdecl.address << " " << std::dec
+             << (*anvill::GetBasicBlockUid(&F)).value;
   DLOG(INFO) << "Stack size " << cont.GetStackSize();
   DLOG(INFO) << "Max stack size " << cont.GetMaxStackSize();
   AbstractStack stk(

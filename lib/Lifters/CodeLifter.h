@@ -7,6 +7,7 @@
 #include <remill/BC/InstructionLifter.h>
 #include <remill/BC/IntrinsicTable.h>
 
+#include "anvill/Declarations.h"
 #include "anvill/Lifters.h"
 
 namespace anvill {
@@ -45,6 +46,7 @@ class CodeLifter {
   const TypeProvider &type_provider;
   const TypeTranslator &type_specifier;
   llvm::IntegerType *const address_type;
+  llvm::IntegerType *const uid_type;
 
 
   // Convenient to keep around.
@@ -77,6 +79,8 @@ class CodeLifter {
   llvm::Function *GetTypeHintFunction();
 
   llvm::MDNode *GetAddrAnnotation(uint64_t addr,
+                                  llvm::LLVMContext &context) const;
+  llvm::MDNode *GetUidAnnotation(Uid uid,
                                   llvm::LLVMContext &context) const;
 
  public:

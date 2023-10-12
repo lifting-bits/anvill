@@ -91,14 +91,14 @@ struct ValueDecl;
 
 class Specification;
 class SpecBlockContexts : public BasicBlockContexts {
-  std::unordered_map<uint64_t, SpecBlockContext> contexts;
+  std::unordered_map<Uid, SpecBlockContext> contexts;
   std::unordered_map<uint64_t, std::shared_ptr<const FunctionDecl>> funcs;
 
  public:
   SpecBlockContexts(const Specification &spec);
 
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
-  GetBasicBlockContextForAddr(uint64_t addr) const override;
+  GetBasicBlockContextForUid(Uid uid) const override;
 
   virtual const FunctionDecl &
   GetFunctionAtAddress(uint64_t addr) const override;
@@ -152,6 +152,9 @@ class Specification {
 
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
+
+  // Return the basic block at `uid`, or an empty `shared_ptr`.
+  std::shared_ptr<const CodeBlock> BlockAt(Uid uid) const;
 
   // Return the global variable beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;

@@ -350,7 +350,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
 
     // lets make sure we eliminate all the basic block functions because we dont care anymore
     for (auto &f : module.getFunctionList()) {
-      if (anvill::GetBasicBlockAddr(&f)) {
+      if (anvill::GetBasicBlockUid(&f)) {
         f.setLinkage(llvm::GlobalValue::InternalLinkage);
       }
     }
