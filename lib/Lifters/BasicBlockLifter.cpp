@@ -28,6 +28,7 @@
 #include "Lifters/FunctionLifter.h"
 #include "anvill/Declarations.h"
 #include "anvill/Optimize.h"
+#include "anvill/Utils.h"
 
 namespace anvill {
 
@@ -183,6 +184,7 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       call = this->AddCallFromBasicBlockFunctionToLifted(
           block, this->intrinsics.function_call, this->intrinsics);
     }
+    SetMetadata(options.pc_metadata_name, *call, insn.pc);
     if (!cc.stop) {
       auto [_, raddr] = this->LoadFunctionReturnAddress(insn, block);
       auto npc = remill::LoadNextProgramCounterRef(block);
@@ -401,14 +403,13 @@ void BasicBlockLifter::LiftInstructionsIntoLiftedFunction() {
   }
 }
 
-
-llvm::MDNode *BasicBlockLifter::GetBasicBlockAnnotation(uint64_t addr) const {
-  return this->GetAddrAnnotation(addr, this->semantics_module->getContext());
+llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(Uid uid) const {
+  return this->GetUidAnnotation(uid, this->semantics_module->getContext());
 }
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
-                      std::to_string(this->block_def.addr);
+                      std::to_string(this->block_def.addr) + "_" + std::to_string(this->block_def.uid.value);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
@@ -437,8 +438,8 @@ llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
 
 BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto func = bb_func;
-  func->setMetadata(anvill::kBasicBlockMetadata,
-                    GetBasicBlockAnnotation(this->block_def.addr));
+  func->setMetadata(anvill::kBasicBlockUidMetadata,
+                    GetBasicBlockUidAnnotation(this->block_def.uid));
 
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
@@ -629,14 +630,13 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
   auto pc = ir.CreateLoad(address_type, bbfunc.next_pc_out);
   auto sw = ir.CreateSwitch(pc, this->invalid_successor_block);
 
-  for (auto e : this->block_def.outgoing_edges) {
-    auto succ_const = llvm::ConstantInt::get(
-        llvm::cast<llvm::IntegerType>(this->address_type), e);
-
+  for (auto edge_uid : this->block_def.outgoing_edges) {
     auto calling_bb =
         llvm::BasicBlock::Create(next_mem->getContext(), "", bbfunc.func);
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
-    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(e);
+    auto edge_bb = this->decl.cfg.find(edge_uid);
+    CHECK(edge_bb != this->decl.cfg.end());
+    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(edge_bb->second.uid);
     auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
         caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
@@ -644,6 +644,9 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     } else {
       calling_bb_builder.CreateRet(retval);
     }
+
+    auto succ_const = llvm::ConstantInt::get(
+        llvm::cast<llvm::IntegerType>(this->address_type), edge_bb->second.addr);
     sw->addCase(succ_const, calling_bb);
   }
 

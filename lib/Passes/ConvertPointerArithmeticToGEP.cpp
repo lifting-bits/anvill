@@ -418,6 +418,63 @@ bool ConvertPointerArithmeticToGEP::Impl::ConvertLoadInt(llvm::Function &f) {
   return false;
 }
 
+namespace {
+void BuildIndices(uint64_t &offset, TypeSpec &cur_spec, llvm::Type *&cur_type,
+                  std::vector<unsigned> &indices, const llvm::DataLayout &dl) {
+  while (offset != 0) {
+    if (std::holds_alternative<std::shared_ptr<StructType>>(cur_spec)) {
+      auto struct_spec = std::get<std::shared_ptr<StructType>>(cur_spec);
+      llvm::StructType *struct_type = llvm::cast<llvm::StructType>(cur_type);
+
+      auto layout = dl.getStructLayout(struct_type);
+      if (offset >= layout->getSizeInBytes()) {
+        return;
+      }
+
+      auto index = layout->getElementContainingOffset(offset);
+      indices.push_back(index);
+
+      cur_spec = struct_spec->members[index];
+      cur_type = struct_type->getElementType(index);
+      offset -= layout->getElementOffset(index);
+    } else if (std::holds_alternative<std::shared_ptr<ArrayType>>(cur_spec)) {
+      auto arr_spec = std::get<std::shared_ptr<ArrayType>>(cur_spec);
+      auto arr_type = llvm::cast<llvm::ArrayType>(cur_type);
+
+      auto elem_size =
+          dl.getTypeSizeInBits(arr_type->getArrayElementType()) / 8;
+      auto index = offset / elem_size;
+
+      if (index >= arr_type->getNumElements()) {
+        return;
+      }
+
+      indices.push_back(index);
+
+      cur_spec = arr_spec->base;
+      cur_type = arr_type->getArrayElementType();
+      offset -= index * elem_size;
+    } else if (std::holds_alternative<std::shared_ptr<VectorType>>(cur_spec)) {
+      auto vec_spec = std::get<std::shared_ptr<VectorType>>(cur_spec);
+      auto vec_type = llvm::cast<llvm::VectorType>(cur_type);
+
+      auto elem_size = dl.getTypeSizeInBits(vec_type->getElementType()) / 8;
+      auto index = offset / elem_size;
+      if (index >= vec_type->getElementCount().getKnownMinValue()) {
+        return;
+      }
+      indices.push_back(index);
+
+      cur_spec = vec_spec->base;
+      cur_type = vec_type->getElementType();
+      offset -= index * elem_size;
+    } else {
+      return;
+    }
+  }
+}
+}  // namespace
+
 // Finds `(add (ptrtoint P), A)` and tries to convert to `(ptrtoint (gep ...))`
 bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
   using namespace llvm::PatternMatch;
@@ -460,47 +517,8 @@ bool ConvertPointerArithmeticToGEP::Impl::FoldPtrAdd(llvm::Function &f) {
       indices.push_back(index);
       offset = offset % cur_size;
     }
-    while (offset != 0) {
-      if (std::holds_alternative<std::shared_ptr<StructType>>(cur_spec)) {
-        auto struct_spec = std::get<std::shared_ptr<StructType>>(cur_spec);
-        auto struct_type = llvm::cast<llvm::StructType>(cur_type);
 
-        auto layout = dl.getStructLayout(struct_type);
-        auto index = layout->getElementContainingOffset(offset);
-        indices.push_back(index);
-
-        cur_spec = struct_spec->members[index];
-        cur_type = struct_type->getElementType(index);
-        offset -= layout->getElementOffset(index);
-      } else if (std::holds_alternative<std::shared_ptr<ArrayType>>(cur_spec)) {
-        auto arr_spec = std::get<std::shared_ptr<ArrayType>>(cur_spec);
-        auto arr_type = llvm::cast<llvm::ArrayType>(cur_type);
-
-        auto elem_size =
-            dl.getTypeSizeInBits(arr_type->getArrayElementType()) / 8;
-        auto index = offset / elem_size;
-        indices.push_back(index);
-
-        cur_spec = arr_spec->base;
-        cur_type = arr_type->getArrayElementType();
-        offset -= index * elem_size;
-      } else if (std::holds_alternative<std::shared_ptr<VectorType>>(
-                     cur_spec)) {
-        auto vec_spec = std::get<std::shared_ptr<VectorType>>(cur_spec);
-        auto vec_type = llvm::cast<llvm::VectorType>(cur_type);
-
-        auto elem_size = dl.getTypeSizeInBits(vec_type->getElementType()) / 8;
-        auto index = offset / elem_size;
-        indices.push_back(index);
-
-        cur_spec = vec_spec->base;
-        cur_type = vec_type->getElementType();
-        offset -= index * elem_size;
-      } else {
-        break;
-      }
-    }
-
+    BuildIndices(offset, cur_spec, cur_type, indices, dl);
     if (offset != 0) {
       continue;
     }

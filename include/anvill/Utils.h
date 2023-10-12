@@ -49,6 +49,14 @@ std::string CreateFunctionName(std::uint64_t addr);
 // Creates a `data_<address>` name from an address
 std::string CreateVariableName(std::uint64_t addr);
 
+// Get metadata for an instruction
+std::optional<std::uint64_t> GetMetadata(llvm::StringRef tag,
+                                         const llvm::Instruction &instr);
+
+// Set metadata for an instruction
+void SetMetadata(llvm::StringRef tag, llvm::Instruction &insn,
+                 std::uint64_t pc_val);
+
 // Looks for any constant expressions in the operands of `inst` and unfolds
 // them into other instructions in the same block.
 void UnfoldConstantExpressions(llvm::Instruction *inst);
@@ -134,7 +142,7 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
 
-std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func);
+std::optional<Uid> GetBasicBlockUid(llvm::Function *func);
 
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
 

@@ -9,6 +9,7 @@
 #include "Specification.h"
 
 #include <glog/logging.h>
+#include <google/protobuf/util/json_util.h>
 #include <llvm/ADT/StringRef.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -67,6 +68,16 @@ SpecificationImpl::ParseSpecification(
     }
 
     auto func_ptr = new FunctionDecl(std::move(func_obj));
+
+    for (const auto& [uid, bb]: func_ptr->cfg) {
+      if (uid_to_block.count(uid)) {
+        std::stringstream ss;
+        ss << "Duplicate block Uid: " << uid.value;
+        return ss.str();
+      }
+      uid_to_block[uid] = &bb;
+    }
+
     functions.emplace_back(func_ptr);
     address_to_function.emplace(func_address, func_ptr);
   }
@@ -84,7 +95,8 @@ SpecificationImpl::ParseSpecification(
       continue;
     }
     auto cs_obj = maybe_cs.Value();
-    std::pair<uint64_t, uint64_t> loc{cs_obj.function_address, cs_obj.address};
+    std::pair<std::uint64_t, std::uint64_t> loc{cs_obj.function_address,
+                                                cs_obj.address};
 
     if (loc_to_call_site.count(loc)) {
       std::stringstream ss;
@@ -333,7 +345,10 @@ anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
   ::specification::Specification spec;
   if (!spec.ParseFromString(pb)) {
-    return {"Failed to parse specification"};
+    auto status = google::protobuf::util::JsonStringToMessage(pb, &spec);
+    if (!status.ok()) {
+      return {"Failed to parse specification"};
+    }
   }
 
   auto arch{GetArch(context, spec)};
@@ -394,12 +409,33 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   return Specification(std::move(pimpl));
 }
 
+// Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
+std::shared_ptr<const CallSiteDecl> Specification::CallSiteAt(
+    const std::pair<std::uint64_t, std::uint64_t> &loc) const {
+  auto it = impl->loc_to_call_site.find(loc);
+  if (it != impl->loc_to_call_site.end()) {
+    return {impl, it->second};
+  }
+  return {};
+}
+
 // Return the function beginning at `address`, or an empty `shared_ptr`.
 std::shared_ptr<const FunctionDecl>
 Specification::FunctionAt(std::uint64_t address) const {
   auto it = impl->address_to_function.find(address);
   if (it != impl->address_to_function.end()) {
     return std::shared_ptr<const FunctionDecl>(impl, it->second);
+  } else {
+    return {};
+  }
+}
+
+// Return the block with `uid`, or an empty `shared_ptr`.
+std::shared_ptr<const CodeBlock>
+Specification::BlockAt(Uid uid) const {
+  auto it = impl->uid_to_block.find(uid);
+  if (it != impl->uid_to_block.end()) {
+    return std::shared_ptr<const CodeBlock>(impl, it->second);
   } else {
     return {};
   }
@@ -447,8 +483,8 @@ SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
 }
 
 std::optional<std::reference_wrapper<const BasicBlockContext>>
-SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
-  auto cont = this->contexts.find(addr);
+SpecBlockContexts::GetBasicBlockContextForUid(Uid uid) const {
+  auto cont = this->contexts.find(uid);
   if (cont == this->contexts.end()) {
     return std::nullopt;
   }

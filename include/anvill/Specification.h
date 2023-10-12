@@ -91,14 +91,14 @@ struct ValueDecl;
 
 class Specification;
 class SpecBlockContexts : public BasicBlockContexts {
-  std::unordered_map<uint64_t, SpecBlockContext> contexts;
+  std::unordered_map<Uid, SpecBlockContext> contexts;
   std::unordered_map<uint64_t, std::shared_ptr<const FunctionDecl>> funcs;
 
  public:
   SpecBlockContexts(const Specification &spec);
 
   virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
-  GetBasicBlockContextForAddr(uint64_t addr) const override;
+  GetBasicBlockContextForUid(Uid uid) const override;
 
   virtual const FunctionDecl &
   GetFunctionAtAddress(uint64_t addr) const override;
@@ -146,8 +146,15 @@ class Specification {
   static anvill::Result<Specification, std::string>
   DecodeFromPB(llvm::LLVMContext &context, std::istream &pb);
 
+  // Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
+  std::shared_ptr<const CallSiteDecl>
+  CallSiteAt(const std::pair<std::uint64_t, std::uint64_t> &loc) const;
+
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
+
+  // Return the basic block at `uid`, or an empty `shared_ptr`.
+  std::shared_ptr<const CodeBlock> BlockAt(Uid uid) const;
 
   // Return the global variable beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;

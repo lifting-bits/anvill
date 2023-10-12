@@ -86,7 +86,7 @@ extern const std::string kAnvillStackZero;
 // use this to queue off of then just move it after the split
 extern const std::string kStackMetadata;
 
-extern const std::string kBasicBlockMetadata;
+extern const std::string kBasicBlockUidMetadata;
 
 
 /// Intrinsic that acts like a return instruction but leaves both the basic block and the parent function.

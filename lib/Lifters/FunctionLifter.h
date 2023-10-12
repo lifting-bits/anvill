@@ -104,7 +104,9 @@ class FunctionLifter : public CodeLifter {
                                        const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
-  BasicBlockLifter &GetOrCreateBasicBlockLifter(uint64_t addr);
+  // Get or create a basic block lifter for the basic block with specified
+  // uid. If a lifter for the uid does not exist, this function will create it
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(Uid uid);
 
   const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
 
@@ -180,7 +182,7 @@ class FunctionLifter : public CodeLifter {
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
 
-  // maps a bbaddr to the lifter for that block
+  // maps a uid to the lifter for that block
   std::unordered_map<std::pair<uint64_t, uint64_t>, BasicBlockLifter>
       bb_lifters;
 
@@ -221,13 +223,6 @@ class FunctionLifter : public CodeLifter {
   // Returns true if the callee may return, false otherwise.
   bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
                     std::optional<std::uint64_t> target_pc);
-
-  // A wrapper around the type provider's TryGetFunctionType that makes use
-  // of the control flow provider to handle control flow redirections for
-  // thunks
-  std::optional<CallableDecl>
-  TryGetTargetFunctionType(const remill::Instruction &inst,
-                           std::uint64_t address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
