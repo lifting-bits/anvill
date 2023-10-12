@@ -154,7 +154,6 @@ jobs:
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v3
         with:
-          ref: ekilmer/uid-codeblocks
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
           fetch-depth: 0
