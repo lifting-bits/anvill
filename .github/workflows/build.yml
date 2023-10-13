@@ -154,6 +154,7 @@ jobs:
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v3
         with:
+          ref: ekilmer/uid-codeblocks
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
           fetch-depth: 0
@@ -358,6 +359,30 @@ jobs:
       - name: Install the DEB package
         run: |
           dpkg -i ${{ steps.package_names.outputs.DEB_PACKAGE_PATH }}
+
+      - name: Run Integration Tests (AnghaBench 50)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+        run: |
+          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+          scripts/test-angha-50.sh \
+            --ghidra-install-dir $GHIDRA_INSTALL_DIR \
+            --decompile-cmd "anvill-decompile-spec" \
+            --jobs 8
+
+      - name: Tar and Compress logs
+        if: failure()
+        run: |
+          shopt -s globstar
+          tar -cf test-errs.tar.xz ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill/angha-test-50/**/std*
+        shell: bash
+
+      - name: Upload stderr/stdout logs on error
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: AnghaBench 50 logs
+          path: test-errs.tar.xz
 
       - name: Store the DEB package
         uses: actions/upload-artifact@v3

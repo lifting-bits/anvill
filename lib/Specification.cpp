@@ -9,6 +9,7 @@
 #include "Specification.h"
 
 #include <glog/logging.h>
+#include <google/protobuf/util/json_util.h>
 #include <llvm/ADT/StringRef.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
@@ -67,6 +68,16 @@ SpecificationImpl::ParseSpecification(
     }
 
     auto func_ptr = new FunctionDecl(std::move(func_obj));
+
+    for (const auto& [uid, bb]: func_ptr->cfg) {
+      if (uid_to_block.count(uid)) {
+        std::stringstream ss;
+        ss << "Duplicate block Uid: " << uid.value;
+        return ss.str();
+      }
+      uid_to_block[uid] = &bb;
+    }
+
     functions.emplace_back(func_ptr);
     address_to_function.emplace(func_address, func_ptr);
   }
@@ -335,7 +346,10 @@ anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
   ::specification::Specification spec;
   if (!spec.ParseFromString(pb)) {
-    return {"Failed to parse specification"};
+    auto status = google::protobuf::util::JsonStringToMessage(pb, &spec);
+    if (!status.ok()) {
+      return {"Failed to parse specification"};
+    }
   }
 
   auto arch{GetArch(context, spec)};
@@ -417,6 +431,17 @@ Specification::FunctionAt(std::uint64_t address) const {
   }
 }
 
+// Return the block with `uid`, or an empty `shared_ptr`.
+std::shared_ptr<const CodeBlock>
+Specification::BlockAt(Uid uid) const {
+  auto it = impl->uid_to_block.find(uid);
+  if (it != impl->uid_to_block.end()) {
+    return std::shared_ptr<const CodeBlock>(impl, it->second);
+  } else {
+    return {};
+  }
+}
+
 // Return the global variable beginning at `address`, or an empty `shared_ptr`.
 std::shared_ptr<const VariableDecl>
 Specification::VariableAt(std::uint64_t address) const {
@@ -459,8 +484,8 @@ SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
 }
 
 std::optional<std::reference_wrapper<const BasicBlockContext>>
-SpecBlockContexts::GetBasicBlockContextForAddr(uint64_t addr) const {
-  auto cont = this->contexts.find(addr);
+SpecBlockContexts::GetBasicBlockContextForUid(Uid uid) const {
+  auto cont = this->contexts.find(uid);
   if (cont == this->contexts.end()) {
     return std::nullopt;
   }

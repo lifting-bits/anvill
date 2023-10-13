@@ -44,9 +44,9 @@ RemoveCallIntrinsics::runOnIntrinsic(llvm::CallInst *remillFunctionCall,
     if (auto pc_val =
             GetMetadata(lifter.Options().pc_metadata_name, *remillFunctionCall);
         pc_val.has_value()) {
-      if (auto bb_addr = GetBasicBlockAddr(f); bb_addr.has_value()) {
+      if (auto bb_uid = GetBasicBlockUid(f); bb_uid.has_value()) {
         auto block_contexts = spec.GetBlockContexts();
-        const auto &bb_ctx = block_contexts.GetBasicBlockContextForAddr(*bb_addr)->get();
+        const auto &bb_ctx = block_contexts.GetBasicBlockContextForUid(*bb_uid)->get();
         auto func = bb_ctx.GetParentFunctionAddress();
         if (auto override_decl = spec.CallSiteAt({func, *pc_val})) {
           DLOG(INFO) << "Overriding call site at " << std::hex << *pc_val

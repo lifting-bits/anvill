@@ -271,10 +271,13 @@ message BlockContext {
 message CodeBlock {
   uint64 address = 1;
   string name = 2;
+  // Incoming block(s) by uid
   repeated uint64 incoming_blocks = 3;
+  // Outgoing block(s) by uid
   repeated uint64 outgoing_blocks = 4;
   uint32 size = 5;
   map<string, uint64> context_assignments = 6;
+  uint64 uid = 7;
 }
 
 message Variables {
@@ -312,12 +315,14 @@ message TypeHint {
 
 message Function {
   uint64 entry_address = 1;
-  FunctionLinkage func_linkage = 3; 
+  uint64 entry_uid = 12;
+  FunctionLinkage func_linkage = 3;
   Callable callable = 4;
+  // Mapping of unique ID to codeblock
   map<uint64, CodeBlock> blocks = 5;
   map<string, Variable> local_variables = 6;
 
-  // Keys are addresses of code blocks, each block
+  // Keys are unique IDs of code blocks, each block
   // may have a corresponding context
   map<uint64, BlockContext> block_context = 7;
   StackEffects stack_effects = 8;

@@ -997,15 +997,15 @@ bool CanBeAliased(llvm::Value *val) {
   }
 }
 
-std::optional<uint64_t> GetBasicBlockAddr(llvm::Function *func) {
-  auto meta = func->getMetadata(kBasicBlockMetadata);
+std::optional<Uid> GetBasicBlockUid(llvm::Function *func) {
+  auto meta = func->getMetadata(kBasicBlockUidMetadata);
   if (!meta) {
     return std::nullopt;
   }
 
   auto v = llvm::cast<llvm::ValueAsMetadata>(meta->getOperand(0))->getValue();
 
-  return llvm::cast<llvm::ConstantInt>(v)->getLimitedValue();
+  return Uid{llvm::cast<llvm::ConstantInt>(v)->getLimitedValue()};
 }
 
 llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
