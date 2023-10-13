@@ -202,7 +202,7 @@ llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,
 }
 
 llvm::MDNode *CodeLifter::GetUidAnnotation(Uid uid,
-                                            llvm::LLVMContext &context) const {
+                                           llvm::LLVMContext &context) const {
   auto uid_val = llvm::ConstantInt::get(
       remill::RecontextualizeType(uid_type, context), uid.value);
   auto uid_md = llvm::ValueAsMetadata::get(uid_val);
@@ -342,8 +342,7 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
   fpm.addPass(llvm::DCEPass());
   fpm.addPass(llvm::InstCombinePass());
 
-  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
-  mpm.run(*inf->getParent(), mam);
+  fpm.run(*inf, fam);
 
   mam.clear();
   fam.clear();
