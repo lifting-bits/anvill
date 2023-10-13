@@ -9,10 +9,17 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Pass.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Scalar/DCE.h>
+#include <llvm/Transforms/Scalar/DeadStoreElimination.h>
+#include <llvm/Transforms/Scalar/Reassociate.h>
+#include <llvm/Transforms/Scalar/SROA.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/Utils/Mem2Reg.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Context.h>
 #include <remill/Arch/Instruction.h>
@@ -195,7 +202,7 @@ llvm::MDNode *CodeLifter::GetAddrAnnotation(uint64_t addr,
 }
 
 llvm::MDNode *CodeLifter::GetUidAnnotation(Uid uid,
-                                            llvm::LLVMContext &context) const {
+                                           llvm::LLVMContext &context) const {
   auto uid_val = llvm::ConstantInt::get(
       remill::RecontextualizeType(uid_type, context), uid.value);
   auto uid_md = llvm::ValueAsMetadata::get(uid_val);
@@ -310,19 +317,37 @@ void CodeLifter::RecursivelyInlineFunctionCallees(llvm::Function *inf) {
 
   DCHECK(!llvm::verifyFunction(*inf, &llvm::errs()));
 
-  llvm::legacy::FunctionPassManager fpm(inf->getParent());
-  fpm.add(llvm::createCFGSimplificationPass());
-  fpm.add(llvm::createPromoteMemoryToRegisterPass());
-  fpm.add(llvm::createReassociatePass());
-  fpm.add(llvm::createDeadStoreEliminationPass());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createSROAPass());
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.add(llvm::createInstructionCombiningPass());
-  fpm.doInitialization();
-  fpm.run(*inf);
-  fpm.doFinalization();
+  llvm::ModuleAnalysisManager mam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::LoopAnalysisManager lam;
+  llvm::CGSCCAnalysisManager cam;
 
+  llvm::ModulePassManager mpm;
+  llvm::FunctionPassManager fpm;
+
+
+  llvm::PassBuilder pb;
+  pb.registerModuleAnalyses(mam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.registerCGSCCAnalyses(cam);
+  pb.crossRegisterProxies(lam, fam, cam, mam);
+
+  fpm.addPass(llvm::SimplifyCFGPass());
+  fpm.addPass(llvm::PromotePass());
+  fpm.addPass(llvm::ReassociatePass());
+  fpm.addPass(llvm::DSEPass());
+  fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+  fpm.addPass(llvm::DCEPass());
+  fpm.addPass(llvm::InstCombinePass());
+
+  fpm.run(*inf, fam);
+
+  mam.clear();
+  fam.clear();
+  lam.clear();
+  cam.clear();
   ClearVariableNames(inf);
 }
 
