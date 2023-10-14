@@ -70,7 +70,7 @@ class SpecificationImpl
 
   // Inverted mapping of byte addresses to the variables containing those
   // addresses.
-  std::unordered_map<std::uint64_t, const VariableDecl *> address_to_var;
+  std::map<std::uint64_t, const VariableDecl *> address_to_var;
 
 
   // NOTE(pag): We used ordered containers so that any type of round-tripping

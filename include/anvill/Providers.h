@@ -183,11 +183,13 @@ class DefaultCallableTypeProvider : public ProxyTypeProvider {
 class SpecificationTypeProvider : public BaseTypeProvider {
  private:
   std::shared_ptr<SpecificationImpl> impl;
+  const llvm::DataLayout &layout;
 
  public:
   virtual ~SpecificationTypeProvider(void);
 
-  explicit SpecificationTypeProvider(const Specification &spec);
+  explicit SpecificationTypeProvider(const Specification &spec,
+                                     const llvm::DataLayout &layout);
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.

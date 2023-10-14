@@ -11,6 +11,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
@@ -18,6 +19,8 @@
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
+#include <optional>
 #include <type_traits>
 
 #include "Specification.h"
@@ -77,9 +80,11 @@ void BaseTypeProvider::QueryRegisterStateAtInstruction(
 
 SpecificationTypeProvider::~SpecificationTypeProvider(void) {}
 
-SpecificationTypeProvider::SpecificationTypeProvider(const Specification &spec)
+SpecificationTypeProvider::SpecificationTypeProvider(
+    const Specification &spec, const llvm::DataLayout &layout)
     : BaseTypeProvider(spec.impl->type_translator),
-      impl(spec.impl) {}
+      impl(spec.impl),
+      layout(layout) {}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
@@ -96,12 +101,20 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
 std::optional<anvill::VariableDecl>
 SpecificationTypeProvider::TryGetVariableType(uint64_t address,
                                               llvm::Type *) const {
-  auto var_it = impl->address_to_var.find(address);
-  if (var_it != impl->address_to_var.end()) {
-    return *(var_it->second);
-  } else {
-    return std::nullopt;
+
+  auto var_it = impl->address_to_var.lower_bound(address);
+  if (var_it != impl->address_to_var.begin() && var_it->first != address) {
+    var_it--;
   }
+
+  auto v = var_it->second;
+  CHECK(v->type);
+  if (v->type && address >= v->address &&
+      address < v->address + this->layout.getTypeSizeInBits(v->type) / 8) {
+    return *v;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<anvill::FunctionDecl>
