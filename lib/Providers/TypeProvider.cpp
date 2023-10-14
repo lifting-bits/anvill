@@ -107,8 +107,11 @@ SpecificationTypeProvider::TryGetVariableType(uint64_t address,
     var_it--;
   }
 
+  if (var_it == impl->address_to_var.end()) {
+    return std::nullopt;
+  }
+
   auto v = var_it->second;
-  CHECK(v->type);
   if (v->type && address >= v->address &&
       address < v->address + this->layout.getTypeSizeInBits(v->type) / 8) {
     return *v;
