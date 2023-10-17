@@ -28,6 +28,7 @@ find_package(glog CONFIG REQUIRED)
 find_package(Z3 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(LLVM CONFIG REQUIRED)
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 llvm_map_components_to_libnames(llvm_libs support core irreader bitreader bitwriter)
 
 find_package(sleigh CONFIG)
