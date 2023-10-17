@@ -119,15 +119,35 @@ struct DecomposeState {
       return std::nullopt;
     }
 
-    auto bit_range =
-        std::make_pair(element_range.first * *sz, element_range.second * *sz);
+    std::pair<uint32_t, uint32_t> bit_range;
+    // first member of the range is the lshr for cutting off low bits
+    // second describes the mask
+    if (sv.getModule()->getDataLayout().isLittleEndian()) {
+      bit_range =
+          std::make_pair(element_range.first * *sz, element_range.second * *sz);
+    } else {
+      bit_range = std::make_pair((GetOpLengths() - element_range.second) * *sz,
+                                 (GetOpLengths() - element_range.first) * *sz);
+    }
 
     auto ity =
         IntegerTypeForVector(llvm::cast<llvm::VectorType>(target->getType()));
     if (!ity) {
       return std::nullopt;
     }
-    return RewrittenInteger{target, *ity, bit_range, *sz * start_index, poison};
+    uint32_t bitshift;
+    if (sv.getModule()->getDataLayout().isLittleEndian()) {
+      bitshift = *sz * start_index;
+    } else {
+      auto op_distance = sv.getType()->getElementCount().getFixedValue() -
+                         (element_range.second - element_range.first);
+      LOG(INFO) << remill::LLVMThingToString(target);
+      LOG(INFO) << "odist: " << op_distance;
+      LOG(INFO) << "start_ind: " << start_index;
+      LOG(INFO) << "diff: " << (op_distance - start_index);
+      bitshift = *sz * (op_distance - start_index);
+    }
+    return RewrittenInteger{target, *ity, bit_range, bitshift, poison};
   }
 };
 
