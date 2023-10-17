@@ -99,13 +99,18 @@ struct DecomposeState {
       this->curr_index += 1;
     }
 
-    llvm::Value *target = first_end < static_cast<int>(GetOpLengths())
-                              ? sv.getOperand(0)
-                              : sv.getOperand(1);
+
+    bool is_first_op = first_end < static_cast<int>(GetOpLengths());
+
+    llvm::Value *target = is_first_op ? sv.getOperand(0) : sv.getOperand(1);
     std::pair<uint32_t, uint32_t> element_range = std::make_pair(0, 0);
     auto poison = first_end == llvm::PoisonMaskElem;
     if (!poison) {
       element_range = std::make_pair(first_end, prev_ind + 1);
+      if (!is_first_op) {
+        element_range.first = element_range.first - GetOpLengths();
+        element_range.second = element_range.second - GetOpLengths();
+      }
     }  // the prev_ind is the last inclusive indice so bump one to make this an [) range
     // convert the element range into a bit range
     CHECK(element_range.second >= element_range.first);
