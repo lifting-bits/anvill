@@ -16,6 +16,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/OS/OS.h>
@@ -39,6 +40,14 @@ runVectorRW(llvm::LLVMContext &llvm_context, const std::string &module_name,
   REQUIRE(arch != nullptr);
 
   CHECK(RunFunctionPass<RewriteVectorOps>(module.get(), RewriteVectorOps()));
+
+  for (auto &f : module->functions()) {
+    for (auto &insn : llvm::instructions(f)) {
+      CHECK(!llvm::isa<llvm::ShuffleVectorInst>(&insn));
+    }
+  }
+
+
   return module;
 }
 
