@@ -122,8 +122,7 @@ int main(int argc, char *argv[]) {
   }
 
   anvill::Specification spec = maybe_spec.Value();
-  anvill::SpecificationTypeProvider spec_tp(spec,
-                                            maybe_spec->Arch()->DataLayout());
+  anvill::SpecificationTypeProvider spec_tp(spec);
 
   std::unique_ptr<anvill::TypeProvider> tp =
       std::make_unique<anvill::ProxyTypeProvider>(spec_tp);

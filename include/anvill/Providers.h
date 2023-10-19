@@ -188,8 +188,7 @@ class SpecificationTypeProvider : public BaseTypeProvider {
  public:
   virtual ~SpecificationTypeProvider(void);
 
-  explicit SpecificationTypeProvider(const Specification &spec,
-                                     llvm::DataLayout layout);
+  explicit SpecificationTypeProvider(const Specification &spec);
 
   // Try to return the type of a function starting at address `address`. This
   // type is the prototype of the function.

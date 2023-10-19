@@ -80,11 +80,10 @@ void BaseTypeProvider::QueryRegisterStateAtInstruction(
 
 SpecificationTypeProvider::~SpecificationTypeProvider(void) {}
 
-SpecificationTypeProvider::SpecificationTypeProvider(const Specification &spec,
-                                                     llvm::DataLayout layout)
+SpecificationTypeProvider::SpecificationTypeProvider(const Specification &spec)
     : BaseTypeProvider(spec.impl->type_translator),
       impl(spec.impl),
-      layout(layout) {}
+      layout(spec.Arch()->DataLayout()) {}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
