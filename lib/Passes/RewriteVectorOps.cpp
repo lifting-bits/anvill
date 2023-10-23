@@ -85,10 +85,12 @@ struct DecomposeState {
     int first_end = sv.getMaskValue(this->curr_index);
     int prev_ind = first_end;
     this->curr_index += 1;
-    LOG(INFO) << "first: " << first_end;
+    DLOG(INFO) << "first: " << first_end;
+    // We are looking for the last mask index such that [start_index,curr_index) is a seq of either poisons
+    // or contigous accesses to a single op
     while (!this->ConsumedAll()) {
       auto next = sv.getMaskValue(this->curr_index);
-      LOG(INFO) << "next: " << next;
+      DLOG(INFO) << "next: " << next;
       // we can either group poisons or sequences
       if (!(next == llvm::PoisonMaskElem && prev_ind == llvm::PoisonMaskElem) &&
           (!isInSameVec(prev_ind, next) || prev_ind + 1 != next)) {
@@ -141,10 +143,10 @@ struct DecomposeState {
     } else {
       auto op_distance = sv.getType()->getElementCount().getFixedValue() -
                          (element_range.second - element_range.first);
-      LOG(INFO) << remill::LLVMThingToString(target);
-      LOG(INFO) << "odist: " << op_distance;
-      LOG(INFO) << "start_ind: " << start_index;
-      LOG(INFO) << "diff: " << (op_distance - start_index);
+      DLOG(INFO) << remill::LLVMThingToString(target);
+      DLOG(INFO) << "odist: " << op_distance;
+      DLOG(INFO) << "start_ind: " << start_index;
+      DLOG(INFO) << "diff: " << (op_distance - start_index);
       bitshift = *sz * (op_distance - start_index);
     }
     return RewrittenInteger{target, *ity, bit_range, bitshift, poison};
