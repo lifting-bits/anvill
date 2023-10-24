@@ -60,6 +60,7 @@ set(anvill_passes
   ReplaceStackReferences
   RemoveCallIntrinsics
   InlineBasicBlockFunctions
+  RewriteVectorOps
 )
 
 set(anvill_arch_HEADERS

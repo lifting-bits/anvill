@@ -76,6 +76,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "anvill/Passes/RewriteVectorOps.h"
 #include "anvill/Passes/SplitStackFrameAtReturnAddress.h"
 #include "anvill/Specification.h"
 
@@ -279,6 +280,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   fpm.addPass(anvill::RemoveCallIntrinsics(xr, spec, lifter));
   fpm.addPass(llvm::VerifierPass());
   fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+  fpm.addPass(RewriteVectorOps());
   fpm.addPass(llvm::VerifierPass());
   AddConvertAddressesToEntityUses(fpm, xr, pc_metadata_id);
 
@@ -302,6 +304,7 @@ void OptimizeModule(const EntityLifter &lifter, llvm::Module &module,
   AddLowerRemillUndefinedIntrinsics(second_fpm);
   second_fpm.addPass(llvm::VerifierPass());
   AddRemoveFailedBranchHints(second_fpm);
+  fpm.addPass(RewriteVectorOps());
   second_fpm.addPass(llvm::VerifierPass());
   second_fpm.addPass(llvm::NewGVNPass());
   second_fpm.addPass(llvm::VerifierPass());

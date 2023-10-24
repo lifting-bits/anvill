@@ -84,14 +84,17 @@ ConvertAddressesToEntityUses::run(llvm::Function &function,
 
     auto ent_type = llvm::dyn_cast<llvm::PointerType>(entity->getType());
     CHECK_NOTNULL(ent_type);
+    auto adapted = AdaptToType(ir, entity, val_type);
+    if (!adapted) {
+      continue;
+    }
 
     if (auto phi = llvm::dyn_cast<llvm::PHINode>(user_inst)) {
       auto pred_block = phi->getIncomingBlock(*(xref_use.use));
       llvm::IRBuilder<> ir(pred_block->getTerminator());
-      xref_use.use->set(AdaptToType(ir, entity, val_type));
+      xref_use.use->set(adapted);
     } else {
-      llvm::IRBuilder<> ir(user_inst);
-      xref_use.use->set(AdaptToType(ir, entity, val_type));
+      xref_use.use->set(adapted);
     }
 
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(val)) {
