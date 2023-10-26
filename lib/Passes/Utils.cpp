@@ -11,7 +11,6 @@
 #include <anvill/ABI.h>
 #include <glog/logging.h>
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/Triple.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -19,6 +18,7 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/TargetParser/Triple.h>
 #include <remill/BC/Util.h>
 
 namespace anvill {

@@ -25,8 +25,8 @@ CURR_DIR=$( pwd )
 BUILD_DIR="${CURR_DIR}/anvill-build"
 REMILL_BUILD_DIR="${CURR_DIR}/remill-build"
 INSTALL_DIR=/usr/local
-LLVM_VERSION=llvm-16
-CXX_COMMON_VERSION="0.3.2"
+LLVM_VERSION=llvm-17
+CXX_COMMON_VERSION="0.6.0"
 OS_VERSION=unknown
 ARCH_VERSION=unknown
 BUILD_FLAGS=
@@ -175,11 +175,11 @@ function DownloadLibraries
 
     #BUILD_FLAGS="${BUILD_FLAGS} -DCMAKE_OSX_SYSROOT=${sdk_root}"
     # Min version supported
-    OS_VERSION="macos-12"
-    XCODE_VERSION="14.2"
+    OS_VERSION="macos-13"
+    XCODE_VERSION="15.0"
     if [[ "${SYSTEM_VERSION}" == "13.*" ]]; then
       echo "Found MacOS Ventura"
-      OS_VERSION="macos-12"
+      OS_VERSION="macos-13"
     elif [[ "${SYSTEM_VERSION}" == "12.*" ]]; then
       echo "Found MacOS Monterey"
       OS_VERSION="macos-12"
@@ -342,8 +342,8 @@ function Package
 function GetLLVMVersion
 {
   case ${1} in
-    16)
-      LLVM_VERSION=llvm-16
+    17)
+      LLVM_VERSION=llvm-17
       return 0
     ;;
     *)
@@ -361,7 +361,7 @@ function Help
   echo ""
   echo "Options:"
   echo "  --prefix           Change the default (${INSTALL_DIR}) installation prefix."
-  echo "  --llvm-version     Change the default (16) LLVM version."
+  echo "  --llvm-version     Change the default (17) LLVM version."
   echo "  --build-dir        Change the default (${BUILD_DIR}) build directory."
   echo "  --debug            Build with Debug symbols."
   echo "  --extra-cmake-args Extra CMake arguments to build with."

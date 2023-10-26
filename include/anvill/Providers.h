@@ -183,6 +183,7 @@ class DefaultCallableTypeProvider : public ProxyTypeProvider {
 class SpecificationTypeProvider : public BaseTypeProvider {
  private:
   std::shared_ptr<SpecificationImpl> impl;
+  llvm::DataLayout layout;
 
  public:
   virtual ~SpecificationTypeProvider(void);

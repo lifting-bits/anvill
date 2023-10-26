@@ -52,8 +52,8 @@ jobs:
       matrix:
         image:
           - { name: "ubuntu", tag: "22.04" }
-        llvm: ["16"]
-        cxxcommon_version: ["v0.3.2"]
+        llvm: ["17"]
+        cxxcommon_version: ["v0.6.0"]
 
     runs-on:
       labels: gha-ubuntu-32
@@ -154,7 +154,6 @@ jobs:
       - name: Clone Ghidra Spec Generation
         uses: actions/checkout@v3
         with:
-          ref: ekilmer/uid-codeblocks
           path: ${{ steps.build_paths.outputs.REL_SOURCE }}/irene3
           repository: "trailofbits/irene3"
           fetch-depth: 0
@@ -411,11 +410,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["macos-12"]
-        llvm: ["16"]
-        cxxcommon_version: ["v0.3.2"]
+        os: ["macos-13"]
+        llvm: ["17"]
+        cxxcommon_version: ["v0.6.0"]
 
-    runs-on: macos-12
+    runs-on: macos-13
 
     steps:
       - name: Setup the build paths
@@ -490,7 +489,7 @@ jobs:
         id: cxxcommon_installer
         working-directory: ${{ steps.build_paths.outputs.DOWNLOADS }}
         run: |
-          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-14.2_amd64"
+          folder_name="vcpkg_${{ matrix.os }}_llvm-${{ matrix.llvm }}_xcode-15.0_amd64"
           archive_name="${folder_name}.tar.xz"
 
           url="https://github.com/lifting-bits/cxx-common/releases/download/${{ matrix.cxxcommon_version}}/${archive_name}"
@@ -753,7 +752,7 @@ jobs:
 
     strategy:
       matrix:
-        llvm: ["16"]
+        llvm: ["17"]
         ubuntu: ["22.04"]
     steps:
       - uses: actions/checkout@v3
