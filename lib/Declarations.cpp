@@ -102,7 +102,7 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
   auto add_to_set = [](const std::vector<ParameterDecl> &params,
                        std::unordered_set<LowLoc> &locs_to_add) {
     for (const auto &p : params) {
-      std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
+      std::copy(p.ordered_locs.begin(), p.ordered_locs.end(),
                 std::inserter(locs_to_add, locs_to_add.end()));
     }
   };
@@ -119,23 +119,23 @@ BasicBlockContext::LiveParamsAtEntryAndExit() const {
        &covered_live_exit](std::vector<ParameterDecl> params) {
         for (auto p : params) {
           auto completely_covered =
-              std::all_of(p.oredered_locs.begin(), p.oredered_locs.end(),
+              std::all_of(p.ordered_locs.begin(), p.ordered_locs.end(),
                           [&covered](const LowLoc &loc) -> bool {
                             return covered.find(loc) != covered.end();
                           });
           auto live_at_ent = std::any_of(
-              p.oredered_locs.begin(), p.oredered_locs.end(),
+              p.ordered_locs.begin(), p.ordered_locs.end(),
               [&covered_live_ent](const LowLoc &loc) -> bool {
                 return covered_live_ent.find(loc) != covered_live_ent.end();
               });
           auto live_at_exit = std::any_of(
-              p.oredered_locs.begin(), p.oredered_locs.end(),
+              p.ordered_locs.begin(), p.ordered_locs.end(),
               [&covered_live_exit](const LowLoc &loc) -> bool {
                 return covered_live_exit.find(loc) != covered_live_exit.end();
               });
 
           if (!completely_covered) {
-            std::copy(p.oredered_locs.begin(), p.oredered_locs.end(),
+            std::copy(p.ordered_locs.begin(), p.ordered_locs.end(),
                       std::inserter(covered, covered.end()));
             res.push_back({p, live_at_ent, live_at_exit});
           }

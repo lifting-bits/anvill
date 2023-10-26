@@ -530,19 +530,19 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
   CHECK_EQ(module, intrinsics.read_memory_8->getParent());
   CHECK_EQ(native_val->getType(), decl_type);
 
-  if (decl.oredered_locs.size() == 1) {
-    return StoreSubcomponent(native_val, decl.oredered_locs.at(0), types,
+  if (decl.ordered_locs.size() == 1) {
+    return StoreSubcomponent(native_val, decl.ordered_locs.at(0), types,
                              intrinsics, ir, state_ptr, mem_ptr);
   } else {
 
     unsigned int ind = 0;
 
-    auto sty = CreateDeclSty(decl.oredered_locs, context);
+    auto sty = CreateDeclSty(decl.ordered_locs, context);
     auto curr_val = ir.CreateAlloca(sty);
 
     ir.CreateStore(native_val, curr_val);
     auto mem = mem_ptr;
-    for (const auto &comp : decl.oredered_locs) {
+    for (const auto &comp : decl.ordered_locs) {
       auto compvl =
           ExtractSubcomponent(ind, LocType(comp, context), curr_val, sty, ir);
       mem = StoreSubcomponent(compvl, comp, types, intrinsics, ir, state_ptr,
@@ -612,15 +612,15 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
                              const remill::Arch *arch, llvm::IRBuilder<> &ir,
                              llvm::Value *state_ptr, llvm::Value *mem_ptr) {
-  if (decl.oredered_locs.size() == 1) {
-    return LoadSubcomponent(decl.oredered_locs[0], decl.type, types, intrinsics,
+  if (decl.ordered_locs.size() == 1) {
+    return LoadSubcomponent(decl.ordered_locs[0], decl.type, types, intrinsics,
                             ir, state_ptr, mem_ptr);
   } else {
     uint64_t offset = 0;
     std::vector<llvm::Value *> comps;
     auto dl = arch->DataLayout();
 
-    for (const auto &loc : decl.oredered_locs) {
+    for (const auto &loc : decl.ordered_locs) {
 
       auto subty = GetSubcomponentType(loc, offset, decl.type, dl);
       if (!subty) {
@@ -634,7 +634,7 @@ llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
 
       offset += loc.Size();
     }
-    auto sty = CreateDeclSty(decl.oredered_locs, state_ptr->getContext());
+    auto sty = CreateDeclSty(decl.ordered_locs, state_ptr->getContext());
     return BuildMultiComponentValue(ir, comps, sty, decl.type, dl);
   }
 }
@@ -1013,12 +1013,12 @@ llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func) {
 }
 
 bool HasMemLoc(const ValueDecl &v) {
-  return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
+  return std::any_of(v.ordered_locs.begin(), v.ordered_locs.end(),
                      [](const LowLoc &loc) -> bool { return loc.mem_reg; });
 }
 
 bool HasRegLoc(const ValueDecl &v) {
-  return std::any_of(v.oredered_locs.begin(), v.oredered_locs.end(),
+  return std::any_of(v.ordered_locs.begin(), v.ordered_locs.end(),
                      [](const LowLoc &loc) -> bool { return loc.reg; });
 }
 
