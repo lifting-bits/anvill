@@ -283,7 +283,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(
   AnnotateInstructions(block, pc_annotation_id, GetPCAnnotation(func_address));
 
   llvm::Value *ret_val = nullptr;
-  if (decl.returns.oredered_locs.size() != 0 &&
+  if (decl.returns.ordered_locs.size() != 0 &&
       !decl.returns.type->isVoidTy()) {
     ret_val =
         LoadLiftedValue(decl.returns, types, intrinsics, this->options.arch,

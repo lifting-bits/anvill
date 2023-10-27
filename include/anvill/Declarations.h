@@ -104,7 +104,7 @@ struct LowLoc {
 // the caller allocate the space, and pass a pointer to that space into
 // the callee, and so that should be represented using a parameter.
 struct ValueDecl {
-  std::vector<LowLoc> oredered_locs;
+  std::vector<LowLoc> ordered_locs;
 
   TypeSpec spec_type;
 

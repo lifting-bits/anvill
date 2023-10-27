@@ -160,8 +160,8 @@ class StackModel {
     // this feels weird maybe it should be all stack variables but then if the variable isnt live...
     // we will have discovered something that should have been live.
     for (const auto &v : cont.LiveParamsAtEntryAndExit()) {
-      if (HasMemLoc(v.param) && v.param.oredered_locs.size() == 1 &&
-          v.param.oredered_locs[0].mem_reg->name ==
+      if (HasMemLoc(v.param) && v.param.ordered_locs.size() == 1 &&
+          v.param.ordered_locs[0].mem_reg->name ==
               arch->StackPointerRegisterName()) {
         this->InsertFrameVar(index, v.param);
       }
@@ -190,7 +190,7 @@ class StackModel {
 
 
     auto prev_decl = (--prec)->second;
-    CHECK(prev_decl.decl.oredered_locs[0].mem_offset <= off);
+    CHECK(prev_decl.decl.ordered_locs[0].mem_offset <= off);
     return {prev_decl};
   }
 
@@ -203,16 +203,16 @@ class StackModel {
     }
 
     DLOG(INFO) << "value found lte offset: "
-               << vlte->decl.oredered_locs[0].mem_offset << " " << off;
+               << vlte->decl.ordered_locs[0].mem_offset << " " << off;
 
-    auto offset_into_var = off - vlte->decl.oredered_locs[0].mem_offset;
+    auto offset_into_var = off - vlte->decl.ordered_locs[0].mem_offset;
     if (offset_into_var <
         static_cast<std::int64_t>(GetParamDeclSize(vlte->decl))) {
       return {{offset_into_var, *vlte}};
     }
     DLOG(INFO) << "Looking for off  " << off << " but not fitting "
                << offset_into_var << " got off "
-               << vlte->decl.oredered_locs[0].mem_offset;
+               << vlte->decl.ordered_locs[0].mem_offset;
     return std::nullopt;
   }
 
@@ -225,24 +225,24 @@ class StackModel {
 
 
   void InsertFrameVar(size_t index, ParameterDecl var) {
-    if (VarOverlaps(var.oredered_locs[0].mem_offset) ||
-        VarOverlaps(var.oredered_locs[0].mem_offset + GetParamDeclSize(var) -
+    if (VarOverlaps(var.ordered_locs[0].mem_offset) ||
+        VarOverlaps(var.ordered_locs[0].mem_offset + GetParamDeclSize(var) -
                     1)) {
 
-      auto oparam = GetOverlappingParam(var.oredered_locs[0].mem_offset);
-      if (!VarOverlaps(var.oredered_locs[0].mem_offset)) {
-        oparam = GetOverlappingParam(var.oredered_locs[0].mem_offset +
+      auto oparam = GetOverlappingParam(var.ordered_locs[0].mem_offset);
+      if (!VarOverlaps(var.ordered_locs[0].mem_offset)) {
+        oparam = GetOverlappingParam(var.ordered_locs[0].mem_offset +
                                      GetParamDeclSize(var) - 1);
       }
 
       LOG(FATAL) << "Inserting variable that overlaps with current frame "
-                 << var.oredered_locs[0].mem_offset
+                 << var.ordered_locs[0].mem_offset
                  << " with size: " << GetParamDeclSize(var) << " Overlaps with "
-                 << oparam->decl.decl.oredered_locs[0].mem_offset
+                 << oparam->decl.decl.ordered_locs[0].mem_offset
                  << " with size " << GetParamDeclSize(oparam->decl.decl);
     }
 
-    this->frame.insert({var.oredered_locs[0].mem_offset, {index, var}});
+    this->frame.insert({var.ordered_locs[0].mem_offset, {index, var}});
   }
 };
 

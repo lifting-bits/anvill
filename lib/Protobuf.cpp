@@ -243,7 +243,7 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
     // Figure out the return type of this function based off the return
     // values.
     llvm::Type *ret_type = ret_type = decl.returns.type;
-    if (decl.returns.oredered_locs.empty()) {
+    if (decl.returns.ordered_locs.empty()) {
       ret_type = llvm::Type::getVoidTy(context);
     }
 
@@ -317,7 +317,7 @@ ProtobufTranslator::ValueDeclFromOrderedLowLoc(std::vector<LowLoc> loc,
                                                const char *desc) const {
 
   ValueDecl decl;
-  decl.oredered_locs = std::move(loc);
+  decl.ordered_locs = std::move(loc);
   decl.spec_type = type;
   auto llvm_type = type_translator.DecodeFromSpec(decl.spec_type);
   if (!llvm_type.Succeeded()) {
@@ -701,7 +701,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
             symval.curr_val().constant().is_tainted_by_pc();
 
         DLOG(INFO) << "Adding global register override for "
-                   << const_val.target_value.oredered_locs[0].reg->name << " "
+                   << const_val.target_value.ordered_locs[0].reg->name << " "
                    << std::hex << const_val.value;
         constant_values.push_back(const_val);
       } else {
