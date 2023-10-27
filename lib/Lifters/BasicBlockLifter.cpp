@@ -452,7 +452,7 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
       arg->setName(var.name);
     }
 
-    if (std::all_of(var.oredered_locs.begin(), var.oredered_locs.end(),
+    if (std::all_of(var.ordered_locs.begin(), var.ordered_locs.end(),
                     [](const LowLoc &loc) -> bool { return loc.reg; })) {
       // Registers should not have aliases, or be captured
       arg->addAttr(llvm::Attribute::get(llvm_context,
@@ -755,9 +755,9 @@ llvm::CallInst *BasicBlockLifter::CallBasicBlockFunction(
     if (HasMemLoc(repr_var)) {
       // TODO(Ian): the assumption here since we are able to build a single pointer here into the frame is that
       // svars are single valuedecl contigous
-      CHECK(repr_var.oredered_locs.size() == 1);
+      CHECK(repr_var.ordered_locs.size() == 1);
       auto stack_ptr = stack.PointerToStackMemberFromOffset(
-          builder, repr_var.oredered_locs[0].mem_offset);
+          builder, repr_var.ordered_locs[0].mem_offset);
       if (stack_ptr) {
         return *stack_ptr;
       } else {
