@@ -538,8 +538,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   auto stack_offsets = this->block_context->GetStackOffsetsAtEntry();
   for (auto &reg_off : stack_offsets.affine_equalities) {
-    auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
+    auto *new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
         ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
+    auto *target_type = reg_off.target_value.type;
+    if (new_value->getType() != target_type) {
+      new_value = AdaptToType(ir, new_value, target_type);
+    }
     auto nmem = StoreNativeValue(
         new_value, reg_off.target_value, type_provider.Dictionary(), intrinsics,
         ir, this->state_ptr, remill::LoadMemoryPointer(ir, intrinsics));
