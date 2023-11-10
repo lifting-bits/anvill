@@ -55,12 +55,10 @@ CodeLifter::CodeLifter(const LifterOptions &options,
       op_lifter(options.arch->DefaultLifter(intrinsics)),
       is_sparc(options.arch->IsSPARC32() || options.arch->IsSPARC64()),
       is_x86_or_amd64(options.arch->IsX86() || options.arch->IsAMD64()),
-      pc_reg(options.arch
-                 ->RegisterByName(options.arch->ProgramCounterRegisterName())
-                 ->EnclosingRegister()),
-      sp_reg(
-          options.arch->RegisterByName(options.arch->StackPointerRegisterName())
-              ->EnclosingRegister()),
+      pc_reg(options.arch->RegisterByName(
+          options.arch->ProgramCounterRegisterName())),
+      sp_reg(options.arch->RegisterByName(
+          options.arch->StackPointerRegisterName())),
       memory_provider(options.memory_provider),
       type_provider(options.type_provider),
       type_specifier(type_specifier),

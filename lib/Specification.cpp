@@ -213,6 +213,7 @@ SpecificationImpl::ParseSpecification(
   for (auto &call : spec.overrides().calls()) {
     Call callspec{};
     callspec.stop = call.stop();
+    callspec.is_noreturn = call.noreturn();
     callspec.address = call.address();
     if (call.has_return_address()) {
       callspec.return_address = call.return_address();
@@ -315,7 +316,7 @@ GetArch(llvm::LLVMContext &context,
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
       break;
-    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32; break;
+    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32_SLEIGH; break;
     case ::specification::ARCH_SPARC64: arch_name = remill::kArchSparc64; break;
     case ::specification::ARCH_PPC: arch_name = remill::kArchPPC; break;
   }

@@ -192,11 +192,19 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
       builder.CreateStore(raddr, npc);
       builder.CreateStore(raddr, pc);
     } else {
-      call->setDoesNotReturn();
-
-      remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+      if (cc.is_noreturn) {
+        call->setDoesNotReturn();
+        remill::AddTerminatingTailCall(block, intrinsics.error, intrinsics);
+      } else {
+        // a call that stops that is not noreturn should be a call + return
+        auto func = block->getParent();
+        auto should_return = func->getArg(kShouldReturnArgNum);
+        builder.CreateStore(llvm::Constant::getAllOnesValue(
+          llvm::IntegerType::getInt1Ty(llvm_context)),
+                            should_return);
+      }
     }
-    return !cc.stop;
+    return !cc.stop || !cc.is_noreturn;
   } else if (std::holds_alternative<anvill::Return>(override)) {
     auto func = block->getParent();
     auto should_return = func->getArg(kShouldReturnArgNum);
@@ -530,8 +538,12 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
 
   auto stack_offsets = this->block_context->GetStackOffsetsAtEntry();
   for (auto &reg_off : stack_offsets.affine_equalities) {
-    auto new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
+    auto *new_value = LifterOptions::SymbolicStackPointerInitWithOffset(
         ir, this->sp_reg, this->block_def.addr, reg_off.stack_offset);
+    auto *target_type = reg_off.target_value.type;
+    if (new_value->getType() != target_type) {
+      new_value = AdaptToType(ir, new_value, target_type);
+    }
     auto nmem = StoreNativeValue(
         new_value, reg_off.target_value, type_provider.Dictionary(), intrinsics,
         ir, this->state_ptr, remill::LoadMemoryPointer(ir, intrinsics));

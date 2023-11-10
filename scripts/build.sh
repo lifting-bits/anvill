@@ -247,6 +247,7 @@ function BuildRemill
         -DCMAKE_TOOLCHAIN_FILE="${DOWNLOAD_DIR}/${LIBRARY_VERSION}/scripts/buildsystems/vcpkg.cmake" \
         -DVCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET}" \
         -G Ninja \
+        ${BUILD_FLAGS} \
         ${SRC_DIR}/remill
 
     cmake --build . --target install
