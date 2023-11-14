@@ -184,20 +184,22 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
     }
   }
 
-  if (bytes_accessable) {
-    value = lifter_context.value_lifter.Lift(bytes, type, lifter_context,
-                                             decl.address);
-  }
-
-
   auto is_constant = first_byte_perms == BytePermission::kReadable ||
                      first_byte_perms == BytePermission::kReadableExecutable;
 
   auto md = type_specifier.EncodeToMetadata(decl.spec_type);
   auto gvar = new llvm::GlobalVariable(*options.module, type, is_constant,
                                        llvm::GlobalValue::ExternalLinkage,
-                                       value, var_name);
+                                       nullptr, var_name);
   gvar->setMetadata("anvill.type", md);
+  lifter_context.AddEntity(gvar, decl.address);
+
+  if (bytes_accessable) {
+    value = lifter_context.value_lifter.Lift(bytes, type, lifter_context,
+                                             decl.address);
+  }
+  gvar->setInitializer(value);
+
   return gvar;
 }
 
