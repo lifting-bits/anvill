@@ -518,6 +518,14 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.address = function.entry_address();
   decl.entry_uid = Uid{function.entry_uid()};
 
+
+  if (function.binary_addr().has_ext_address()) {
+    auto ext = function.binary_addr().ext_address();
+    decl.binary_addr = RelAddr{ext.entry_vaddr(), ext.displacement()};
+  } else {
+    decl.binary_addr = function.binary_addr().internal_address();
+  }
+
   if (!function.has_callable()) {
     return std::string("all functions should have a callable");
   }
@@ -532,7 +540,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
-  const auto& frame = function.frame();
+  const auto &frame = function.frame();
 
   decl.stack_depth = frame.frame_size();
   decl.ret_ptr_offset = frame.return_address_offset();
@@ -612,8 +620,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 }
 
 void ProtobufTranslator::AddLiveValuesToBB(
-    std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
-    Uid bb_uid,
+    std::unordered_map<Uid, std::vector<ParameterDecl>> &map, Uid bb_uid,
     const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
         &values) const {
   auto &v = map.insert({bb_uid, std::vector<ParameterDecl>()}).first->second;
@@ -630,7 +637,7 @@ void ProtobufTranslator::AddLiveValuesToBB(
 
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
-  for (const auto& blk : obj.blocks()) {
+  for (const auto &blk : obj.blocks()) {
     std::unordered_set<Uid> tmp;
     for (auto o : blk.second.outgoing_blocks()) {
       tmp.insert({o});
@@ -641,7 +648,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         tmp,
         {blk.second.context_assignments().begin(),
          blk.second.context_assignments().end()},
-      {blk.first},
+        {blk.first},
     };
     decl.cfg.emplace(Uid{blk.first}, std::move(nblk));
   }
@@ -780,6 +787,15 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
     return ss.str();
   }
   decl.type = type;
+
+  if (obj.binary_address().has_ext_address()) {
+    decl.binary_addr =
+        RelAddr{obj.binary_address().ext_address().entry_vaddr(),
+                obj.binary_address().ext_address().displacement()};
+  } else {
+    decl.binary_addr = obj.binary_address().internal_address();
+  }
+
 
   return decl;
 }
