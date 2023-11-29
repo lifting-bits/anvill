@@ -420,4 +420,5 @@ message Specification {
   string image_name = 10;
   uint64 image_base = 11;
   repeated string required_globals = 12;
+  map<int64, string> type_names = 13;
 }
