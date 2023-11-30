@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <optional>
 #include <type_traits>
+#include <vector>
 
 #include "Specification.h"
 
@@ -95,6 +96,20 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
   } else {
     return *(func_it->second);
   }
+}
+
+std::vector<llvm::StructType *>
+SpecificationTypeProvider::NamedTypes(void) const {
+  std::vector<llvm::StructType *> stys;
+
+  for (auto nms : this->impl->named_types) {
+    auto sty = llvm::StructType::getTypeByName(this->context, nms);
+    if (sty) {
+      stys.push_back(sty);
+    }
+  }
+
+  return stys;
 }
 
 std::optional<anvill::VariableDecl>
@@ -178,6 +193,11 @@ void ProxyTypeProvider::QueryRegisterStateAtInstruction(
   return this->deleg.QueryRegisterStateAtInstruction(func_address, inst_address,
                                                      typed_reg_cb);
 }
+
+std::vector<llvm::StructType *> ProxyTypeProvider::NamedTypes(void) const {
+  return this->deleg.NamedTypes();
+}
+
 
 const ::anvill::TypeDictionary &ProxyTypeProvider::Dictionary(void) const {
   return this->deleg.Dictionary();

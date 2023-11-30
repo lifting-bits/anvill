@@ -11,6 +11,8 @@
 #include <anvill/Type.h>
 #include <glog/logging.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Error.h>
@@ -261,14 +263,16 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
 
 ProtobufTranslator::ProtobufTranslator(
     const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
-    std::unordered_map<std::int64_t, TypeSpec> &type_map)
+    std::unordered_map<std::int64_t, TypeSpec> &type_map,
+    std::unordered_map<std::int64_t, std::string> &type_names)
     : arch(arch_),
       type_translator(type_translator_),
       context(*(arch->context)),
       void_type(llvm::Type::getVoidTy(context)),
       dict_void_type(remill::RecontextualizeType(
           type_translator.Dictionary().u.named.void_, context)),
-      type_map(type_map) {}
+      type_map(type_map),
+      type_names(type_names) {}
 
 
 anvill::Result<LowLoc, std::string>
@@ -462,8 +466,9 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     }
   }
   if (obj.has_alias()) {
-    if (type_map.count(obj.alias())) {
-      return type_map.at(obj.alias());
+    if (this->type_names.count(obj.alias())) {
+      TypeSpec res = TypeName(type_names.at(obj.alias()));
+      return res;
     } else {
       LOG(ERROR) << "Unknown alias id " << obj.alias();
       return {BaseType::Void};
@@ -802,9 +807,15 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
 
 anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     const ::specification::TypeSpec &obj,
-    const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map) {
+    const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map,
+    const std::unordered_map<std::int64_t, std::string> &named_types) {
   if (obj.has_alias()) {
     auto alias = obj.alias();
+    if (named_types.contains(alias)) {
+      TypeSpec tname = TypeName(named_types.at(alias));
+      return tname;
+    }
+
     if (type_map.count(alias)) {
       return type_map[alias];
     }
@@ -816,7 +827,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return {BaseType::Void};
     }
 
-    auto res = DecodeType(map.at(alias), map);
+    auto res = DecodeType(map.at(alias), map, named_types);
     if (!res.Succeeded()) {
       return res.TakeError();
     }
@@ -827,7 +838,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     auto pointer = obj.pointer();
     TypeSpec pointee = BaseType::Void;
     if (pointer.has_pointee()) {
-      auto maybe_pointee = DecodeType(pointer.pointee(), map);
+      auto maybe_pointee = DecodeType(pointer.pointee(), map, named_types);
       if (!maybe_pointee.Succeeded()) {
         return maybe_pointee.Error();
       }
@@ -840,7 +851,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     if (!vector.has_base()) {
       return {"Vector type without base type"};
     }
-    auto maybe_base = DecodeType(vector.base(), map);
+    auto maybe_base = DecodeType(vector.base(), map, named_types);
     if (!maybe_base.Succeeded()) {
       return maybe_base.Error();
     }
@@ -851,7 +862,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     if (!array.has_base()) {
       return {"Array type without base type"};
     }
-    auto maybe_base = DecodeType(array.base(), map);
+    auto maybe_base = DecodeType(array.base(), map, named_types);
     if (!maybe_base.Succeeded()) {
       return maybe_base.Error();
     }
@@ -860,7 +871,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
   if (obj.has_struct_()) {
     auto res = std::make_shared<StructType>();
     for (auto elem : obj.struct_().members()) {
-      auto maybe_type = DecodeType(elem, map);
+      auto maybe_type = DecodeType(elem, map, named_types);
       if (!maybe_type.Succeeded()) {
         return maybe_type.Error();
       }
@@ -874,14 +885,14 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return {"Function without return type"};
     }
     auto res = std::make_shared<FunctionType>();
-    auto maybe_ret = DecodeType(func.return_type(), map);
+    auto maybe_ret = DecodeType(func.return_type(), map, named_types);
     if (!maybe_ret.Succeeded()) {
       return maybe_ret.Error();
     }
     res->return_type = std::move(maybe_ret.Value());
     res->is_variadic = func.is_variadic();
     for (auto arg : func.arguments()) {
-      auto maybe_argtype = DecodeType(arg, map);
+      auto maybe_argtype = DecodeType(arg, map, named_types);
       if (!maybe_argtype.Succeeded()) {
         return maybe_argtype.Error();
       }
@@ -893,17 +904,36 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
 }
 
 Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
-    const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
-        &map) {
+    const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec> &map,
+    const ::google::protobuf::Map<std::int64_t, std::string> &names) {
   for (auto &[k, v] : map) {
     if (type_map.count(k)) {
       continue;
     }
-    auto res = DecodeType(v, {map.begin(), map.end()});
+    auto res =
+        DecodeType(v, {map.begin(), map.end()}, {names.begin(), names.end()});
+
     if (!res.Succeeded()) {
       return res.Error();
     }
-    type_map[k] = res.Value();
+
+
+    if (names.contains(k)) {
+      auto ty = this->type_translator.DecodeFromSpec(res.Value());
+      if (!ty.Succeeded()) {
+        return ty.Error().message;
+      }
+
+      if (auto *sty = llvm::dyn_cast<llvm::StructType>(ty.Value())) {
+
+
+        std::string name = names.at(k);
+        llvm::StructType::create(this->context, sty->elements(), name);
+      }
+      type_names[k] = names.at(k);
+    } else {
+      type_map[k] = res.Value();
+    }
   }
   return std::monostate{};
 }

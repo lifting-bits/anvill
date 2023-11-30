@@ -9,6 +9,7 @@
 #pragma once
 
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
 
 #include <cstdint>
 #include <functional>
@@ -70,6 +71,8 @@ class TypeProvider {
           typed_reg_cb) const = 0;
 
   virtual const ::anvill::TypeDictionary &Dictionary(void) const = 0;
+
+  virtual std::vector<llvm::StructType *> NamedTypes(void) const = 0;
 
   virtual ~TypeProvider() = default;
 };
@@ -149,6 +152,8 @@ class ProxyTypeProvider : public TypeProvider {
                          std::optional<uint64_t>)>
           typed_reg_cb) const override;
 
+  std::vector<llvm::StructType *> NamedTypes(void) const override;
+
   const ::anvill::TypeDictionary &Dictionary(void) const override;
 };
 
@@ -198,6 +203,8 @@ class SpecificationTypeProvider : public BaseTypeProvider {
   std::optional<anvill::VariableDecl>
   TryGetVariableType(uint64_t address,
                      llvm::Type *hinted_value_type = nullptr) const override;
+
+  std::vector<llvm::StructType *> NamedTypes(void) const override;
 
  private:
   SpecificationTypeProvider(void) = delete;

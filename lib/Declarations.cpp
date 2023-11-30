@@ -411,7 +411,8 @@ CallableDecl::DecodeFromPB(const remill::Arch *arch, const std::string &pb) {
   const TypeDictionary type_dictionary(*(arch->context));
   const TypeTranslator type_translator(type_dictionary, arch);
   std::unordered_map<std::int64_t, TypeSpec> type_map;
-  ProtobufTranslator translator(type_translator, arch, type_map);
+  std::unordered_map<std::int64_t, std::string> type_names;
+  ProtobufTranslator translator(type_translator, arch, type_map, type_names);
 
   auto default_callable_decl_res =
       translator.DecodeDefaultCallableDecl(function);
