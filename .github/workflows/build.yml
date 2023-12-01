@@ -24,6 +24,8 @@ on:
     branches:
       - "*"
 
+  workflow_dispatch:
+
 jobs:
   cleanup_stale_workflows:
     runs-on: ubuntu-22.04
