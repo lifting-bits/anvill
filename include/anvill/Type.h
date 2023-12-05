@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Metadata.h>
 
 #include <memory>
@@ -40,6 +41,10 @@ namespace remill {
 class Arch;
 }  // namespace remill
 namespace anvill {
+
+llvm::StructType *getOrCreateNamedStruct(llvm::LLVMContext &context,
+                                         llvm::StringRef Name);
+
 
 struct TypeSpecificationError final {
   enum class ErrorCode {

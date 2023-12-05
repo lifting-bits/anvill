@@ -469,6 +469,9 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     if (this->type_names.count(obj.alias())) {
       TypeSpec res = TypeName(type_names.at(obj.alias()));
       return res;
+    } else if (this->type_map.count(obj.alias())) {
+      TypeSpec tspec = this->type_map.at(obj.alias());
+      return tspec;
     } else {
       LOG(ERROR) << "Unknown alias id " << obj.alias();
       return {BaseType::Void};
@@ -811,6 +814,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     const std::unordered_map<std::int64_t, std::string> &named_types) {
   if (obj.has_alias()) {
     auto alias = obj.alias();
+
     if (named_types.contains(alias)) {
       TypeSpec tname = TypeName(named_types.at(alias));
       return tname;
@@ -928,7 +932,8 @@ Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
 
 
         std::string name = names.at(k);
-        llvm::StructType::create(this->context, sty->elements(), name);
+        auto res = getOrCreateNamedStruct(this->context, name);
+        res->setBody(sty->elements());
       }
       type_names[k] = names.at(k);
     } else {

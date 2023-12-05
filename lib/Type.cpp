@@ -766,12 +766,23 @@ TypeTranslator::DecodeFromSpec(TypeSpec spec) const {
 
   if (std::holds_alternative<TypeName>(spec)) {
     auto nm = std::get<TypeName>(spec);
-    auto sty = llvm::StructType::getTypeByName(this->impl->context, nm.name);
+    auto sty = getOrCreateNamedStruct(this->impl->context, nm.name);
+    CHECK(sty);
     return sty;
   }
 
   return TypeSpecificationError{TypeSpecificationError::ErrorCode::InvalidState,
                                 "Unhandled type specification variant"};
+}
+
+llvm::StructType *getOrCreateNamedStruct(llvm::LLVMContext &context,
+                                         llvm::StringRef Name) {
+  auto res = llvm::StructType::getTypeByName(context, Name);
+  if (res) {
+    return res;
+  }
+
+  return llvm::StructType::create(context, Name);
 }
 
 namespace {
