@@ -120,6 +120,9 @@ class NullTypeProvider : public BaseTypeProvider {
   std::optional<VariableDecl>
   TryGetVariableType(uint64_t,
                      llvm::Type *hinted_value_type = nullptr) const override;
+  std::vector<llvm::StructType *> NamedTypes(void) const override {
+    return {};
+  }
 };
 
 // Delegates to an underlying tye provider to provide the data. Derived from
