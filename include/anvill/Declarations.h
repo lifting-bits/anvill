@@ -51,7 +51,7 @@ struct Uid {
   bool operator==(const Uid &) const = default;
 };
 
-}
+}  // namespace anvill
 
 template <>
 struct std::hash<anvill::Uid> {
@@ -87,6 +87,14 @@ struct LowLoc {
 
   bool operator==(const LowLoc &loc) const = default;
 };
+
+
+struct RelAddr {
+  uint64_t vaddr;
+  std::int64_t disp;
+};
+
+using MachineAddr = std::variant<uint64_t, RelAddr>;
 
 // A value, such as a parameter or a return value. Values are resident
 // in one of two locations: either in a register, represented by a non-
@@ -139,6 +147,8 @@ struct VariableDecl {
 
   // Address of this global variable.
   std::uint64_t address{0};
+
+  MachineAddr binary_addr{};
 
   // Declare this global variable in an LLVM module.
   llvm::GlobalVariable *DeclareInModule(const std::string &name,
@@ -427,17 +437,13 @@ struct FunctionDecl : public CallableDecl {
 
   std::unordered_map<Uid, SpecStackOffsets> stack_offsets_at_exit;
 
-  std::unordered_map<Uid, std::vector<ParameterDecl>>
-      live_regs_at_entry;
+  std::unordered_map<Uid, std::vector<ParameterDecl>> live_regs_at_entry;
 
-  std::unordered_map<Uid, std::vector<ParameterDecl>>
-      live_regs_at_exit;
+  std::unordered_map<Uid, std::vector<ParameterDecl>> live_regs_at_exit;
 
-  std::unordered_map<Uid, std::vector<ConstantDomain>>
-      constant_values_at_entry;
+  std::unordered_map<Uid, std::vector<ConstantDomain>> constant_values_at_entry;
 
-  std::unordered_map<Uid, std::vector<ConstantDomain>>
-      constant_values_at_exit;
+  std::unordered_map<Uid, std::vector<ConstantDomain>> constant_values_at_exit;
 
   // sorted vector of hints
   std::vector<TypeHint> type_hints;
@@ -451,6 +457,9 @@ struct FunctionDecl : public CallableDecl {
   std::int64_t parameter_offset{0};
 
   std::size_t parameter_size{0};
+
+  MachineAddr binary_addr{};
+
 
   std::vector<ParameterDecl> in_scope_variables;
 
@@ -472,8 +481,7 @@ struct FunctionDecl : public CallableDecl {
 
   SpecBlockContext GetBlockContext(Uid uid) const;
 
-  void
-  AddBBContexts(std::unordered_map<Uid, SpecBlockContext> &contexts) const;
+  void AddBBContexts(std::unordered_map<Uid, SpecBlockContext> &contexts) const;
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a

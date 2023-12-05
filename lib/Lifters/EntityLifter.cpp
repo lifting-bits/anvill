@@ -12,8 +12,10 @@
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/TypeFinder.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
@@ -35,6 +37,14 @@ EntityLifterImpl::EntityLifterImpl(const LifterOptions &options_)
       data_lifter(options) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
+
+  // Lift named types
+  for (auto sty : this->type_provider->NamedTypes()) {
+    auto gv = new llvm::GlobalVariable(*options.module, sty, false,
+                                       llvm::GlobalValue::ExternalLinkage,
+                                       nullptr, sty->getName() + "_var_repr");
+    llvm::appendToUsed(*options.module, gv);
+  }
 }
 
 // Tells the entity lifter that `entity` is the lifted function/data at

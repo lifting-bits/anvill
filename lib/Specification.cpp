@@ -11,6 +11,8 @@
 #include <glog/logging.h>
 #include <google/protobuf/util/json_util.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Error.h>
@@ -47,8 +49,11 @@ SpecificationImpl::ParseSpecification(
     const ::specification::Specification &spec) {
   std::vector<std::string> dec_err;
   std::unordered_map<std::int64_t, TypeSpec> type_map;
-  ProtobufTranslator translator(type_translator, arch.get(), type_map);
-  auto map_res = translator.DecodeTypeMap(spec.type_aliases());
+  std::unordered_map<std::int64_t, std::string> type_names;
+  ProtobufTranslator translator(type_translator, arch.get(), type_map,
+                                type_names);
+  auto map_res =
+      translator.DecodeTypeMap(spec.type_aliases(), spec.type_names());
   if (!map_res.Succeeded()) {
     dec_err.push_back(map_res.Error());
   }
@@ -69,7 +74,7 @@ SpecificationImpl::ParseSpecification(
 
     auto func_ptr = new FunctionDecl(std::move(func_obj));
 
-    for (const auto& [uid, bb]: func_ptr->cfg) {
+    for (const auto &[uid, bb] : func_ptr->cfg) {
       if (uid_to_block.count(uid)) {
         std::stringstream ss;
         ss << "Duplicate block Uid: " << uid.value;
@@ -254,6 +259,10 @@ SpecificationImpl::ParseSpecification(
   required_globals = {spec.required_globals().begin(),
                       spec.required_globals().end()};
 
+  for (const auto &[_k, v] : spec.type_names()) {
+    this->named_types.push_back(v);
+  }
+
   return dec_err;
 }
 
@@ -316,7 +325,9 @@ GetArch(llvm::LLVMContext &context,
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
       break;
-    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32_SLEIGH; break;
+    case ::specification::ARCH_SPARC32:
+      arch_name = remill::kArchSparc32_SLEIGH;
+      break;
     case ::specification::ARCH_SPARC64: arch_name = remill::kArchSparc64; break;
     case ::specification::ARCH_PPC: arch_name = remill::kArchPPC; break;
   }
@@ -380,6 +391,7 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
 anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   ::specification::Specification spec;
+
   if (!spec.ParseFromIstream(&pb)) {
     return {"Failed to parse specification"};
   }
@@ -432,8 +444,7 @@ Specification::FunctionAt(std::uint64_t address) const {
 }
 
 // Return the block with `uid`, or an empty `shared_ptr`.
-std::shared_ptr<const CodeBlock>
-Specification::BlockAt(Uid uid) const {
+std::shared_ptr<const CodeBlock> Specification::BlockAt(Uid uid) const {
   auto it = impl->uid_to_block.find(uid);
   if (it != impl->uid_to_block.end()) {
     return std::shared_ptr<const CodeBlock>(impl, it->second);

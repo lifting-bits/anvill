@@ -10,6 +10,8 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Metadata.h>
 
+#include <variant>
+
 #define ANVILL_USE_WRAPPED_TYPES 0
 
 // clang-format off
@@ -84,6 +86,7 @@ class TypeSpecifierImpl {
   llvm::MDNode *TypeToMetadata(std::shared_ptr<StructType> type);
   llvm::MDNode *TypeToMetadata(std::shared_ptr<FunctionType> type);
   llvm::MDNode *TypeToMetadata(UnknownType type);
+  llvm::MDNode *TypeToMetadata(TypeName type);
 };
 
 // Translates an llvm::Type to a type that conforms to the spec in
@@ -425,6 +428,13 @@ llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(UnknownType type) {
   return llvm::MDNode::get(context, {str, llvm::ConstantAsMetadata::get(size)});
 }
 
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(TypeName type) {
+  auto str = llvm::MDString::get(context, "Typename");
+  auto nm = llvm::MDString::get(context, type.name);
+
+  return llvm::MDNode::get(context, {str, nm});
+}
+
 namespace {
 
 #if ANVILL_USE_WRAPPED_TYPES
@@ -753,8 +763,26 @@ TypeTranslator::DecodeFromSpec(TypeSpec spec) const {
                                   unk.size == UINT32_MAX ? 32 : unk.size * 8);
   }
 
+
+  if (std::holds_alternative<TypeName>(spec)) {
+    auto nm = std::get<TypeName>(spec);
+    auto sty = getOrCreateNamedStruct(this->impl->context, nm.name);
+    CHECK(sty);
+    return sty;
+  }
+
   return TypeSpecificationError{TypeSpecificationError::ErrorCode::InvalidState,
-                                "Function fell out of bounds"};
+                                "Unhandled type specification variant"};
+}
+
+llvm::StructType *getOrCreateNamedStruct(llvm::LLVMContext &context,
+                                         llvm::StringRef Name) {
+  auto res = llvm::StructType::getTypeByName(context, Name);
+  if (res) {
+    return res;
+  }
+
+  return llvm::StructType::create(context, Name);
 }
 
 namespace {

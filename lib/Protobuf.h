@@ -55,13 +55,15 @@ class ProtobufTranslator {
   llvm::Type *const dict_void_type;
 
   std::unordered_map<std::int64_t, TypeSpec> &type_map;
+  std::unordered_map<std::int64_t, std::string> &type_names;
 
   anvill::Result<TypeSpec, std::string>
   DecodeType(const ::specification::TypeSpec &obj) const;
 
   anvill::Result<TypeSpec, std::string> DecodeType(
       const ::specification::TypeSpec &obj,
-      const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map);
+      const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map,
+      const std::unordered_map<std::int64_t, std::string> &named_types);
 
 
   // Parse the location of a value. This applies to both parameters and
@@ -90,8 +92,7 @@ class ProtobufTranslator {
                             FunctionDecl &decl) const;
 
   void AddLiveValuesToBB(
-      std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
-      Uid bb_uid,
+      std::unordered_map<Uid, std::vector<ParameterDecl>> &map, Uid bb_uid,
       const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
           &values) const;
 
@@ -99,13 +100,16 @@ class ProtobufTranslator {
  public:
   explicit ProtobufTranslator(
       const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
-      std::unordered_map<std::int64_t, TypeSpec> &type_map);
+      std::unordered_map<std::int64_t, TypeSpec> &type_map,
+      std::unordered_map<std::int64_t, std::string> &type_names);
 
   inline explicit ProtobufTranslator(
       const anvill::TypeTranslator &type_translator_,
       const std::unique_ptr<const remill::Arch> &arch_,
-      std::unordered_map<std::int64_t, TypeSpec> &type_map)
-      : ProtobufTranslator(type_translator_, arch_.get(), type_map) {}
+      std::unordered_map<std::int64_t, TypeSpec> &type_map,
+      std::unordered_map<std::int64_t, std::string> &type_names)
+      : ProtobufTranslator(type_translator_, arch_.get(), type_map,
+                           type_names) {}
 
   // Parse a parameter from the Protobuf spec. Parameters should have names,
   // as that makes the bitcode slightly easier to read, but names are
@@ -133,9 +137,10 @@ class ProtobufTranslator {
   Result<CallableDecl, std::string>
   DecodeDefaultCallableDecl(const ::specification::Function &obj) const;
 
-  Result<std::monostate, std::string>
-  DecodeTypeMap(const ::google::protobuf::Map<std::int64_t,
-                                              ::specification::TypeSpec> &map);
+  Result<std::monostate, std::string> DecodeTypeMap(
+      const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
+          &map,
+      const ::google::protobuf::Map<std::int64_t, std::string> &names);
 };
 
 }  // namespace anvill

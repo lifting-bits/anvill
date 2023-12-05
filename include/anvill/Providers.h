@@ -9,6 +9,7 @@
 #pragma once
 
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
 
 #include <cstdint>
 #include <functional>
@@ -71,6 +72,8 @@ class TypeProvider {
 
   virtual const ::anvill::TypeDictionary &Dictionary(void) const = 0;
 
+  virtual std::vector<llvm::StructType *> NamedTypes(void) const = 0;
+
   virtual ~TypeProvider() = default;
 };
 
@@ -117,6 +120,9 @@ class NullTypeProvider : public BaseTypeProvider {
   std::optional<VariableDecl>
   TryGetVariableType(uint64_t,
                      llvm::Type *hinted_value_type = nullptr) const override;
+  std::vector<llvm::StructType *> NamedTypes(void) const override {
+    return {};
+  }
 };
 
 // Delegates to an underlying tye provider to provide the data. Derived from
@@ -148,6 +154,8 @@ class ProxyTypeProvider : public TypeProvider {
       std::function<void(const std::string &, llvm::Type *,
                          std::optional<uint64_t>)>
           typed_reg_cb) const override;
+
+  std::vector<llvm::StructType *> NamedTypes(void) const override;
 
   const ::anvill::TypeDictionary &Dictionary(void) const override;
 };
@@ -198,6 +206,8 @@ class SpecificationTypeProvider : public BaseTypeProvider {
   std::optional<anvill::VariableDecl>
   TryGetVariableType(uint64_t address,
                      llvm::Type *hinted_value_type = nullptr) const override;
+
+  std::vector<llvm::StructType *> NamedTypes(void) const override;
 
  private:
   SpecificationTypeProvider(void) = delete;

@@ -11,6 +11,8 @@
 #include <anvill/Type.h>
 #include <glog/logging.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Error.h>
@@ -261,14 +263,16 @@ Result<std::monostate, std::string> ProtobufTranslator::ParseIntoCallableDecl(
 
 ProtobufTranslator::ProtobufTranslator(
     const anvill::TypeTranslator &type_translator_, const remill::Arch *arch_,
-    std::unordered_map<std::int64_t, TypeSpec> &type_map)
+    std::unordered_map<std::int64_t, TypeSpec> &type_map,
+    std::unordered_map<std::int64_t, std::string> &type_names)
     : arch(arch_),
       type_translator(type_translator_),
       context(*(arch->context)),
       void_type(llvm::Type::getVoidTy(context)),
       dict_void_type(remill::RecontextualizeType(
           type_translator.Dictionary().u.named.void_, context)),
-      type_map(type_map) {}
+      type_map(type_map),
+      type_names(type_names) {}
 
 
 anvill::Result<LowLoc, std::string>
@@ -462,8 +466,12 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
     }
   }
   if (obj.has_alias()) {
-    if (type_map.count(obj.alias())) {
-      return type_map.at(obj.alias());
+    if (this->type_names.count(obj.alias())) {
+      TypeSpec res = TypeName(type_names.at(obj.alias()));
+      return res;
+    } else if (this->type_map.count(obj.alias())) {
+      TypeSpec tspec = this->type_map.at(obj.alias());
+      return tspec;
     } else {
       LOG(ERROR) << "Unknown alias id " << obj.alias();
       return {BaseType::Void};
@@ -518,6 +526,14 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.address = function.entry_address();
   decl.entry_uid = Uid{function.entry_uid()};
 
+
+  if (function.binary_addr().has_ext_address()) {
+    auto ext = function.binary_addr().ext_address();
+    decl.binary_addr = RelAddr{ext.entry_vaddr(), ext.displacement()};
+  } else {
+    decl.binary_addr = function.binary_addr().internal_address();
+  }
+
   if (!function.has_callable()) {
     return std::string("all functions should have a callable");
   }
@@ -532,7 +548,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   if (!function.has_frame()) {
     return std::string("All functions should have a frame");
   }
-  const auto& frame = function.frame();
+  const auto &frame = function.frame();
 
   decl.stack_depth = frame.frame_size();
   decl.ret_ptr_offset = frame.return_address_offset();
@@ -612,8 +628,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
 }
 
 void ProtobufTranslator::AddLiveValuesToBB(
-    std::unordered_map<Uid, std::vector<ParameterDecl>> &map,
-    Uid bb_uid,
+    std::unordered_map<Uid, std::vector<ParameterDecl>> &map, Uid bb_uid,
     const ::google::protobuf::RepeatedPtrField<::specification::Parameter>
         &values) const {
   auto &v = map.insert({bb_uid, std::vector<ParameterDecl>()}).first->second;
@@ -630,7 +645,7 @@ void ProtobufTranslator::AddLiveValuesToBB(
 
 void ProtobufTranslator::ParseCFGIntoFunction(
     const ::specification::Function &obj, FunctionDecl &decl) const {
-  for (const auto& blk : obj.blocks()) {
+  for (const auto &blk : obj.blocks()) {
     std::unordered_set<Uid> tmp;
     for (auto o : blk.second.outgoing_blocks()) {
       tmp.insert({o});
@@ -641,7 +656,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
         tmp,
         {blk.second.context_assignments().begin(),
          blk.second.context_assignments().end()},
-      {blk.first},
+        {blk.first},
     };
     decl.cfg.emplace(Uid{blk.first}, std::move(nblk));
   }
@@ -781,14 +796,30 @@ Result<VariableDecl, std::string> ProtobufTranslator::DecodeGlobalVar(
   }
   decl.type = type;
 
+  if (obj.binary_address().has_ext_address()) {
+    decl.binary_addr =
+        RelAddr{obj.binary_address().ext_address().entry_vaddr(),
+                obj.binary_address().ext_address().displacement()};
+  } else {
+    decl.binary_addr = obj.binary_address().internal_address();
+  }
+
+
   return decl;
 }
 
 anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     const ::specification::TypeSpec &obj,
-    const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map) {
+    const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map,
+    const std::unordered_map<std::int64_t, std::string> &named_types) {
   if (obj.has_alias()) {
     auto alias = obj.alias();
+
+    if (named_types.contains(alias)) {
+      TypeSpec tname = TypeName(named_types.at(alias));
+      return tname;
+    }
+
     if (type_map.count(alias)) {
       return type_map[alias];
     }
@@ -800,7 +831,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return {BaseType::Void};
     }
 
-    auto res = DecodeType(map.at(alias), map);
+    auto res = DecodeType(map.at(alias), map, named_types);
     if (!res.Succeeded()) {
       return res.TakeError();
     }
@@ -811,7 +842,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     auto pointer = obj.pointer();
     TypeSpec pointee = BaseType::Void;
     if (pointer.has_pointee()) {
-      auto maybe_pointee = DecodeType(pointer.pointee(), map);
+      auto maybe_pointee = DecodeType(pointer.pointee(), map, named_types);
       if (!maybe_pointee.Succeeded()) {
         return maybe_pointee.Error();
       }
@@ -824,7 +855,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     if (!vector.has_base()) {
       return {"Vector type without base type"};
     }
-    auto maybe_base = DecodeType(vector.base(), map);
+    auto maybe_base = DecodeType(vector.base(), map, named_types);
     if (!maybe_base.Succeeded()) {
       return maybe_base.Error();
     }
@@ -835,7 +866,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     if (!array.has_base()) {
       return {"Array type without base type"};
     }
-    auto maybe_base = DecodeType(array.base(), map);
+    auto maybe_base = DecodeType(array.base(), map, named_types);
     if (!maybe_base.Succeeded()) {
       return maybe_base.Error();
     }
@@ -844,7 +875,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
   if (obj.has_struct_()) {
     auto res = std::make_shared<StructType>();
     for (auto elem : obj.struct_().members()) {
-      auto maybe_type = DecodeType(elem, map);
+      auto maybe_type = DecodeType(elem, map, named_types);
       if (!maybe_type.Succeeded()) {
         return maybe_type.Error();
       }
@@ -858,14 +889,14 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
       return {"Function without return type"};
     }
     auto res = std::make_shared<FunctionType>();
-    auto maybe_ret = DecodeType(func.return_type(), map);
+    auto maybe_ret = DecodeType(func.return_type(), map, named_types);
     if (!maybe_ret.Succeeded()) {
       return maybe_ret.Error();
     }
     res->return_type = std::move(maybe_ret.Value());
     res->is_variadic = func.is_variadic();
     for (auto arg : func.arguments()) {
-      auto maybe_argtype = DecodeType(arg, map);
+      auto maybe_argtype = DecodeType(arg, map, named_types);
       if (!maybe_argtype.Succeeded()) {
         return maybe_argtype.Error();
       }
@@ -877,17 +908,37 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
 }
 
 Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
-    const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
-        &map) {
+    const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec> &map,
+    const ::google::protobuf::Map<std::int64_t, std::string> &names) {
   for (auto &[k, v] : map) {
     if (type_map.count(k)) {
       continue;
     }
-    auto res = DecodeType(v, {map.begin(), map.end()});
+    auto res =
+        DecodeType(v, {map.begin(), map.end()}, {names.begin(), names.end()});
+
     if (!res.Succeeded()) {
       return res.Error();
     }
-    type_map[k] = res.Value();
+
+
+    if (names.contains(k)) {
+      auto ty = this->type_translator.DecodeFromSpec(res.Value());
+      if (!ty.Succeeded()) {
+        return ty.Error().message;
+      }
+
+      if (auto *sty = llvm::dyn_cast<llvm::StructType>(ty.Value())) {
+
+
+        std::string name = names.at(k);
+        auto res = getOrCreateNamedStruct(this->context, name);
+        res->setBody(sty->elements());
+      }
+      type_names[k] = names.at(k);
+    } else {
+      type_map[k] = res.Value();
+    }
   }
   return std::monostate{};
 }

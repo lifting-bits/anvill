@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "anvill/Passes/BasicBlockPass.h"
 
@@ -98,6 +99,8 @@ class SpecificationImpl
   std::unordered_map<std::uint64_t, ControlFlowOverride> control_flow_overrides;
 
   std::unordered_set<std::string> required_globals;
+
+  std::vector<std::string> named_types;
 };
 
 }  // namespace anvill

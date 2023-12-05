@@ -313,6 +313,18 @@ message TypeHint {
   Variable target_var = 2;
 }
 
+message RelativeAddress {
+  uint64 entry_vaddr = 1;
+  int64 displacement = 2;
+}
+
+message ProgramAddress {
+  oneof inner {
+    uint64 internal_address = 1;
+    RelativeAddress ext_address = 2;
+  }
+}
+
 message Function {
   uint64 entry_address = 1;
   uint64 entry_uid = 12;
@@ -334,11 +346,15 @@ message Function {
   // to have this type after this instruction, these will be translated into 
   // a low lifting of that location with spec type metadata
   repeated TypeHint type_hints = 11;
+  ProgramAddress binary_addr = 13;
 }
+
+
 
 message GlobalVariable {
   TypeSpec type = 1;
   uint64 address = 2;
+  ProgramAddress binary_address = 3;
 }
 
 message Symbol {
@@ -404,4 +420,5 @@ message Specification {
   string image_name = 10;
   uint64 image_base = 11;
   repeated string required_globals = 12;
+  map<int64, string> type_names = 13;
 }

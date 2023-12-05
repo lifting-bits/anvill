@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Metadata.h>
 
 #include <memory>
@@ -40,6 +41,10 @@ namespace remill {
 class Arch;
 }  // namespace remill
 namespace anvill {
+
+llvm::StructType *getOrCreateNamedStruct(llvm::LLVMContext &context,
+                                         llvm::StringRef Name);
+
 
 struct TypeSpecificationError final {
   enum class ErrorCode {
@@ -104,11 +109,21 @@ struct UnknownType {
   bool operator==(const UnknownType &) const = default;
 };
 
+
+class TypeName {
+ public:
+  std::string name;
+
+  bool operator==(const TypeName &) const = default;
+
+  explicit TypeName(std::string name) : name(name) {}
+};
+
 using TypeSpec =
     std::variant<BaseType, std::shared_ptr<PointerType>,
                  std::shared_ptr<VectorType>, std::shared_ptr<ArrayType>,
                  std::shared_ptr<StructType>, std::shared_ptr<FunctionType>,
-                 UnknownType>;
+                 UnknownType, TypeName>;
 
 bool operator==(std::shared_ptr<PointerType>, std::shared_ptr<PointerType>);
 bool operator==(std::shared_ptr<VectorType>, std::shared_ptr<VectorType>);
@@ -285,6 +300,13 @@ class TypeTranslator {
 
 
 namespace std {
+template <>
+struct hash<anvill::TypeName> {
+  size_t operator()(const anvill::TypeName &unk) const {
+    return std::hash<std::string>()(unk.name);
+  }
+};
+
 template <>
 struct hash<anvill::UnknownType> {
   size_t operator()(const anvill::UnknownType &unk) const {
