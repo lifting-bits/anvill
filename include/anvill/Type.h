@@ -113,10 +113,13 @@ struct UnknownType {
 class TypeName {
  public:
   std::string name;
+  std::uint64_t type_id;
 
   bool operator==(const TypeName &) const = default;
 
-  explicit TypeName(std::string name) : name(name) {}
+  explicit TypeName(std::string name, std::uint64_t type_id)
+      : name(name),
+        type_id(type_id) {}
 };
 
 using TypeSpec =

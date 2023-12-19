@@ -101,6 +101,9 @@ class SpecificationImpl
   std::unordered_set<std::string> required_globals;
 
   std::vector<std::string> named_types;
+
+  // Mapping of type id to type
+  std::unordered_map<std::uint64_t, const TypeSpec *> type_id_to_type;
 };
 
 }  // namespace anvill

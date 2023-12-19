@@ -263,6 +263,13 @@ SpecificationImpl::ParseSpecification(
     this->named_types.push_back(v);
   }
 
+  for (const auto &[id, type] : spec.type_aliases()) {
+    auto maybe_ty = translator.DecodeType(type);
+    CHECK(maybe_ty.Succeeded());
+    auto ty_ptr = new TypeSpec(std::move(maybe_ty.Value()));
+    type_id_to_type.emplace(id, ty_ptr);
+  }
+
   return dec_err;
 }
 
@@ -474,6 +481,15 @@ Specification::VariableContaining(std::uint64_t address) const {
   } else {
     return {};
   }
+}
+
+std::shared_ptr<const TypeSpec> Specification::TypeAt(uint64_t id) const {
+  auto type_it = impl->type_id_to_type.find(id);
+  if (type_it != impl->type_id_to_type.end()) {
+    return std::shared_ptr<const TypeSpec>(impl, type_it->second);
+  }
+
+  return {};
 }
 
 // Call `cb` on each symbol in the spec, until `cb` returns `false`.

@@ -164,6 +164,9 @@ class Specification {
   std::shared_ptr<const VariableDecl>
   VariableContaining(std::uint64_t address) const;
 
+  // Return the type with type id `id` or an empty `shared_ptr`
+  std::shared_ptr<const TypeSpec> TypeAt(uint64_t id) const;
+
   // Call `cb` on each symbol in the spec, until `cb` returns `false`.
   void ForEachSymbol(
       std::function<bool(std::uint64_t, const std::string &)> cb) const;

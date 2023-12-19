@@ -64,7 +64,6 @@ class TypeSpecifierImpl {
   const llvm::DataLayout dl;
   const TypeDictionary type_dict;
   std::unordered_map<llvm::StructType *, size_t> type_to_id;
-  std::vector<llvm::StructType *> id_to_type;
   std::unordered_map<void *, llvm::MDNode *> type_to_md;
   std::unordered_map<llvm::MDNode *, TypeSpec> md_to_type;
 

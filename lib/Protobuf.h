@@ -57,9 +57,6 @@ class ProtobufTranslator {
   std::unordered_map<std::int64_t, TypeSpec> &type_map;
   std::unordered_map<std::int64_t, std::string> &type_names;
 
-  anvill::Result<TypeSpec, std::string>
-  DecodeType(const ::specification::TypeSpec &obj) const;
-
   anvill::Result<TypeSpec, std::string> DecodeType(
       const ::specification::TypeSpec &obj,
       const std::unordered_map<std::int64_t, ::specification::TypeSpec> &map,
@@ -141,6 +138,9 @@ class ProtobufTranslator {
       const ::google::protobuf::Map<std::int64_t, ::specification::TypeSpec>
           &map,
       const ::google::protobuf::Map<std::int64_t, std::string> &names);
+
+  Result<TypeSpec, std::string>
+  DecodeType(const ::specification::TypeSpec &obj) const;
 };
 
 }  // namespace anvill

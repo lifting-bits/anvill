@@ -467,7 +467,7 @@ ProtobufTranslator::DecodeType(const ::specification::TypeSpec &obj) const {
   }
   if (obj.has_alias()) {
     if (this->type_names.count(obj.alias())) {
-      TypeSpec res = TypeName(type_names.at(obj.alias()));
+      TypeSpec res = TypeName(type_names.at(obj.alias()), obj.alias());
       return res;
     } else if (this->type_map.count(obj.alias())) {
       TypeSpec tspec = this->type_map.at(obj.alias());
@@ -816,7 +816,7 @@ anvill::Result<TypeSpec, std::string> ProtobufTranslator::DecodeType(
     auto alias = obj.alias();
 
     if (named_types.contains(alias)) {
-      TypeSpec tname = TypeName(named_types.at(alias));
+      TypeSpec tname = TypeName(named_types.at(alias), obj.alias());
       return tname;
     }
 
