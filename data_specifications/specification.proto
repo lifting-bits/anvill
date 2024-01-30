@@ -278,6 +278,9 @@ message CodeBlock {
   uint32 size = 5;
   map<string, uint64> context_assignments = 6;
   uint64 uid = 7;
+  // address may not correspond to actual basic-blocks
+  // so we store the real one here
+  uint64 bb_addr = 8;
 }
 
 message Variables {

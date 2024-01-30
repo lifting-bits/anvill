@@ -64,6 +64,7 @@ namespace anvill {
 
 struct CodeBlock {
   uint64_t addr;
+  uint64_t bb_addr;
   uint32_t size;
   std::unordered_set<Uid> outgoing_edges;
   // The set of context assignments that occur at the entry point to this block.

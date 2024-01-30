@@ -652,6 +652,7 @@ void ProtobufTranslator::ParseCFGIntoFunction(
     }
     CodeBlock nblk = {
         blk.second.address(),
+        blk.second.bb_addr(),
         blk.second.size(),
         tmp,
         {blk.second.context_assignments().begin(),
