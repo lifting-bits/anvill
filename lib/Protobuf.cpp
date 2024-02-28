@@ -933,7 +933,9 @@ Result<std::monostate, std::string> ProtobufTranslator::DecodeTypeMap(
 
         std::string name = names.at(k);
         auto res = getOrCreateNamedStruct(this->context, name);
-        res->setBody(sty->elements());
+        if (res->isOpaque()) {
+          res->setBody(sty->elements());
+        }
       }
       type_names[k] = names.at(k);
     } else {
