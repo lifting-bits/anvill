@@ -235,11 +235,12 @@ class StackModel {
                                      GetParamDeclSize(var) - 1);
       }
 
-      LOG(FATAL) << "Inserting variable that overlaps with current frame "
+      LOG(ERROR) << "Inserting variable that overlaps with current frame "
                  << var.ordered_locs[0].mem_offset
                  << " with size: " << GetParamDeclSize(var) << " Overlaps with "
                  << oparam->decl.decl.ordered_locs[0].mem_offset
                  << " with size " << GetParamDeclSize(oparam->decl.decl);
+      return;
     }
 
     this->frame.insert({var.ordered_locs[0].mem_offset, {index, var}});
