@@ -198,10 +198,6 @@ target_link_libraries(anvill
 
 add_dependencies(anvill check_git_anvill)
 
-if(ANVILL_ENABLE_PYTHON3_LIBS)
-  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../python" python)
-endif()
-
 # if(ANVILL_ENABLE_TESTS)
 # add_subdirectory("tests")
 # endif()

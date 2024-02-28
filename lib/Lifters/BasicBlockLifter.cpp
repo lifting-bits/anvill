@@ -200,7 +200,7 @@ bool BasicBlockLifter::DoInterProceduralControlFlow(
         auto func = block->getParent();
         auto should_return = func->getArg(kShouldReturnArgNum);
         builder.CreateStore(llvm::Constant::getAllOnesValue(
-          llvm::IntegerType::getInt1Ty(llvm_context)),
+                                llvm::IntegerType::getInt1Ty(llvm_context)),
                             should_return);
       }
     }
@@ -417,7 +417,8 @@ llvm::MDNode *BasicBlockLifter::GetBasicBlockUidAnnotation(Uid uid) const {
 
 llvm::Function *BasicBlockLifter::DeclareBasicBlockFunction() {
   std::string name_ = "func" + std::to_string(decl.address) + "basic_block" +
-                      std::to_string(this->block_def.addr) + "_" + std::to_string(this->block_def.uid.value);
+                      std::to_string(this->block_def.addr) + "_" +
+                      std::to_string(this->block_def.uid.value);
   auto &context = this->semantics_module->getContext();
   llvm::FunctionType *lifted_func_type =
       llvm::dyn_cast<llvm::FunctionType>(remill::RecontextualizeType(
@@ -597,7 +598,8 @@ BasicBlockFunction BasicBlockLifter::CreateBasicBlockFunction() {
   auto pc_ptr = pc_reg->AddressOf(this->state_ptr, ir);
   auto pc_val = this->options.program_counter_init_procedure(
       ir, this->address_type, this->block_def.addr);
-  ir.CreateStore(pc_val, pc_ptr);
+
+  ir.CreateStore(ir.CreateZExtOrTrunc(pc_val, pc_reg_type), pc_ptr);
 
   std::array<llvm::Value *, kNumLiftedBasicBlockArgs> args = {
       this->state_ptr, pc_val, mem_res, next_pc, should_return};
@@ -648,7 +650,8 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     llvm::IRBuilder<> calling_bb_builder(calling_bb);
     auto edge_bb = this->decl.cfg.find(edge_uid);
     CHECK(edge_bb != this->decl.cfg.end());
-    auto &child_lifter = this->flifter.GetOrCreateBasicBlockLifter(edge_bb->second.uid);
+    auto &child_lifter =
+        this->flifter.GetOrCreateBasicBlockLifter(edge_bb->second.uid);
     auto retval = child_lifter.ControlFlowCallBasicBlockFunction(
         caller, calling_bb_builder, this->state_ptr, bbfunc.stack, next_mem);
     if (this->flifter.curr_decl->type->getReturnType()->isVoidTy()) {
@@ -658,7 +661,8 @@ void BasicBlockLifter::TerminateBasicBlockFunction(
     }
 
     auto succ_const = llvm::ConstantInt::get(
-        llvm::cast<llvm::IntegerType>(this->address_type), edge_bb->second.addr);
+        llvm::cast<llvm::IntegerType>(this->address_type),
+        edge_bb->second.addr);
     sw->addCase(succ_const, calling_bb);
   }
 
