@@ -409,6 +409,13 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
     return nullptr;
   }
 
+  // Function has no valid instructions.
+  auto &cfg = decl.cfg;
+  if (cfg.find(decl.entry_uid) == cfg.end()) {
+    LOG(ERROR) << "Function missing entry block " << std::hex << decl.address;
+    return nullptr;
+  }
+
   // This is our higher-level function, i.e. it presents itself more like
   // a function compiled from C/C++, rather than being a three-argument Remill
   // function. In this function, we will stack-allocate a `State` structure,
