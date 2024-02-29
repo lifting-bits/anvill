@@ -436,8 +436,8 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
   // Function has no valid instructions.
   auto &cfg = decl.cfg;
   if (cfg.find(decl.entry_uid) == cfg.end()) {
-    LOG(WARNING) << "Function missing entry block " << std::hex << decl.address;
-    return native_func;
+    LOG(ERROR) << "Function missing entry block " << std::hex << decl.address;
+    return nullptr;
   }
 
 
