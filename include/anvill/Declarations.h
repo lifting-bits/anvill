@@ -8,12 +8,19 @@
 
 #pragma once
 
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Result.h"
@@ -39,7 +46,55 @@ struct Register;
 }  // namespace remill
 namespace anvill {
 
+struct Uid {
+  std::uint64_t value;
+  bool operator==(const Uid &) const = default;
+};
+
+}  // namespace anvill
+
+template <>
+struct std::hash<anvill::Uid> {
+  size_t operator()(const anvill::Uid &uid) const noexcept {
+    return std::hash<uint64_t>()(uid.value);
+  }
+};
+
+namespace anvill {
+
+struct CodeBlock {
+  uint64_t addr;
+  uint32_t size;
+  std::unordered_set<Uid> outgoing_edges;
+  // The set of context assignments that occur at the entry point to this block.
+  // A block may have specific decoding context properties such as "TM=1" (the thumb bit is set)
+  // So we declare the context assignments that occur at the entry point to a block.
+  std::unordered_map<std::string, std::uint64_t> context_assignments;
+  Uid uid;
+};
+
+
 class TypeDictionary;
+
+
+struct LowLoc {
+  const remill::Register *reg{nullptr};
+  const remill::Register *mem_reg{nullptr};
+  std::int64_t mem_offset{0};
+  std::optional<std::uint64_t> size{std::nullopt};
+
+  std::uint64_t Size() const;
+
+  bool operator==(const LowLoc &loc) const = default;
+};
+
+
+struct RelAddr {
+  uint64_t vaddr;
+  std::int64_t disp;
+};
+
+using MachineAddr = std::variant<uint64_t, RelAddr>;
 
 // A value, such as a parameter or a return value. Values are resident
 // in one of two locations: either in a register, represented by a non-
@@ -57,21 +112,24 @@ class TypeDictionary;
 // the caller allocate the space, and pass a pointer to that space into
 // the callee, and so that should be represented using a parameter.
 struct ValueDecl {
-  const remill::Register *reg{nullptr};
-  const remill::Register *mem_reg{nullptr};
-  std::int64_t mem_offset{0};
+  std::vector<LowLoc> ordered_locs;
 
   TypeSpec spec_type;
 
   // Type of this value.
   llvm::Type *type{nullptr};
+
+  bool operator==(const ValueDecl &) const = default;
 };
+
 
 // A value declaration corresponding with a named parameter.
 struct ParameterDecl : public ValueDecl {
 
   // Name of the parameter.
   std::string name;
+
+  bool operator==(const ParameterDecl &) const = default;
 };
 
 // A typed location in memory, that isn't actually code. This roughly
@@ -90,9 +148,28 @@ struct VariableDecl {
   // Address of this global variable.
   std::uint64_t address{0};
 
+  MachineAddr binary_addr{};
+
   // Declare this global variable in an LLVM module.
   llvm::GlobalVariable *DeclareInModule(const std::string &name,
                                         llvm::Module &) const;
+};
+
+struct OffsetDomain {
+  ValueDecl target_value;
+  std::int64_t stack_offset;
+};
+
+struct ConstantDomain {
+  ValueDecl target_value;
+  std::uint64_t value;
+  bool should_taint_by_pc;
+
+  bool operator==(const ConstantDomain &) const = default;
+};
+
+struct SpecStackOffsets {
+  std::vector<OffsetDomain> affine_equalities;
 };
 
 // A declaration for a callable entity.
@@ -136,7 +213,7 @@ struct CallableDecl {
   // NOTE(pag): In the case of the AMD64 Itanium ABI, we expect the
   //            specification to include `RDX` as an explicit return
   //            value when the function might throw an exception.
-  std::vector<ValueDecl> returns;
+  ValueDecl returns;
 
   // Is this a noreturn function, e.g. like `abort`?
   bool is_noreturn{false};
@@ -152,11 +229,11 @@ struct CallableDecl {
   // Interpret `target` as being the function to call, and call it from within
   // a basic block in a lifted bitcode function. Returns the new value of the
   // memory pointer.
-  llvm::Value *
-  CallFromLiftedBlock(llvm::Value *target, const anvill::TypeDictionary &types,
-                      const remill::IntrinsicTable &intrinsics,
-                      llvm::BasicBlock *block, llvm::Value *state_ptr,
-                      llvm::Value *mem_ptr) const;
+  llvm::Value *CallFromLiftedBlock(llvm::Value *target,
+                                   const anvill::TypeDictionary &types,
+                                   const remill::IntrinsicTable &intrinsics,
+                                   llvm::IRBuilder<> &, llvm::Value *state_ptr,
+                                   llvm::Value *mem_ptr) const;
 
   // Try to create a callable decl from a protobuf default callable decl
   // specification. Returns a string error if something went wrong.
@@ -168,6 +245,158 @@ struct CallableDecl {
   DecodeFromPB(const remill::Arch *arch, const std::string &pb);
 };
 
+
+// Basic block contexts impose an ordering on live values s.t. shared Parameters between
+// live exits and entries
+struct BasicBlockVariable {
+  ParameterDecl param;
+  bool live_at_entry;
+  bool live_at_exit;
+};
+
+class BasicBlockContext {
+ public:
+  size_t GetParamIndex(const ParameterDecl &decl) const;
+
+  llvm::Value *ProvidePointerFromStruct(llvm::IRBuilder<> &ir,
+                                        llvm::StructType *sty, llvm::Value *,
+                                        const ParameterDecl &decl) const;
+
+  llvm::Argument *
+  ProvidePointerFromFunctionArgs(llvm::Function *,
+                                 const ParameterDecl &decl) const;
+
+  virtual ~BasicBlockContext() = default;
+
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const = 0;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const = 0;
+
+  virtual const std::vector<ConstantDomain> &GetConstantsAtEntry() const = 0;
+  virtual const std::vector<ConstantDomain> &GetConstantsAtExit() const = 0;
+
+  virtual size_t GetStackSize() const = 0;
+
+  virtual size_t GetMaxStackSize() const = 0;
+
+  virtual size_t GetPointerDisplacement() const = 0;
+
+  virtual uint64_t GetParentFunctionAddress() const = 0;
+
+  virtual ValueDecl ReturnValue() const = 0;
+
+  virtual const std::vector<ParameterDecl> &GetParams() const = 0;
+
+  // Deduplicates locations and ensures there are no overlapping decls
+  // A valid parameter list is a set of non overlapping a-locs with distinct names.
+  std::vector<BasicBlockVariable> LiveParamsAtEntryAndExit() const;
+
+
+  std::vector<BasicBlockVariable> LiveBBParamsAtEntry() const;
+  std::vector<BasicBlockVariable> LiveBBParamsAtExit() const;
+
+ protected:
+  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const = 0;
+  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const = 0;
+};
+
+
+/// An abstract stack is made up of components with a bytesize, these components allow us to split the stack at offsets
+/// in particular this is helpful for splitting out stack space beyond the locals for things like return addresses
+struct StackComponent {
+  size_t size;
+  llvm::Value *stackptr;
+};
+
+class AbstractStack {
+ private:
+  llvm::LLVMContext &context;
+  bool stack_grows_down;
+  std::vector<llvm::Type *> stack_types;
+  std::vector<StackComponent> components;
+  size_t total_size;
+  size_t pointer_displacement;
+
+ public:
+  // The displacement required to make all offset accesses positive
+  size_t GetPointerDisplacement() const {
+    return pointer_displacement;
+  };
+
+
+  // The pointer displacement is the size above the zero point of the stack, typically return pointer offset + parameter size
+  AbstractStack(llvm::LLVMContext &context,
+                std::vector<StackComponent> components, bool stack_grows_down,
+                size_t pointer_displacement);
+
+  std::optional<size_t>
+  StackOffsetFromStackPointer(std::int64_t stack_off) const;
+
+
+  std::int64_t StackPointerFromStackOffset(size_t offset) const;
+
+
+  std::optional<std::int64_t>
+  StackPointerFromStackCompreference(llvm::Value *) const;
+
+  static llvm::Type *StackTypeFromSize(llvm::LLVMContext &context, size_t size);
+
+  //llvm::Type *StackType() const;
+
+  std::optional<llvm::Value *>
+  PointerToStackMemberFromOffset(llvm::IRBuilder<> &ir,
+                                 std::int64_t stack_off) const;
+};
+
+struct FunctionDecl;
+class SpecBlockContext : public BasicBlockContext {
+ private:
+  const FunctionDecl &decl;
+  SpecStackOffsets offsets_at_entry;
+  SpecStackOffsets offsets_at_exit;
+  std::vector<ConstantDomain> constants_at_entry;
+  std::vector<ConstantDomain> constants_at_exit;
+  std::vector<ParameterDecl> live_params_at_entry;
+  std::vector<ParameterDecl> live_params_at_exit;
+  std::vector<ParameterDecl> params;
+
+ public:
+  SpecBlockContext(const FunctionDecl &decl, SpecStackOffsets offsets_at_entry,
+                   SpecStackOffsets offsets_at_exit,
+                   std::vector<ConstantDomain> constants_at_entry,
+                   std::vector<ConstantDomain> constants_at_exit,
+                   std::vector<ParameterDecl> live_params_at_entry,
+                   std::vector<ParameterDecl> live_params_at_exit);
+
+  virtual const SpecStackOffsets &GetStackOffsetsAtEntry() const override;
+  virtual const SpecStackOffsets &GetStackOffsetsAtExit() const override;
+
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtEntry() const override;
+  virtual const std::vector<ConstantDomain> &
+  GetConstantsAtExit() const override;
+
+  virtual ValueDecl ReturnValue() const override;
+
+  virtual uint64_t GetParentFunctionAddress() const override;
+
+  virtual size_t GetStackSize() const override;
+
+  virtual size_t GetMaxStackSize() const override;
+
+  virtual size_t GetPointerDisplacement() const override;
+
+  virtual const std::vector<ParameterDecl> &GetParams() const override;
+
+ protected:
+  virtual const std::vector<ParameterDecl> &LiveParamsAtEntry() const override;
+  virtual const std::vector<ParameterDecl> &LiveParamsAtExit() const override;
+};
+
+
+struct TypeHint {
+  uint64_t target_addr;
+  ValueDecl hint;
+};
 // A function decl, as represented at a "near ABI" level. To be specific,
 // not all C, and most C++ decls, as written would be directly translatable
 // to this. This ought nearly represent how LLVM represents a C/C++ function
@@ -183,9 +412,13 @@ struct CallableDecl {
 //            Thumb code in an Arm program, or x86 code in a bootloader that
 //            brings up amd64 code, etc.).
 struct FunctionDecl : public CallableDecl {
+  friend class SpecBlockContext;
+
  public:
   // Address of this function in memory.
   std::uint64_t address{0};
+  // Entry block UID
+  Uid entry_uid{0};
 
   // The maximum number of bytes of redzone afforded to this function
   // (if it doesn't change the stack pointer, or, for example, writes
@@ -195,10 +428,40 @@ struct FunctionDecl : public CallableDecl {
   bool lift_as_decl{false};
   bool is_extern{false};
 
-  // The set of context assignments that occur at the entry point to this function.
-  // A called function may have specific decoding context properties such as "TM=1" (the thumb bit is set)
-  // So we declare the context assignments that occur at the entry point to a function.
-  std::unordered_map<std::string, std::uint64_t> context_assignments;
+  // These are the blocks contained within the function representing the CFG.
+  std::unordered_map<Uid, CodeBlock> cfg;
+
+  std::unordered_map<std::string, ParameterDecl> locals;
+
+  std::unordered_map<Uid, SpecStackOffsets> stack_offsets_at_entry;
+
+  std::unordered_map<Uid, SpecStackOffsets> stack_offsets_at_exit;
+
+  std::unordered_map<Uid, std::vector<ParameterDecl>> live_regs_at_entry;
+
+  std::unordered_map<Uid, std::vector<ParameterDecl>> live_regs_at_exit;
+
+  std::unordered_map<Uid, std::vector<ConstantDomain>> constant_values_at_entry;
+
+  std::unordered_map<Uid, std::vector<ConstantDomain>> constant_values_at_exit;
+
+  // sorted vector of hints
+  std::vector<TypeHint> type_hints;
+
+  std::uint64_t stack_depth;
+
+  std::uint64_t maximum_depth;
+
+  std::int64_t ret_ptr_offset{0};
+
+  std::int64_t parameter_offset{0};
+
+  std::size_t parameter_size{0};
+
+  MachineAddr binary_addr{};
+
+
+  std::vector<ParameterDecl> in_scope_variables;
 
   // Declare this function in an LLVM module.
   llvm::Function *DeclareInModule(std::string_view name, llvm::Module &) const;
@@ -210,9 +473,15 @@ struct FunctionDecl : public CallableDecl {
     return Create(func, arch.get());
   }
 
+  size_t GetPointerDisplacement() const;
+
   // Create a function declaration from an LLVM function.
   static Result<FunctionDecl, std::string> Create(llvm::Function &func,
                                                   const remill::Arch *arch);
+
+  SpecBlockContext GetBlockContext(Uid uid) const;
+
+  void AddBBContexts(std::unordered_map<Uid, SpecBlockContext> &contexts) const;
 };
 
 // A call site decl, as represented at a "near ABI" level. This is like a

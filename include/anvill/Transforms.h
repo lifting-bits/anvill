@@ -178,18 +178,6 @@ void AddRemoveUnusedFPClassificationCalls(llvm::FunctionPassManager &fpm);
 // various atomic read-modify-write variants into LLVM loads and stores.
 void AddLowerRemillMemoryAccessIntrinsics(llvm::FunctionPassManager &fpm);
 
-// Type information from prior lifting efforts, or from front-end tools
-// (e.g. Binary Ninja) is plumbed through the system by way of calls to
-// intrinsic functions such as `__anvill_type<blah>`. These function calls
-// don't interfere (too much) with optimizations, and they also survive
-// optimizations. In general, the key role that they serve is to enable us to
-// propagate through pointer type information at an instruction/register
-// granularity.
-//
-// These function calls need to be removed/lowered into `inttoptr` or `bitcast`
-// instructions.
-void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm);
-
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is
 // likely to always succeed for x86(-64) and aarch64, due to their support
@@ -245,7 +233,7 @@ void AddRecoverBasicStackFrame(llvm::FunctionPassManager &fpm,
 // for later passes to benefit from.
 void AddConvertAddressesToEntityUses(
     llvm::FunctionPassManager &fpm, const CrossReferenceResolver &resolver,
-    std::optional<unsigned> pc_annot_id=std::nullopt);
+    std::optional<unsigned> pc_annot_id = std::nullopt);
 
 // Some machine code instructions explicitly introduce undefined values /
 // behavior. Often, this is a result of the CPUs of different steppings of
@@ -364,9 +352,6 @@ void AddBranchRecovery(llvm::FunctionPassManager &fpm);
 
 void AddRemoveFailedBranchHints(llvm::FunctionPassManager &fpm);
 
-
-void AddLowerSwitchIntrinsics(llvm::FunctionPassManager &fpm,
-                              const MemoryProvider &memprov);
 
 // Remove constant expressions of the stack pointer that are not themselves
 // resolvable to references. For example, comparisons between one or two

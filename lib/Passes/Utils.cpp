@@ -8,8 +8,9 @@
 
 #include "Utils.h"
 
+#include <anvill/ABI.h>
 #include <glog/logging.h>
-#include <llvm/ADT/Triple.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -17,6 +18,7 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/TargetParser/Triple.h>
 #include <remill/BC/Util.h>
 
 namespace anvill {
@@ -46,7 +48,8 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(
+          ir.getContext(), dest_ptr_ty->getAddressSpace());
       val_to_convert =
           llvm::ConstantExpr::getAddrSpaceCast(val_to_convert, new_ptr_ty);
       ptr_ty = new_ptr_ty;
@@ -62,7 +65,7 @@ llvm::Value *ConvertConstantToPointer(llvm::IRBuilder<> &ir,
     // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinValue() < pointer_width) {
       int_ty =
           llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       val_to_convert = llvm::ConstantExpr::getZExt(val_to_convert, int_ty);
@@ -89,7 +92,8 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
   // Cast a pointer to a pointer type.
   if (auto ptr_ty = llvm::dyn_cast<llvm::PointerType>(type)) {
     if (ptr_ty->getAddressSpace() != dest_ptr_ty->getAddressSpace()) {
-      const auto new_ptr_ty = llvm::PointerType::get(ir.getContext(), dest_ptr_ty->getAddressSpace());
+      const auto new_ptr_ty = llvm::PointerType::get(
+          ir.getContext(), dest_ptr_ty->getAddressSpace());
       auto dest = ir.CreateAddrSpaceCast(val_to_convert, new_ptr_ty);
       CopyMetadataTo(val_to_convert, dest);
       val_to_convert = dest;
@@ -100,8 +104,8 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
       return val_to_convert;
 
     } else {
-      auto dest = remill::BuildPointerToOffset(
-          ir, val_to_convert, 0, dest_ptr_ty);
+      auto dest =
+          remill::BuildPointerToOffset(ir, val_to_convert, 0, dest_ptr_ty);
       CopyMetadataTo(val_to_convert, dest);
       return dest;
     }
@@ -109,7 +113,7 @@ llvm::Value *ConvertValueToPointer(llvm::IRBuilder<> &ir,
     // Cast an integer to a pointer type.
   } else if (auto int_ty = llvm::dyn_cast<llvm::IntegerType>(type)) {
     const auto pointer_width = dl.getPointerTypeSizeInBits(dest_ptr_ty);
-    if (int_ty->getPrimitiveSizeInBits().getKnownMinSize() < pointer_width) {
+    if (int_ty->getPrimitiveSizeInBits().getKnownMinValue() < pointer_width) {
       int_ty =
           llvm::Type::getIntNTy(val_to_convert->getContext(), pointer_width);
       auto dest = ir.CreateZExt(val_to_convert, int_ty);
@@ -180,6 +184,7 @@ bool BasicBlockIsSane(llvm::BasicBlock *block) {
   return true;
 }
 
+
 llvm::PreservedAnalyses ConvertBoolToPreserved(bool modified) {
   return modified ? llvm::PreservedAnalyses::none()
                   : llvm::PreservedAnalyses::all();
@@ -226,6 +231,33 @@ llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module) {
   }
 
   return func;
+}
+
+llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *mod) {
+  auto tgt_type =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(mod->getContext()), true);
+  if (auto res = mod->getFunction(anvill::kAnvillBasicBlockReturn)) {
+    return res;
+  }
+
+
+  return llvm::Function::Create(tgt_type, llvm::GlobalValue::ExternalLinkage,
+                                anvill::kAnvillBasicBlockReturn, mod);
+}
+
+std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func) {
+  std::optional<llvm::ReturnInst *> r = std::nullopt;
+  for (auto &insn : llvm::instructions(func)) {
+    if (auto nret = llvm::dyn_cast<llvm::ReturnInst>(&insn)) {
+      if (r) {
+        return std::nullopt;
+      } else {
+        r = nret;
+      }
+    }
+  }
+
+  return r;
 }
 
 }  // namespace anvill

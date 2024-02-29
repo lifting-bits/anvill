@@ -180,24 +180,27 @@ llvm::Constant *DataLifter::LiftData(const VariableDecl &decl,
                    << std::dec;
         break;
       }
-
       bytes.push_back(byte);
     }
   }
 
-  if (bytes_accessable) {
-    value = lifter_context.value_lifter.Lift(
-        std::string_view(reinterpret_cast<char *>(bytes.data()), bytes.size()),
-        type, lifter_context, decl.address);
-  }
-
-
   auto is_constant = first_byte_perms == BytePermission::kReadable ||
                      first_byte_perms == BytePermission::kReadableExecutable;
 
-  return new llvm::GlobalVariable(*options.module, type, is_constant,
-                                  llvm::GlobalValue::ExternalLinkage, value,
-                                  var_name);
+  auto md = type_specifier.EncodeToMetadata(decl.spec_type);
+  auto gvar = new llvm::GlobalVariable(*options.module, type, is_constant,
+                                       llvm::GlobalValue::ExternalLinkage,
+                                       nullptr, var_name);
+  gvar->setMetadata("anvill.type", md);
+  lifter_context.AddEntity(gvar, decl.address);
+
+  if (bytes_accessable) {
+    value = lifter_context.value_lifter.Lift(bytes, type, lifter_context,
+                                             decl.address);
+  }
+  gvar->setInitializer(value);
+
+  return gvar;
 }
 
 // Declare a lifted a variable. Will return `nullptr` if the memory is

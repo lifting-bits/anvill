@@ -14,6 +14,7 @@ enum Arch {
   ARCH_AARCH32 = 8;
   ARCH_SPARC32 = 9;
   ARCH_SPARC64 = 10;
+  ARCH_PPC = 11;
 }
 
 enum OS {
@@ -93,20 +94,14 @@ message TypeSpec {
 
 message Register {
   string register_name = 1;
+  optional uint64 subreg_sz = 2;
 }
 
 message Memory {
   optional string base_reg = 1;
   int64 offset = 2;
+  uint64 size = 3;
 }
-
-message Value {
-  oneof inner_value {
-    Register reg = 1;
-    Memory mem = 2;
-  }
-}
-
 
 message Variable {
   repeated Value values = 1;
@@ -158,16 +153,208 @@ message Callable {
   ReturnStackPointer return_stack_pointer = 10;
 }
 
+
+
+message Constant {
+  uint64 value = 1;
+  bool is_tainted_by_pc = 2;
+}
+
+message ValueDomain  {
+  oneof inner {
+    HighSymbol symb = 1;
+    int64 stack_disp = 2; 
+    Constant constant = 3;
+  }
+}
+
+// These arent quite affine relations we just store 
+// relationships of Reg=Reg'+Offset where Reg' is the register value at entry 
+// to the function. 
+// Maybe we want to get more complicated when doing the analysis, 
+// but this is kinda 
+// what we want at the end to determine stack relationships. 
+// This very closely matches ghidra's SymbolicPropogator: 
+// https://ghidra.re/ghidra_docs/api/ghidra/program/util/SymbolicPropogator.Value.html#getRelativeRegister()
+message ValueMapping {
+  Variable target_value = 1;
+  ValueDomain curr_val = 2;
+}
+
+enum HighLoc {
+  HIGH_LOC_UNSPECIFIED = 0;
+  HIGH_LOC_PARAM = 1;
+  HIGH_LOC_LOCAL = 2;
+}
+
+
+
+message SymbolMapping {
+  HighSymbol high_loc = 1;
+  Variable low_loc = 2;
+}
+
+message HighSymbol {
+  string name = 1;
+  HighLoc location = 2;
+}
+
+message Value {
+  oneof inner_value {
+    Register reg = 1;
+    Memory mem = 2;
+  }
+}
+
+/*
+  block1:
+    u1 = param_1 + 3
+    STORE u1, [sp-4]
+    r1 = param_1
+  block2:
+    u1 = LOAD [sp-4]
+    r2 = r1 + u1
+    (live r2)
+*/
+
+/*
+  Current lift:
+ block1(param_1, reg_state):
+  store param_1 + 3,  localSub4
+  store param_1, r1(reg_state)
+
+block2(reg_state):
+  %1 = load localSub4
+  %2 = load r1(reg_state) 
+  %3 = iadd %1, %2
+  store  %3, r2(reg_state)
+
+  This is a world where high variables are exactly bound to locations
+*/
+
+/*
+  With affine equalities
+  So r1 and the var are still live so need to copy their state
+ block1(param_1, reg_state):
+  store param_1 + 3,  localSub4
+  store param_1, r1(reg_state)
+
+
+  // here tho we have the affine equalities r1 = param1 local_sub=param_1+3
+  // So we could do
+block2(param_1, reg_state):
+  %1 = param_1+3
+  %2 = iadd param_1, %1
+  store  %2, r2(reg_state)
+
+
+But then what hppens if the user patches block1 
+to 
+ block1(param_1, reg_state):
+  store param_1 + 2,  localSub4
+  store r2, r1(reg_state) .... we cant really support multiple block patches at once 
+  */
+
+message BlockContext {
+  // Affine equalities between values
+  // and high symbols at entry to
+  // the block
+  repeated ValueMapping symvals_at_entry = 1;
+  repeated ValueMapping symvals_at_exit = 2;
+  
+  repeated Parameter live_at_entries = 3;
+  repeated Parameter live_at_exits = 4;
+}
+
+
+
+message CodeBlock {
+  uint64 address = 1;
+  string name = 2;
+  // Incoming block(s) by uid
+  repeated uint64 incoming_blocks = 3;
+  // Outgoing block(s) by uid
+  repeated uint64 outgoing_blocks = 4;
+  uint32 size = 5;
+  map<string, uint64> context_assignments = 6;
+  uint64 uid = 7;
+}
+
+message Variables {
+  repeated Variable vars = 1;
+}
+
+message StackEffects {
+  map<uint64, Variables> allocations = 1;
+  map<uint64, Variables> frees = 2;
+  repeated Variable missed_allocs = 3;
+  repeated Variable missed_frees = 4;
+}
+
+
+message StackFrame {
+  // The size of the "static frame": locals + params + return_addr
+  uint64 frame_size = 1;
+  // Stack frame pointer depths are relative to the return address offset
+  int64 return_address_offset = 2;
+  // parameter size allows 
+  //  us to compute the 
+  // stack depth of the lowest address when the stack grows down
+  uint64 parameter_size = 3;
+
+  // the maximum depth the stack reaches beyond the return_addr
+  uint64 max_frame_depth = 4;
+
+  int64 parameter_offset = 5;
+}
+
+message TypeHint {
+  uint64 target_addr = 1;
+  Variable target_var = 2;
+}
+
+message RelativeAddress {
+  uint64 entry_vaddr = 1;
+  int64 displacement = 2;
+}
+
+message ProgramAddress {
+  oneof inner {
+    uint64 internal_address = 1;
+    RelativeAddress ext_address = 2;
+  }
+}
+
 message Function {
   uint64 entry_address = 1;
-  map<string, uint64> context_assignments = 2;
-  FunctionLinkage func_linkage = 3; 
+  uint64 entry_uid = 12;
+  FunctionLinkage func_linkage = 3;
   Callable callable = 4;
+  // Mapping of unique ID to codeblock
+  map<uint64, CodeBlock> blocks = 5;
+  map<string, Variable> local_variables = 6;
+
+  // Keys are unique IDs of code blocks, each block
+  // may have a corresponding context
+  map<uint64, BlockContext> block_context = 7;
+  StackEffects stack_effects = 8;
+  StackFrame frame = 9;
+
+  repeated Parameter in_scope_vars = 10;
+
+  // an instruction can have a set of typehints that says this loc is known 
+  // to have this type after this instruction, these will be translated into 
+  // a low lifting of that location with spec type metadata
+  repeated TypeHint type_hints = 11;
+  ProgramAddress binary_addr = 13;
 }
+
+
 
 message GlobalVariable {
   TypeSpec type = 1;
   uint64 address = 2;
+  ProgramAddress binary_address = 3;
 }
 
 message Symbol {
@@ -184,7 +371,6 @@ message MemoryRange {
 
 message JumpTarget {
   uint64 address = 1;
-  map<string, uint64> context_assignments = 2;
 }
 
 message Jump {
@@ -198,7 +384,8 @@ message Call {
   optional uint64 return_address = 2;
   bool is_tailcall = 3;
   bool stop = 4;
-  optional uint64 target_address = 5;
+  bool noreturn = 5;
+  optional uint64 target_address = 6;
 }
 
 message Return {
@@ -230,4 +417,8 @@ message Specification {
   repeated MemoryRange memory_ranges = 7;
   ControlFlowOverrides overrides = 8;
   map<int64, TypeSpec> type_aliases = 9;
+  string image_name = 10;
+  uint64 image_base = 11;
+  repeated string required_globals = 12;
+  map<int64, string> type_names = 13;
 }

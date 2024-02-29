@@ -25,8 +25,8 @@ CURR_DIR=$( pwd )
 BUILD_DIR="${CURR_DIR}/anvill-build"
 REMILL_BUILD_DIR="${CURR_DIR}/remill-build"
 INSTALL_DIR=/usr/local
-LLVM_VERSION=llvm-15
-CXX_COMMON_VERSION="0.2.12"
+LLVM_VERSION=llvm-17
+CXX_COMMON_VERSION="0.6.0"
 OS_VERSION=unknown
 ARCH_VERSION=unknown
 BUILD_FLAGS=
@@ -175,11 +175,14 @@ function DownloadLibraries
 
     #BUILD_FLAGS="${BUILD_FLAGS} -DCMAKE_OSX_SYSROOT=${sdk_root}"
     # Min version supported
-    OS_VERSION="macos-11"
-    XCODE_VERSION="13.0"
-    if [[ "$(sw_vers -productVersion)" == "11."* ]]; then
-      echo "Found MacOS Big Sur"
-      OS_VERSION="macos-11"
+    OS_VERSION="macos-13"
+    XCODE_VERSION="15.0"
+    if [[ "${SYSTEM_VERSION}" == "13.*" ]]; then
+      echo "Found MacOS Ventura"
+      OS_VERSION="macos-13"
+    elif [[ "${SYSTEM_VERSION}" == "12.*" ]]; then
+      echo "Found MacOS Monterey"
+      OS_VERSION="macos-12"
     else
       echo "WARNING: ****Likely unsupported MacOS Version****"
       echo "WARNING: ****Using ${OS_VERSION}****"
@@ -244,6 +247,7 @@ function BuildRemill
         -DCMAKE_TOOLCHAIN_FILE="${DOWNLOAD_DIR}/${LIBRARY_VERSION}/scripts/buildsystems/vcpkg.cmake" \
         -DVCPKG_TARGET_TRIPLET="${VCPKG_TARGET_TRIPLET}" \
         -G Ninja \
+        ${BUILD_FLAGS} \
         ${SRC_DIR}/remill
 
     cmake --build . --target install
@@ -338,12 +342,8 @@ function Package
 function GetLLVMVersion
 {
   case ${1} in
-    14)
-      LLVM_VERSION=llvm-14
-      return 0
-      ;;
-    15)
-      LLVM_VERSION=llvm-15
+    17)
+      LLVM_VERSION=llvm-17
       return 0
     ;;
     *)
@@ -361,7 +361,7 @@ function Help
   echo ""
   echo "Options:"
   echo "  --prefix           Change the default (${INSTALL_DIR}) installation prefix."
-  echo "  --llvm-version     Change the default (15) LLVM version."
+  echo "  --llvm-version     Change the default (17) LLVM version."
   echo "  --build-dir        Change the default (${BUILD_DIR}) build directory."
   echo "  --debug            Build with Debug symbols."
   echo "  --extra-cmake-args Extra CMake arguments to build with."

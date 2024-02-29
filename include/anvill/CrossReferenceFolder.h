@@ -120,6 +120,10 @@ class CrossReferenceFolder {
   CrossReferenceFolder &operator=(const CrossReferenceFolder &) = default;
   CrossReferenceFolder &operator=(CrossReferenceFolder &&) noexcept = default;
 
+ protected:
+  virtual std::optional<ResolvedCrossReference>
+  ResolveValueCallback(llvm::Value *) const;
+
  private:
   CrossReferenceFolder(void) = delete;
 

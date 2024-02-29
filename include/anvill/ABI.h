@@ -82,4 +82,18 @@ extern const std::string kAnvillDataProvenanceFunc;
 // `alloca`.
 extern const std::string kAnvillStackZero;
 
+// The alloca for the abstract stack prior to splitting at the return address. TODO(Ian): maybe we are fine to
+// use this to queue off of then just move it after the split
+extern const std::string kStackMetadata;
+
+extern const std::string kBasicBlockUidMetadata;
+
+
+/// Intrinsic that acts like a return instruction but leaves both the basic block and the parent function.
+extern const std::string kAnvillBasicBlockReturn;
+
+
+// Instrinsic that acts as a goto to an address
+extern const std::string kAnvillGoto;
+
 }  // namespace anvill

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <llvm/ADT/ArrayRef.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -148,6 +150,15 @@ class StackFrameRecoveryOptions {
   bool stack_pointer_is_negative{false};
 };
 
+using ProgramCounterInitProcedure =
+    std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::Type *, uint64_t)>;
+
+using StackPointerInitProcedure = std::function<llvm::Value *(
+    llvm::IRBuilderBase &, const remill::Register *, uint64_t)>;
+
+using ReturnAddressInitProcedure = std::function<llvm::Value *(
+    llvm::IRBuilderBase &, llvm::IntegerType *, uint64_t)>;
+
 // Options that direct the behavior of the code and data lifters.
 class LifterOptions {
  public:
@@ -155,31 +166,37 @@ class LifterOptions {
   //
   //    (ptrtoint __anvill_sp)
   //
-  static llvm::Value *SymbolicStackPointerInit(
+  static llvm::Value *SymbolicStackPointerInitWithOffset(
       llvm::IRBuilderBase &ir, const remill::Register *sp_reg,
-      uint64_t func_address);
+      uint64_t func_address, std::int64_t offset);
+
+  static llvm::Value *SymbolicStackPointerInit(llvm::IRBuilderBase &ir,
+                                               const remill::Register *sp_reg,
+                                               uint64_t func_address);
 
   // Initialize the program counter with a constant expression of the form:
   //
   //    (add (ptrtoint __anvill_pc), <addr>)
   //
-  static llvm::Value *SymbolicProgramCounterInit(
-      llvm::IRBuilderBase &ir, const remill::Register *pc_reg,
-      uint64_t func_address);
+  static llvm::Value *SymbolicProgramCounterInit(llvm::IRBuilderBase &ir,
+                                                 llvm::Type *address_type,
+                                                 uint64_t func_address);
 
   // Initialize the return address with a constant expression of the form:
   //
   //    (ptrtoint __anvill_ra)
   //
-  static llvm::Value *SymbolicReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *SymbolicReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
   // Initialize the return address with the result of:
   //
   //    call llvm.returnaddress(0)
   //
-  static llvm::Value *ConcreteReturnAddressInit(
-      llvm::IRBuilderBase &ir, llvm::IntegerType *type, uint64_t func_address);
+  static llvm::Value *ConcreteReturnAddressInit(llvm::IRBuilderBase &ir,
+                                                llvm::IntegerType *type,
+                                                uint64_t func_address);
 
 
   inline explicit LifterOptions(
@@ -200,7 +217,9 @@ class LifterOptions {
         add_breakpoints(false),
         track_provenance(false),
         //TODO(ian): This should be initialized by an OS + arch pair
-        stack_pointer_is_signed(false), should_remove_anvill_pc(true) {
+        stack_pointer_is_signed(false),
+        should_remove_anvill_pc(true),
+        should_inline_basic_blocks(false) {
     CheckModuleContextMatchesArch();
   }
 
@@ -241,23 +260,17 @@ class LifterOptions {
   //      (add (ptrtoint __anvill_pc) <address>)
   //
   // Otherwise, a concrete integer is used, i.e. `<address>`.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
-                              uint64_t)>
-      program_counter_init_procedure;
+  ProgramCounterInitProcedure program_counter_init_procedure;
 
   // Procedure for producing an initial value of the stack pointer on entry
   // to a function. An `IRBuilderBase` is provided for building values within
   // the entry block of the function at the given address.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, const remill::Register *,
-                              uint64_t)>
-      stack_pointer_init_procedure;
+  StackPointerInitProcedure stack_pointer_init_procedure;
 
   // Procedure for producing an initial value of the return address on entry
   // to a function. An `IRBuilderBase` is provided for building values within
   // the entry block of the function at the given address.
-  std::function<llvm::Value *(llvm::IRBuilderBase &, llvm::IntegerType *,
-                              uint64_t)>
-      return_address_init_procedure;
+  ReturnAddressInitProcedure return_address_init_procedure;
 
   StackFrameRecoveryOptions stack_frame_recovery_options;
 
@@ -276,7 +289,9 @@ class LifterOptions {
   // Should we treat the stack pointer as signed when simplifying sign flags.
   bool stack_pointer_is_signed : 1;
 
-  bool should_remove_anvill_pc: 1;
+  bool should_remove_anvill_pc : 1;
+
+  bool should_inline_basic_blocks : 1;
 
  private:
   LifterOptions(void) = delete;
@@ -350,7 +365,8 @@ class ValueLifter {
   // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
   // of type `type_of_data`. `loc_ea`, if non-null, is the address at which
   // `data` appears.
-  llvm::Constant *Lift(std::string_view data, llvm::Type *type_of_data) const;
+  llvm::Constant *Lift(llvm::ArrayRef<uint8_t> data,
+                       llvm::Type *type_of_data) const;
 
   // Interpret `ea` as being a pointer to a value of type `value_type` in the
   // address space `address_space`.
@@ -358,7 +374,7 @@ class ValueLifter {
   // Returns an `llvm::Constant *` if the pointer is associated with a
   // known or plausible entity, and an `nullptr` otherwise.
   llvm::Constant *Lift(std::uint64_t ea, llvm::Type *value_type,
-                       unsigned address_space=0u) const;
+                       unsigned address_space = 0u) const;
 
  private:
   std::shared_ptr<EntityLifterImpl> impl;

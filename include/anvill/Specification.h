@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <anvill/Passes/BasicBlockPass.h>
+
 #include <cstdint>
 #include <functional>
 #include <istream>
@@ -61,7 +63,6 @@ struct ControlFlowOverrideSpec {
 
 struct JumpTarget {
   std::uint64_t address;
-  std::unordered_map<std::string, std::uint64_t> context_assignments;
 };
 
 struct Jump : ControlFlowOverrideSpec {
@@ -71,6 +72,7 @@ struct Jump : ControlFlowOverrideSpec {
 struct Call : ControlFlowOverrideSpec {
   std::optional<std::uint64_t> return_address;
   bool is_tailcall;
+  bool is_noreturn;
   std::optional<std::uint64_t> target_address;
 };
 
@@ -78,13 +80,31 @@ struct Return : ControlFlowOverrideSpec {};
 
 struct Misc : ControlFlowOverrideSpec {};
 
-using ControlFlowOverride = std::variant<std::monostate, Jump, Call, Return, Misc>;
+using ControlFlowOverride =
+    std::variant<std::monostate, Jump, Call, Return, Misc>;
 
 struct CallSiteDecl;
 struct FunctionDecl;
 struct VariableDecl;
 struct ParameterDecl;
 struct ValueDecl;
+
+
+class Specification;
+class SpecBlockContexts : public BasicBlockContexts {
+  std::unordered_map<Uid, SpecBlockContext> contexts;
+  std::unordered_map<uint64_t, std::shared_ptr<const FunctionDecl>> funcs;
+
+ public:
+  SpecBlockContexts(const Specification &spec);
+
+  virtual std::optional<std::reference_wrapper<const BasicBlockContext>>
+  GetBasicBlockContextForUid(Uid uid) const override;
+
+  virtual const FunctionDecl &
+  GetFunctionAtAddress(uint64_t addr) const override;
+};
+
 
 // Represents the data pulled out of a JSON (sub-)program specification.
 class Specification {
@@ -105,6 +125,12 @@ class Specification {
   // Return the architecture used by this specification.
   std::shared_ptr<const remill::Arch> Arch(void) const;
 
+  // Return the image name used by this specification.
+  const std::string &ImageName(void) const;
+
+  // Return the image base address used by this specification.
+  std::uint64_t ImageBase(void) const;
+
   // Return the type dictionary used by this specification.
   const ::anvill::TypeDictionary &TypeDictionary(void) const;
 
@@ -121,8 +147,15 @@ class Specification {
   static anvill::Result<Specification, std::string>
   DecodeFromPB(llvm::LLVMContext &context, std::istream &pb);
 
+  // Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
+  std::shared_ptr<const CallSiteDecl>
+  CallSiteAt(const std::pair<std::uint64_t, std::uint64_t> &loc) const;
+
   // Return the function beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const FunctionDecl> FunctionAt(std::uint64_t address) const;
+
+  // Return the basic block at `uid`, or an empty `shared_ptr`.
+  std::shared_ptr<const CodeBlock> BlockAt(Uid uid) const;
 
   // Return the global variable beginning at `address`, or an empty `shared_ptr`.
   std::shared_ptr<const VariableDecl> VariableAt(std::uint64_t address) const;
@@ -161,8 +194,7 @@ class Specification {
   void ForEachReturn(std::function<bool(const Return &)> cb) const;
 
   // Call `cb` on each miscellaneous control flow override, until `cb` returns `false`.
-  void ForEachMiscOverride(
-      std::function<bool(const Misc &)> cb) const;
+  void ForEachMiscOverride(std::function<bool(const Misc &)> cb) const;
 
   inline bool operator==(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();
@@ -171,6 +203,12 @@ class Specification {
   inline bool operator!=(const Specification &that) const noexcept {
     return impl.get() == that.impl.get();
   }
+
+  SpecBlockContexts GetBlockContexts() const {
+    return SpecBlockContexts(*this);
+  }
+
+  const std::unordered_set<std::string> &GetRequiredGlobals() const;
 };
 
 }  // namespace anvill

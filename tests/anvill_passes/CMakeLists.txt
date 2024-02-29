@@ -12,17 +12,17 @@ add_executable(test_anvill_passes
   src/Utils.h
   src/Utils.cpp
 
-  src/RecoverStackFrameInformation.cpp
   src/SinkSelectionsIntoBranchTargets.cpp
   src/SplitStackFrameAtReturnAddress.cpp
   src/InstructionFolderPass.cpp
   src/BrightenPointers.cpp
   src/TransformRemillJump.cpp
-  src/SwitchLoweringPass.cpp
   src/XorConversionPass.cpp
   src/BranchRecoveryPass.cpp
   src/RemoveStackPointerCExprs.cpp
   src/RecoverEntityUses.cpp
+  src/TestAbstractStackBB.cpp
+  src/VectorRW.cpp
 )
 
 target_link_libraries(test_anvill_passes PRIVATE
@@ -43,6 +43,6 @@ target_include_directories(test_anvill_passes PRIVATE
 
 add_test(
   NAME test_anvill_passes
-  COMMAND "$<TARGET_FILE:test_anvill_passes>"
+  COMMAND test_anvill_passes
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )

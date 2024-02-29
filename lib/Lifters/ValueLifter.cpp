@@ -12,6 +12,7 @@
 #include <anvill/Type.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DataLayout.h>
@@ -27,14 +28,14 @@ namespace anvill {
 // Consume `num_bytes` of bytes from `data`, interpreting them as an integer,
 // and update `data` in place, bumping out the first `num_bytes` of consumed
 // data.
-llvm::APInt ValueLifterImpl::ConsumeBytesAsInt(std::string_view &data,
+llvm::APInt ValueLifterImpl::ConsumeBytesAsInt(llvm::ArrayRef<uint8_t> &data,
                                                unsigned num_bytes) const {
   llvm::APInt result(num_bytes * 8u, 0u);
   for (auto i = 0u; i < num_bytes; ++i) {
     result <<= 8u;
-    result |= data[i];
+    result |= static_cast<uint8_t>(data[i]);
   }
-  data = data.substr(num_bytes);
+  data = data.drop_front(num_bytes);
 
   if (dl.isLittleEndian() && 1u < num_bytes) {
     return result.byteSwap();
@@ -49,7 +50,7 @@ ValueLifterImpl::GetFunctionPointer(const FunctionDecl &decl,
   auto &func_lifter = ent_lifter.function_lifter;
   auto func = func_lifter.DeclareFunction(decl);
   auto func_in_context =
-      func_lifter.AddFunctionToContext(func, decl.address, ent_lifter);
+      func_lifter.AddFunctionToContext(func, decl, ent_lifter);
   return func_in_context;
 }
 
@@ -127,10 +128,8 @@ static llvm::Constant *UnwrapZeroIndices(llvm::Constant *ret,
 //            entity or plausible entity.
 //
 // NOTE(pag): `hinted_type` can be `nullptr`.
-llvm::Constant *
-ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
-                                         EntityLifterImpl &ent_lifter,
-                                         llvm::Type *hinted_type) const {
+llvm::Constant *ValueLifterImpl::TryGetPointerForAddress(
+    uint64_t ea, EntityLifterImpl &ent_lifter, llvm::Type *hinted_type) const {
 
   // First, try to see if we already have an entity for this address. Give
   // preference to an entity with a matching type. Then to global variables and
@@ -163,8 +162,7 @@ ValueLifterImpl::TryGetPointerForAddress(uint64_t ea,
 
   // Try to create a `FunctionDecl` on-demand.
   if (hinted_type) {
-    if (auto func_type =
-            llvm::dyn_cast<llvm::FunctionType>(hinted_type)) {
+    if (auto func_type = llvm::dyn_cast<llvm::FunctionType>(hinted_type)) {
       const auto func =
           llvm::Function::Create(func_type, llvm::GlobalValue::PrivateLinkage,
                                  ".anvill.value_lifter.temp", options.module);
@@ -237,9 +235,9 @@ llvm::Constant *ValueLifterImpl::GetPointer(uint64_t ea, llvm::Type *value_type,
 // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
 // of type `type_of_data`. This requires access to `ent_lifter` to be able
 // to lift pointer types that will reference declared data/functions.
-llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
-                                      EntityLifterImpl &ent_lifter,
-                                      uint64_t loc_ea) const {
+llvm::Constant *
+ValueLifterImpl::Lift(llvm::ArrayRef<uint8_t> data, llvm::Type *type,
+                      EntityLifterImpl &ent_lifter, uint64_t loc_ea) const {
 
 
   switch (type->getTypeID()) {
@@ -274,8 +272,8 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       }
 
       // If we successfully lift it as a reference then we're in good shape.
-      if (auto val = GetPointer(address, nullptr,
-                                ent_lifter, loc_ea, addr_space)) {
+      if (auto val =
+              GetPointer(address, nullptr, ent_lifter, loc_ea, addr_space)) {
         return val;
       }
 
@@ -298,8 +296,8 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
         const auto elm_type = struct_type->getStructElementType(i);
         const auto offset = layout->getElementOffset(i);
         CHECK_LE(prev_offset, offset);
-        auto const_elm =
-            Lift(data.substr(offset), elm_type, ent_lifter, loc_ea + offset);
+        auto const_elm = Lift(data.drop_front(offset), elm_type, ent_lifter,
+                              loc_ea + offset);
         initializer_list.push_back(const_elm);
         prev_offset = offset;
       }
@@ -317,7 +315,7 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter,
+        auto const_elm = Lift(data.drop_front(elm_offset), elm_type, ent_lifter,
                               loc_ea + elm_offset);
         initializer_list.push_back(const_elm);
       }
@@ -335,7 +333,7 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
 
       for (auto i = 0u; i < num_elms; ++i) {
         const auto elm_offset = i * elm_size;
-        auto const_elm = Lift(data.substr(elm_offset), elm_type, ent_lifter,
+        auto const_elm = Lift(data.drop_front(elm_offset), elm_type, ent_lifter,
                               loc_ea + elm_offset);
         initializer_list.push_back(const_elm);
       }
@@ -352,6 +350,13 @@ llvm::Constant *ValueLifterImpl::Lift(std::string_view data, llvm::Type *type,
       const auto size = static_cast<uint64_t>(dl.getTypeAllocSize(type));
       auto val = ConsumeBytesAsInt(data, size);
       return llvm::ConstantFP::get(type, val.bitsToDouble());
+    }
+
+    case llvm::Type::X86_FP80TyID: {
+      const auto size = static_cast<uint64_t>(dl.getTypeStoreSize(type));
+      auto val = ConsumeBytesAsInt(data, size);
+      const llvm::APFloat float_val(llvm::APFloat::x87DoubleExtended(), val);
+      return llvm::ConstantFP::get(type, float_val);
     }
 
     default:
@@ -377,7 +382,7 @@ ValueLifter::ValueLifter(const EntityLifter &entity_lifter_)
 // Interpret `data` as the backing bytes to initialize an `llvm::Constant`
 // of type `type_of_data`. `loc_ea`, if non-null, is the address at which
 // `data` appears.
-llvm::Constant *ValueLifter::Lift(std::string_view data,
+llvm::Constant *ValueLifter::Lift(llvm::ArrayRef<uint8_t> data,
                                   llvm::Type *type_of_data) const {
   return impl->value_lifter.Lift(data, type_of_data, *impl, 0);
 }

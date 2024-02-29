@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-present, Trail of Bits, Inc.
+ * Copyright (c) 2023-present, Trail of Bits, Inc.
  * All rights reserved.
  *
  * This source code is licensed in accordance with the terms specified in
@@ -12,8 +12,7 @@
 
 namespace anvill {
 
-class LowerTypeHintIntrinsics final
-    : public llvm::PassInfoMixin<LowerTypeHintIntrinsics> {
+class RewriteVectorOps final : public llvm::PassInfoMixin<RewriteVectorOps> {
  public:
   static llvm::StringRef name(void);
 

@@ -9,7 +9,10 @@
 #include "Specification.h"
 
 #include <glog/logging.h>
+#include <google/protobuf/util/json_util.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
 #include <remill/Arch/Arch.h>
 #include <remill/Arch/Name.h>
 #include <remill/BC/Error.h>
@@ -32,8 +35,12 @@ namespace anvill {
 
 SpecificationImpl::~SpecificationImpl(void) {}
 
-SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_)
+SpecificationImpl::SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                                     const std::string &image_name_,
+                                     std::uint64_t image_base_)
     : arch(std::move(arch_)),
+      image_name(image_name_),
+      image_base(image_base_),
       type_dictionary(*(arch->context)),
       type_translator(type_dictionary, arch.get()) {}
 
@@ -42,8 +49,11 @@ SpecificationImpl::ParseSpecification(
     const ::specification::Specification &spec) {
   std::vector<std::string> dec_err;
   std::unordered_map<std::int64_t, TypeSpec> type_map;
-  ProtobufTranslator translator(type_translator, arch.get(), type_map);
-  auto map_res = translator.DecodeTypeMap(spec.type_aliases());
+  std::unordered_map<std::int64_t, std::string> type_names;
+  ProtobufTranslator translator(type_translator, arch.get(), type_map,
+                                type_names);
+  auto map_res =
+      translator.DecodeTypeMap(spec.type_aliases(), spec.type_names());
   if (!map_res.Succeeded()) {
     dec_err.push_back(map_res.Error());
   }
@@ -63,6 +73,16 @@ SpecificationImpl::ParseSpecification(
     }
 
     auto func_ptr = new FunctionDecl(std::move(func_obj));
+
+    for (const auto &[uid, bb] : func_ptr->cfg) {
+      if (uid_to_block.count(uid)) {
+        std::stringstream ss;
+        ss << "Duplicate block Uid: " << uid.value;
+        return ss.str();
+      }
+      uid_to_block[uid] = &bb;
+    }
+
     functions.emplace_back(func_ptr);
     address_to_function.emplace(func_address, func_ptr);
   }
@@ -80,7 +100,8 @@ SpecificationImpl::ParseSpecification(
       continue;
     }
     auto cs_obj = maybe_cs.Value();
-    std::pair<uint64_t, uint64_t> loc{cs_obj.function_address, cs_obj.address};
+    std::pair<std::uint64_t, std::uint64_t> loc{cs_obj.function_address,
+                                                cs_obj.address};
 
     if (loc_to_call_site.count(loc)) {
       std::stringstream ss;
@@ -111,6 +132,7 @@ SpecificationImpl::ParseSpecification(
     if (!maybe_var.Succeeded()) {
       auto err = maybe_var.Error();
       dec_err.push_back(err);
+      continue;
     }
     auto var_obj = maybe_var.Value();
     auto var_address = var_obj.address;
@@ -180,8 +202,6 @@ SpecificationImpl::ParseSpecification(
     jmp.address = jump.address();
     for (auto &target : jump.targets()) {
       JumpTarget jmp_target;
-      auto &assignments = target.context_assignments();
-      jmp_target.context_assignments = {assignments.begin(), assignments.end()};
       jmp_target.address = target.address();
       jmp.targets.push_back(jmp_target);
     }
@@ -198,6 +218,7 @@ SpecificationImpl::ParseSpecification(
   for (auto &call : spec.overrides().calls()) {
     Call callspec{};
     callspec.stop = call.stop();
+    callspec.is_noreturn = call.noreturn();
     callspec.address = call.address();
     if (call.has_return_address()) {
       callspec.return_address = call.return_address();
@@ -235,7 +256,12 @@ SpecificationImpl::ParseSpecification(
   std::sort(misc_overrides.begin(), misc_overrides.end(),
             [](const auto &a, const auto &b) { return a.address < b.address; });
 
-  // TODO(frabert): Parse everything else
+  required_globals = {spec.required_globals().begin(),
+                      spec.required_globals().end()};
+
+  for (const auto &[_k, v] : spec.type_names()) {
+    this->named_types.push_back(v);
+  }
 
   return dec_err;
 }
@@ -248,6 +274,16 @@ Specification::Specification(std::shared_ptr<SpecificationImpl> impl_)
 // Return the architecture used by this specification.
 std::shared_ptr<const remill::Arch> Specification::Arch(void) const {
   return std::shared_ptr<const remill::Arch>(impl, impl->arch.get());
+}
+
+// Return the architecture used by this specification.
+const std::string &Specification::ImageName(void) const {
+  return impl->image_name;
+}
+
+// Return the architecture used by this specification.
+std::uint64_t Specification::ImageBase(void) const {
+  return impl->image_base;
 }
 
 // Return the type dictionary used by this specification.
@@ -271,12 +307,12 @@ GetArch(llvm::LLVMContext &context,
 
   switch (spec.arch()) {
     default: return {"Invalid/unrecognized architecture"};
-    case ::specification::ARCH_X86: arch_name = remill::kArchX86; break;
+    case ::specification::ARCH_X86: arch_name = remill::kArchX86_AVX; break;
     case ::specification::ARCH_X86_AVX: arch_name = remill::kArchX86_AVX; break;
     case ::specification::ARCH_X86_AVX512:
       arch_name = remill::kArchX86_AVX512;
       break;
-    case ::specification::ARCH_AMD64: arch_name = remill::kArchAMD64; break;
+    case ::specification::ARCH_AMD64: arch_name = remill::kArchAMD64_AVX; break;
     case ::specification::ARCH_AMD64_AVX:
       arch_name = remill::kArchAMD64_AVX;
       break;
@@ -284,13 +320,16 @@ GetArch(llvm::LLVMContext &context,
       arch_name = remill::kArchAMD64_AVX512;
       break;
     case ::specification::ARCH_AARCH64:
-      arch_name = remill::kArchAArch64LittleEndian;
+      arch_name = remill::kArchAArch64LittleEndian_SLEIGH;
       break;
     case ::specification::ARCH_AARCH32:
       arch_name = remill::kArchAArch32LittleEndian;
       break;
-    case ::specification::ARCH_SPARC32: arch_name = remill::kArchSparc32; break;
+    case ::specification::ARCH_SPARC32:
+      arch_name = remill::kArchSparc32_SLEIGH;
+      break;
     case ::specification::ARCH_SPARC64: arch_name = remill::kArchSparc64; break;
+    case ::specification::ARCH_PPC: arch_name = remill::kArchPPC; break;
   }
 
   switch (spec.operating_system()) {
@@ -318,7 +357,10 @@ anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
   ::specification::Specification spec;
   if (!spec.ParseFromString(pb)) {
-    return {"Failed to parse specification"};
+    auto status = google::protobuf::util::JsonStringToMessage(pb, &spec);
+    if (!status.ok()) {
+      return {"Failed to parse specification"};
+    }
   }
 
   auto arch{GetArch(context, spec)};
@@ -326,8 +368,11 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
     return arch.Error();
   }
 
+  const auto &image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
@@ -346,6 +391,7 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, const std::string &pb) {
 anvill::Result<Specification, std::string>
 Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   ::specification::Specification spec;
+
   if (!spec.ParseFromIstream(&pb)) {
     return {"Failed to parse specification"};
   }
@@ -355,8 +401,12 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
     return arch.Error();
   }
 
+  const auto &image_name = spec.image_name();
+  auto image_base = spec.image_base();
+
+
   std::shared_ptr<SpecificationImpl> pimpl(
-      new SpecificationImpl(arch.TakeValue()));
+      new SpecificationImpl(arch.TakeValue(), image_name, image_base));
 
   auto maybe_warnings = pimpl->ParseSpecification(spec);
 
@@ -372,12 +422,32 @@ Specification::DecodeFromPB(llvm::LLVMContext &context, std::istream &pb) {
   return Specification(std::move(pimpl));
 }
 
+// Return the call site at a given function address, instruction address pair, or an empty `shared_ptr`.
+std::shared_ptr<const CallSiteDecl> Specification::CallSiteAt(
+    const std::pair<std::uint64_t, std::uint64_t> &loc) const {
+  auto it = impl->loc_to_call_site.find(loc);
+  if (it != impl->loc_to_call_site.end()) {
+    return {impl, it->second};
+  }
+  return {};
+}
+
 // Return the function beginning at `address`, or an empty `shared_ptr`.
 std::shared_ptr<const FunctionDecl>
 Specification::FunctionAt(std::uint64_t address) const {
   auto it = impl->address_to_function.find(address);
   if (it != impl->address_to_function.end()) {
     return std::shared_ptr<const FunctionDecl>(impl, it->second);
+  } else {
+    return {};
+  }
+}
+
+// Return the block with `uid`, or an empty `shared_ptr`.
+std::shared_ptr<const CodeBlock> Specification::BlockAt(Uid uid) const {
+  auto it = impl->uid_to_block.find(uid);
+  if (it != impl->uid_to_block.end()) {
+    return std::shared_ptr<const CodeBlock>(impl, it->second);
   } else {
     return {};
   }
@@ -416,6 +486,30 @@ void Specification::ForEachSymbol(
   }
 }
 
+SpecBlockContexts::SpecBlockContexts(const Specification &spec) {
+  spec.ForEachFunction([this](std::shared_ptr<const FunctionDecl> decl) {
+    decl->AddBBContexts(this->contexts);
+    funcs[decl->address] = decl;
+    return true;
+  });
+}
+
+std::optional<std::reference_wrapper<const BasicBlockContext>>
+SpecBlockContexts::GetBasicBlockContextForUid(Uid uid) const {
+  auto cont = this->contexts.find(uid);
+  if (cont == this->contexts.end()) {
+    return std::nullopt;
+  }
+
+  return std::optional<std::reference_wrapper<const BasicBlockContext>>{
+      std::cref(cont->second)};
+}
+
+const FunctionDecl &
+SpecBlockContexts::GetFunctionAtAddress(uint64_t addr) const {
+  return *funcs.at(addr);
+}
+
 // Call `cb` on each function in the spec, until `cb` returns `false`.
 void Specification::ForEachFunction(
     std::function<bool(std::shared_ptr<const FunctionDecl>)> cb) const {
@@ -448,6 +542,7 @@ void Specification::ForEachCallSite(
     }
   }
 }
+
 
 // Call `cb` on each control-flow redirection, until `cb` returns `false`.
 void Specification::ForEachControlFlowRedirect(
@@ -491,6 +586,11 @@ void Specification::ForEachMiscOverride(
       return;
     }
   }
+}
+
+const std::unordered_set<std::string> &
+Specification::GetRequiredGlobals() const {
+  return impl->required_globals;
 }
 
 }  // namespace anvill

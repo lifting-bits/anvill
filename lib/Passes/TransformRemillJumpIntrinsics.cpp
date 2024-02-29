@@ -6,14 +6,12 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/TransformRemillJumpIntrinsics.h>
-
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/TransformRemillJumpIntrinsics.h>
 #include <anvill/Transforms.h>
 #include <anvill/Utils.h>
 #include <glog/logging.h>
-#include <llvm/ADT/Triple.h>
 #include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/Function.h>
@@ -24,6 +22,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Pass.h>
+#include <llvm/TargetParser/Triple.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar/DCE.h>
@@ -85,8 +84,7 @@ std::vector<llvm::CallBase *> FindFunctionCalls(llvm::Function &func, T pred) {
 
 
 // Returns `true` if `val` is a possible return address
-ReturnAddressResult
-TransformRemillJumpIntrinsics::QueryReturnAddress(
+ReturnAddressResult TransformRemillJumpIntrinsics::QueryReturnAddress(
     const CrossReferenceFolder &xref_folder, llvm::Module *module,
     llvm::Value *val) const {
 
@@ -182,7 +180,7 @@ TransformRemillJumpIntrinsics::run(llvm::Function &func,
     llvm::FunctionPassManager fpm;
 
     fpm.addPass(llvm::DCEPass());
-    fpm.addPass(llvm::SROAPass());
+    fpm.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
     fpm.addPass(llvm::SimplifyCFGPass());
     fpm.addPass(llvm::InstCombinePass());
     fpm.run(func, fam);

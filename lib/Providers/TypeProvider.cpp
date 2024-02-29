@@ -11,6 +11,7 @@
 #include <glog/logging.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Type.h>
@@ -18,7 +19,10 @@
 #include <remill/Arch/Name.h>
 #include <remill/BC/Util.h>
 
+#include <algorithm>
+#include <optional>
 #include <type_traits>
+#include <vector>
 
 #include "Specification.h"
 
@@ -56,29 +60,6 @@ NullTypeProvider::TryGetVariableType(uint64_t, llvm::Type *) const {
   return std::nullopt;
 }
 
-// Try to return the type of a function starting at address `to_address`. This
-// type is the prototype of the function. The type can be call site specific,
-// where the call site is `from_inst`.
-std::optional<CallableDecl>
-TypeProvider::TryGetCalledFunctionType(uint64_t function_address,
-                                       const remill::Instruction &from_inst,
-                                       uint64_t to_address) const {
-  if (auto decl = TryGetCalledFunctionType(function_address, from_inst)) {
-    return decl;
-  } else if (auto func_decl = TryGetFunctionType(to_address)) {
-    return static_cast<CallableDecl &>(func_decl.value());
-  } else {
-    return std::nullopt;
-  }
-}
-
-// Try to return the type of a function that has been called from `from_isnt`.
-std::optional<CallableDecl>
-TypeProvider::TryGetCalledFunctionType(uint64_t function_address,
-                                       const remill::Instruction &) const {
-  return std::nullopt;
-}
-
 BaseTypeProvider::~BaseTypeProvider() {}
 
 const ::anvill::TypeDictionary &BaseTypeProvider::Dictionary(void) const {
@@ -102,20 +83,8 @@ SpecificationTypeProvider::~SpecificationTypeProvider(void) {}
 
 SpecificationTypeProvider::SpecificationTypeProvider(const Specification &spec)
     : BaseTypeProvider(spec.impl->type_translator),
-      impl(spec.impl) {}
-
-// Try to return the type of a function that has been called from `from_isnt`.
-std::optional<CallableDecl> SpecificationTypeProvider::TryGetCalledFunctionType(
-    uint64_t function_address, const remill::Instruction &from_inst) const {
-  std::pair<std::uint64_t, std::uint64_t> loc{function_address, from_inst.pc};
-
-  auto cs_it = impl->loc_to_call_site.find(loc);
-  if (cs_it == impl->loc_to_call_site.end()) {
-    return std::nullopt;
-  } else {
-    return *(cs_it->second);
-  }
-}
+      impl(spec.impl),
+      layout(spec.Arch()->DataLayout()) {}
 
 // Try to return the type of a function starting at address `address`. This
 // type is the prototype of the function.
@@ -129,42 +98,37 @@ SpecificationTypeProvider::TryGetFunctionType(uint64_t address) const {
   }
 }
 
+std::vector<llvm::StructType *>
+SpecificationTypeProvider::NamedTypes(void) const {
+  std::vector<llvm::StructType *> stys;
+
+  for (auto nms : this->impl->named_types) {
+    auto sty = llvm::StructType::getTypeByName(this->context, nms);
+    if (sty) {
+      stys.push_back(sty);
+    }
+  }
+
+  return stys;
+}
+
 std::optional<anvill::VariableDecl>
 SpecificationTypeProvider::TryGetVariableType(uint64_t address,
                                               llvm::Type *) const {
-  auto var_it = impl->address_to_var.find(address);
-  if (var_it != impl->address_to_var.end()) {
-    return *(var_it->second);
-  } else {
+
+  auto var_it = impl->address_to_var.lower_bound(address);
+  if (var_it != impl->address_to_var.begin() && var_it->first != address) {
+    var_it--;
+  }
+
+  if (var_it == impl->address_to_var.end()) {
     return std::nullopt;
   }
-}
 
-// Try to return the type of a function that has been called from `from_isnt`.
-std::optional<CallableDecl>
-DefaultCallableTypeProvider::TryGetCalledFunctionType(
-    uint64_t function_address, const remill::Instruction &from_inst) const {
-  auto maybe_res =
-      ProxyTypeProvider::TryGetCalledFunctionType(function_address, from_inst);
-  if (maybe_res.has_value()) {
-    return maybe_res;
-  }
-
-
-  auto maybe_func_type =
-      ProxyTypeProvider::TryGetFunctionType(function_address);
-  if (maybe_func_type.has_value()) {
-    return maybe_func_type;
-  }
-
-  if (auto arch_decl = impl->TryGetDeclForArch(from_inst.arch_name)) {
-    return *arch_decl;
-  }
-
-  if (from_inst.arch_name != from_inst.sub_arch_name) {
-    if (auto sub_arch_decl = impl->TryGetDeclForArch(from_inst.sub_arch_name)) {
-      return *sub_arch_decl;
-    }
+  auto v = var_it->second;
+  if (v->type && address >= v->address &&
+      address < v->address + this->layout.getTypeSizeInBits(v->type) / 8) {
+    return *v;
   }
 
   return std::nullopt;
@@ -211,22 +175,6 @@ ProxyTypeProvider::TryGetFunctionType(uint64_t address) const {
   return this->deleg.TryGetFunctionType(address);
 }
 
-// Try to return the type of a function that has been called from `from_isnt`.
-std::optional<CallableDecl> ProxyTypeProvider::TryGetCalledFunctionType(
-    uint64_t function_address, const remill::Instruction &from_inst) const {
-  return this->deleg.TryGetCalledFunctionType(function_address, from_inst);
-}
-
-// Try to return the type of a function starting at address `to_address`. This
-// type is the prototype of the function. The type can be call site specific,
-// where the call site is `from_inst`.
-std::optional<CallableDecl> ProxyTypeProvider::TryGetCalledFunctionType(
-    uint64_t function_address, const remill::Instruction &from_inst,
-    uint64_t to_address) const {
-  return this->deleg.TryGetCalledFunctionType(function_address, from_inst,
-                                              to_address);
-}
-
 // Try to return the variable at given address or containing the address
 std::optional<VariableDecl>
 ProxyTypeProvider::TryGetVariableType(uint64_t address,
@@ -245,6 +193,11 @@ void ProxyTypeProvider::QueryRegisterStateAtInstruction(
   return this->deleg.QueryRegisterStateAtInstruction(func_address, inst_address,
                                                      typed_reg_cb);
 }
+
+std::vector<llvm::StructType *> ProxyTypeProvider::NamedTypes(void) const {
+  return this->deleg.NamedTypes();
+}
+
 
 const ::anvill::TypeDictionary &ProxyTypeProvider::Dictionary(void) const {
   return this->deleg.Dictionary();
@@ -272,19 +225,6 @@ TypeProvider::TryGetFunctionTypeOrDefault(uint64_t address) const {
   }
 
   return this->GetDefaultFunctionType(address);
-}
-
-
-std::optional<CallableDecl> TypeProvider::TryGetCalledFunctionTypeOrDefault(
-    uint64_t function_address, const remill::Instruction &from_inst,
-    uint64_t to_address) const {
-  auto res =
-      this->TryGetCalledFunctionType(function_address, from_inst, to_address);
-  if (res.has_value()) {
-    return res;
-  }
-
-  return this->GetDefaultFunctionType(to_address);
 }
 
 std::optional<VariableDecl>

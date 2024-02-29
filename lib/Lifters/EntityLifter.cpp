@@ -9,17 +9,20 @@
 #include "EntityLifter.h"
 
 #include <anvill/Providers.h>
-#include <anvill/Providers.h>
 #include <glog/logging.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalAlias.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/TypeFinder.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
 #include <sstream>
+
+#include "Lifters/FunctionLifter.h"
 
 namespace anvill {
 
@@ -30,10 +33,18 @@ EntityLifterImpl::EntityLifterImpl(const LifterOptions &options_)
       memory_provider(&(options.memory_provider)),
       type_provider(&(options.type_provider)),
       value_lifter(options),
-      function_lifter(options),
+      function_lifter(FunctionLifter::CreateFunctionLifter(options_)),
       data_lifter(options) {
   CHECK_EQ(options.arch->context, &(options.module->getContext()));
   options.arch->PrepareModule(options.module);
+
+  // Lift named types
+  for (auto sty : this->type_provider->NamedTypes()) {
+    auto gv = new llvm::GlobalVariable(*options.module, sty, false,
+                                       llvm::GlobalValue::ExternalLinkage,
+                                       nullptr, sty->getName() + "_var_repr");
+    llvm::appendToUsed(*options.module, gv);
+  }
 }
 
 // Tells the entity lifter that `entity` is the lifted function/data at
@@ -79,8 +90,7 @@ void EntityLifterImpl::ForEachEntityAtAddress(
 
 EntityLifter::~EntityLifter(void) {}
 
-EntityLifter::EntityLifter(
-    const LifterOptions &options_)
+EntityLifter::EntityLifter(const LifterOptions &options_)
     : impl(std::make_shared<EntityLifterImpl>(options_)) {}
 
 // Assuming that `entity` is an entity that was lifted by this `EntityLifter`,

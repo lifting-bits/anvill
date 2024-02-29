@@ -7,6 +7,10 @@
  */
 
 #include <anvill/Type.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Metadata.h>
+
+#include <variant>
 
 #define ANVILL_USE_WRAPPED_TYPES 0
 
@@ -19,20 +23,40 @@
 #include <llvm/Support/Error.h>
 // clang-format on
 
+#include <anvill/ABI.h>
+#include <anvill/Utils.h>
 #include <glog/logging.h>
-
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Error.h>
 #include <remill/BC/Util.h>
-
-#include <anvill/ABI.h>
-#include <anvill/Utils.h>
 
 #include <sstream>
 #include <unordered_map>
 #include <vector>
 
 namespace anvill {
+
+bool operator==(std::shared_ptr<PointerType> a,
+                std::shared_ptr<PointerType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<VectorType> a, std::shared_ptr<VectorType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<ArrayType> a, std::shared_ptr<ArrayType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<StructType> a, std::shared_ptr<StructType> b) {
+  return *a == *b;
+}
+
+bool operator==(std::shared_ptr<FunctionType> a,
+                std::shared_ptr<FunctionType> b) {
+  return *a == *b;
+}
 
 class TypeSpecifierImpl {
  public:
@@ -41,6 +65,8 @@ class TypeSpecifierImpl {
   const TypeDictionary type_dict;
   std::unordered_map<llvm::StructType *, size_t> type_to_id;
   std::vector<llvm::StructType *> id_to_type;
+  std::unordered_map<void *, llvm::MDNode *> type_to_md;
+  std::unordered_map<llvm::MDNode *, TypeSpec> md_to_type;
 
   inline TypeSpecifierImpl(const TypeDictionary &type_dict_,
                            const llvm::DataLayout &dl_)
@@ -52,12 +78,21 @@ class TypeSpecifierImpl {
   // TypeSpecification.cpp
   void EncodeType(llvm::Type &type, std::stringstream &ss,
                   EncodingFormat format);
+
+  llvm::MDNode *TypeToMetadata(BaseType type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<PointerType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<VectorType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<ArrayType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<StructType> type);
+  llvm::MDNode *TypeToMetadata(std::shared_ptr<FunctionType> type);
+  llvm::MDNode *TypeToMetadata(UnknownType type);
+  llvm::MDNode *TypeToMetadata(TypeName type);
 };
 
 // Translates an llvm::Type to a type that conforms to the spec in
 // TypeSpecification.cpp
-void TypeSpecifierImpl::EncodeType(
-    llvm::Type &type, std::stringstream &ss, EncodingFormat format) {
+void TypeSpecifierImpl::EncodeType(llvm::Type &type, std::stringstream &ss,
+                                   EncodingFormat format) {
   const auto alpha_num = format == EncodingFormat::kValidSymbolCharsOnly;
   switch (type.getTypeID()) {
     case llvm::Type::VoidTyID: ss << 'v'; break;
@@ -188,7 +223,7 @@ void TypeSpecifierImpl::EncodeType(
       } else if (struct_ptr == type_dict.u.named.padding) {
         ss << 'p';
 
-      // This is an opaque structure; mark it as a void type.
+        // This is an opaque structure; mark it as a void type.
       } else if (struct_ptr->isOpaque()) {
         ss << 'v';
 
@@ -200,7 +235,7 @@ void TypeSpecifierImpl::EncodeType(
         if (type_to_id.count(struct_ptr)) {
           ss << (alpha_num ? "_M" : "%") << type_to_id[struct_ptr];
 
-        // We've not yet serialized this structure.
+          // We've not yet serialized this structure.
         } else {
 
           // Start by emitting a new structure ID for this structure and memoizing
@@ -227,10 +262,11 @@ void TypeSpecifierImpl::EncodeType(
                    << (alpha_num ? "_D" : "]");
               }
 
-            // TODO(pag): Investigate this possibility. Does this occur for
-            //            bitfields?
+              // TODO(pag): Investigate this possibility. Does this occur for
+              //            bitfields?
             } else if (expected_offset > offset) {
-              LOG(FATAL) << "TODO?! Maybe bitfields? Structure field offset shenanigans";
+              LOG(FATAL)
+                  << "TODO?! Maybe bitfields? Structure field offset shenanigans";
             }
 
             const auto el_ty = struct_ptr->getElementType(i);
@@ -294,13 +330,118 @@ void TypeSpecifierImpl::EncodeType(
   }
 }
 
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(BaseType type) {
+  auto str = llvm::MDString::get(context, "BaseType");
+  auto value = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                      static_cast<unsigned>(type));
+  return llvm::MDNode::get(context,
+                           {str, llvm::ConstantAsMetadata::get(value)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<PointerType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "PointerType");
+  auto pointee =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->pointee);
+  return llvm::MDNode::get(context, {str, pointee});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<VectorType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "VectorType");
+  auto base =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->base);
+  auto size = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                     static_cast<unsigned>(type->size));
+  return llvm::MDNode::get(context,
+                           {str, base, llvm::ConstantAsMetadata::get(size)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<ArrayType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "ArrayType");
+  auto base =
+      std::visit([this](auto &&t) { return TypeToMetadata(t); }, type->base);
+  auto size = llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context),
+                                     static_cast<unsigned>(type->size));
+  return llvm::MDNode::get(context,
+                           {str, base, llvm::ConstantAsMetadata::get(size)});
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<StructType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "StructType");
+  std::vector<llvm::Metadata *> md;
+  md.push_back(str);
+  for (auto &member : type->members) {
+    md.push_back(
+        std::visit([this](auto &&t) { return TypeToMetadata(t); }, member));
+  }
+  return llvm::MDNode::get(context, md);
+}
+
+llvm::MDNode *
+TypeSpecifierImpl::TypeToMetadata(std::shared_ptr<FunctionType> type) {
+  auto &node = type_to_md[type.get()];
+  if (node) {
+    return node;
+  }
+
+  auto str = llvm::MDString::get(context, "FunctionType");
+  std::vector<llvm::Metadata *> md;
+  md.push_back(str);
+  md.push_back(llvm::ConstantAsMetadata::get(
+      llvm::ConstantInt::getBool(context, type->is_variadic)));
+  md.push_back(std::visit([this](auto &&t) { return TypeToMetadata(t); },
+                          type->return_type));
+  for (auto &arg : type->arguments) {
+    md.push_back(
+        std::visit([this](auto &&t) { return TypeToMetadata(t); }, arg));
+  }
+  return llvm::MDNode::get(context, md);
+}
+
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(UnknownType type) {
+  auto str = llvm::MDString::get(context, "UnknownType");
+  auto size =
+      llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(context), type.size);
+  return llvm::MDNode::get(context, {str, llvm::ConstantAsMetadata::get(size)});
+}
+
+llvm::MDNode *TypeSpecifierImpl::TypeToMetadata(TypeName type) {
+  auto str = llvm::MDString::get(context, "Typename");
+  auto nm = llvm::MDString::get(context, type.name);
+
+  return llvm::MDNode::get(context, {str, nm});
+}
+
 namespace {
 
 #if ANVILL_USE_WRAPPED_TYPES
 
 template <typename T>
-static llvm::Type *GetOrCreateWrapper(
-    llvm::LLVMContext &context, const char *name, T wrapper) {
+static llvm::Type *GetOrCreateWrapper(llvm::LLVMContext &context,
+                                      const char *name, T wrapper) {
   std::string type_name = kAnvillNamePrefix + name;
   auto ty = llvm::StructType::getTypeByName(context, type_name);
   if (ty) {
@@ -311,25 +452,28 @@ static llvm::Type *GetOrCreateWrapper(
   return llvm::StructType::create(context, elems, type_name, true);
 }
 
-static llvm::Type *GetOrCreateInt(llvm::LLVMContext &context,
-                                  const char *name, unsigned num_bits) {
-  return GetOrCreateWrapper(context, name, [=] (llvm::LLVMContext &context_) {
+static llvm::Type *GetOrCreateInt(llvm::LLVMContext &context, const char *name,
+                                  unsigned num_bits) {
+  return GetOrCreateWrapper(context, name, [=](llvm::LLVMContext &context_) {
     return llvm::IntegerType::get(context_, num_bits);
   });
 }
 
 static llvm::Type *GetOrCreateFloat(llvm::LLVMContext &context,
-                                  const char *name, unsigned num_bits) {
-  return GetOrCreateWrapper(
-      context, name, [=] (llvm::LLVMContext &context_) -> llvm::Type * {
-        switch (num_bits) {
-          case 16: return llvm::Type::getHalfTy(context_);
-          case 32: return llvm::Type::getFloatTy(context_);
-          case 64: return llvm::Type::getDoubleTy(context_);
-          case 128: return llvm::Type::getFP128Ty(context_);
-          default: return nullptr;
-        }
-      });
+                                    const char *name, unsigned num_bits) {
+  return GetOrCreateWrapper(context, name,
+                            [=](llvm::LLVMContext &context_) -> llvm::Type * {
+                              switch (num_bits) {
+                                case 16: return llvm::Type::getHalfTy(context_);
+                                case 32:
+                                  return llvm::Type::getFloatTy(context_);
+                                case 64:
+                                  return llvm::Type::getDoubleTy(context_);
+                                case 128:
+                                  return llvm::Type::getFP128Ty(context_);
+                                default: return nullptr;
+                              }
+                            });
 }
 
 #endif
@@ -358,17 +502,18 @@ TypeDictionary::TypeDictionary(llvm::LLVMContext &context) {
   u.named.float32 = GetOrCreateFloat(context, "float32", 32);
   u.named.float64 = GetOrCreateFloat(context, "float64", 64);
   u.named.float80_12 = GetOrCreateWrapper(
-      context, "float80_12", [] (llvm::LLVMContext &context_) {
+      context, "float80_12", [](llvm::LLVMContext &context_) {
         return llvm::ArrayType::get(llvm::Type::getInt8Ty(context_), 10);
       });
   u.named.float80_16 = GetOrCreateWrapper(
-      context, "float80_16", [] (llvm::LLVMContext &context_) {
+      context, "float80_16", [](llvm::LLVMContext &context_) {
         return llvm::ArrayType::get(llvm::Type::getInt8Ty(context_), 12);
       });
   u.named.float128 = GetOrCreateFloat(context, "float128", 128);
-  u.named.m64 = GetOrCreateWrapper(context, "mmx", [] (llvm::LLVMContext &context_) {
-    return llvm::Type::getX86_MMXTy(context_);
-  });
+  u.named.m64 =
+      GetOrCreateWrapper(context, "mmx", [](llvm::LLVMContext &context_) {
+        return llvm::Type::getX86_MMXTy(context_);
+      });
   u.named.void_ = GetOrCreateInt(context, "void", 8);
   u.named.padding = GetOrCreateInt(context, "padding", 8);
 #else
@@ -406,7 +551,8 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
 #if ANVILL_USE_WRAPPED_TYPES
   switch (type->getTypeID()) {
     case llvm::Type::StructTyID:
-      for (auto elem_type : llvm::dyn_cast<llvm::StructType>(type)->elements()) {
+      for (auto elem_type :
+           llvm::dyn_cast<llvm::StructType>(type)->elements()) {
         if (!IsPadding(elem_type)) {
           return false;
         }
@@ -420,8 +566,7 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
       auto elem_type = llvm::dyn_cast<llvm::VectorType>(type)->getElementType();
       return IsPadding(elem_type);
     }
-    default:
-      return type == u.named.padding;
+    default: return type == u.named.padding;
   }
 #else
   return false;
@@ -431,7 +576,7 @@ bool TypeDictionary::IsPadding(llvm::Type *type) const noexcept {
 TypeTranslator::~TypeTranslator(void) {}
 
 TypeTranslator::TypeTranslator(const TypeDictionary &type_dict,
-                             const llvm::DataLayout &dl)
+                               const llvm::DataLayout &dl)
     : impl(std::make_unique<TypeSpecifierImpl>(type_dict, dl)) {}
 
 // Delegating constructor using a module's data layout.
@@ -462,15 +607,90 @@ const llvm::DataLayout &TypeTranslator::DataLayout(void) const noexcept {
 // then only alpha_numeric characters (and underscores) are used. The
 // alpha_numeric representation is always safe to use when appended to
 // identifier names.
-std::string TypeTranslator::EncodeToString(
-    llvm::Type *type, EncodingFormat format) const {
+std::string TypeTranslator::EncodeToString(llvm::Type *type,
+                                           EncodingFormat format) const {
   std::stringstream ss;
   if (type) {
     impl->type_to_id.clear();
-    impl->EncodeType(
-        *remill::RecontextualizeType(type, impl->context), ss, format);
+    impl->EncodeType(*remill::RecontextualizeType(type, impl->context), ss,
+                     format);
   }
   return ss.str();
+}
+
+llvm::MDNode *TypeTranslator::EncodeToMetadata(TypeSpec spec) const {
+  return std::visit([this](auto &&t) { return impl->TypeToMetadata(t); }, spec);
+}
+
+TypeSpec TypeTranslator::DecodeFromMetadata(llvm::MDNode *md) const {
+  if (impl->md_to_type.count(md)) {
+    return impl->md_to_type[md];
+  }
+
+  auto &res = impl->md_to_type[md];
+  auto kind = llvm::cast<llvm::MDString>(md->getOperand(0).get());
+  if (kind->getString().equals("BaseType")) {
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    res = static_cast<BaseType>(const_int->getZExtValue());
+  } else if (kind->getString().equals("PointerType")) {
+    auto ptrtype = std::make_shared<PointerType>(UnknownType{}, false);
+    res = ptrtype;
+    auto pointee = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    ptrtype->pointee = DecodeFromMetadata(pointee);
+  } else if (kind->getString().equals("VectorType")) {
+    auto vectype = std::make_shared<VectorType>(UnknownType{}, 0);
+    res = vectype;
+    auto base = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(2).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    vectype->base = DecodeFromMetadata(base);
+    vectype->size = const_int->getZExtValue();
+  } else if (kind->getString().equals("ArrayType")) {
+    auto arrtype = std::make_shared<ArrayType>(UnknownType{}, 0);
+    res = arrtype;
+    auto base = llvm::cast<llvm::MDNode>(md->getOperand(1).get());
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(2).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    arrtype->base = DecodeFromMetadata(base);
+    arrtype->size = const_int->getZExtValue();
+  } else if (kind->getString().equals("StructType")) {
+    auto strcttype = std::make_shared<StructType>();
+    res = strcttype;
+    for (size_t i = 1; i < md->getNumOperands(); ++i) {
+      strcttype->members.push_back(DecodeFromMetadata(
+          llvm::cast<llvm ::MDNode>(md->getOperand(i).get())));
+    }
+  } else if (kind->getString().equals("FunctionType")) {
+    auto functype = std::make_shared<FunctionType>(
+        UnknownType{}, std::vector<TypeSpec>{}, false);
+    res = functype;
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    functype->is_variadic = const_int->getZExtValue();
+    functype->return_type =
+        DecodeFromMetadata(llvm::cast<llvm ::MDNode>(md->getOperand(2).get()));
+    for (size_t i = 3; i < md->getNumOperands(); ++i) {
+      functype->arguments.push_back(DecodeFromMetadata(
+          llvm::cast<llvm ::MDNode>(md->getOperand(i).get())));
+    }
+  } else if (kind->getString().equals("UnknownType")) {
+    auto const_value =
+        llvm::cast<llvm::ConstantAsMetadata>(md->getOperand(1).get())
+            ->getValue();
+    auto const_int = llvm::cast<llvm::ConstantInt>(const_value);
+    res = UnknownType{static_cast<unsigned>(const_int->getZExtValue())};
+  }
+
+  return res;
 }
 
 // Parse an encoded type string into its represented type.
@@ -543,8 +763,26 @@ TypeTranslator::DecodeFromSpec(TypeSpec spec) const {
                                   unk.size == UINT32_MAX ? 32 : unk.size * 8);
   }
 
+
+  if (std::holds_alternative<TypeName>(spec)) {
+    auto nm = std::get<TypeName>(spec);
+    auto sty = getOrCreateNamedStruct(this->impl->context, nm.name);
+    CHECK(sty);
+    return sty;
+  }
+
   return TypeSpecificationError{TypeSpecificationError::ErrorCode::InvalidState,
-                                "Function fell out of bounds"};
+                                "Unhandled type specification variant"};
+}
+
+llvm::StructType *getOrCreateNamedStruct(llvm::LLVMContext &context,
+                                         llvm::StringRef Name) {
+  auto res = llvm::StructType::getTypeByName(context, Name);
+  if (res) {
+    return res;
+  }
+
+  return llvm::StructType::create(context, Name);
 }
 
 namespace {
@@ -565,9 +803,9 @@ FindTypeInList(llvm::Type *query, llvm::Type *const (&types)[kSize]) {
 }  // namespace
 
 // Convert a value to a specific type.
-llvm::Value *TypeDictionary::ConvertValueToType(
-    llvm::IRBuilderBase &ir, llvm::Value *src_val,
-    llvm::Type *dest_type) const {
+llvm::Value *TypeDictionary::ConvertValueToType(llvm::IRBuilderBase &ir,
+                                                llvm::Value *src_val,
+                                                llvm::Type *dest_type) const {
   llvm::Type *src_type = src_val->getType();
 
   if (src_type == dest_type) {
@@ -586,26 +824,26 @@ llvm::Value *TypeDictionary::ConvertValueToType(
   // Unpack the source type, and then try to build it into the destination
   // type. This dispatches to the next case.
   if (maybe_src_type_index && maybe_dest_type_index) {
-//    unsigned indexes[] = {0u};
-//    auto dest_val = ir.CreateExtractValue(src_val, indexes);
-//    CopyMetadataTo(src_val, dest_val);
-//    return ConvertValueToType(ir, dest_val, dest_type);
+    //    unsigned indexes[] = {0u};
+    //    auto dest_val = ir.CreateExtractValue(src_val, indexes);
+    //    CopyMetadataTo(src_val, dest_val);
+    //    return ConvertValueToType(ir, dest_val, dest_type);
     LOG(FATAL) << "TODO";
     return nullptr;
 
-  // Pack this type into a destination structure type.
+    // Pack this type into a destination structure type.
   } else if (!maybe_src_type_index && maybe_dest_type_index) {
     LOG(FATAL) << "TODO";
     return nullptr;
 
-  // Unpack this type from a source structure type.
+    // Unpack this type from a source structure type.
   } else if (maybe_src_type_index && !maybe_dest_type_index) {
     unsigned indexes[] = {0u};
     auto dest_val = ir.CreateExtractValue(src_val, indexes);
     CopyMetadataTo(src_val, dest_val);
     return AdaptToType(ir, dest_val, dest_type);
 
-  // Raw type adaptation.
+    // Raw type adaptation.
   } else {
     return AdaptToType(ir, src_val, dest_type);
   }

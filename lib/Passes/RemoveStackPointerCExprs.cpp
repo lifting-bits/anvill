@@ -6,11 +6,10 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/RemoveStackPointerCExprs.h>
-
 #include <anvill/CrossReferenceFolder.h>
 #include <anvill/CrossReferenceResolver.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/RemoveStackPointerCExprs.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constants.h>
@@ -26,19 +25,19 @@ namespace {
 
 class ConcreteStackPointerResolver final : public NullCrossReferenceResolver {
  private:
-  llvm::Module * const module;
+  llvm::Module *const module;
   const StackFrameRecoveryOptions &options;
 
  public:
   virtual ~ConcreteStackPointerResolver(void) = default;
 
   inline explicit ConcreteStackPointerResolver(
-      llvm::Module *module_,
-      const StackFrameRecoveryOptions &options_)
-      : module(module_), options(options_) {}
+      llvm::Module *module_, const StackFrameRecoveryOptions &options_)
+      : module(module_),
+        options(options_) {}
 
-  std::optional<std::uint64_t> AddressOfEntity(
-        llvm::Constant *ent) const final {
+  std::optional<std::uint64_t>
+  AddressOfEntity(llvm::Constant *ent) const final {
     if (!IsStackPointer(module, ent)) {
       return std::nullopt;
     }
@@ -88,13 +87,13 @@ RemoveStackPointerCExprs::run(llvm::Function &func,
     return llvm::PreservedAnalyses::all();
   }
 
-  llvm::Module * const module = func.getParent();
+  llvm::Module *const module = func.getParent();
   const llvm::DataLayout &dl = module->getDataLayout();
   const auto addr_size = dl.getPointerSizeInBits(0);
 
   ConcreteStackPointerResolver resolver(module, options);
   CrossReferenceFolder folder(resolver, dl);
-  StackPointerResolver stack_resolver(module);
+  StackPointerResolver stack_resolver(module, {});
 
   std::vector<llvm::Instruction *> worklist;
 

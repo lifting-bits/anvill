@@ -14,9 +14,14 @@
 #include <anvill/Type.h>
 #include <specification.pb.h>
 
+#include <functional>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
+
+#include "anvill/Passes/BasicBlockPass.h"
 
 namespace llvm {
 class LLVMContext;
@@ -31,7 +36,8 @@ class SpecificationImpl
   friend class Specification;
 
   SpecificationImpl(void) = delete;
-  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_);
+  SpecificationImpl(std::unique_ptr<const remill::Arch> arch_,
+                    const std::string &image_name_, std::uint64_t image_base_);
 
   Result<std::vector<std::string>, std::string>
   ParseSpecification(const ::specification::Specification &obj);
@@ -41,6 +47,9 @@ class SpecificationImpl
 
   // Architecture used by all of the function and global variable declarations.
   const std::unique_ptr<const remill::Arch> arch;
+
+  std::string image_name;
+  std::uint64_t image_base;
 
   const TypeDictionary type_dictionary;
   const TypeTranslator type_translator;
@@ -57,9 +66,12 @@ class SpecificationImpl
   // List of functions that have been parsed from the JSON spec.
   std::unordered_map<std::uint64_t, const FunctionDecl *> address_to_function;
 
+  // List of basic blocks that have been parsed from the JSON spec.
+  std::unordered_map<Uid, const CodeBlock *> uid_to_block;
+
   // Inverted mapping of byte addresses to the variables containing those
   // addresses.
-  std::unordered_map<std::uint64_t, const VariableDecl *> address_to_var;
+  std::map<std::uint64_t, const VariableDecl *> address_to_var;
 
 
   // NOTE(pag): We used ordered containers so that any type of round-tripping
@@ -85,6 +97,10 @@ class SpecificationImpl
   std::vector<Misc> misc_overrides;
 
   std::unordered_map<std::uint64_t, ControlFlowOverride> control_flow_overrides;
+
+  std::unordered_set<std::string> required_globals;
+
+  std::vector<std::string> named_types;
 };
 
 }  // namespace anvill

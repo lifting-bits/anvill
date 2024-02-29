@@ -14,6 +14,10 @@
 #include <anvill/Utils.h>
 #include <glog/logging.h>
 #include <llvm/IR/Constant.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/Support/Casting.h>
 #include <remill/Arch/Arch.h>
 #include <remill/BC/Util.h>
 
@@ -36,6 +40,16 @@ static llvm::MDNode *GetPCAnnotation(llvm::Module *module, uint64_t pc) {
 }
 
 }  // namespace
+
+
+bool ConvertAddressesToEntityUses::IsPointerLike(llvm::Use &use) {
+  if (auto cst = llvm::dyn_cast<llvm::ConstantExpr>(use.get())) {
+    return llvm::Instruction::IntToPtr == cst->getOpcode();
+  }
+  // TODO(Ian): Add use of type annotations here
+
+  return false;
+}
 
 llvm::PreservedAnalyses
 ConvertAddressesToEntityUses::run(llvm::Function &function,
@@ -84,14 +98,17 @@ ConvertAddressesToEntityUses::run(llvm::Function &function,
 
     auto ent_type = llvm::dyn_cast<llvm::PointerType>(entity->getType());
     CHECK_NOTNULL(ent_type);
+    auto adapted = AdaptToType(ir, entity, val_type);
+    if (!adapted) {
+      continue;
+    }
 
     if (auto phi = llvm::dyn_cast<llvm::PHINode>(user_inst)) {
       auto pred_block = phi->getIncomingBlock(*(xref_use.use));
       llvm::IRBuilder<> ir(pred_block->getTerminator());
-      xref_use.use->set(AdaptToType(ir, entity, val_type));
+      xref_use.use->set(adapted);
     } else {
-      llvm::IRBuilder<> ir(user_inst);
-      xref_use.use->set(AdaptToType(ir, entity, val_type));
+      xref_use.use->set(adapted);
     }
 
     if (auto val_inst = llvm::dyn_cast<llvm::Instruction>(val)) {
@@ -147,9 +164,11 @@ EntityUsages ConvertAddressesToEntityUses::EnumeratePossibleEntityUsages(
             ra.is_valid && !ra.references_return_address &&
             !ra.references_stack_pointer) {
 
+
           if (ra.references_entity ||  // Related to an existing lifted entity.
               ra.references_global_value ||  // Related to a global var/func.
-              ra.references_program_counter) {  // Related to `__anvill_pc`.
+              ra.references_program_counter ||
+              IsPointerLike(use)) {  // Related to `__anvill_pc`.
             output.emplace_back(&use, ra);
           }
         }

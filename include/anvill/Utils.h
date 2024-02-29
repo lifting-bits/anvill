@@ -8,9 +8,19 @@
 
 #pragma once
 
+#include <llvm/IR/Argument.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/PassManager.h>
+#include <remill/Arch/Arch.h>
+
 #include <cstdint>
 #include <memory>
 #include <string>
+
+#include "anvill/Declarations.h"
+#include "anvill/Lifters.h"
+
 
 namespace llvm {
 class BasicBlock;
@@ -39,6 +49,14 @@ std::string CreateFunctionName(std::uint64_t addr);
 // Creates a `data_<address>` name from an address
 std::string CreateVariableName(std::uint64_t addr);
 
+// Get metadata for an instruction
+std::optional<std::uint64_t> GetMetadata(llvm::StringRef tag,
+                                         const llvm::Instruction &instr);
+
+// Set metadata for an instruction
+void SetMetadata(llvm::StringRef tag, llvm::Instruction &insn,
+                 std::uint64_t pc_val);
+
 // Looks for any constant expressions in the operands of `inst` and unfolds
 // them into other instructions in the same block.
 void UnfoldConstantExpressions(llvm::Instruction *inst);
@@ -62,10 +80,12 @@ class StackPointerResolver {
 
  public:
   ~StackPointerResolver(void);
-  explicit StackPointerResolver(llvm::Module *module);
+  explicit StackPointerResolver(
+      llvm::Module *module,
+      llvm::ArrayRef<llvm::Value *> additional_base_stack_ptrst);
 
   // Returns `true` if it looks like `val` is derived from a symbolic stack
-  // pointer representation.
+  // pointer representation, a basic block variable that is stack derived, or the abstract stack itself.
   bool IsRelatedToStackPointer(llvm::Value *) const;
 };
 
@@ -79,11 +99,39 @@ bool CanBeAliased(llvm::Value *val);
 
 // Produce one or more instructions in `in_block` to load and return
 // the lifted value associated with `decl`.
-llvm::Value *LoadLiftedValue(const ValueDecl &decl,
-                             const TypeDictionary &types,
+llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
                              const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch,
                              llvm::BasicBlock *in_block, llvm::Value *state_ptr,
                              llvm::Value *mem_ptr);
+
+llvm::Value *LoadLiftedValue(const ValueDecl &decl, const TypeDictionary &types,
+                             const remill::IntrinsicTable &intrinsics,
+                             const remill::Arch *arch, llvm::IRBuilder<> &ir,
+                             llvm::Value *state_ptr, llvm::Value *mem_ptr);
+
+void CloneIntrinsicsFromModule(llvm::Module &from, llvm::Module &into);
+
+void StoreNativeValueToRegister(llvm::Value *native_val,
+                                const remill::Register *reg,
+                                const TypeDictionary &types,
+                                const remill::IntrinsicTable &intrinsics,
+                                llvm::IRBuilder<> &ir, llvm::Value *state_ptr);
+
+void StoreNativeValueToRegister(llvm::Value *native_val,
+                                const remill::Register *reg,
+                                const TypeDictionary &types,
+                                const remill::IntrinsicTable &intrinsics,
+                                llvm::BasicBlock *in_block,
+                                llvm::Value *state_ptr);
+
+
+llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
+                              const TypeDictionary &types,
+                              const remill::IntrinsicTable &intrinsics,
+                              llvm::IRBuilder<> &ir, llvm::Value *state_ptr,
+                              llvm::Value *mem_ptr);
+
 
 // Produce one or more instructions in `in_block` to store the
 // native value `native_val` into the lifted state associated
@@ -93,5 +141,13 @@ llvm::Value *StoreNativeValue(llvm::Value *native_val, const ValueDecl &decl,
                               const remill::IntrinsicTable &intrinsics,
                               llvm::BasicBlock *in_block,
                               llvm::Value *state_ptr, llvm::Value *mem_ptr);
+
+std::optional<Uid> GetBasicBlockUid(llvm::Function *func);
+
+llvm::Argument *GetBasicBlockStackPtr(llvm::Function *func);
+
+bool HasMemLoc(const ValueDecl &v);
+
+bool HasRegLoc(const ValueDecl &v);
 
 }  // namespace anvill

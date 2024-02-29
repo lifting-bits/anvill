@@ -11,13 +11,15 @@
 #include <llvm/IR/PassManager.h>
 
 namespace anvill {
-STATISTIC(
+ALWAYS_ENABLED_STATISTIC(
     ConditionalComplexity,
     "A factor that approximates the complexity of the condition in branch instructions");
-STATISTIC(NumberOfInstructions, "Total number of instructions");
-STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
-STATISTIC(IntToPointerCasts, "Integer to pointer casts");
-STATISTIC(PointerToIntCasts, "Pointer to integer casts");
+ALWAYS_ENABLED_STATISTIC(NumberOfInstructions, "Total number of instructions");
+ALWAYS_ENABLED_STATISTIC(AbruptControlFlow, "Indirect control flow instructions");
+ALWAYS_ENABLED_STATISTIC(IntToPointerCasts, "Integer to pointer casts");
+ALWAYS_ENABLED_STATISTIC(PointerToIntCasts, "Pointer to integer casts");
+ALWAYS_ENABLED_STATISTIC(AnvillStackPointers, "Number of functions that expose an Anvill stack pointer");
+ALWAYS_ENABLED_STATISTIC(AnvillPCPointers, "Number of functions that expose an Anvill pc pointer");
 
 
 namespace {
@@ -35,7 +37,7 @@ class ConditionalComplexityVisitor
   void visitBinaryOperator(llvm::BinaryOperator &I) {
     if (auto *inttype = llvm::dyn_cast<llvm::IntegerType>(I.getType())) {
       if (inttype->getBitWidth() == 1) {
-        ConditionalComplexity++;
+        ++ConditionalComplexity;
         this->tryVisit(I.getOperand(0));
         this->tryVisit(I.getOperand(1));
       }
@@ -43,12 +45,12 @@ class ConditionalComplexityVisitor
   }
 
   void visitCmpInst(llvm::CmpInst &I) {
-    ConditionalComplexity++;
+    ++ConditionalComplexity;
   }
 
   void visitUnaryOperator(llvm::UnaryOperator &I) {
     if (auto *inttype = llvm::dyn_cast<llvm::IntegerType>(I.getType())) {
-      ConditionalComplexity++;
+      ++ConditionalComplexity;
       this->tryVisit(I.getOperand(0));
     }
   }
@@ -57,32 +59,61 @@ class ConditionalComplexityVisitor
 
 
 llvm::PreservedAnalyses
-CodeQualityStatCollector::run(llvm::Function &function,
-                              llvm::FunctionAnalysisManager &analysisManager) {
+CodeQualityStatCollector::run(llvm::Module &module,
+                              llvm::ModuleAnalysisManager &analysisManager) {
   ConditionalComplexityVisitor complexity_visitor;
-  for (auto &i : llvm::instructions(function)) {
-    if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
-      IntToPointerCasts++;
-    }
+  llvm::GlobalVariable* anvill_sp = module.getGlobalVariable(kSymbolicSPName);
+  llvm::GlobalVariable* anvill_pc = module.getGlobalVariable(kSymbolicPCName);
 
-    if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
-      PointerToIntCasts++;
-    }
+  llvm::DenseSet<const llvm::Function*> sp_funcs;
+  llvm::DenseSet<const llvm::Function*> pc_funcs;
 
-
-    NumberOfInstructions++;
-    if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
-      if (branch->isConditional()) {
-        complexity_visitor.tryVisit(branch->getCondition());
+  if (anvill_sp != nullptr) {
+    for (const auto &U: anvill_sp->uses()) {
+      const auto &user = U.getUser();
+      if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
+        sp_funcs.insert(I->getFunction());
       }
     }
+  }
 
-    if (auto *cb = llvm::dyn_cast<llvm::CallBase>(&i)) {
-      auto target = cb->getCalledFunction();
-      if (target != nullptr) {
-        if (target->getName() == kAnvillSwitchCompleteFunc ||
-            target->getName() == kAnvillSwitchIncompleteFunc) {
-          AbruptControlFlow++;
+  AnvillStackPointers += sp_funcs.size();
+
+  if (anvill_pc != nullptr) {
+    for (const auto &U: anvill_pc->uses()) {
+      const auto &user = U.getUser();
+      if (const llvm::Instruction *I = llvm::dyn_cast<llvm::Instruction>(user)) {
+        pc_funcs.insert(I->getFunction());
+      }
+    }
+  }
+
+  AnvillPCPointers += pc_funcs.size();
+
+  for (auto &function : module) {
+    for (auto &i : llvm::instructions(function)) {
+      if (auto *int_to_ptr = llvm::dyn_cast<llvm::IntToPtrInst>(&i)) {
+        ++IntToPointerCasts;
+      }
+
+      if (auto *int_to_ptr = llvm::dyn_cast<llvm::PtrToIntInst>(&i)) {
+        ++PointerToIntCasts;
+      }
+
+      ++NumberOfInstructions;
+      if (auto *branch = llvm::dyn_cast<llvm::BranchInst>(&i)) {
+        if (branch->isConditional()) {
+          complexity_visitor.tryVisit(branch->getCondition());
+        }
+      }
+
+      if (auto *cb = llvm::dyn_cast<llvm::CallBase>(&i)) {
+        auto target = cb->getCalledFunction();
+        if (target != nullptr) {
+          if (target->getName() == kAnvillSwitchCompleteFunc ||
+              target->getName() == kAnvillSwitchIncompleteFunc) {
+            ++AbruptControlFlow;
+          }
         }
       }
     }

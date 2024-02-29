@@ -9,9 +9,11 @@
 #pragma once
 
 #include <anvill/Declarations.h>
-#include <anvill/Specification.h>
 #include <anvill/Lifters.h>
+#include <anvill/Specification.h>
 #include <anvill/Type.h>
+#include <llvm/IR/Argument.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/CallingConv.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instruction.h>
@@ -26,6 +28,22 @@
 #include <set>
 #include <unordered_map>
 #include <utility>
+
+#include "CodeLifter.h"
+#include "Lifters/BasicBlockLifter.h"
+
+namespace std {
+template <typename T1, typename T2>
+struct hash<std::pair<T1, T2>> {
+  std::size_t operator()(std::pair<T1, T2> const &p) const {
+    std::size_t seed(0);
+    llvm::hash_combine(seed, p.first);
+    llvm::hash_combine(seed, p.second);
+
+    return seed;
+  }
+};
+}  // namespace std
 
 namespace llvm {
 class Constant;
@@ -48,12 +66,24 @@ class MemoryProvider;
 class TypeProvider;
 struct ControlFlowTargetList;
 
+
+struct LiftedFunction {
+  llvm::Function *func;
+  llvm::Argument *state_ptr;
+  llvm::Argument *pc_arg;
+  llvm::Argument *mem_ptr;
+};
+
+
 // Orchestrates lifting of instructions and control-flow between instructions.
-class FunctionLifter {
+class FunctionLifter : public CodeLifter {
+  friend class BasicBlockLifter;
+
  public:
   ~FunctionLifter(void);
 
-  FunctionLifter(const LifterOptions &options_);
+
+  static FunctionLifter CreateFunctionLifter(const LifterOptions &options_);
 
   // Declare a lifted a function. Will return `nullptr` if the memory is
   // not accessible or executable.
@@ -70,49 +100,27 @@ class FunctionLifter {
   // Update the associated entity lifter with information about this
   // function, and copy the function into the context's module. Returns the
   // version of `func` inside the module of the lifter context.
-  llvm::Function *AddFunctionToContext(llvm::Function *func, uint64_t address,
+  llvm::Function *AddFunctionToContext(llvm::Function *func,
+                                       const FunctionDecl &decl,
                                        EntityLifterImpl &lifter_context) const;
 
+  // Get or create a basic block lifter for the basic block with specified
+  // uid. If a lifter for the uid does not exist, this function will create it
+  BasicBlockLifter &GetOrCreateBasicBlockLifter(Uid uid);
+
+  const BasicBlockLifter &LiftBasicBlockFunction(const CodeBlock &);
+
+  llvm::Function *GetBasicBlockFunction(uint64_t address) const;
+
  private:
-  const LifterOptions &options;
-  const MemoryProvider &memory_provider;
-  const TypeProvider &type_provider;
-  const TypeTranslator type_specifier;
+  FunctionLifter(const LifterOptions &options_,
+                 std::unique_ptr<llvm::Module> semantics_module);
 
   // Semantics module containing all instruction semantics.
   std::unique_ptr<llvm::Module> semantics_module;
 
-  // Context associated with `module`.
-  llvm::LLVMContext &llvm_context;
+  TypeTranslator type_specifier;
 
-  // Remill intrinsics inside of `module`.
-  remill::IntrinsicTable intrinsics;
-
-  remill::OperandLifter::OpLifterPtr op_lifter;
-
-  // Specification counter and stack pointer registers.
-  const remill::Register *const pc_reg;
-  const remill::Register *const sp_reg;
-
-  // Are we lifting SPARC code? This affects whether or not we need to do
-  // double checking on function return addresses;
-  const bool is_sparc;
-
-  // Are we lifting x86(-64) code?
-  const bool is_x86_or_amd64;
-
-  // Convenient to keep around.
-  llvm::Type *const i8_type;
-  llvm::Constant *const i8_zero;
-  llvm::Type *const i32_type;
-  llvm::PointerType *const mem_ptr_type;
-  llvm::PointerType *const state_ptr_type;
-  llvm::IntegerType *const address_type;
-  llvm::Type *const pc_reg_type{nullptr};
-
-  // Metadata node to attach to lifted instructions to related them to
-  // original instructions.
-  unsigned pc_annotation_id{0};
 
   llvm::MDNode *pc_annotation{nullptr};
 
@@ -128,8 +136,6 @@ class FunctionLifter {
   // Three-argument Remill function into which instructions are lifted.
   llvm::Function *lifted_func{nullptr};
 
-  // State pointer in `lifted_func`.
-  llvm::Value *state_ptr{nullptr};
 
   // Pointer to the `Memory *` in `lifted_func`.
   llvm::Value *mem_ptr_ref{nullptr};
@@ -169,17 +175,16 @@ class FunctionLifter {
   std::map<std::pair<uint64_t, uint64_t>, remill::DecodingContext>
       decoding_contexts;
 
-  // Maps control flow edges `(from_pc -> to_pc)` to the basic block associated
-  // with `to_pc`.
-  std::map<std::pair<uint64_t, uint64_t>, llvm::BasicBlock *>
-      edge_to_dest_block;
-
   // Maps an instruction address to a basic block that will hold the lifted code
   // for that instruction.
   std::unordered_map<uint64_t, llvm::BasicBlock *> addr_to_block;
 
   // Maps program counters to lifted functions.
   std::unordered_map<uint64_t, llvm::Function *> addr_to_func;
+
+  // maps a uid to the lifter for that block
+  std::unordered_map<std::pair<uint64_t, uint64_t>, BasicBlockLifter>
+      bb_lifters;
 
   // Get the annotation for the program counter `pc`, or `nullptr` if we're
   // not doing annotations.
@@ -189,112 +194,8 @@ class FunctionLifter {
   // returned function is a "high-level" function.
   llvm::Function *GetOrDeclareFunction(const FunctionDecl &decl);
 
-
-  llvm::BranchInst *BranchToInst(uint64_t from_addr, uint64_t to_addr,
-                                 const remill::DecodingContext &mapper,
-                                 llvm::BasicBlock *from_block);
-
-  // Helper to get the basic block to contain the instruction at `addr`. This
-  // function drives a work list, where the first time we ask for the
-  // instruction at `addr`, we enqueue a bit of work to decode and lift that
-  // instruction.
-  llvm::BasicBlock *GetOrCreateBlock(uint64_t from_addr, uint64_t to_addr,
-                                     const remill::DecodingContext &mapper);
-
-  // Attempts to lookup any redirection of the given address, and then
-  // calls GetOrCreateBlock
-  llvm::BasicBlock *
-  GetOrCreateTargetBlock(const remill::Instruction &from_inst, uint64_t to_addr,
-                         const remill::DecodingContext &mapper);
-
   void InsertError(llvm::BasicBlock *block);
 
-  /*
-NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
-                   IndirectJump, IndirectFunctionCall, DirectFunctionCall,
-                   FunctionReturn, AsyncHyperCall, ConditionalInstruction>*/
-
-  struct FlowVisitor {
-    FunctionLifter &lifter;
-    const remill::Instruction &inst;
-    llvm::BasicBlock *block;
-    std::optional<remill::Instruction> &delayed_inst;
-    const remill::DecodingContext &prev_context;
-
-
-    void operator()(const remill::Instruction::NormalInsn &);
-    void operator()(const remill::Instruction::NoOp &);
-    void operator()(const remill::Instruction::InvalidInsn &);
-    void operator()(const remill::Instruction::ErrorInsn &);
-    void operator()(const remill::Instruction::DirectJump &);
-    void operator()(const remill::Instruction::IndirectJump &);
-    void operator()(const remill::Instruction::IndirectFunctionCall &);
-    void operator()(const remill::Instruction::DirectFunctionCall &);
-    void operator()(const remill::Instruction::FunctionReturn &);
-    void operator()(const remill::Instruction::AsyncHyperCall &);
-    void operator()(const remill::Instruction::ConditionalInstruction &);
-  };
-
-  // The following `Visit*` methods exist to orchestrate control flow. The way
-  // lifting works in Remill is that the mechanics of an instruction are
-  // simulated by a single-entry, single-exit function, called a semantics
-  // function. A `remill::Instruction` is basically a fancy package of
-  // information describing what to pass to that function. However, many
-  // instructions affect control-flow, and so that means that in order to
-  // enact the control-flow changes that are implied by an instruction, we must
-  // "orchestrate" lifting of control flow at a higher level, introduction
-  // conditional branches and such between these called to semantics functions.
-
-  // Visit an invalid instruction. An invalid instruction is a sequence of
-  // bytes which cannot be decoded, or an empty byte sequence.
-  void VisitInvalid(const remill::Instruction &inst, llvm::BasicBlock *block);
-
-  // Visit an error instruction. An error instruction is guaranteed to trap
-  // execution somehow, e.g. `ud2` on x86. Error instructions are treated
-  // similarly to invalid instructions, with the exception that they can have
-  // delay slots, and therefore the subsequent instruction may actually execute
-  // prior to the error.
-  void VisitError(const remill::Instruction &inst,
-                  std::optional<remill::Instruction> &delayed_inst,
-                  llvm::BasicBlock *block);
-
-  // Visit a normal instruction. Normal instructions have straight line control-
-  // flow semantics, i.e. after executing the instruction, execution proceeds
-  // to the next instruction (`inst.next_pc`).
-  void VisitNormal(const remill::Instruction &inst, llvm::BasicBlock *block,
-                   const remill::Instruction::NormalInsn &norm);
-
-  // Visit a no-op instruction. These behave identically to normal instructions
-  // from a control-flow perspective.
-  void VisitNoOp(const remill::Instruction &inst, llvm::BasicBlock *block,
-                 const remill::Instruction::NoOp &noop);
-
-  // Visit a direct jump control-flow instruction. The target of the jump is
-  // known at decode time, and the target address is available in
-  // `inst.branch_taken_pc`. Execution thus needs to transfer to the instruction
-  // (and thus `llvm::BasicBlock`) associated with `inst.branch_taken_pc`.
-  void VisitDirectJump(const remill::Instruction &inst,
-                       std::optional<remill::Instruction> &delayed_inst,
-                       llvm::BasicBlock *block,
-                       const remill::Instruction::DirectJump &norm);
-
-  // Visit an indirect jump control-flow instruction. This may be register- or
-  // memory-indirect, e.g. `jmp rax` or `jmp [rax]` on x86. Thus, the target is
-  // not know a priori and our default mechanism for handling this is to perform
-  // a tail-call to the `__remill_jump` function, whose role is to be a stand-in
-  // something that enacts the effect of "transfer to target."
-  void VisitIndirectJump(const remill::Instruction &inst,
-                         std::optional<remill::Instruction> &delayed_inst,
-                         llvm::BasicBlock *block,
-                         const remill::Instruction::IndirectJump &ijump,
-                         const remill::DecodingContext &prev_context);
-
-  // Visit an indirect jump that is a jump table.
-  void DoSwitchBasedIndirectJump(const remill::Instruction &inst,
-                                 llvm::BasicBlock *block,
-                                 const std::vector<JumpTarget> &target_list,
-                                 const remill::Instruction::IndirectJump &norm,
-                                 const remill::DecodingContext &prev_context);
 
   remill::DecodingContext
   ApplyTargetList(const std::unordered_map<std::string, uint64_t> &assignments,
@@ -315,11 +216,6 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
                            std::optional<remill::Instruction> &delayed_inst,
                            llvm::BasicBlock *block);
 
-  // Call `pc` in `block`, treating it as a callable declaration `decl`.
-  // Returns the new value of the memory pointer (after it is stored to
-  // `MEMORY`).
-  llvm::Value *CallCallableDecl(llvm::BasicBlock *block, llvm::Value *pc,
-                                CallableDecl decl);
 
   // Try to resolve `target_pc` to a lifted function, and introduce
   // a function call to that address in `block`. Failing this, add a call
@@ -327,13 +223,6 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // Returns true if the callee may return, false otherwise.
   bool CallFunction(const remill::Instruction &inst, llvm::BasicBlock *block,
                     std::optional<std::uint64_t> target_pc);
-
-  // A wrapper around the type provider's TryGetFunctionType that makes use
-  // of the control flow provider to handle control flow redirections for
-  // thunks
-  std::optional<CallableDecl>
-  TryGetTargetFunctionType(const remill::Instruction &inst,
-                           std::uint64_t address);
 
   // Visit a direct function call control-flow instruction. The target is known
   // at decode time, and its realized address is stored in
@@ -369,74 +258,18 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // should resume after a `call`.
   std::pair<uint64_t, llvm::Value *>
   LoadFunctionReturnAddress(const remill::Instruction &inst,
-                            llvm::BasicBlock *block);
+                            llvm::BasicBlock *block, llvm::Value *state_ptr);
 
-  // Enact relevant control-flow changed after a function call. This figures
-  // out the return address targeted by the callee and links it into the
-  // control-flow graph.
-  void VisitAfterFunctionCall(
-      const remill::Instruction &inst, llvm::BasicBlock *block,
-      const std::variant<remill::Instruction::IndirectFunctionCall,
-                         remill::Instruction::DirectFunctionCall> &,
-      bool can_return, const remill::DecodingContext &prev_context);
+  void VisitBlock(CodeBlock entry_context, llvm::Value *lifted_function_state,
+                  llvm::Value *abstract_stack);
 
-  // Visit an asynchronous hyper call control-flow instruction. These are non-
-  // local control-flow transfers, such as system calls. We treat them like
-  // indirect function calls.
-  void VisitAsyncHyperCall(const remill::Instruction &inst,
-                           std::optional<remill::Instruction> &delayed_inst,
-                           llvm::BasicBlock *block);
+  LiftedFunction CreateLiftedFunction(const std::string &name);
 
-  // Visit (and thus lift) a delayed instruction. When lifting a delayed
-  // instruction, we need to know if we're one the taken path of a control-flow
-  // edge, or on the not-taken path. Delayed instructions appear physically
-  // after some instructions, but execute logically before them in the
-  // CPU pipeline. They are basically a way for hardware designers to push
-  // the effort of keeping the pipeline full to compiler developers.
-  void VisitDelayedInstruction(const remill::Instruction &inst,
-                               std::optional<remill::Instruction> &delayed_inst,
-                               llvm::BasicBlock *block, bool on_taken_path);
+  remill::DecodingContext CreateDecodingContext(const CodeBlock &blk);
 
-  // Instrument an instruction. This inject a `printf` call just before a
-  // lifted instruction to aid in debugging.
-  //
-  // TODO(pag): In future, this mechanism should be used to provide a feedback
-  //            loop, or to provide information to the `TypeProvider` for future
-  //            re-lifting of code.
-  //
-  // TODO(pag): Right now, this feature is enabled by a command-line flag, and
-  //            that flag is tested in `VisitInstruction`; we should move
-  //            lifting configuration decisions out of here so that we can pass
-  //            in a kind of `LiftingOptions` type that changes the lifter's
-  //            behavior.
-  void InstrumentDataflowProvenance(llvm::BasicBlock *block);
 
-  // Adds a 'breakpoint' instrumentation, which calls functions that are named
-  // with an instruction's address just before that instruction executes. These
-  // are nifty to spot checking bitcode.
-  void InstrumentCallBreakpointFunction(llvm::BasicBlock *block);
-
-  // Visit an instruction, and lift it into a basic block. Then, based off of
-  // the category of the instruction, invoke one of the category-specific
-  // lifters to enact a change in control-flow.
-  void VisitInstruction(remill::Instruction &inst, llvm::BasicBlock *block,
-                        remill::DecodingContext prev_insn_context);
-
-  // In the process of lifting code, we may want to call another native
-  // function, `native_func`, for which we have high-level type info. The main
-  // lifter operates on a special three-argument form function style, and
-  // operating on this style is actually to our benefit, as it means that as
-  // long as we can put data into the emulated `State` structure and pull it
-  // out, then calling one native function from another doesn't require /us/
-  // to know how to adapt one native return type into another native return
-  // type, and instead we let LLVM's optimizations figure it out later during
-  // scalar replacement of aggregates (SROA).
-  llvm::Value *TryCallNativeFunction(FunctionDecl decl,
-                                     llvm::Function *native_func,
-                                     llvm::BasicBlock *block);
-
-  // Visit all instructions. This runs the work list and lifts instructions.
-  void VisitInstructions(uint64_t address);
+  void VisitBlocks(llvm::Value *lifted_function_state,
+                   llvm::Value *abstract_stack);
 
   // Try to decode an instruction at address `addr` into `*inst_out`. Returns
   // a context map if sueccessful and std::nullopt otherwise. `is_delayed` tells the decoder
@@ -457,19 +290,29 @@ NormalInsn, NoOp, InvalidInsn, ErrorInsn, DirectJump,
   // that all semantics and helpers are completely inlined.
   void RecursivelyInlineLiftedFunctionIntoNativeFunction(void);
 
-  // Allocate and initialize the state structure.
-  void AllocateAndInitializeStateStructure(llvm::BasicBlock *block,
-                                           const remill::Arch *arch);
+  // Manipulates the control flow to restore intra-procedural state when reaching an
+  // inter-procedural effect.
+  // Returns a boolean represnting wether decoding should continue (true = non-terminal, false=terminal)
+  bool ApplyInterProceduralControlFlowOverride(const remill::Instruction &,
+                                               llvm::BasicBlock *&block,
+                                               llvm::Value *state_ptr);
+
+  bool DoInterProceduralControlFlow(const remill::Instruction &insn,
+                                    llvm::BasicBlock *block,
+                                    const anvill::ControlFlowOverride &override,
+                                    llvm::Value *state_ptr);
 
   // Perform architecture-specific initialization of the state structure
   // in `block`.
-  void ArchSpecificStateStructureInitialization(llvm::BasicBlock *block);
+  void ArchSpecificStateStructureInitialization(llvm::BasicBlock *block,
+                                                llvm::Value *state_ptr);
 
   // Initialize the state structure with default values, loaded from global
   // variables. The purpose of these global variables is to show that there are
   // some unmodelled external dependencies inside of a lifted function.
   void
-  InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block);
+  InitializeStateStructureFromGlobalRegisterVariables(llvm::BasicBlock *block,
+                                                      llvm::Value *state_ptr);
 };
 
 }  // namespace anvill

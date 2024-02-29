@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <anvill/Utils.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
@@ -15,8 +16,6 @@
 
 #include <functional>
 #include <vector>
-
-#include <anvill/Utils.h>
 
 namespace llvm {
 class CallBase;
@@ -30,8 +29,8 @@ namespace anvill {
 namespace {
 
 template <class... Types>
-static std::vector<llvm::Instruction *> SelectInstructions(
-    llvm::Function &function) {
+static std::vector<llvm::Instruction *>
+SelectInstructions(llvm::Function &function) {
   std::vector<llvm::Instruction *> output;
 
   for (auto &instruction : llvm::instructions(function)) {
@@ -70,10 +69,15 @@ std::string GetFunctionIR(llvm::Function &func);
 // Returns the module's IR
 std::string GetModuleIR(llvm::Module &module);
 
+
 llvm::PreservedAnalyses ConvertBoolToPreserved(bool);
 
 // Returns the pointer to the function that lets us overwrite the return
 // address. This is not available on all architectures / OSes.
 llvm::Function *AddressOfReturnAddressFunction(llvm::Module *module);
+
+llvm::Function *GetOrCreateAnvillReturnFunc(llvm::Module *module);
+
+std::optional<llvm::ReturnInst *> UniqueReturn(llvm::Function *func);
 
 }  // namespace anvill

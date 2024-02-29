@@ -8,12 +8,11 @@
 
 #pragma once
 
+#include <anvill/Result.h>
 #include <remill/BC/Error.h>
 
 #include <string>
 #include <vector>
-
-#include <anvill/Result.h>
 
 namespace llvm {
 class Function;
@@ -132,11 +131,10 @@ class CallingConvention {
 
   static Result<Ptr, std::string> CreateCCFromArch(const remill::Arch *arch);
 
-  static Result<Ptr, std::string> CreateCCFromArchAndID(
-      const remill::Arch *arch, llvm::CallingConv::ID cc_id);
+  static Result<Ptr, std::string>
+  CreateCCFromArchAndID(const remill::Arch *arch, llvm::CallingConv::ID cc_id);
 
-  Result<FunctionDecl, std::string>
-  AllocateSignature(llvm::Function &func);
+  Result<FunctionDecl, std::string> AllocateSignature(llvm::Function &func);
 
   virtual llvm::Error AllocateSignature(FunctionDecl &fdecl,
                                         llvm::Function &func) = 0;
@@ -147,7 +145,7 @@ class CallingConvention {
 
  protected:
   const remill::Arch *const arch;
-
+  /*
   static std::unique_ptr<CallingConvention>
   CreateX86_C(const remill::Arch *arch);
 
@@ -174,6 +172,11 @@ class CallingConvention {
 
   static std::unique_ptr<CallingConvention>
   CreateSPARC64_C(const remill::Arch *arch);
+
+  static std::unique_ptr<CallingConvention>
+  CreatePPC_SysV(const remill::Arch *arch);*/
+
+  static std::unique_ptr<CallingConvention> CreateStubABI();
 
  private:
   const llvm::CallingConv::ID identity;

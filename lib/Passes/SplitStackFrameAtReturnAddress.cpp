@@ -6,10 +6,9 @@
  * the LICENSE file found in the root directory of this source tree.
  */
 
-#include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
-
 #include <anvill/ABI.h>
 #include <anvill/Lifters.h>
+#include <anvill/Passes/SplitStackFrameAtReturnAddress.h>
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/ArrayRef.h>
@@ -22,6 +21,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+
 #include "Utils.h"
 
 namespace anvill {
@@ -31,21 +31,10 @@ namespace {
 static llvm::AllocaInst *FindStackFrameAlloca(llvm::Function &func) {
   for (auto &inst : func.getEntryBlock()) {
     auto alloca = llvm::dyn_cast<llvm::AllocaInst>(&inst);
-    if (!alloca) {
+    if (!alloca || !alloca->hasMetadata(kStackMetadata)) {
       continue;
     }
 
-    auto frame_type = llvm::dyn_cast<llvm::StructType>(
-        alloca->getAllocatedType());
-    if (!frame_type || frame_type->isLiteral()) {
-      continue;
-    }
-
-    auto frame_name = frame_type->getName();
-    if (!frame_name.startswith(func.getName()) ||
-        !frame_name.endswith(kStackFrameTypeNameSuffix)) {
-      continue;
-    }
 
     return alloca;
   }
@@ -59,8 +48,8 @@ struct FixedOffsetUse {
 };
 
 // Find all (indirect) uses of the stack frame allocation.
-static std::vector<FixedOffsetUse> FindFixedOffsetUses(
-    llvm::AllocaInst *alloca) {
+static std::vector<FixedOffsetUse>
+FindFixedOffsetUses(llvm::AllocaInst *alloca) {
 
   const llvm::DataLayout &dl = alloca->getModule()->getDataLayout();
   const auto addr_size = dl.getIndexSizeInBits(0);
@@ -70,8 +59,7 @@ static std::vector<FixedOffsetUse> FindFixedOffsetUses(
   std::vector<std::pair<llvm::Instruction *, llvm::APInt>> work_list;
   work_list.emplace_back(alloca, llvm::APInt(addr_size, 0u, true));
 
-  auto add_to_found = [&found] (llvm::Use &use,
-      llvm::APInt offset) {
+  auto add_to_found = [&found](llvm::Use &use, llvm::APInt offset) {
     FixedOffsetUse fou;
     fou.offset = std::move(offset);
     fou.use = &use;
@@ -95,8 +83,7 @@ static std::vector<FixedOffsetUse> FindFixedOffsetUses(
       }
 
       switch (user_inst->getOpcode()) {
-        default:
-          break;
+        default: break;
         case llvm::Instruction::BitCast:
         case llvm::Instruction::PtrToInt:
         case llvm::Instruction::IntToPtr:
@@ -136,24 +123,24 @@ static void AnnotateStackUses(llvm::AllocaInst *frame_alloca,
     return;
   }
 
-  auto stack_offset_md_id = context.getMDKindID(
-      options.stack_offset_metadata_name);
+  auto stack_offset_md_id =
+      context.getMDKindID(options.stack_offset_metadata_name);
 
   auto zero_offset = zero_val->getSExtValue();
-  auto create_metadata =
-      [=, &context] (llvm::Instruction *inst, int64_t offset) {
-        int64_t disp = 0;
-        if (options.stack_grows_down) {
-          disp = zero_offset - offset;
-        } else {
-          disp = offset - zero_offset;
-        }
+  auto create_metadata = [=, &context](llvm::Instruction *inst,
+                                       int64_t offset) {
+    int64_t disp = 0;
+    if (options.stack_grows_down) {
+      disp = zero_offset - offset;
+    } else {
+      disp = offset - zero_offset;
+    }
 
-        auto disp_val = llvm::ConstantInt::get(
-            zero_val->getType(), static_cast<uint64_t>(disp), true);
-        auto disp_md = llvm::ValueAsMetadata::get(disp_val);
-        return llvm::MDNode::get(context, disp_md);
-      };
+    auto disp_val = llvm::ConstantInt::get(zero_val->getType(),
+                                           static_cast<uint64_t>(disp), true);
+    auto disp_md = llvm::ValueAsMetadata::get(disp_val);
+    return llvm::MDNode::get(context, disp_md);
+  };
 
   // Annotate the used instructions.
   for (const auto &use : uses) {
@@ -173,9 +160,9 @@ static void AnnotateStackUses(llvm::AllocaInst *frame_alloca,
 
 // Find a `StoreInst` that looks like it puts the return address into the
 // stack. Failure to find this means it likely stayed in registers.
-static const FixedOffsetUse *FindReturnAddressStore(
-    const std::vector<FixedOffsetUse> &uses,
-    const StackFrameRecoveryOptions &options) {
+static const FixedOffsetUse *
+FindReturnAddressStore(const std::vector<FixedOffsetUse> &uses,
+                       const StackFrameRecoveryOptions &options) {
   const FixedOffsetUse *found = nullptr;
   for (const auto &use : uses) {
     if (auto store = llvm::dyn_cast<llvm::StoreInst>(use.use->getUser())) {
@@ -258,13 +245,8 @@ static llvm::Instruction *DemandedOffset(
       ptr_type = llvm::PointerType::get(context, 0);
       scale = 2;
       break;
-    case 0:
-      el_type = llvm::Type::getIntNTy(context, addr_size * 8u);
-      break;
-    default:
-      LOG(FATAL)
-          << "Unsupported address size: " << addr_size;
-      break;
+    case 0: el_type = llvm::Type::getIntNTy(context, addr_size * 8u); break;
+    default: LOG(FATAL) << "Unsupported address size: " << addr_size; break;
   }
 
   auto base = pointers[addr_size];
@@ -367,8 +349,8 @@ static void SubstituteUse(
     // If the user is a `load`, then replace its use of the pointer.
     case llvm::Instruction::Load: {
       auto li = llvm::dyn_cast<llvm::LoadInst>(user_inst);
-      auto pty = llvm::PointerType::get(
-          ir.getContext(), li->getPointerAddressSpace());
+      auto pty =
+          llvm::PointerType::get(ir.getContext(), li->getPointerAddressSpace());
       auto bc = ir.CreateBitOrPointerCast(ret, pty);
       CopyMetadataTo(use_inst, bc);
       use->set(bc);
@@ -392,9 +374,10 @@ static void SubstituteUse(
           use->set(bc);
         }
 
-      // Operating on the pointer.
+        // Operating on the pointer.
       } else {
-        auto pty = llvm::PointerType::get(ir.getContext(), si->getPointerAddressSpace());
+        auto pty = llvm::PointerType::get(ir.getContext(),
+                                          si->getPointerAddressSpace());
         auto bc = ir.CreateBitOrPointerCast(ret, pty);
         CopyMetadataTo(use_inst, bc);
         use->set(bc);
@@ -414,7 +397,7 @@ static void SubstituteUse(
           to_replace.emplace(user_inst, bc);
         }
 
-      // This is trickier; we need to form a new GEP or something like it.
+        // This is trickier; we need to form a new GEP or something like it.
       } else {
         llvm::SmallVector<const llvm::Value *, 4u> const_indices_c;
         llvm::SmallVector<llvm::Value *, 4u> const_indices;
@@ -439,13 +422,12 @@ static void SubstituteUse(
         // This is the easy case, because we can replace the use with
         // something that was constant calculated.
         if (const_indices.empty()) {
-          auto pty = llvm::PointerType::get(
-              ir.getContext(), addr_space);
+          auto pty = llvm::PointerType::get(ir.getContext(), addr_space);
           auto bc = ir.CreateBitOrPointerCast(ret, pty);
           CopyMetadataTo(use_inst, bc);
           use->set(bc);
 
-        // This is the hard case, because we need to invent a new GEP.
+          // This is the hard case, because we need to invent a new GEP.
         } else if (!to_replace.count(user_inst)) {
           llvm::APInt sub_offset(addr_size * 8u, 0u);
           auto source_ty = gep->getSourceElementType();
@@ -454,19 +436,18 @@ static void SubstituteUse(
               source_ty, const_indices_c, dl, sub_offset));
 
           auto effective_sub_offset = static_cast<uint64_t>(
-              static_cast<int64_t>(offset) +
-              sub_offset.getSExtValue());
-          llvm::Instruction *const sub_ret = DemandedOffset(
-              ir, use_inst, pointers, computed_offsets,
-              effective_sub_offset, addr_size);
+              static_cast<int64_t>(offset) + sub_offset.getSExtValue());
+          llvm::Instruction *const sub_ret =
+              DemandedOffset(ir, use_inst, pointers, computed_offsets,
+                             effective_sub_offset, addr_size);
 
           CHECK_NOTNULL(sub_ret);
           CopyMetadataTo(use_inst, sub_ret);
 
-          auto sub_ret_ty = llvm::GetElementPtrInst::getIndexedType(
-              source_ty, const_indices);
-          auto sub_ret_pty = llvm::PointerType::get(
-              ir.getContext(), addr_space);
+          auto sub_ret_ty =
+              llvm::GetElementPtrInst::getIndexedType(source_ty, const_indices);
+          auto sub_ret_pty =
+              llvm::PointerType::get(ir.getContext(), addr_space);
 
           auto bc = ir.CreateBitOrPointerCast(ret, sub_ret_pty);
           CopyMetadataTo(user_inst, bc);
@@ -482,17 +463,17 @@ static void SubstituteUse(
   }
 }
 
-static void SplitStackFrameAround(
-    llvm::AllocaInst *frame_alloca, std::vector<FixedOffsetUse> uses,
-    const StackFrameRecoveryOptions &options) {
+static void SplitStackFrameAround(llvm::AllocaInst *frame_alloca,
+                                  std::vector<FixedOffsetUse> uses,
+                                  const StackFrameRecoveryOptions &options) {
 
   llvm::LLVMContext &context = frame_alloca->getContext();
-  llvm::Module * const module = frame_alloca->getModule();
+  llvm::Module *const module = frame_alloca->getModule();
   const llvm::DataLayout &dl = module->getDataLayout();
   const auto addr_size = dl.getPointerSize(0);
   const auto addr_size_bits = dl.getPointerSizeInBits(0);
-  llvm::IntegerType * const addr_type = llvm::Type::getIntNTy(
-      context, addr_size * 8u);
+  llvm::IntegerType *const addr_type =
+      llvm::Type::getIntNTy(context, addr_size * 8u);
 
   // If we don't find a return address store, then we'll still split at zero.
   //
@@ -512,16 +493,14 @@ static void SplitStackFrameAround(
     end_of_ra = offset_of_ra + addr_size;
 
     // Log the above scenario out in case it comes up.
-    if (auto user_inst = llvm::dyn_cast<llvm::Instruction>(
-            store_use->use->getUser());
+    if (auto user_inst =
+            llvm::dyn_cast<llvm::Instruction>(store_use->use->getUser());
         user_inst && offset_of_ra != 0) {
 
-      LOG(INFO)
-          << "Offset of return address storage location in function "
-          << frame_alloca->getFunction()->getName().str()
-          << " is " << offset_of_ra << ": "
-          << remill::LLVMThingToString(user_inst)
-          << " in block " << user_inst->getParent()->getName().str();
+      LOG(INFO) << "Offset of return address storage location in function "
+                << frame_alloca->getFunction()->getName().str() << " is "
+                << offset_of_ra << ": " << remill::LLVMThingToString(user_inst)
+                << " in block " << user_inst->getParent()->getName().str();
     }
   }
 
@@ -553,29 +532,29 @@ static void SplitStackFrameAround(
   std::unordered_map<uint64_t, llvm::Instruction *> computed_offsets;
   std::unordered_map<llvm::Instruction *, llvm::Value *> to_replace;
 
-  auto make_subframe = [&] (
-      std::vector<std::pair<llvm::Use *, uint64_t>> use_offsets,
-      const char *down_name, const char *up_name, uint64_t num_slots) {
-    auto num_slots_val = ir.getIntN(addr_size_bits, num_slots);
-    if (options.stack_grows_down) {
-      sub_frame = ir.CreateAlloca(addr_type, 0u, num_slots_val, down_name);
-    } else {
-      sub_frame = ir.CreateAlloca(addr_type, 0u, num_slots_val, up_name);
-    }
+  auto make_subframe =
+      [&](std::vector<std::pair<llvm::Use *, uint64_t>> use_offsets,
+          const char *down_name, const char *up_name, uint64_t num_slots) {
+        auto num_slots_val = ir.getIntN(addr_size_bits, num_slots);
+        if (options.stack_grows_down) {
+          sub_frame = ir.CreateAlloca(addr_type, 0u, num_slots_val, down_name);
+        } else {
+          sub_frame = ir.CreateAlloca(addr_type, 0u, num_slots_val, up_name);
+        }
 
-    pointers.clear();
-    computed_offsets.clear();
+        pointers.clear();
+        computed_offsets.clear();
 
-    pointers.emplace(addr_size, sub_frame);
-    computed_offsets.emplace(0, sub_frame);
+        pointers.emplace(addr_size, sub_frame);
+        computed_offsets.emplace(0, sub_frame);
 
-    CopyMetadataTo(frame_alloca, sub_frame);
+        CopyMetadataTo(frame_alloca, sub_frame);
 
-    for (auto [use, offset] : use_offsets) {
-      SubstituteUse(ir, use, offset, addr_size, pointers,
-                    computed_offsets, to_replace);
-    }
-  };
+        for (auto [use, offset] : use_offsets) {
+          SubstituteUse(ir, use, offset, addr_size, pointers, computed_offsets,
+                        to_replace);
+        }
+      };
 
   if (!above.empty()) {
     auto num_slots = (offset_of_ra + (addr_size - 1u)) / addr_size;
@@ -583,8 +562,8 @@ static void SplitStackFrameAround(
   }
 
   if (!below.empty()) {
-    auto frame_size = dl.getTypeAllocSize(
-        frame_alloca->getAllocatedType()).getKnownMinSize();
+    auto frame_size = dl.getTypeAllocSize(frame_alloca->getAllocatedType())
+                          .getKnownMinValue();
     auto num_slots = ((frame_size - end_of_ra) + (addr_size - 1u)) / addr_size;
     make_subframe(std::move(below), "locals", "parameters", num_slots);
   }
