@@ -554,6 +554,7 @@ Result<FunctionDecl, std::string> ProtobufTranslator::DecodeFunction(
   decl.ret_ptr_offset = frame.return_address_offset();
   decl.parameter_size = frame.parameter_size();
   decl.parameter_offset = frame.parameter_offset();
+  decl.epilogue_addr = function.epilogue_address();
 
   decl.maximum_depth = decl.GetPointerDisplacement() + frame.max_frame_depth();
 
