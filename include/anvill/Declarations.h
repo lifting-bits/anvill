@@ -460,6 +460,8 @@ struct FunctionDecl : public CallableDecl {
 
   MachineAddr binary_addr{};
 
+  std::uint64_t epilogue_addr{0};
+
 
   std::vector<ParameterDecl> in_scope_variables;
 

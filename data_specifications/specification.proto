@@ -347,6 +347,7 @@ message Function {
   // a low lifting of that location with spec type metadata
   repeated TypeHint type_hints = 11;
   ProgramAddress binary_addr = 13;
+  uint64 epilogue_address = 14;
 }
 
 
